@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import url from 'url';
+import fs from 'fs';
 import { initializeDatabaseManager, DatabaseAdapter } from './database-manager';
 
 let databaseAdapter: DatabaseAdapter | null = null;
@@ -51,7 +52,14 @@ ipcMain.handle('clear-duty-roster-month', async (_event, year: number, month: nu
 });
 
 async function createWindow() {
-    databaseAdapter = await initializeDatabaseManager();
+    try {
+        writeStartupLog('createWindow: start');
+        databaseAdapter = await initializeDatabaseManager();
+        writeStartupLog('database initialized');
+    } catch (e) {
+        writeStartupLog('database initialization failed: ' + (e instanceof Error ? e.stack : String(e)));
+        throw e;
+    }
     const mainWindow = new BrowserWindow({
         width: 1280,
         height: 800,
@@ -62,19 +70,59 @@ async function createWindow() {
         }
     });
 
-    const isDev = process.argv.includes('--dev');
-    if (isDev) {
-        mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
-        mainWindow.webContents.openDevTools();
-    } else {
+    try {
+        const isDev = process.argv.includes('--dev');
         const filePath = path.join(__dirname, '../renderer/index.html');
-        mainWindow.loadFile(filePath);
+
+        mainWindow.webContents.on('did-finish-load', () => {
+            writeStartupLog('renderer did-finish-load');
+        });
+        mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+            writeStartupLog(`renderer did-fail-load code=${errorCode} desc=${errorDescription} url=${validatedURL}`);
+        });
+
+        if (isDev) {
+            mainWindow.loadFile(filePath);
+            mainWindow.webContents.openDevTools();
+        } else {
+            if (!fs.existsSync(filePath)) {
+                writeStartupLog('renderer index.html not found at: ' + filePath);
+            }
+            mainWindow.loadFile(filePath);
+        }
+    } catch (e) {
+        writeStartupLog('createWindow loadFile failed: ' + (e instanceof Error ? e.stack : String(e)));
+        throw e;
     }
 
     mainWindow.on('closed', () => {
         // Handled by app.on('window-all-closed')
     });
 }
+
+// Startup logging helper — write to userData folder (best-effort)
+function writeStartupLog(message: string) {
+    try {
+        const userData = (app && typeof app.getPath === 'function') ? app.getPath('userData') : process.cwd();
+        const logPath = path.join(userData, 'rdplan-startup.log');
+        const line = `${new Date().toISOString()} - ${message}\n`;
+        fs.appendFileSync(logPath, line, { encoding: 'utf8' });
+    } catch (err) {
+        try { console.error('Failed to write startup log', err); } catch {}
+    }
+}
+
+// Global handlers for unexpected errors to capture crashes in startup
+process.on('uncaughtException', (err) => {
+    writeStartupLog('uncaughtException: ' + (err instanceof Error ? err.stack : String(err)));
+});
+process.on('unhandledRejection', (reason) => {
+    if (reason instanceof Error) {
+        writeStartupLog('unhandledRejection: ' + reason.stack);
+    } else {
+        writeStartupLog('unhandledRejection: ' + String(reason));
+    }
+});
 
 // Settings handlers
 ipcMain.handle('get-setting', async (_event, key: string) => {
