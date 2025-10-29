@@ -1,0 +1,1 @@
+import{c as t,j as e}from"./client-nyetWBf2.js";import{S as r}from"./SettingsMenu-7jaC9gWs.js";import"./index-DOOLV48n.js";import"./PersonnelOverview.module-S9DstIlR.js";const o=document.getElementById("settings-root");o&&t.createRoot(o).render(e.jsx(r,{onClose:()=>window.close()}));

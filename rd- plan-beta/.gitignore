@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Builds
+.dist/
+dist/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+rd-plan-debug.log
+
+# Databases
+*.db

@@ -1,0 +1,51 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.thead th {
+  position: sticky;
+  top: 0;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  z-index: 1;
+  text-align: left;
+}
+
+.tbody tr:nth-child(odd) {
+  background: #fafafa;
+}
+
+.row {
+  transition: background 120ms ease;
+}
+
+.row:hover {
+  background: #f3f4f6;
+}
+
+.selected {
+  background: #e3f2fd !important;
+}
+
+/* Drop-Indikatoren: blaue Linie oben/unten innerhalb der Zeile */
+.dropAbove {
+  box-shadow: inset 0 3px 0 0 #1976d2;
+}
+
+.dropBelow {
+  box-shadow: inset 0 -3px 0 0 #1976d2;
+}
+
+.center {
+  text-align: center;
+}
+
+.checkboxCell {
+  text-align: center;
+  width: 90px;
+}
+
+.narrow {
+  width: 70px;
+}

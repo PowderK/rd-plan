@@ -1,0 +1,29 @@
+{
+    // Verwendet IntelliSense zum Ermitteln möglicher Attribute.
+    // Zeigen Sie auf vorhandene Attribute, um die zugehörigen Beschreibungen anzuzeigen.
+    // Weitere Informationen finden Sie unter https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "node-terminal",
+            "name": "Skript ausführen: dev",
+            "request": "launch",
+            "command": "npm run dev",
+            "cwd": "${workspaceFolder}/rd-plan"
+        }
+        ,
+        {
+            "name": "Launch Electron (rd-plan)",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "${workspaceFolder}/rd-plan/node_modules/.bin/electron",
+            "cwd": "${workspaceFolder}/rd-plan",
+            "args": ["."],
+            "outputCapture": "std",
+            "console": "integratedTerminal",
+            "windows": {
+                "runtimeExecutable": "${workspaceFolder}\\rd-plan\\node_modules\\.bin\\electron.cmd"
+            }
+        }
+    ]
+}

@@ -1,0 +1,1 @@
+import{c as t,j as e}from"./client-nyetWBf2.js";import{V as r}from"./Vehicles-ByNge7rw.js";import"./index-DOOLV48n.js";import"./PersonnelOverview.module-S9DstIlR.js";const o=document.getElementById("vehicles-root");o&&t.createRoot(o).render(e.jsx(r,{}));

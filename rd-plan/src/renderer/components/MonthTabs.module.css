@@ -1,0 +1,72 @@
+.container {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.rtw {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.rtwLabel {
+  font-size: 11px;
+  color: #666;
+  width: 60px;
+}
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.colHeader {
+  font-size: 11px;
+  color: #333;
+}
+.select {
+  min-width: 160px;
+  height: 30px;
+  padding: 4px 6px;
+  box-sizing: border-box;
+}
+.selectWide {
+  min-width: 180px;
+}
+.nef {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  /* Make NEF content start at the same horizontal position as RTW selects
+     by adding left padding equal to the RTW label width. This ensures
+     NEF select boxes line up with the RTW select columns. */
+  padding-left: 60px;
+}
+
+/* If needed, ensure RTW label and NEF padding stay in sync */
+.rtwLabel {
+  box-sizing: border-box;
+}
+
+/* row labels removed - left column placeholder removed from markup */
+
+.rtwWrapper {
+  width: 332px; /* two selects (160 + 160) + gap (12) */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-right: 12px;
+}
+
+.rtwInner {
+  display: flex;
+  gap: 12px;
+}
+
+.headerLabel {
+  font-size: 11px;
+  color: #333;
+  width: 160px;
+  text-align: center;
+  box-sizing: border-box;
+  padding: 0 6px;
+}
