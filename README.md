@@ -72,7 +72,7 @@ npm run start
 Die Schichtverteilung in RD-Plan versucht, Schichten gleichmäßig auf das verfügbare Personal zu verteilen. Wichtige Punkte:
 
 - Nur Schichten fließen in die Berechnung ein, bei denen die jeweilige Person tatsächlich für den Rettungsdienst verfügbar ist. Abwesenheiten oder eingeschränkte Verfügbarkeit (z. B. Kantinenzeiten, Fortbildungen, Urlaub) werden nicht als zu verteilende Schichten gezählt.
-- Die Berechnung betrachtet für jede Person nur die Schichten, die als "verfügbar für Rettungsdienst" markiert sind. Dadurch lässt sich die Verteilung korrekt auf Teams anwenden, in denen Kolleginnen und Kollegen zusätzliche Aufgaben haben (z. B. gleichzeitig Dienst im Löschzug bei Freiwilligen Feuerwehren oder 24‑h‑Dienste).
+- Die Berechnung betrachtet für jede Person nur die Schichten, die als "verfügbar für Rettungsdienst" markiert sind. Dadurch lässt sich die Verteilung korrekt auf Teams anwenden, in denen Kolleginnen und Kollegen zusätzliche Aufgaben haben (z. B. gleichzeitig Dienst im Löschzug bei Berufsfeuerwehren mit 24‑h‑Diensten).
 - Ziel ist eine faire, gleichmäßige Lastverteilung unter Berücksichtigung von Verfügbarkeiten — nicht die Planung von Fortbildungen, Pausen oder sonstigen außerbetrieblichen Aktivitäten.
 
 Hinweis: Die konkrete Markierung "verfügbar / nicht verfügbar" für einzelne Schichten hängt von der UI-Eingabe ab (z. B. Abwesenheitskennzeichnung). Wenn du spezielle Regeln (z. B. Gewichtung bestimmter Dienste) benötigst, können wir die Logik erweitern.
