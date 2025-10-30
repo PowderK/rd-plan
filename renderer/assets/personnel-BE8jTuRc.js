@@ -1,0 +1,1 @@
+import{c as t,j as r}from"./client-nyetWBf2.js";import{P as e}from"./PersonnelOverview-DNh4AlYr.js";import"./index-DOOLV48n.js";import"./PersonnelOverview.module-S9DstIlR.js";const o=document.getElementById("personnel-root");o&&t.createRoot(o).render(r.jsx(e,{}));

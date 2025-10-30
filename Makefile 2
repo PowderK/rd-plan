@@ -1,0 +1,93 @@
+# RD-Plan Makefile
+# Vereinfacht Entwicklungs- und Deployment-Workflows
+
+.PHONY: help build dev sync quick-sync release clean install storage-check storage-cleanup
+
+# Standardziel
+help:
+	@echo "RD-Plan Entwicklungs-Commands:"
+	@echo ""
+	@echo "  make build          - Baut die Entwicklungsversion"
+	@echo "  make dev            - Startet die Entwicklungsversion"
+	@echo "  make install        - Installiert Dependencies"
+	@echo "  make sync           - Vollständige Sync zu Beta + GitHub"
+	@echo "  make quick-sync     - Schnelle Sync ohne Bestätigung"
+	@echo "  make release        - Erstellt Release-Build"
+	@echo "  make clean          - Aufräumen (node_modules, dist)"
+	@echo "  make storage-check  - Prüft GitHub Storage-Nutzung"
+	@echo "  make storage-cleanup- Bereinigt GitHub Artifacts"
+	@echo ""
+
+# Verzeichnisse
+DEV_DIR = rd-plan
+BETA_DIR = rd-plan-beta
+
+# Build Development
+build:
+	@echo "🔨 Baue Entwicklungsversion..."
+	cd $(DEV_DIR) && npm run build
+
+# Start Development
+dev:
+	@echo "🚀 Starte Entwicklungsversion..."
+	cd $(DEV_DIR) && npm start
+
+# Install Dependencies
+install:
+	@echo "📦 Installiere Dependencies..."
+	cd $(DEV_DIR) && npm install
+	@if [ -d "$(BETA_DIR)" ]; then \
+		echo "📦 Installiere Beta Dependencies..."; \
+		cd $(BETA_DIR) && npm install; \
+	fi
+
+# Full Sync to Beta
+sync:
+	@echo "🔄 Starte vollständige Synchronisation..."
+	chmod +x sync-to-beta.sh
+	./sync-to-beta.sh
+
+# Quick Sync
+quick-sync:
+	@echo "⚡ Starte schnelle Synchronisation..."
+	chmod +x quick-sync.sh
+	./quick-sync.sh
+
+# Release Build
+release: build sync
+	@echo "🎉 Release erstellt und synchronisiert!"
+
+# Clean
+clean:
+	@echo "🧹 Räume auf..."
+	@if [ -d "$(DEV_DIR)/node_modules" ]; then \
+		echo "🗑️  Entferne $(DEV_DIR)/node_modules..."; \
+		rm -rf $(DEV_DIR)/node_modules; \
+	fi
+	@if [ -d "$(DEV_DIR)/dist" ]; then \
+		echo "🗑️  Entferne $(DEV_DIR)/dist..."; \
+		rm -rf $(DEV_DIR)/dist; \
+	fi
+	@if [ -d "$(BETA_DIR)/node_modules" ]; then \
+		echo "🗑️  Entferne $(BETA_DIR)/node_modules..."; \
+		rm -rf $(BETA_DIR)/node_modules; \
+	fi
+	@if [ -d "$(BETA_DIR)/dist" ]; then \
+		echo "🗑️  Entferne $(BETA_DIR)/dist..."; \
+		rm -rf $(BETA_DIR)/dist; \
+	fi
+	@echo "✅ Aufräumen abgeschlossen!"
+
+# Development Workflow
+workflow: clean install build dev
+
+# GitHub Storage Management
+storage-check:
+	@echo "📊 Prüfe GitHub Storage-Nutzung..."
+	chmod +x $(DEV_DIR)/manage-storage.sh
+	cd $(DEV_DIR) && ./manage-storage.sh
+
+storage-cleanup:
+	@echo "🧹 Starte GitHub Storage-Bereinigung..."
+	chmod +x $(DEV_DIR)/manage-storage.sh
+	cd $(DEV_DIR) && ./manage-storage.sh

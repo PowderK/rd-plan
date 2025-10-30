@@ -1,0 +1,93 @@
+/* Globale moderne Optik */
+:root {
+  --header-height: 56px;
+  --bg: #ffffff;
+  --text: #111827;     /* gray-900 */
+  --muted: #6b7280;    /* gray-500 */
+  --line: #e5e7eb;     /* gray-200 */
+  --hover: #f9fafb;    /* gray-50 */
+  --primary: #1d4ed8;  /* indigo-600 */
+  --accent: #2563eb;   /* blue-600 */
+}
+:root { color-scheme: light; }
+
+/* Dark Mode Variablen über data-theme="dark" */
+:root[data-theme='dark'] {
+  --bg: #0b1220;
+  --text: #e5e7eb;    /* gray-200 */
+  --muted: #9ca3af;   /* gray-400 */
+  --line: #1f2937;    /* gray-800 */
+  --hover: #111827;   /* gray-900 */
+  --primary: #60a5fa; /* blue-400 */
+  --accent: #3b82f6;  /* blue-500 */
+}
+:root[data-theme='dark'] { color-scheme: dark; }
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Sanfte Theme-Transitions für Haupt-UI-Elemente */
+body, button, input, select, textarea, table, th, td {
+  transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+}
+
+/* Typografie-Basis */
+h1, h2, h3, h4 { color: var(--text); margin: 0 0 8px; }
+p { color: var(--muted); }
+
+/* Einfache, konsistente Controls */
+button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  min-height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+button:hover { background: var(--hover); }
+button:active { border-color: #cbd5e1; }
+button:disabled { opacity: .6; cursor: not-allowed; }
+button:focus-visible {
+  outline: none;
+  border-color: #93c5fd;          /* blue-300 */
+  box-shadow: 0 0 0 3px rgba(147,197,253,0.35);
+}
+
+input, select, textarea {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: var(--bg);
+  color: var(--text);
+  box-sizing: border-box;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #93c5fd;          /* blue-300 */
+  box-shadow: 0 0 0 3px rgba(147,197,253,0.35);
+}
+
+/* Tabellen-Optik dezent */
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid var(--line); padding: 6px 8px; }
+thead th { background: var(--hover); }
+tbody tr:hover { background: var(--hover); }
+
+/* Checkboxen/Radio optisch in Theme einbetten */
+input[type="checkbox"], input[type="radio"] {
+  accent-color: var(--accent);
+}
