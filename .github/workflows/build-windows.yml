@@ -1,0 +1,160 @@
+name: build-windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    env:
+      GYP_MSVS_VERSION: '2022'
+      npm_config_msvs_version: '2022'
+      DEBUG: 'electron-builder'
+      npm_config_runtime: 'electron'
+      npm_config_target: '28.3.3'
+      npm_config_disturl: 'https://electronjs.org/headers'
+      npm_config_build_from_source: 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Visual Studio Build Tools with Windows SDK
+        run: choco install visualstudio2022buildtools --package-parameters="--add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.Windows10SDK.19041 --includeRecommended --includeOptional" --yes --no-progress
+
+      - name: Ensure Windows SDK is available (best-effort)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          # Erst versuchen wir das 2004er SDK (10.0.19041) als Komplettpaket
+          choco install windows-sdk-10-version-2004-all --yes --no-progress
+          # Fallback: das allgemeine 10.1 SDK (neuere SDKs sind abwärtskompatibel)
+          choco install windows-sdk-10.1 --yes --no-progress
+          # Hinweis: Der VS-BuildTools-Schritt installiert bereits die Windows 10 SDK-Komponente.
+
+      - name: Setup MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          vsversion: '2022'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Prefetch Electron headers for node-gyp (with retry)
+        shell: bash
+        run: |
+          for i in {1..3}; do
+            npx node-gyp install --target=28.3.3 --dist-url=https://electronjs.org/headers && break || sleep 5;
+          done
+
+      - name: Install dependencies (with retry)
+        shell: bash
+        run: |
+          set -e
+          # Clear npm cache to avoid stale headers, best-effort
+          npm cache clean --force || true
+
+          # Remove potential problematic files
+          rm -rf node_modules package-lock.json 2>/dev/null || true
+
+          # Install with retries to handle transient network/lock errors
+          for i in {1..3}; do
+            echo "npm ci attempt $i"
+            npm ci --fetch-timeout=600000 --cache-max=0 --prefer-offline --no-audit --progress=false && break || {
+              echo "npm ci failed, retrying in 5s..."; sleep 5;
+            }
+          done
+
+          # Alternative: Force install Rollup Windows dependency if missing
+          npm install @rollup/rollup-win32-x64-msvc --save-dev --ignore-scripts 2>/dev/null || true
+
+      - name: Rebuild native deps for Electron (better-sqlite3)
+        shell: bash
+        run: |
+          for i in {1..3}; do
+            npx electron-rebuild -f -w better-sqlite3 --version=28.3.3 && break || sleep 5;
+          done
+
+      - name: Prefetch Electron headers for node-gyp (with retry)
+        shell: bash
+        run: |
+          for i in {1..3}; do
+            npx node-gyp install --target=28.3.3 --dist-url=https://electronjs.org/headers && break || sleep 5;
+          done
+
+      - name: Rebuild native deps for Electron (better-sqlite3)
+        shell: bash
+        run: |
+          for i in {1..3}; do
+            npx electron-rebuild -f -w better-sqlite3 --version=28.3.3 && break || sleep 5;
+          done
+
+      - name: Clean dist folder (cross-platform)
+        shell: bash
+        run: node -e "require('fs').rmSync('dist',{recursive:true,force:true})"
+
+      - name: Debug build environment
+        shell: bash
+        run: |
+          echo "Node version: $(node --version)"
+          echo "NPM version: $(npm --version)"
+          echo "TypeScript version: $(npx tsc --version || echo 'TypeScript not found')"
+          echo "Vite version: $(npx vite --version || echo 'Vite not found')"
+          echo "Current directory: $(pwd)"
+          echo "Available scripts:"
+          cat package.json | grep -A 10 "scripts" || echo "No scripts found"
+          echo "Rollup dependencies:"
+          npm list | grep rollup || echo "No Rollup packages found"
+
+      - name: Build (TypeScript main)
+        run: npm run build:main
+
+      - name: Build (Vite renderer) with fallback
+        shell: bash
+        run: |
+          # Try normal build first
+          if ! npm run build:renderer; then
+            echo "Build failed, trying with fresh Rollup installation..."
+            
+            # Force reinstall Rollup and dependencies
+            npm uninstall rollup vite --save-dev
+            npm install rollup@latest vite@latest --save-dev --force
+            
+            # Try again
+            npm run build:renderer
+          fi
+
+      - name: Package Windows executable (portable)
+        run: npm run dist
+
+      - name: Upload artifacts (only for tags to save storage)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: rd-plan-windows-${{ github.ref_name }}
+          path: |
+            dist/*.exe
+            dist/*win*.zip
+            dist/*.yml
+            dist/*.blockmap
+          retention-days: 30
+
+      - name: Create GitHub Release (pre-release) and upload artifacts
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          fail_on_unmatched_files: false
+          files: |
+            dist/*.exe
+            dist/*win*.zip
+            dist/*.yml
+            dist/*.blockmap
