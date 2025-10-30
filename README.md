@@ -38,28 +38,33 @@ rd-plan
 └── README.md                # Dokumentation für das Projekt
 ```
 
-## Installation
+## Installation / Verteilung
 
-1. Klone das Repository:
-   ```
-   git clone <repository-url>
-   ```
-2. Navigiere in das Projektverzeichnis:
-   ```
-   cd rd-plan
-   ```
-3. Installiere die Abhängigkeiten:
-   ```
-   npm install
-   ```
+Die Anwendung ist als portable Windows‑Executable verfügbar und benötigt in der Regel keine Installation auf Zielrechnern. Aktuell stellt die CI ausschließlich ein Windows‑Portable‑Artefakt (EXE) bereit.
+
+- Plattformen: Portable builds werden derzeit nur für Windows erzeugt.
+- Installation: Nicht erforderlich — lade die EXE aus den Releases und führe sie aus.
+
+Hinweis für Administratoren: Wenn du die Anwendung paketieren oder für andere Plattformen bereitstellen möchtest, findest du die Build‑Konfiguration in `.github/workflows/build-windows.yml`.
 
 ## Verwendung
 
-Um die Anwendung zu starten, führe den folgenden Befehl aus:
+Starte die portable EXE direkt (Windows):
+
+```bash
+./RD-Plan 1.0.0.exe
 ```
-npm start
+
+Für Entwicklung oder lokale Ausführung (Developer):
+
+```bash
+npm install
+npm run build
+npm run start
 ```
 
 ## Lizenz
 
-Dieses Projekt ist unter der MIT-Lizenz lizenziert.
+Lizenz: (wird aktualisiert)
+
+Hinweis: Du hast angegeben, dass eine neue Lizenz verwendet werden soll — bitte nenne mir die gewünschte Lizenz (z. B. MIT, Apache-2.0, GPL-3.0) und ich passe die `README.md` und ggf. die `LICENSE`-Datei entsprechend an.
