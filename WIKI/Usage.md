@@ -22,6 +22,9 @@ Tipps:
 - Nutze die Such- und Filterfunktionen (sofern sichtbar) um Personen oder Dienste schnell zu finden.
 - Nach großen Änderungen: prüfe die Übersicht, bevor du exportierst oder druckst.
 
+![Platzhalter: Einteilungs-Übersicht](screenshots/duty-roster.png)
+*Platzhalter: Ersetze `screenshots/duty-roster.png` durch einen Bildschirmfoto der Jahres-/Monatsübersicht.*
+
 ## 2) Personalverwaltung
 
 Zweck: Personen anlegen, bearbeiten, löschen und Reihenfolge verwalten.
@@ -31,6 +34,9 @@ Hauptaktionen:
 - Person bearbeiten: Wähle eine Person aus und klicke auf "Bearbeiten". Änderungen speichern.
 - Person löschen: Markiere die Person und wähle "Löschen"; bestätigt wird in einem Dialog.
 - Reihenfolge ändern: Ziehe Personen oder nutze die Reihenfolge‑Funktion, um die Standardreihenfolge in Auswahllisten zu steuern (API: `update-personnel-order`).
+
+![Platzhalter: Personalverwaltung](screenshots/personnel-list.png)
+*Platzhalter: Ersetze `screenshots/personnel-list.png` durch einen Screenshot der Personalübersicht / Bearbeitungsmaske.*
 
 Import/Export:
 - Excel‑Import: `Import personnel from Excel` — wähle eine Excel‑Datei und entscheide, ob vorhandene Daten ersetzt werden.
@@ -45,6 +51,9 @@ Hauptaktionen:
 - Fahrzeuglisten ansehen: Wähle RTW oder NEF.
 - Aktivierung setzen: Pro Fahrzeug kannst du für jeden Monat die Aktivierung an- oder ausschalten (z. B. für saisonale Nutzung oder Wartungen).
 - Vehicle activation API: `set-rtw-vehicle-activation` / `set-nef-vehicle-activation`.
+
+![Platzhalter: Fahrzeuginventar](screenshots/vehicles.png)
+*Platzhalter: Ersetze `screenshots/vehicles.png` durch einen Screenshot der Fahrzeugübersicht.*
 
 ## 4) Azubis (Auszubildende) & ITW
 
@@ -61,6 +70,9 @@ Hauptaktionen:
 - Einstellungen: App‑weite Einstellungen lassen sich über den Settings‑Dialog festlegen (z. B. Standardjahr, UI‑Optionen).
 - Settings Import/Export: Du kannst Einstellungen als JSON/Excel importieren oder exportieren (nützlich für Migration oder Backup).
 - Backups: Nutze die Exportfunktionen oder sichere den `~/Library/Application Support/rd-plan/` Ordner manuell.
+
+![Platzhalter: Einstellungen](screenshots/settings.png)
+*Platzhalter: Ersetze `screenshots/settings.png` durch einen Screenshot des Settings‑Dialogs.*
 
 ## 7) Excel‑Import & Export (Einsatzfälle)
 
