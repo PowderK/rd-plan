@@ -65,6 +65,8 @@ npm run start
 
 ## Lizenz
 
-Lizenz: (wird aktualisiert)
+Dieses Projekt ist lizenziert unter der GNU Affero General Public License v3.0 (AGPLv3).
 
-Hinweis: Du hast angegeben, dass eine neue Lizenz verwendet werden soll — bitte nenne mir die gewünschte Lizenz (z. B. MIT, Apache-2.0, GPL-3.0) und ich passe die `README.md` und ggf. die `LICENSE`-Datei entsprechend an.
+Siehe die Datei `LICENSE` im Repository für den vollständigen Lizenztext.
+
+SPDX-Identifier: AGPL-3.0-or-later
