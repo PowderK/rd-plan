@@ -1,26 +1,17 @@
 <!DOCTYPE html>
 <html lang="de">
   <head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" />
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RD-Plan</title>
     <script>
       try { const t = localStorage.getItem('rdplan.theme'); if (t === 'dark') document.documentElement.setAttribute('data-theme','dark'); } catch (e) {}
     </script>
-    <script type="module" crossorigin src="./assets/main-CTSKlwEj.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/client-nyetWBf2.js">
-    <link rel="modulepreload" crossorigin href="./assets/index-DOOLV48n.js">
-    <link rel="modulepreload" crossorigin href="./assets/DutyRoster-BewrOOoq.js">
-    <link rel="modulepreload" crossorigin href="./assets/PersonnelOverview.module-S9DstIlR.js">
-    <link rel="modulepreload" crossorigin href="./assets/PersonnelOverview-DNh4AlYr.js">
-    <link rel="modulepreload" crossorigin href="./assets/Vehicles-ByNge7rw.js">
-    <link rel="modulepreload" crossorigin href="./assets/SettingsMenu-B3xaWoo9.js">
-    <link rel="stylesheet" crossorigin href="./assets/client-N9Jk7FPM.css">
-    <link rel="stylesheet" crossorigin href="./assets/PersonnelOverview-nLzlY8Pb.css">
-    <link rel="stylesheet" crossorigin href="./assets/main--y0KwJfM.css">
+    <!-- Vite: lade den TypeScript/React Entry, Vite injiziert gebündelte Assets beim Build -->
+    <script type="module" src="./index.tsx"></script>
   </head>
   <body>
-  <div id="app"></div>
+    <div id="app"></div>
   </body>
 </html>

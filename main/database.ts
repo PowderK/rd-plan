@@ -656,17 +656,14 @@ export const deleteHoliday = async (db: AsyncDB, date: string) => {
 };
 
 export const setDutyRosterEntry = async (db: AsyncDB, entry: { personId: number, personType: string, date: string, value: string, type: string }) => {
+    if (!entry.personId || !entry.date) {
+        console.warn('[DB] setDutyRosterEntry skipped invalid entry:', entry);
+        return;
+    }
     await db.run(`
         INSERT INTO duty_roster (personId, personType, date, value, type) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(personId, personType, date) DO UPDATE SET value = excluded.value, type = excluded.type
-    `, [entry.personId, entry.personType, entry.date, entry.value, entry.type]);
-    console.log(`[DB] [${new Date().toISOString()}] setDutyRosterEntry successful`, entry);
-    try {
-        const saved = await db.get('SELECT * FROM duty_roster WHERE personId = ? AND personType = ? AND date = ?', [entry.personId, entry.personType, entry.date]);
-        console.log('[DB] Verified duty_roster row after upsert:', saved);
-    } catch (e) {
-        console.error('[DB] Fehler beim Verifizieren des duty_roster Eintrags', e);
-    }
+    `, [entry.personId, entry.personType || 'person', entry.date, entry.value ?? '', entry.type ?? 'text']);
 };
 
 // Bulk Import für viele Einträge in einer Transaktion (ein Broadcast später im Main)

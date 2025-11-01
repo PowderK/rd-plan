@@ -39,12 +39,21 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [editingHolidays, setEditingHolidays] = useState(false);
   const [originalHolidays, setOriginalHolidays] = useState<{ date: string, name: string }[] | null>(null);
   const [selectedHolidayIndex, setSelectedHolidayIndex] = useState<number | null>(null);
-  // Jahres-Import UI State
-  const [showYearImport, setShowYearImport] = useState(false);
-  const [yearImportData, setYearImportData] = useState<string[][] | null>(null);
-  const [yearImportProgress, setYearImportProgress] = useState<{ processed: number; total: number } | null>(null);
   // Settings Import/Export UI State
   const [showSettingsImportExport, setShowSettingsImportExport] = useState(false);
+  const [rosterImportPath, setRosterImportPath] = useState('');
+  const [doBackup, setDoBackup] = useState<boolean>(true);
+  const [showRestore, setShowRestore] = useState<boolean>(false);
+  const [backups, setBackups] = useState<Array<{ path: string; year: string; ym: string; timestamp: string; label: string }>>([]);
+  const [previewCounts, setPreviewCounts] = useState<Record<string, { personnel: number; azubis: number; dutyRoster: number }>>({});
+  const [showImportPreview, setShowImportPreview] = useState<boolean>(false);
+  const [importPreviewData, setImportPreviewData] = useState<{ total: number; matched: number; unmatchedNames: string[]; overwrites: number } | null>(null);
+  const [nameMappings, setNameMappings] = useState<Record<string, number>>({}); // normalizedLastName -> personId
+  const [peopleOptions, setPeopleOptions] = useState<Array<{ id: number; label: string; lastNameKey: string }>>([]);
+  const [restoreFilterYear, setRestoreFilterYear] = useState<string>('Alle');
+  const [restoreFilterMonth, setRestoreFilterMonth] = useState<string>('Alle'); // 'Alle' | 'ALL' | '01'..'12'
+  const [restorePreviewYear, setRestorePreviewYear] = useState<number>(year);
+  const [restorePreviewMonth, setRestorePreviewMonth] = useState<string>('Alle');
 
     useEffect(() => {
         (async () => {
@@ -55,6 +64,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
             }
             const y = await (window as any).api.getSetting('year');
             if (y) setYear(Number(y));
+            const rosterPath = await (window as any).api.getSetting('rosterImportPath');
+            if (rosterPath) setRosterImportPath(rosterPath);
             const types = await (window as any).api.getShiftTypes();
             setShiftTypes(types);
             // Fahrzeug-UI entfernt
@@ -116,6 +127,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         setSaving(true);
         await (window as any).api.setSetting('rescueStation', rescueStation);
         await (window as any).api.setSetting('year', String(year));
+        await (window as any).api.setSetting('rosterImportPath', rosterImportPath);
   // Anzahl RTW/NEF leitet sich aus den Einträgen ab – keine separaten Settings mehr
   // ITW wird im Fahrzeuge-Menü gesetzt
         await (window as any).api.setSetting('department', String(department));
@@ -148,52 +160,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
           setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
         } catch {}
       } catch {}
-        setSaving(false);
         onClose();
-    };
-
-    // Jahres-Import: Daten anwenden
-    const applyYearImport = async (importData?: string[][]) => {
-      const data = importData || yearImportData;
-      if (!data) return;
-      try {
-        const ok = window.confirm(`Alle Einträge im Dienstplan für das Jahr ${year} werden überschrieben. Fortfahren?`);
-        if (!ok) return;
-        const list = await (window as any).api.getPersonnelList();
-        const azubiList = await (window as any).api.getAzubiList();
-        const combined = [
-          ...list.map((p: any) => ({ id: `p_${p.id}`, origId: p.id, type: 'person' })),
-          ...azubiList.map((a: any) => ({ id: `a_${a.id}`, origId: a.id, type: 'azubi' }))
-        ];
-        const entries: any[] = [];
-        for (let row = 0; row < combined.length; row++) {
-          const rowData = data[row];
-          if (!rowData) continue;
-          for (let col = 0; col < rowData.length; col++) {
-            const value = (rowData[col] || '').trim();
-            if (!value) continue;
-            // Verwende UTC, um Off-by-one durch Zeitzone zu vermeiden
-            const dObj = new Date(Date.UTC(year, 0, 1 + col));
-            if (dObj.getUTCFullYear() !== year) continue;
-            const date = dObj.toISOString().slice(0,10);
-            const type = (shiftTypes.some(st => st.code === value)) ? 'dropdown' : 'text';
-            entries.push({ personId: combined[row].origId, personType: combined[row].type, date, value, type });
-          }
-        }
-        const progHandler = (_ev: any, info: { processed: number; total: number }) => {
-          setYearImportProgress(info);
-        };
-        (window as any).api.onBulkImportProgress(progHandler);
-        // Jahr säubern, dann bulk import
-        await (window as any).api.clearDutyRosterYear(year);
-        await (window as any).api.bulkSetDutyRoster(entries);
-        (window as any).api.offBulkImportProgress(progHandler);
-        setShowYearImport(false);
-        setYearImportData(null);
-        setYearImportProgress(null);
-      } catch (e) {
-        console.warn('[SettingsMenu] applyYearImport Fehler', e);
-      }
     };
 
     // Wenn die Jahreszahl im Settings-Menü geändert wird, die Feiertage dieses Jahres anzeigen
@@ -345,15 +312,144 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                 </select>
               </label>
             </div>
-            {/* Import Dienstplan separater Block */}
-            <div style={{ marginTop: 12 }}>
-              <button onClick={() => setShowYearImport(true)}>Import Dienstplan…</button>
-              <span style={{ marginLeft: 8, fontSize: 12, color: '#555' }}>Bestehende Einträge werden für Tage mit Werten überschrieben.</span>
+
+            {/* Dienstplan-Import */}
+            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
+                <h3>Dienstplan-Vorausplanung</h3>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input
+                        type="text"
+                        value={rosterImportPath}
+                        readOnly
+                        placeholder="Pfad zur Excel-Datei für die Vorausplanung"
+                        style={{ flex: 1 }}
+                    />
+          <button onClick={async () => {
+            const result = await (window as any).api.showOpenDialog({
+              properties: ['openFile'],
+              filters: [{ name: 'Excel-Dateien', extensions: ['xlsx', 'xls', 'xlsm'] }]
+            });
+            if (!result.canceled && result.filePaths.length > 0) {
+              const p = result.filePaths[0];
+              setRosterImportPath(p);
+              try { await (window as any).api.setSetting('rosterImportPath', p); } catch {}
+            }
+          }}>Datei auswählen</button>
+                </div>
             </div>
-            {/* Import/Export Einstellungen separater Block */}
-            <div style={{ marginTop: 12 }}>
-              <button onClick={() => setShowSettingsImportExport(true)} style={{ backgroundColor: '#17a2b8', color: 'white' }}>Einstellungen Import/Export…</button>
-              <span style={{ marginLeft: 8, fontSize: 12, color: '#555' }}>Backup und Transfer von Konfigurationen.</span>
+
+            {/* Import Dienstplan (Excel) - Monatsimport aus Settings entfernt */}
+            <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input type="checkbox" checked={doBackup} onChange={e => setDoBackup(e.target.checked)} />
+                Backup vor Import erstellen
+              </label>
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                onClick={async () => {
+                  try {
+                    if (!rosterImportPath) {
+                      alert('Bitte zuerst die Excel-Datei auswählen.');
+                      return;
+                    }
+                    // Pfad sicherheitshalber direkt persistieren, falls der Nutzer nicht speichert
+                    try { await (window as any).api.setSetting('rosterImportPath', rosterImportPath); } catch {}
+                    // Warnung anzeigen: Überschreiben bestätigen
+                    let proceed = true;
+                    try {
+                      const prev = await (window as any).api.getDatabaseSummary?.(Number(year));
+                      const prevCount = prev?.success ? prev.counts?.dutyRoster : undefined;
+                      const detail = `Vorhandene Einträge für ${year}: ${prevCount ?? 'n/v'}\n`+
+                        `Backup wird unter backups/${year}/${year}-ALL/... erstellt.`;
+                      const box = await (window as any).api.showMessageBox?.({
+                        type: 'warning',
+                        buttons: ['Import starten', 'Abbrechen'],
+                        defaultId: 0,
+                        cancelId: 1,
+                        title: 'Dienstplan überschreiben',
+                        message: `Achtung: Der Dienstplan für ${year} wird vollständig überschrieben. Fortfahren?`,
+                        detail
+                      });
+                      proceed = !box || typeof box.response !== 'number' ? true : (box.response === 0);
+                    } catch {}
+                    if (!proceed) return;
+                    
+                    // Optionales Backup
+                    if (doBackup) {
+                      try {
+                        const r = await (window as any).api.createDatabaseBackup?.({ year: Number(year) });
+                        if (!r?.success) console.warn('[SettingsMenu] Backup fehlgeschlagen:', r?.message);
+                        else console.log('[SettingsMenu] Backup erstellt unter:', r.dir);
+                      } catch (e) {
+                        console.warn('[SettingsMenu] Backup Fehler', e);
+                      }
+                    }
+
+                    // Browser-Confirm Fallback ist bereits im obigen try/catch abgedeckt
+
+                    // Altdaten für das Jahr löschen
+                    try {
+                      await (window as any).api.clearDutyRosterYear?.(Number(year));
+                    } catch (e) {
+                      console.warn('[SettingsMenu] clearDutyRosterYear Fehler', e);
+                    }
+
+                    const res = await (window as any).api.importDutyRoster(rosterImportPath, Number(year));
+                    if (res && res.success) {
+                      alert(`Dienstplan für ${year} erfolgreich importiert. Einträge: ${res.importedCount ?? 'n/v'}`);
+                      try { (window as any).api.onDutyRosterUpdated?.(() => {}); } catch {}
+                    } else {
+                      alert(`Import fehlgeschlagen: ${res?.message || 'Unbekannter Fehler'}`);
+                    }
+                  } catch (e: any) {
+                    alert(`Fehler beim Import: ${e?.message || String(e)}`);
+                  }
+                }}
+              >Jahr importieren</button>
+              <button
+                onClick={async () => {
+                  try {
+                    if (!rosterImportPath) {
+                      alert('Bitte zuerst die Excel-Datei auswählen.');
+                      return;
+                    }
+                    // Lade Vorschau
+                    const prev = await (window as any).api.previewDutyRoster?.(rosterImportPath, Number(year));
+                    if (!prev?.success) {
+                      alert('Vorschau fehlgeschlagen: ' + (prev?.message || 'Unbekannt'));
+                      return;
+                    }
+                    setImportPreviewData({ total: prev.total, matched: prev.matched, unmatchedNames: prev.unmatchedNames || [], overwrites: prev.overwrites || 0 });
+                    // Lade Personen + Azubis für Mapping-Vorschläge
+                    const [pers, az] = await Promise.all([(window as any).api.getPersonnel?.(), (window as any).api.getAzubiList?.()]);
+                    const opts: Array<{ id: number; label: string; lastNameKey: string }> = [];
+                    const norm = (s: string) => String(s || '').toLowerCase().trim().replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss').replace(/\./g,'').replace(/\s+/g,' ');
+                    for (const p of (pers || [])) opts.push({ id: p.id, label: `${p.name}, ${p.vorname} [P]`, lastNameKey: norm(p.name) });
+                    for (const a of (az || [])) opts.push({ id: a.id, label: `${a.name}, ${a.vorname} [A]`, lastNameKey: norm(a.name) });
+                    setPeopleOptions(opts);
+                    setNameMappings({});
+                    setShowImportPreview(true);
+                  } catch (e: any) {
+                    alert('Fehler bei der Vorschau: ' + (e?.message || String(e)));
+                  }
+                }}
+                style={{ backgroundColor: '#6c757d', color: 'white' }}
+              >Import-Vorschau…</button>
+              {/* Monatsimport entfernt – erfolgt in Monats-Tabs */}
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await (window as any).api.listBackups?.(100);
+                    if (res?.success) setBackups(res.list || []);
+                    else setBackups([]);
+                  } catch {
+                    setBackups([]);
+                  } finally {
+                    setShowRestore(true);
+                  }
+                }}
+              >Backup wiederherstellen…</button>
             </div>
       {/* Buttons werden ans Seitenende verschoben */}
       {/* per-shift-type auswertung selector will be rendered as a column in the Dienstarten table below */}
@@ -654,14 +750,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
           {saving ? 'Speichern ...' : 'Speichern'}
         </button>
       </div>
-      {showYearImport && (
-        <YearImportOverlay
-          year={year}
-          progress={yearImportProgress}
-          onClose={() => { setShowYearImport(false); setYearImportData(null); setYearImportProgress(null); }}
-          onImport={(data) => { setYearImportData(data); applyYearImport(data); }}
-        />
-      )}
       {showSettingsImportExport && (
         <div style={{ 
           position: 'fixed', 
@@ -689,55 +777,222 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
           </div>
         </div>
       )}
-          </div>
-    );
-};
-
-// Hilfskomponente für das asynchrone Laden der Personen/Azubis vor Anzeige der ImportYearTable
-const YearImportOverlay: React.FC<{ year: number; onClose: () => void; onImport: (data: string[][]) => void; progress?: { processed: number; total: number } | null; }> = ({ year, onClose, onImport, progress }) => {
-  const [loading, setLoading] = React.useState(true);
-  const [list, setList] = React.useState<any[]>([]);
-  React.useEffect(() => {
-    (async () => {
-      try {
-        const p = await (window as any).api.getPersonnelList();
-        const a = await (window as any).api.getAzubiList();
-        const combined = [
-          ...p.map((x: any) => ({ id: `p_${x.id}`, name: x.name, vorname: x.vorname, isAzubi: false })),
-          ...a.map((x: any) => ({ id: `a_${x.id}`, name: x.name, vorname: x.vorname, isAzubi: true, lehrjahr: x.lehrjahr }))
-        ];
-        setList(combined);
-      } catch (e) { console.warn('[YearImportOverlay] Laden fehlgeschlagen', e); }
-      setLoading(false);
-    })();
-  }, []);
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      {loading ? (
-        <div style={{ background: '#fff', padding: 32, borderRadius: 8 }}>Lade Personen & Azubis ...</div>
-      ) : progress ? (
-        <div style={{ background: '#fff', padding: 32, borderRadius: 8, minWidth: 340 }}>
-          <h3 style={{ marginTop: 0 }}>Importiere Jahresdaten ...</h3>
-          <div style={{ marginTop: 16 }}>
-            <div style={{ height: 18, background: '#eee', borderRadius: 4, overflow: 'hidden' }}>
-              <div style={{ width: `${Math.max(0, Math.min(100, progress.total ? (progress.processed / progress.total * 100) : 0)).toFixed(1)}%`, background: '#1976d2', height: '100%', transition: 'width 0.2s' }} />
-            </div>
-            <div style={{ marginTop: 8, fontSize: 13, color: '#444' }}>{progress.processed} / {progress.total} Einträge</div>
-          </div>
-          <div style={{ marginTop: 16, textAlign: 'right' }}>
-            <button onClick={onClose}>Schließen</button>
+      {showImportPreview && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'white', borderRadius: 8, width: '92%', maxWidth: 1000, maxHeight: '90vh', overflow: 'auto', padding: 16 }}>
+            <h3>Import-Vorschau {year}</h3>
+            {importPreviewData ? (
+              <>
+                <p style={{ marginTop: 0, color: '#555' }}>
+                  Gesamt: {importPreviewData.total} · Gematcht: {importPreviewData.matched} · Unmatched: {importPreviewData.unmatchedNames.length} · Überschreibungen: {importPreviewData.overwrites}
+                </p>
+                {importPreviewData.unmatchedNames.length > 0 ? (
+                  <>
+                    <p>Bitte ordne nicht erkannte Nachnamen zu:</p>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr className={styles.thead}><th>Nachname (normalisiert)</th><th>Vorschlag</th></tr>
+                      </thead>
+                      <tbody className={styles.tbody}>
+                        {importPreviewData.unmatchedNames.map((ln) => {
+                          // einfache Fuzzy-Suche: kleinstes Levenshtein zwischen lastNameKey
+                          const levenshtein = (a: string, b: string) => {
+                            const m = a.length, n = b.length; const d: number[][] = Array.from({ length: m+1 }, () => Array(n+1).fill(0));
+                            for (let i=0;i<=m;i++) d[i][0]=i; for (let j=0;j<=n;j++) d[0][j]=j;
+                            for (let i=1;i<=m;i++) for (let j=1;j<=n;j++) {
+                              const cost = a[i-1]===b[j-1]?0:1; d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+cost);
+                            }
+                            return d[m][n];
+                          };
+                          const candidates = peopleOptions
+                            .map(o => ({ ...o, dist: levenshtein(ln, o.lastNameKey) }))
+                            .sort((a,b) => a.dist - b.dist)
+                            .slice(0, 5);
+                          const current = nameMappings[ln] ?? (candidates[0]?.id);
+                          return (
+                            <tr key={ln} className={styles.row}>
+                              <td>{ln}</td>
+                              <td>
+                                <select value={current ?? ''} onChange={e => setNameMappings(prev => ({ ...prev, [ln]: Number(e.target.value) || undefined }))}>
+                                  {candidates.map(c => (
+                                    <option key={c.id} value={c.id}>{c.label} · d={c.dist}</option>
+                                  ))}
+                                  <option value="">(Überspringen)</option>
+                                </select>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </>
+                ) : (
+                  <p>Alle Namen wurden erkannt. Du kannst direkt importieren.</p>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+                  <button onClick={() => setShowImportPreview(false)}>Schließen</button>
+                  <button style={{ background: '#28a745', color: 'white' }} onClick={async () => {
+                    try {
+                      // Sicherheitsabfrage + optionales Backup + Clear (Jahr)
+                      let proceed = true;
+                      try {
+                        const prev = await (window as any).api.getDatabaseSummary?.(Number(year));
+                        const prevCount = prev?.success ? prev.counts?.dutyRoster : undefined;
+                        const detail = `Vorhandene Einträge für ${year}: ${prevCount ?? 'n/v'}\n`+
+                          `Backup wird unter backups/${year}/${year}-ALL/... erstellt.`;
+                        const box = await (window as any).api.showMessageBox?.({
+                          type: 'warning', buttons: ['Import starten', 'Abbrechen'], defaultId: 0, cancelId: 1,
+                          title: 'Dienstplan überschreiben', message: `Achtung: Der Dienstplan für ${year} wird vollständig überschrieben. Fortfahren?`, detail
+                        });
+                        proceed = !box || typeof box.response !== 'number' ? true : (box.response === 0);
+                      } catch {}
+                      if (!proceed) return;
+                      if (doBackup) {
+                        try { await (window as any).api.createDatabaseBackup?.({ year: Number(year) }); } catch {}
+                      }
+                      try { await (window as any).api.clearDutyRosterYear?.(Number(year)); } catch {}
+                      const res = await (window as any).api.importDutyRoster(rosterImportPath, Number(year), undefined, { mappings: nameMappings });
+                      if (res?.success) {
+                        alert(`Import erfolgreich. Einträge: ${res.importedCount ?? 'n/v'}`);
+                        setShowImportPreview(false);
+                      } else {
+                        alert('Import fehlgeschlagen: ' + (res?.message || 'Unbekannt'));
+                      }
+                    } catch (e: any) {
+                      alert('Fehler beim Import: ' + (e?.message || String(e)));
+                    }
+                  }}>Jetzt importieren</button>
+                </div>
+              </>
+            ) : (
+              <div>Lade Vorschau…</div>
+            )}
           </div>
         </div>
-      ) : (
-        <ImportYearTable
-          year={year}
-          personnel={list}
-          onCancel={onClose}
-          onImport={onImport}
-        />
       )}
-    </div>
-  );
+      {showRestore && (
+        <div style={{ 
+          position: 'fixed', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          bottom: 0, 
+          backgroundColor: 'rgba(0,0,0,0.5)', 
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div style={{ backgroundColor: 'white', borderRadius: 8, width: '90%', maxWidth: 1000, maxHeight: '90vh', overflow: 'auto', padding: 16 }}>
+            <h3>Backups wiederherstellen</h3>
+            <p style={{ marginTop: 0, color: '#555' }}>Wähle ein Backup aus. Mit den Filtern grenzt du die Anzeige ein. Die Vorschau zeigt die Einträge für das unten gewählte Jahr/Monat. Beim Wiederherstellen wird die App neu gestartet.</p>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', margin: '8px 0 12px' }}>
+              <label>Filtern: Jahr
+                <select value={restoreFilterYear} onChange={e => setRestoreFilterYear(e.target.value)} style={{ marginLeft: 6 }}>
+                  <option>Alle</option>
+                  {Array.from(new Set((backups||[]).map(b => b.year))).sort().map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </label>
+              <label>Monat
+                <select value={restoreFilterMonth} onChange={e => setRestoreFilterMonth(e.target.value)} style={{ marginLeft: 6 }}>
+                  <option value="Alle">Alle</option>
+                  <option value="ALL">ALL</option>
+                  {Array.from({ length: 12 }).map((_, i) => {
+                    const m = String(i+1).padStart(2, '0');
+                    return <option key={m} value={m}>{m}</option>;
+                  })}
+                </select>
+              </label>
+              <span style={{ marginLeft: 12, color: '#777' }}>| Vorschau für: </span>
+              <label>Jahr
+                <input type="number" value={restorePreviewYear} onChange={e => setRestorePreviewYear(Number(e.target.value))} style={{ width: 90, marginLeft: 6 }} />
+              </label>
+              <label>Monat
+                <select value={restorePreviewMonth} onChange={e => setRestorePreviewMonth(e.target.value)} style={{ marginLeft: 6 }}>
+                  <option value="Alle">Alle</option>
+                  <option value="ALL">ALL</option>
+                  {Array.from({ length: 12 }).map((_, i) => {
+                    const m = String(i+1).padStart(2, '0');
+                    return <option key={m} value={m}>{m}</option>;
+                  })}
+                </select>
+              </label>
+            </div>
+            <table className={styles.table}>
+              <thead>
+                <tr className={styles.thead}>
+                  <th>Jahr</th>
+                  <th>Monat</th>
+                  <th>Erstellt (TS)</th>
+                  <th>Label</th>
+                  <th>Vorschau</th>
+                  <th className={styles.center}>Aktion</th>
+                </tr>
+              </thead>
+              <tbody className={styles.tbody}>
+                {(backups || [])
+                  .filter(b => restoreFilterYear === 'Alle' ? true : b.year === restoreFilterYear)
+                  .filter(b => {
+                    if (restoreFilterMonth === 'Alle') return true;
+                    const mon = (b.ym || '').split('-')[1] || '';
+                    return mon === restoreFilterMonth;
+                  })
+                  .map((b) => {
+                  const key = b.path;
+                  const counts = previewCounts[key];
+                  return (
+                    <tr key={key} className={styles.row}>
+                      <td>{b.year}</td>
+                      <td>{(b.ym || '').split('-')[1] || ''}</td>
+                      <td>{b.timestamp}</td>
+                      <td>{b.label || '-'}</td>
+                      <td>
+                        {counts ? (
+                          <span>DP: {counts.dutyRoster}, Pers.: {counts.personnel}, Azubis: {counts.azubis}</span>
+                        ) : (
+                          <button onClick={async () => {
+                            try {
+                              const y = Number(restorePreviewYear);
+                              const mStr = restorePreviewMonth;
+                              const mIdx = (mStr && mStr !== 'Alle' && mStr !== 'ALL') ? (Number(mStr) - 1) : undefined;
+                              const prev = await (window as any).api.getBackupSummary?.(b.path, isNaN(y) ? undefined : y, mIdx);
+                              if (prev?.success) setPreviewCounts(prevState => ({ ...prevState, [key]: prev.counts }));
+                            } catch {}
+                          }}>Vorschau</button>
+                        )}
+                      </td>
+                      <td className={styles.center}>
+                        <button style={{ backgroundColor: '#dc3545', color: 'white' }}
+                          onClick={async () => {
+                            const ok = window.confirm('Dieses Backup wiederherstellen? Die App wird danach neu gestartet.');
+                            if (!ok) return;
+                            try {
+                              const r = await (window as any).api.restoreBackup?.(b.path);
+                              if (!r?.success) alert('Restore fehlgeschlagen: ' + (r?.message || 'Unbekannt'));
+                              // Bei Erfolg wird die App neu gestartet
+                            } catch (e: any) {
+                              alert('Restore Fehler: ' + (e?.message || String(e)));
+                            }
+                          }}>Wiederherstellen</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {(!backups || backups.length === 0) && (
+                  <tr className={styles.row}><td colSpan={6} style={{ color: '#777' }}>Keine Backups gefunden.</td></tr>
+                )}
+              </tbody>
+            </table>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+              <button onClick={() => setShowRestore(false)}>Schließen</button>
+            </div>
+          </div>
+        </div>
+      )}
+          </div>
+    );
 };
 
 export default SettingsMenu;

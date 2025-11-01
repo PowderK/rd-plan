@@ -113,6 +113,17 @@ contextBridge.exposeInMainWorld('api', {
     // Department Patterns
     getDeptPatterns: () => ipcRenderer.invoke('get-dept-patterns'),
     setDeptPatterns: (patterns: { startDate: string, pattern: string }[]) => ipcRenderer.invoke('set-dept-patterns', patterns),
+    // File dialogs & roster import
+    showOpenDialog: (options: any) => ipcRenderer.invoke('show-open-dialog', options),
+    showSaveDialog: (options: any) => ipcRenderer.invoke('show-save-dialog', options),
+    showMessageBox: (options: any) => ipcRenderer.invoke('show-message-box', options),
+    createDatabaseBackup: (opts?: { year?: number; month?: number }) => ipcRenderer.invoke('create-database-backup', opts),
+    getDatabaseSummary: (year?: number, month?: number) => ipcRenderer.invoke('get-database-summary', year, month),
+    listBackups: (limit?: number) => ipcRenderer.invoke('list-backups', limit),
+    getBackupSummary: (backupDir: string, year?: number, month?: number) => ipcRenderer.invoke('get-backup-summary', backupDir, year, month),
+    restoreBackup: (backupDir: string) => ipcRenderer.invoke('restore-backup', backupDir),
+    importDutyRoster: (filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number> }) => ipcRenderer.invoke('import-duty-roster', filePath, year, month, options),
+    previewDutyRoster: (filePath: string, year: number, month?: number) => ipcRenderer.invoke('preview-duty-roster-import', filePath, year, month),
     openItwWindow: () => ipcRenderer.send('open-itw-window'),
     openVehiclesWindow: () => ipcRenderer.send('open-vehicles-window'),
     openValuesWindow: () => ipcRenderer.send('open-values-window'),

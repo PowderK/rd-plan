@@ -49,6 +49,9 @@ export interface DatabaseAdapter {
   updateShiftType(type: any): Promise<void>;
   deleteShiftType(id: number): Promise<void>;
   
+  // Roster Import
+  importDutyRoster(filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number> }): Promise<{success: boolean, message: string, importedCount: number}>;
+
   // Excel Import/Export für Personal
   importPersonnelFromExcel(filePath: string, replaceExisting: boolean): Promise<any>;
   exportPersonnelToExcel(filePath: string): Promise<void>;
@@ -276,6 +279,12 @@ class SQLiteAdapter implements DatabaseAdapter {
     const { ExcelPersonnelImporter } = await import('./excel-importer');
     ExcelPersonnelImporter.createTemplate(filePath);
   }
+
+  async importDutyRoster(filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number> }): Promise<{success: boolean, message: string, importedCount: number}> {
+    const { RosterImporter } = await import('./roster-importer');
+    const importer = new RosterImporter(this);
+    return importer.importDutyRoster(filePath, year, month, options);
+  }
   
   // Settings Import/Export Methoden
   async importSettingsFromJson(filePath: string, replaceExisting: boolean) {
@@ -310,6 +319,7 @@ class SQLiteAdapter implements DatabaseAdapter {
 export class DatabaseManager {
   private adapter?: DatabaseAdapter;
   private config: DatabaseConfig;
+  private currentDbPath?: string;
   
   constructor(config: DatabaseConfig) {
     this.config = config;
@@ -323,7 +333,7 @@ export class DatabaseManager {
   private async initializeSQLite(): Promise<DatabaseAdapter> {
     console.log('[DatabaseManager] Starting SQLite database');
     
-    let dbPath: string;
+  let dbPath: string;
     
     if (this.config.mode === 'central-sqlite' && this.config.centralPath) {
       // Use central path for multi-user scenarios
@@ -349,6 +359,7 @@ export class DatabaseManager {
     }
     
     const db = await this.initializeSQLiteWithPath(dbPath);
+    this.currentDbPath = dbPath;
     this.adapter = new SQLiteAdapter(db);
     return this.adapter;
   }
@@ -513,6 +524,111 @@ export class DatabaseManager {
       await this.adapter.close();
     }
   }
+
+  /**
+   * Creates a timestamped backup of the current SQLite database next to the DB location.
+   * Returns the directory path containing the backup.
+   */
+  async createBackup(opts?: { year?: number; month?: number; label?: string }): Promise<string> {
+    if (!this.currentDbPath) throw new Error('Database path unknown');
+    const fs = await import('fs');
+    const dir = path.dirname(this.currentDbPath);
+    // If DB is in <appRoot>/DB, put backups in <appRoot>/backups/<ts>; otherwise dir/backups/<ts>
+    const parent = path.basename(dir).toLowerCase() === 'db' ? path.join(dir, '..') : dir;
+    const now = new Date();
+    const y = opts?.year ?? now.getFullYear();
+    const yStr = String(y);
+    // Unterscheide: Monatsbackup vs. Jahresbackup (ALL)
+    let folderYM: string;
+    if (opts?.month != null) {
+      const m1 = (opts.month) + 1; // month index is 0-based in callers, store as 1-12
+      const mStr = String(m1).padStart(2, '0');
+      folderYM = `${yStr}-${mStr}`;
+    } else {
+      folderYM = `${yStr}-ALL`;
+    }
+    const ts = now.toISOString().replace(/[-:T]/g, '').slice(0, 15); // YYYYMMDDHHMMSS
+    // Create short auto label if not provided
+    const autoLabel = opts?.month != null ? `preimport-${folderYM}` : `preimport-${yStr}`;
+    const rawLabel = (opts?.label || autoLabel).toLowerCase();
+    const label = rawLabel.replace(/[^a-z0-9-_]/g, '').slice(0, 40);
+    // Structure: backups/<YYYY>/<YYYY-MM|YYYY-ALL>/<YYYYMMDDHHMMSS>-<label>
+    const backupDir = path.join(parent, 'backups', yStr, folderYM, `${ts}-${label}`);
+    try { fs.mkdirSync(backupDir, { recursive: true }); } catch {}
+    const target = path.join(backupDir, 'rd-plan.db');
+    fs.copyFileSync(this.currentDbPath, target);
+    console.log('[DatabaseManager] Backup erstellt:', target);
+    try { fs.writeFileSync(path.join(backupDir, 'label.txt'), label, 'utf-8'); } catch {}
+    return backupDir;
+  }
+
+  private getBackupRoot(): string {
+    if (!this.currentDbPath) throw new Error('Database path unknown');
+    const dir = path.dirname(this.currentDbPath);
+    const parent = path.basename(dir).toLowerCase() === 'db' ? path.join(dir, '..') : dir;
+    return path.join(parent, 'backups');
+  }
+
+  async listBackups(limit = 50): Promise<Array<{ path: string; year: string; ym: string; timestamp: string; label: string }>> {
+    const fs = await import('fs');
+    const root = this.getBackupRoot();
+    const items: Array<{ path: string; year: string; ym: string; timestamp: string; label: string }> = [];
+    if (!fs.existsSync(root)) return items;
+    for (const y of (fs.readdirSync(root) || []).sort().reverse()) {
+      const yDir = path.join(root, y);
+      if (!fs.lstatSync(yDir).isDirectory()) continue;
+      for (const ym of (fs.readdirSync(yDir) || []).sort().reverse()) {
+        const ymDir = path.join(yDir, ym);
+        if (!fs.lstatSync(ymDir).isDirectory()) continue;
+        for (const tsLab of (fs.readdirSync(ymDir) || []).sort().reverse()) {
+          const dir = path.join(ymDir, tsLab);
+          if (!fs.lstatSync(dir).isDirectory()) continue;
+          const dbp = path.join(dir, 'rd-plan.db');
+          if (!fs.existsSync(dbp)) continue;
+          const m = tsLab.match(/^(\d{8,14})(?:[-_](.+))?$/);
+          const timestamp = m ? m[1] : tsLab;
+          const label = (m && m[2]) ? m[2] : (fs.existsSync(path.join(dir, 'label.txt')) ? (fs.readFileSync(path.join(dir, 'label.txt'), 'utf-8') || '').trim() : '');
+          items.push({ path: dir, year: y, ym, timestamp, label });
+          if (items.length >= limit) return items;
+        }
+      }
+    }
+    return items;
+  }
+
+  async getBackupSummary(backupDir: string, year?: number, month?: number): Promise<{ personnel: number; azubis: number; dutyRoster: number }> {
+    const BetterSqlite3 = (await import('better-sqlite3')).default;
+    const dbPath = path.join(backupDir, 'rd-plan.db');
+    const raw = new BetterSqlite3(dbPath, { readonly: true });
+    const getCount = (sql: string, params: any[] = []) => {
+      try { const row = raw.prepare(sql).get(...params) as any; return Number(row?.cnt || 0); } catch { return 0; }
+    };
+    const personnel = getCount('SELECT COUNT(*) as cnt FROM personnel');
+    const azubis = getCount('SELECT COUNT(*) as cnt FROM azubis');
+    let dutyRoster = 0;
+    if (typeof year === 'number' && typeof month === 'number') {
+      const y = String(year);
+      const mm = String(month + 1).padStart(2, '0');
+      dutyRoster = getCount("SELECT COUNT(*) as cnt FROM duty_roster WHERE substr(date,1,4)=? AND substr(date,6,2)=?", [y, mm]);
+    } else if (typeof year === 'number') {
+      const y = String(year);
+      dutyRoster = getCount("SELECT COUNT(*) as cnt FROM duty_roster WHERE substr(date,1,4)=?", [y]);
+    } else {
+      dutyRoster = getCount('SELECT COUNT(*) as cnt FROM duty_roster');
+    }
+    try { raw.close(); } catch {}
+    return { personnel, azubis, dutyRoster };
+  }
+
+  async restoreBackup(backupDir: string): Promise<void> {
+    if (!this.currentDbPath) throw new Error('Database path unknown');
+    const fs = await import('fs');
+    const src = path.join(backupDir, 'rd-plan.db');
+    if (!fs.existsSync(src)) throw new Error('Backup file not found');
+    // Copy backup over current DB; note: active connection will still point to same file
+    fs.copyFileSync(src, this.currentDbPath);
+    console.log('[DatabaseManager] Backup wiederhergestellt von:', src);
+  }
 }
 
 // Global database manager instance
@@ -572,4 +688,32 @@ export async function closeDatabaseManager() {
     await globalDatabaseManager.close();
     globalDatabaseManager = null;
   }
+}
+
+export async function createDatabaseBackup(opts?: { year?: number; month?: number }): Promise<string> {
+  const mgr = getDatabaseManager();
+  return mgr.createBackup(opts);
+}
+
+export async function listDatabaseBackups(limit?: number) {
+  const mgr = getDatabaseManager();
+  return mgr.listBackups(limit);
+}
+
+export async function getSummaryForBackup(backupDir: string, year?: number, month?: number) {
+  const mgr = getDatabaseManager();
+  return mgr.getBackupSummary(backupDir, year, month);
+}
+
+export async function restoreDatabaseFromBackup(backupDir: string) {
+  const mgr = getDatabaseManager();
+  return mgr.restoreBackup(backupDir);
+}
+
+// Preview duty roster import without writing
+export async function previewDutyRosterImport(filePath: string, year: number, month?: number) {
+  const mgr = getDatabaseManager();
+  const { RosterImporter } = await import('./roster-importer');
+  const importer = new RosterImporter(mgr.getAdapter());
+  return importer.previewDutyRoster(filePath, year, month);
 }

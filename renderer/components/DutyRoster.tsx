@@ -356,10 +356,29 @@ const DutyRoster: React.FC = () => {
   };
 
   // Import-Handler
-  const handleImport = () => {
-    setImportTableMonth(currentMonth);
-    setShowImportTable(true);
+  const handleImport = async () => {
+    const rosterImportPath = await (window as any).api.getSetting('rosterImportPath');
+    if (!rosterImportPath) {
+        alert('Bitte hinterlegen Sie zuerst den Pfad zur Excel-Datei in den Einstellungen.');
+        return;
+    }
+    const ok = window.confirm(`Möchten Sie den Dienstplan für ${months[currentMonth]} ${year} aus der Excel-Datei importieren? Bestehende Daten für diesen Monat werden überschrieben.`);
+    if (!ok) return;
+
+    try {
+        const result = await (window as any).api.importDutyRoster(rosterImportPath, year, currentMonth);
+        if (result.success) {
+            alert(`Import erfolgreich: ${result.importedCount} Einträge wurden verarbeitet.`);
+            await reloadRoster();
+        } else {
+            alert(`Import fehlgeschlagen: ${result.message}`);
+        }
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Ein unbekannter Fehler ist aufgetreten.';
+        alert(`Fehler beim Import: ${message}`);
+    }
   };
+
   const handleImportTableCancel = () => {
     setShowImportTable(false);
     setImportTableMonth(null);
@@ -664,13 +683,12 @@ const DutyRoster: React.FC = () => {
           </button>
         ))}
       </div>
-      <label style={{ display: 'inline-block', marginBottom: 12 }}>
-        <span style={{ background: '#1976d2', color: '#fff', padding: '6px 16px', borderRadius: 4, cursor: 'pointer', marginRight: 12 }}
-          onClick={handleImport}>
-          Import (Excel)
-        </span>
-        <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} disabled />
-      </label>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+        <button onClick={handleImport}>
+          Import Monat (Excel)
+        </button>
+        <span style={{fontSize: 12, color: '#555'}}>Importiert den aktuellen Monat aus der in den Einstellungen hinterlegten Excel-Datei.</span>
+      </div>
       <table style={{ borderCollapse: 'collapse', minWidth: Math.max(800, days.length * 90) }}>
         <thead style={{ position: 'sticky', top: 0, zIndex: 3, background: 'var(--bg)' }}>
           <tr>

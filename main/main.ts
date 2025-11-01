@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, session } from 'electron';
 import path from 'path';
 import url from 'url';
-import { initializeDatabaseManager, DatabaseAdapter } from './database-manager';
+import { initializeDatabaseManager, DatabaseAdapter, createDatabaseBackup, listDatabaseBackups, getSummaryForBackup, restoreDatabaseFromBackup, previewDutyRosterImport } from './database-manager';
 
 let databaseAdapter: DatabaseAdapter | null = null;
 let settingsWindow: BrowserWindow | null = null;
@@ -333,6 +333,87 @@ ipcMain.handle('show-save-dialog', async (_event, options: any) => {
     return result;
 });
 
+// Message box handler (native Confirm/Info/Warning dialogs)
+ipcMain.handle('show-message-box', async (_event, options: Electron.MessageBoxOptions) => {
+    const result = await dialog.showMessageBox(options);
+    return result;
+});
+
+// Create database backup (SQLite file copy)
+ipcMain.handle('create-database-backup', async (_event, opts?: { year?: number; month?: number }) => {
+    try {
+        const dir = await createDatabaseBackup(opts);
+        return { success: true, dir };
+    } catch (e: any) {
+        console.error('[Main] Backup error', e);
+        return { success: false, message: e?.message || String(e) };
+    }
+});
+
+// DB summary for preview (counts for given year/month)
+ipcMain.handle('get-database-summary', async (_event, year?: number, month?: number) => {
+    try {
+        const adapter = await ensureDatabaseAdapter();
+        const [pers, az] = await Promise.all([
+            adapter.getPersonnel(),
+            adapter.getAzubiList(),
+        ]);
+        let roster = await adapter.getDutyRoster(year ?? new Date().getFullYear());
+        if (typeof month === 'number') {
+            roster = (roster || []).filter(r => {
+                if (!r || !r.date) return false;
+                const d = new Date(String(r.date));
+                return d.getMonth() === month;
+            });
+        }
+        return {
+            success: true,
+            counts: {
+                personnel: pers?.length || 0,
+                azubis: az?.length || 0,
+                dutyRoster: roster?.length || 0,
+            }
+        };
+    } catch (e: any) {
+        console.error('[Main] get-database-summary error', e);
+        return { success: false, message: e?.message || String(e) };
+    }
+});
+
+// Backups: list, summary, restore
+ipcMain.handle('list-backups', async (_event, limit?: number) => {
+    try {
+        const list = await listDatabaseBackups(limit);
+        return { success: true, list };
+    } catch (e: any) {
+        console.error('[Main] list-backups error', e);
+        return { success: false, message: e?.message || String(e) };
+    }
+});
+
+ipcMain.handle('get-backup-summary', async (_event, backupDir: string, year?: number, month?: number) => {
+    try {
+        const counts = await getSummaryForBackup(backupDir, year, month);
+        return { success: true, counts };
+    } catch (e: any) {
+        console.error('[Main] get-backup-summary error', e);
+        return { success: false, message: e?.message || String(e) };
+    }
+});
+
+ipcMain.handle('restore-backup', async (_event, backupDir: string) => {
+    try {
+        await restoreDatabaseFromBackup(backupDir);
+        // After restore, relaunch app to ensure DB connection reloads
+        app.relaunch();
+        app.exit(0);
+        return { success: true };
+    } catch (e: any) {
+        console.error('[Main] restore-backup error', e);
+        return { success: false, message: e?.message || String(e) };
+    }
+});
+
 // Settings Import/Export handlers
 ipcMain.handle('import-settings-json', async (_event, filePath: string, replaceExisting: boolean = false) => {
     try {
@@ -389,6 +470,41 @@ ipcMain.handle('create-settings-template', async (_event, filePath: string) => {
     } catch (error) {
         console.error('[Main] Settings template creation error:', error);
         throw error;
+    }
+});
+
+// Roster Import handler
+ipcMain.handle('import-duty-roster', async (_event, filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number> }) => {
+    try {
+        console.log('[Main] Duty roster import started:', { filePath, year, month });
+        const adapter = await ensureDatabaseAdapter();
+        const result = await adapter.importDutyRoster(filePath, year, month, options);
+        console.log('[Main] Duty roster import completed:', result);
+        
+        if (result.success) {
+            // Notify all windows about the update
+            BrowserWindow.getAllWindows().forEach(w => {
+                try { w.webContents.send('duty-roster-updated'); } catch {}
+            });
+        }
+        
+        return result;
+    } catch (error) {
+        console.error('[Main] Duty roster import error:', error);
+        const message = error instanceof Error ? error.message : 'Ein unbekannter Fehler ist aufgetreten.';
+        return { success: false, message: `Fehler beim Import: ${message}`, importedCount: 0 };
+    }
+});
+
+// Roster Import preview handler
+ipcMain.handle('preview-duty-roster-import', async (_event, filePath: string, year: number, month?: number) => {
+    try {
+        const result = await previewDutyRosterImport(filePath, year, month);
+        return result;
+    } catch (error) {
+        console.error('[Main] preview-duty-roster-import error:', error);
+        const message = error instanceof Error ? error.message : 'Ein unbekannter Fehler ist aufgetreten.';
+        return { success: false, message };
     }
 });
 
