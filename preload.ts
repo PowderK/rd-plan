@@ -134,6 +134,8 @@ contextBridge.exposeInMainWorld('api', {
     // Utils
     clearSlotAssignments: () => ipcRenderer.invoke('clear-slot-assignments'),
     assignSlot: (entry: { personId: number, personType: string, date: string, slotType: string }) => ipcRenderer.invoke('assign-slot', entry),
+    // Diagnostics
+    getDiagnostics: () => ipcRenderer.invoke('get-diagnostics'),
 });
 
 // Ergänze für Electron Dialog API

@@ -54,6 +54,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [restoreFilterMonth, setRestoreFilterMonth] = useState<string>('Alle'); // 'Alle' | 'ALL' | '01'..'12'
   const [restorePreviewYear, setRestorePreviewYear] = useState<number>(year);
   const [restorePreviewMonth, setRestorePreviewMonth] = useState<string>('Alle');
+  // Diagnostics UI
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<any>(null);
 
     useEffect(() => {
         (async () => {
@@ -279,6 +282,27 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               <div style={{ fontSize: 12, color: '#666' }}>
                 Version {BUILD_INFO.version} (Build {BUILD_INFO.build}) — © Benjamin Kreitz
               </div>
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+              <button onClick={async () => {
+                try {
+                  const diag = await (window as any).api.getDiagnostics?.();
+                  setDiagnostics(diag || {});
+                  setShowDiagnostics(true);
+                } catch (err: any) {
+                  alert('Diagnose abrufen fehlgeschlagen: ' + (err?.message || String(err)));
+                }
+              }}>Diagnose anzeigen…</button>
+              {diagnostics?.db?.chosenDbPath ? (
+                <button onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(String(diagnostics.db.chosenDbPath));
+                    alert('DB-Speicherort kopiert.');
+                  } catch {
+                    alert('Kopieren nicht möglich.');
+                  }
+                }}>DB-Speicherort kopieren</button>
+              ) : null}
             </div>
             {/* Reihenfolge: Jahr / Rettungswache / Abteilung */}
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
@@ -1001,6 +1025,27 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
             </table>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
               <button onClick={() => setShowRestore(false)}>Schließen</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showDiagnostics && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'white', borderRadius: 8, width: '92%', maxWidth: 900, maxHeight: '90vh', overflow: 'auto', padding: 16 }}>
+            <h3>Diagnose</h3>
+            <p style={{ marginTop: 0, color: '#555' }}>Datenbankpfad-Entscheidung und verfügbare Header-Assets</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <h4 style={{ margin: '8px 0' }}>DB</h4>
+                <pre style={{ background: '#f8f9fa', padding: 12, borderRadius: 6, overflow: 'auto' }}>{JSON.stringify(diagnostics?.db || diagnostics, null, 2)}</pre>
+              </div>
+              <div>
+                <h4 style={{ margin: '8px 0' }}>Assets</h4>
+                <pre style={{ background: '#f8f9fa', padding: 12, borderRadius: 6, overflow: 'auto' }}>{JSON.stringify({ paths: diagnostics?.paths, assets: diagnostics?.assets }, null, 2)}</pre>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+              <button onClick={() => setShowDiagnostics(false)}>Schließen</button>
             </div>
           </div>
         </div>

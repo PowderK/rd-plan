@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog, session } from 'electron';
 import path from 'path';
 import url from 'url';
-import { initializeDatabaseManager, DatabaseAdapter, createDatabaseBackup, listDatabaseBackups, getSummaryForBackup, restoreDatabaseFromBackup, previewDutyRosterImport } from './database-manager';
+import fs from 'fs';
+import { initializeDatabaseManager, DatabaseAdapter, createDatabaseBackup, listDatabaseBackups, getSummaryForBackup, restoreDatabaseFromBackup, previewDutyRosterImport, getDatabaseManager } from './database-manager';
 
 let databaseAdapter: DatabaseAdapter | null = null;
 let settingsWindow: BrowserWindow | null = null;
@@ -648,6 +649,42 @@ ipcMain.handle('preview-duty-roster-import', async (_event, filePath: string, ye
         console.error('[Main] preview-duty-roster-import error:', error);
         const message = error instanceof Error ? error.message : 'Ein unbekannter Fehler ist aufgetreten.';
         return { success: false, message };
+    }
+});
+
+// Diagnostics: expose DB path decision and packaged assets info for debugging
+ipcMain.handle('get-diagnostics', async () => {
+    try {
+        const mgr = getDatabaseManager();
+        const dbDiag = mgr.getDiagnostics?.() || {};
+        const rendererDir = path.join(__dirname, '../renderer');
+        const assetsDir = path.join(rendererDir, 'assets');
+        let headerPngs: Array<{ file: string; absPath: string; size?: number }> = [];
+        try {
+            const files = fs.readdirSync(assetsDir).filter(f => /^Header-.*\.png$/i.test(f));
+            headerPngs = files.map(f => {
+                const absPath = path.join(assetsDir, f);
+                let size: number | undefined = undefined;
+                try { size = fs.statSync(absPath).size; } catch {}
+                return { file: f, absPath, size };
+            });
+        } catch (e) {
+            // ignore, folder may not exist in dev
+        }
+        return {
+            success: true,
+            db: dbDiag,
+            paths: {
+                __dirname,
+                rendererDir,
+                assetsDir,
+            },
+            assets: {
+                headerPngs
+            }
+        };
+    } catch (e: any) {
+        return { success: false, message: e?.message || String(e) };
     }
 });
 

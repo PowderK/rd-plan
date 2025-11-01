@@ -411,6 +411,7 @@ export class DatabaseManager {
   private adapter?: DatabaseAdapter;
   private config: DatabaseConfig;
   private currentDbPath?: string;
+  private lastDiagnostics: any = null;
   
   constructor(config: DatabaseConfig) {
     this.config = config;
@@ -425,12 +426,19 @@ export class DatabaseManager {
     console.log('[DatabaseManager] Starting SQLite database');
     
   let dbPath: string;
+  const attempts: Array<{ kind: string; dir: string; file?: string; exists?: boolean; canWrite?: boolean; note?: string }> = [];
     
     if (this.config.mode === 'central-sqlite' && this.config.centralPath) {
       // Use central path for multi-user scenarios
       dbPath = this.config.centralPath;
       // Ensure target directory exists (especially on Windows)
       try { fs.mkdirSync(path.dirname(dbPath), { recursive: true }); } catch {}
+      try {
+        fs.accessSync(path.dirname(dbPath), fs.constants.W_OK);
+        attempts.push({ kind: 'central', dir: path.dirname(dbPath), file: dbPath, exists: true, canWrite: true });
+      } catch {
+        attempts.push({ kind: 'central', dir: path.dirname(dbPath), file: dbPath, exists: true, canWrite: false, note: 'no write access' });
+      }
       console.log('[DatabaseManager] Using central SQLite database at:', dbPath);
     } else {
       // Use DB folder in the application root (portable builds or installed app)
@@ -444,10 +452,19 @@ export class DatabaseManager {
         // Verify write access; if not writable (e.g., Program Files on Windows), fallback to userData
         let canWrite = false;
         try { fs.accessSync(dbDir, fs.constants.W_OK); canWrite = true; } catch { canWrite = false; }
+        attempts.push({ kind: 'appRoot', dir: dbDir, exists: true, canWrite });
+        // Optional: allow forcing portable via CLI/env
+        const forcePortable = (process.argv || []).includes('--portable') || String(process.env.RD_PLAN_FORCE_PORTABLE).toLowerCase() === 'true';
+        if (forcePortable && !canWrite) {
+          attempts.push({ kind: 'forcePortable', dir: dbDir, exists: true, canWrite, note: 'forced but no write access' });
+        }
         if (!canWrite) {
           const userDataPath = app.getPath('userData');
           dbDir = path.join(userDataPath, 'DB');
           try { fs.mkdirSync(dbDir, { recursive: true }); } catch {}
+          let canWriteUser = false;
+          try { fs.accessSync(dbDir, fs.constants.W_OK); canWriteUser = true; } catch { canWriteUser = false; }
+          attempts.push({ kind: 'userData', dir: dbDir, exists: true, canWrite: canWriteUser, note: 'fallback from appRoot' });
         }
         dbPath = path.join(dbDir, 'rd-plan.db');
         console.log('[DatabaseManager] Using local SQLite database at:', dbPath);
@@ -456,6 +473,7 @@ export class DatabaseManager {
         const userDataPath = app.getPath('userData');
         const dbDir = path.join(userDataPath, 'DB');
         try { fs.mkdirSync(dbDir, { recursive: true }); } catch {}
+        try { fs.accessSync(dbDir, fs.constants.W_OK); attempts.push({ kind: 'userData-catch', dir: dbDir, exists: true, canWrite: true, note: 'exception fallback' }); } catch { attempts.push({ kind: 'userData-catch', dir: dbDir, exists: true, canWrite: false, note: 'exception fallback no write' }); }
         dbPath = path.join(dbDir, 'rd-plan.db');
         console.log('[DatabaseManager] Fallback: Using local SQLite database at userData:', dbPath);
       }
@@ -463,6 +481,25 @@ export class DatabaseManager {
     
     const db = await this.initializeSQLiteWithPath(dbPath);
     this.currentDbPath = dbPath;
+    // Collect diagnostics
+    try {
+      const exePath = app.getPath ? app.getPath('exe') : process.execPath;
+      const appRoot = path.dirname(exePath);
+      this.lastDiagnostics = {
+        timestamp: new Date().toISOString(),
+        platform: process.platform,
+        node: process.versions?.node,
+        electron: process.versions?.electron,
+        mode: this.config.mode,
+        multiUser: !!this.config.multiUser,
+        centralPath: this.config.centralPath || null,
+        exePath,
+        appRoot,
+        userData: app.getPath('userData'),
+        attempts,
+        chosenDbPath: dbPath,
+      };
+    } catch {}
     this.adapter = new SQLiteAdapter(db);
     return this.adapter;
   }
@@ -626,6 +663,10 @@ export class DatabaseManager {
     if (this.adapter) {
       await this.adapter.close();
     }
+  }
+
+  getDiagnostics() {
+    return this.lastDiagnostics || {};
   }
 
   /**
