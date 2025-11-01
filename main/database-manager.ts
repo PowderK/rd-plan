@@ -25,21 +25,34 @@ export interface DatabaseAdapter {
   addAzubi(azubi: any): Promise<void>;
   updateAzubi(azubi: any): Promise<void>;
   deleteAzubi(id: number): Promise<void>;
+  updateAzubiOrder(order: number[]): Promise<void>;
   
   getItwDoctors(): Promise<any[]>;
   addItwDoctor(doc: any): Promise<void>;
   updateItwDoctor(doc: any): Promise<void>;
   deleteItwDoctor(id: number): Promise<void>;
+  updateItwDoctorOrder(order: number[]): Promise<void>;
   
   getRtwVehicles(year?: number): Promise<any[]>;
+  addRtwVehicle(v: { name: string }): Promise<void>;
+  updateRtwVehicle(v: { id: number, name: string }): Promise<void>;
+  deleteRtwVehicle(id: number, currentYear?: number): Promise<void>;
+  updateRtwVehicleOrder(order: number[]): Promise<void>;
   getNefVehicles(year?: number): Promise<any[]>;
+  addNefVehicle(v: { name: string, occupancyMode?: '24h' | 'tag' }): Promise<void>;
+  updateNefVehicle(v: { id: number, name: string, occupancyMode?: '24h' | 'tag' }): Promise<void>;
+  deleteNefVehicle(id: number, currentYear?: number): Promise<void>;
+  updateNefVehicleOrder(order: number[]): Promise<void>;
   getRtwVehicleActivations(year: number): Promise<any[]>;
   setRtwVehicleActivation(vehicleId: number, year: number, month: number, enabled: boolean): Promise<void>;
   getNefVehicleActivations(year: number): Promise<any[]>;
   setNefVehicleActivation(vehicleId: number, year: number, month: number, enabled: boolean): Promise<void>;
+  setNefOccupancyMode(id: number, mode: '24h' | 'tag'): Promise<void>;
   
   getHolidaysForYear(year: number): Promise<any[]>;
   setHolidaysForYear(year: number, dates: any[]): Promise<void>;
+  addHoliday(date: string, name?: string): Promise<void>;
+  deleteHoliday(date: string): Promise<void>;
   
   getSetting(key: string): Promise<string | null>;
   setSetting(key: string, value: string): Promise<void>;
@@ -65,6 +78,8 @@ export interface DatabaseAdapter {
   
   clearDutyRosterForYear(year: number): Promise<void>;
   clearDutyRosterForMonth(year: number, month: number): Promise<void>;
+  clearSlotAssignments(): Promise<void>;
+  assignSlot(entry: { personId: number, personType: string, date: string, slotType: string }): Promise<void>;
   
   getItwPatterns(): Promise<any[]>;
   setItwPatterns(patterns: any[]): Promise<void>;
@@ -142,6 +157,11 @@ class SQLiteAdapter implements DatabaseAdapter {
     return deleteAzubi(this.db, id);
   }
   
+  async updateAzubiOrder(order: number[]) {
+    const { updateAzubiOrder } = await import('./database');
+    return updateAzubiOrder(this.db, order);
+  }
+  
   async getItwDoctors() {
     const { getItwDoctors } = await import('./database');
     return getItwDoctors(this.db);
@@ -162,14 +182,59 @@ class SQLiteAdapter implements DatabaseAdapter {
     return deleteItwDoctor(this.db, id);
   }
   
+  async updateItwDoctorOrder(order: number[]) {
+    const { updateItwDoctorOrder } = await import('./database');
+    return updateItwDoctorOrder(this.db, order);
+  }
+  
   async getRtwVehicles(year?: number) {
     const { getRtwVehicles } = await import('./database');
     return getRtwVehicles(this.db, year);
   }
   
+  async addRtwVehicle(v: { name: string }) {
+    const { addRtwVehicle } = await import('./database');
+    return addRtwVehicle(this.db, v);
+  }
+  
+  async updateRtwVehicle(v: { id: number, name: string }) {
+    const { updateRtwVehicle } = await import('./database');
+    return updateRtwVehicle(this.db, v);
+  }
+  
+  async deleteRtwVehicle(id: number, currentYear?: number) {
+    const { deleteRtwVehicle } = await import('./database');
+    return deleteRtwVehicle(this.db, id, currentYear);
+  }
+  
+  async updateRtwVehicleOrder(order: number[]) {
+    const { updateRtwVehicleOrder } = await import('./database');
+    return updateRtwVehicleOrder(this.db, order);
+  }
+  
   async getNefVehicles(year?: number) {
     const { getNefVehicles } = await import('./database');
     return getNefVehicles(this.db, year);
+  }
+  
+  async addNefVehicle(v: { name: string, occupancyMode?: '24h' | 'tag' }) {
+    const { addNefVehicle } = await import('./database');
+    return addNefVehicle(this.db, v);
+  }
+  
+  async updateNefVehicle(v: { id: number, name: string, occupancyMode?: '24h' | 'tag' }) {
+    const { updateNefVehicle } = await import('./database');
+    return updateNefVehicle(this.db, v);
+  }
+  
+  async deleteNefVehicle(id: number, currentYear?: number) {
+    const { deleteNefVehicle } = await import('./database');
+    return deleteNefVehicle(this.db, id, currentYear);
+  }
+  
+  async updateNefVehicleOrder(order: number[]) {
+    const { updateNefVehicleOrder } = await import('./database');
+    return updateNefVehicleOrder(this.db, order);
   }
   
   async getRtwVehicleActivations(year: number) {
@@ -192,6 +257,11 @@ class SQLiteAdapter implements DatabaseAdapter {
     return setNefVehicleActivation(this.db, vehicleId, year, month, enabled);
   }
   
+  async setNefOccupancyMode(id: number, mode: '24h'|'tag') {
+    const { setNefOccupancyMode } = await import('./database');
+    return setNefOccupancyMode(this.db, id, mode);
+  }
+  
   async getHolidaysForYear(year: number) {
     const { getHolidaysForYear } = await import('./database');
     return getHolidaysForYear(this.db, year);
@@ -200,6 +270,16 @@ class SQLiteAdapter implements DatabaseAdapter {
   async setHolidaysForYear(year: number, dates: any[]) {
     const { setHolidaysForYear } = await import('./database');
     return setHolidaysForYear(this.db, year, dates);
+  }
+  
+  async addHoliday(date: string, name?: string) {
+    const { addHoliday } = await import('./database');
+    return addHoliday(this.db, date, name ?? '');
+  }
+  
+  async deleteHoliday(date: string) {
+    const { deleteHoliday } = await import('./database');
+    return deleteHoliday(this.db, date);
   }
   
   async getSetting(key: string) {
@@ -240,6 +320,16 @@ class SQLiteAdapter implements DatabaseAdapter {
   async clearDutyRosterForMonth(year: number, month: number) {
     const { clearDutyRosterForMonth } = await import('./database');
     return clearDutyRosterForMonth(this.db, year, month);
+  }
+  
+  async clearSlotAssignments() {
+    const { clearSlotAssignments } = await import('./database');
+    return clearSlotAssignments(this.db);
+  }
+  
+  async assignSlot(entry: { personId: number, personType: string, date: string, slotType: string }) {
+    const { assignSlot } = await import('./database');
+    return assignSlot(this.db, entry);
   }
   
   async getItwPatterns() {

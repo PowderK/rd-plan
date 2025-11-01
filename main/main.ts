@@ -129,6 +129,34 @@ ipcMain.handle('update-personnel-order', async (_event, order: number[]) => {
     return true;
 });
 
+// Alias handlers to support legacy/preload channel names used by the renderer
+ipcMain.handle('add-person', async (_event, person: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addPersonnel(person);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('update-person', async (_event, person: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updatePersonnel(person);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('delete-person', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deletePersonnel(id);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('get-person', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    const list = await adapter.getPersonnel();
+    return (list || []).find((p: any) => Number(p?.id) === Number(id)) || null;
+});
+
 // Shift type handlers
 ipcMain.handle('get-shift-types', async () => {
     const adapter = await ensureDatabaseAdapter();
@@ -173,6 +201,28 @@ ipcMain.handle('bulk-set-duty-roster-entries', async (_event, entries: any[]) =>
     return result;
 });
 
+// Alias for older preload API name
+ipcMain.handle('bulk-set-duty-roster', async (_event, entries: any[]) => {
+    const adapter = await ensureDatabaseAdapter();
+    const result = await adapter.bulkSetDutyRosterEntries(entries);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('duty-roster-updated'); } catch {} });
+    return result;
+});
+
+ipcMain.handle('clear-slot-assignments', async () => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.clearSlotAssignments();
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('duty-roster-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('assign-slot', async (_event, entry: { personId: number, personType: string, date: string, slotType: string }) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.assignSlot(entry);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('duty-roster-updated'); } catch {} });
+    return true;
+});
+
 // Azubi handlers
 ipcMain.handle('get-azubi-list', async () => {
     const adapter = await ensureDatabaseAdapter();
@@ -182,21 +232,28 @@ ipcMain.handle('get-azubi-list', async () => {
 ipcMain.handle('add-azubi', async (_event, azubi: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.addAzubi(azubi);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubi-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubi-updated'); w.webContents.send('azubis-updated'); } catch {} });
     return true;
 });
 
 ipcMain.handle('update-azubi', async (_event, azubi: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateAzubi(azubi);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubi-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubi-updated'); w.webContents.send('azubis-updated'); } catch {} });
     return true;
 });
 
 ipcMain.handle('delete-azubi', async (_event, id: number) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.deleteAzubi(id);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubi-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubi-updated'); w.webContents.send('azubis-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('update-azubi-order', async (_event, order: number[]) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateAzubiOrder(order);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubis-updated'); } catch {} });
     return true;
 });
 
@@ -209,21 +266,28 @@ ipcMain.handle('get-itw-doctors', async () => {
 ipcMain.handle('add-itw-doctor', async (_event, doctor: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.addItwDoctor(doctor);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); w.webContents.send('itw-updated'); } catch {} });
     return true;
 });
 
 ipcMain.handle('update-itw-doctor', async (_event, doctor: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateItwDoctor(doctor);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); w.webContents.send('itw-updated'); } catch {} });
     return true;
 });
 
 ipcMain.handle('delete-itw-doctor', async (_event, id: number) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.deleteItwDoctor(id);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); w.webContents.send('itw-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('update-itw-doctor-order', async (_event, order: number[]) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateItwDoctorOrder(order);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-updated'); } catch {} });
     return true;
 });
 
@@ -233,9 +297,61 @@ ipcMain.handle('get-rtw-vehicles', async (_event, year?: number) => {
     return await adapter.getRtwVehicles(year);
 });
 
+ipcMain.handle('add-rtw-vehicle', async (_event, v: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addRtwVehicle(v);
+    return true;
+});
+
+ipcMain.handle('update-rtw-vehicle', async (_event, v: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateRtwVehicle(v);
+    return true;
+});
+
+ipcMain.handle('delete-rtw-vehicle', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    let y: number | undefined;
+    try { const ys = await adapter.getSetting('year'); if (ys) y = Number(ys); } catch {}
+    await adapter.deleteRtwVehicle(id, y);
+    return true;
+});
+
+ipcMain.handle('update-rtw-vehicle-order', async (_event, order: number[]) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateRtwVehicleOrder(order);
+    return true;
+});
+
 ipcMain.handle('get-nef-vehicles', async (_event, year?: number) => {
     const adapter = await ensureDatabaseAdapter();
     return await adapter.getNefVehicles(year);
+});
+
+ipcMain.handle('add-nef-vehicle', async (_event, v: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addNefVehicle(v);
+    return true;
+});
+
+ipcMain.handle('update-nef-vehicle', async (_event, v: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateNefVehicle(v);
+    return true;
+});
+
+ipcMain.handle('delete-nef-vehicle', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    let y: number | undefined;
+    try { const ys = await adapter.getSetting('year'); if (ys) y = Number(ys); } catch {}
+    await adapter.deleteNefVehicle(id, y);
+    return true;
+});
+
+ipcMain.handle('update-nef-vehicle-order', async (_event, order: number[]) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateNefVehicleOrder(order);
+    return true;
 });
 
 ipcMain.handle('get-rtw-vehicle-activations', async (_event, year: number) => {
@@ -260,6 +376,12 @@ ipcMain.handle('set-nef-vehicle-activation', async (_event, vehicleId: number, y
     return true;
 });
 
+ipcMain.handle('set-nef-occupancy', async (_event, id: number, mode: '24h'|'tag') => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.setNefOccupancyMode(id, mode);
+    return true;
+});
+
 // Holiday handlers
 ipcMain.handle('get-holidays-for-year', async (_event, year: number) => {
     const adapter = await ensureDatabaseAdapter();
@@ -274,6 +396,27 @@ ipcMain.handle('get-holidays', async (_event, year: number) => {
 ipcMain.handle('set-holidays-for-year', async (_event, year: number, dates: any[]) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.setHolidaysForYear(year, dates);
+    return true;
+});
+
+// Alias for preload API name
+ipcMain.handle('set-holidays', async (_event, year: number, dates: any[]) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.setHolidaysForYear(year, dates);
+    return true;
+});
+
+ipcMain.handle('add-holiday', async (_event, date: string, name?: string) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addHoliday(date, name);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('delete-holiday', async (_event, date: string) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteHoliday(date);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
     return true;
 });
 
@@ -530,6 +673,33 @@ function openWindow(htmlFile: string, windowVar: string, width = 800, height = 6
     return win;
 }
 
+function openWindowWithQuery(htmlFile: string, windowVar: string, width = 800, height = 600, query?: Record<string, string>) {
+    const win = new BrowserWindow({
+        width,
+        height,
+        webPreferences: {
+            preload: path.join(__dirname, '../preload.js'),
+            nodeIntegration: false,
+            contextIsolation: true
+        }
+    });
+
+    const filePath = path.join(__dirname, `../renderer/${htmlFile}`);
+    try {
+        // Electron supports query option in loadFile
+        (win as any).loadFile(filePath, query ? { query } : undefined);
+    } catch {
+        // Fallback ohne Query
+        win.loadFile(filePath);
+    }
+
+    win.on('closed', () => {
+        (global as any)[windowVar] = null;
+    });
+
+    return win;
+}
+
 // Window opening handlers
 ipcMain.handle('open-settings', () => {
     if (!settingsWindow) {
@@ -565,6 +735,97 @@ ipcMain.handle('open-azubis', () => {
         azubiWindow.focus();
     }
     return true;
+});
+
+// Compatibility: listen for "*-window" channels sent via ipcRenderer.send(...)
+ipcMain.on('open-settings-window', () => {
+    if (!settingsWindow) {
+        settingsWindow = openWindow('settings.html', 'settingsWindow');
+    } else {
+        settingsWindow.focus();
+    }
+});
+
+ipcMain.on('open-personnel-window', () => {
+    if (!personnelWindow) {
+        personnelWindow = openWindow('personnel.html', 'personnelWindow', 1000, 700);
+    } else {
+        personnelWindow.focus();
+    }
+});
+
+ipcMain.on('open-duty-roster-window', () => {
+    if (!dutyRosterWindow) {
+        dutyRosterWindow = openWindow('dutyRoster.html', 'dutyRosterWindow', 1400, 900);
+    } else {
+        dutyRosterWindow.focus();
+    }
+});
+
+ipcMain.on('open-azubi-window', () => {
+    if (!azubiWindow) {
+        azubiWindow = openWindow('azubis.html', 'azubiWindow', 800, 600);
+    } else {
+        azubiWindow.focus();
+    }
+});
+
+ipcMain.on('open-itw-window', () => {
+    if (!itwWindow) {
+        itwWindow = openWindow('itw.html', 'itwWindow', 900, 700);
+    } else {
+        itwWindow.focus();
+    }
+});
+
+ipcMain.on('open-vehicles-window', () => {
+    if (!vehiclesWindow) {
+        vehiclesWindow = openWindow('vehicles.html', 'vehiclesWindow', 1000, 700);
+    } else {
+        vehiclesWindow.focus();
+    }
+});
+
+ipcMain.on('open-values-window', () => {
+    const win = openWindow('values.html', 'valuesWindow', 1000, 700);
+    try { win.focus(); } catch {}
+});
+
+// Add/Edit windows (Personen/Azubis/ITW/Fahrzeuge) + Confirm Delete
+ipcMain.on('open-add-person-window', () => {
+    openWindow('addPerson.html', 'addPersonWindow', 600, 480);
+});
+
+ipcMain.on('open-edit-person-window', (_ev, id: number) => {
+    openWindowWithQuery('editPerson.html', 'editPersonWindow', 620, 520, { id: String(id ?? '') });
+});
+
+ipcMain.on('open-confirm-delete-window', (_ev, id: number, type: string = 'person') => {
+    openWindowWithQuery('confirmDelete.html', 'confirmDeleteWindow', 500, 320, { id: String(id ?? ''), type: String(type ?? 'person') });
+});
+
+ipcMain.on('open-add-azubi-window', () => {
+    openWindow('azubiAdd.html', 'addAzubiWindow', 600, 420);
+});
+
+ipcMain.on('open-edit-azubi-window', (_ev, id: number) => {
+    openWindowWithQuery('editAzubi.html', 'editAzubiWindow', 620, 500, { id: String(id ?? '') });
+});
+
+ipcMain.on('open-add-itw-window', () => {
+    openWindow('addItw.html', 'addItwWindow', 600, 420);
+});
+
+ipcMain.on('open-edit-itw-window', (_ev, id: number) => {
+    openWindowWithQuery('editItw.html', 'editItwWindow', 620, 500, { id: String(id ?? '') });
+});
+
+ipcMain.on('open-add-rtw-window', () => {
+    openWindow('addRtw.html', 'addRtwWindow', 560, 360);
+});
+
+ipcMain.on('open-add-nef-window', () => {
+    openWindow('addNef.html', 'addNefWindow', 560, 360);
 });
 
 // App quit handler

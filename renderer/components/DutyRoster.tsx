@@ -177,13 +177,15 @@ const DutyRoster: React.FC = () => {
       if (Array.isArray(entries) && entries.length > 0) {
         console.log('[Renderer] sample entry[0]=', entries[0]);
       }
-      // ITW-Tage bestimmen: jedes Datum mit irgendeinem ITW-Slot (type wie 'itw_*')
+      // ITW-Tage bestimmen: jedes Datum, an dem mindestens ein ITW-Dienst eingetragen ist
       try {
         const itwSet = new Set<string>();
         (entries || []).forEach((e: any) => {
-          if (e && typeof e.type === 'string' && e.type.startsWith('itw_') && e.date) {
-            itwSet.add(String(e.date));
-          }
+          if (!e || !e.date) return;
+          const t = String(e.type || '');
+          const raw = String(e.value || '').trim();
+          if (t.startsWith('itw_')) itwSet.add(String(e.date));
+          else if (raw && (auswertungByType[raw] === 'itw')) itwSet.add(String(e.date));
         });
         setItwDates(itwSet);
       } catch {}
@@ -341,18 +343,12 @@ const DutyRoster: React.FC = () => {
     return (active && active.pattern) ? active.pattern : [];
   };
   const isIwDay = (i: number) => {
+    // NEU: Ein ITW-Tag ist jeder Tag, an dem mindestens eine Person einen ITW-Dienst eingeteilt ist.
     const day = days[i];
     if (!day) return false;
     const iso = day.iso;
-    if (!iso || holidays.has(iso)) return false;
-    const pattern = getActivePatternFor(iso);
-    // Offset relativ zum Startdatum berechnen
-    const startDateStr = (itwPatternSeqs && itwPatternSeqs.length > 0) ? (itwPatternSeqs.reduce((acc, s) => (s.startDate <= iso ? s : acc), itwPatternSeqs[0]).startDate) : '1970-01-01';
-    const start = new Date(startDateStr + 'T00:00:00Z');
-    const cur = new Date(iso + 'T00:00:00Z');
-    const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000*60*60*24));
-    const idx = ((diffDays % 21) + 21) % 21;
-    return pattern[idx] === 'IW';
+    if (!iso) return false;
+    return itwDates.has(iso);
   };
 
   // Import-Handler
@@ -433,13 +429,15 @@ const DutyRoster: React.FC = () => {
     if (Array.isArray(entries) && entries.length > 0) {
       console.log('[Renderer] reloadRoster sample entry[0]=', entries[0]);
     }
-    // ITW-Tage neu berechnen
+    // ITW-Tage neu berechnen (mind. ein ITW-Dienst am Tag)
     try {
       const itwSet = new Set<string>();
       (entries || []).forEach((e: any) => {
-        if (e && typeof e.type === 'string' && e.type.startsWith('itw_') && e.date) {
-          itwSet.add(String(e.date));
-        }
+        if (!e || !e.date) return;
+        const t = String(e.type || '');
+        const raw = String(e.value || '').trim();
+        if (t.startsWith('itw_')) itwSet.add(String(e.date));
+        else if (raw && (auswertungByType[raw] === 'itw')) itwSet.add(String(e.date));
       });
       setItwDates(itwSet);
     } catch {}
