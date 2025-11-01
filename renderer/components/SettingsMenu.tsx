@@ -57,6 +57,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   // Diagnostics UI
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [diagnostics, setDiagnostics] = useState<any>(null);
+  // DB path config UI
+  const [dbConfig, setDbConfig] = useState<{ currentPath: string|null, configuredDir: string|null, defaults?: { appDir: string, userDataDir: string } } | null>(null);
+  const [dbDirInput, setDbDirInput] = useState<string>('');
 
     useEffect(() => {
         (async () => {
@@ -121,6 +124,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       } catch {}
             setShiftTypesLoading(false);
             setLoading(false);
+            try {
+              const cfg = await (window as any).api.getDbConfig?.();
+              if (cfg?.success) {
+                setDbConfig({ currentPath: cfg.currentPath || null, configuredDir: cfg.configuredDir || null, defaults: cfg.defaults });
+                setDbDirInput((cfg.configuredDir || cfg.defaults?.appDir || ''));
+              }
+            } catch {}
         })();
     }, []);
 
@@ -303,6 +313,33 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                   }
                 }}>DB-Speicherort kopieren</button>
               ) : null}
+            </div>
+
+            {/* DB-Speicherort Konfiguration */}
+            <div style={{ marginTop: 16, borderTop: '1px solid #eee', paddingTop: 12 }}>
+              <h3>Datenbank-Speicherort</h3>
+              <div style={{ color: '#666', marginBottom: 8 }}>
+                Aktuell: <code>{dbConfig?.currentPath || 'unbekannt'}</code>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input type="text" value={dbDirInput} onChange={e => setDbDirInput(e.target.value)} placeholder={dbConfig?.defaults?.appDir || ''} style={{ flex: 1, minWidth: 320 }} />
+                <button onClick={async () => {
+                  const result = await (window as any).api.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
+                  if (!result?.canceled && Array.isArray(result?.filePaths) && result.filePaths.length > 0) {
+                    setDbDirInput(result.filePaths[0]);
+                  }
+                }}>Ordner wählen…</button>
+                <button onClick={async () => {
+                  if (!dbDirInput) { alert('Bitte einen Zielordner angeben.'); return; }
+                  const ok = window.confirm('Datenbank an neuen Speicherort übernehmen und Anwendung neu starten?');
+                  if (!ok) return;
+                  const res = await (window as any).api.setDbDir?.(dbDirInput);
+                  if (!res?.success) alert('Fehler: ' + (res?.message || 'Unbekannt'));
+                }} style={{ backgroundColor: '#0d6efd', color: 'white' }}>Übernehmen und neu starten</button>
+              </div>
+              <div style={{ marginTop: 6, color: '#777' }}>
+                Standard: <code>{dbConfig?.defaults?.appDir || '-'}</code> · Alternative: <code>{dbConfig?.defaults?.userDataDir || '-'}</code>
+              </div>
             </div>
             {/* Reihenfolge: Jahr / Rettungswache / Abteilung */}
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>

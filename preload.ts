@@ -136,6 +136,9 @@ contextBridge.exposeInMainWorld('api', {
     assignSlot: (entry: { personId: number, personType: string, date: string, slotType: string }) => ipcRenderer.invoke('assign-slot', entry),
     // Diagnostics
     getDiagnostics: () => ipcRenderer.invoke('get-diagnostics'),
+    // DB config
+    getDbConfig: () => ipcRenderer.invoke('get-db-config'),
+    setDbDir: (dir: string) => ipcRenderer.invoke('set-db-dir', dir),
 });
 
 // Ergänze für Electron Dialog API

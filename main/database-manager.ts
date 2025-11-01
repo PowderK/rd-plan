@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { AsyncDB, initializeDatabase as initSQLiteDatabase } from './database';
 
 export type DatabaseMode = 'sqlite' | 'central-sqlite';
@@ -444,27 +445,74 @@ export class DatabaseManager {
       // Use DB folder in the application root (portable builds or installed app)
       // Determine app root from the executable path and place DB in <appRoot>/DB/rd-plan.db
       try {
+        // 1) Optional: explicit override via env RD_PLAN_DB_DIR
+        const envDir = (process.env.RD_PLAN_DB_DIR || '').trim();
         const exePath = app.getPath ? app.getPath('exe') : process.execPath;
         const appRoot = path.dirname(exePath);
-        let dbDir = path.join(appRoot, 'DB');
-        // Ensure directory exists
-        try { fs.mkdirSync(dbDir, { recursive: true }); } catch {}
-        // Verify write access; if not writable (e.g., Program Files on Windows), fallback to userData
-        let canWrite = false;
-        try { fs.accessSync(dbDir, fs.constants.W_OK); canWrite = true; } catch { canWrite = false; }
-        attempts.push({ kind: 'appRoot', dir: dbDir, exists: true, canWrite });
-        // Optional: allow forcing portable via CLI/env
-        const forcePortable = (process.argv || []).includes('--portable') || String(process.env.RD_PLAN_FORCE_PORTABLE).toLowerCase() === 'true';
-        if (forcePortable && !canWrite) {
-          attempts.push({ kind: 'forcePortable', dir: dbDir, exists: true, canWrite, note: 'forced but no write access' });
-        }
-        if (!canWrite) {
-          const userDataPath = app.getPath('userData');
-          dbDir = path.join(userDataPath, 'DB');
+        const tmpDir = os.tmpdir ? os.tmpdir() : '';
+        const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase();
+        const isLikelyTemp = (!!tmpDir && norm(appRoot).startsWith(norm(tmpDir))) || norm(appRoot).includes('/appdata/local/temp/');
+        // 0) User config in userData/db-config.json
+        let cfgDbDir = '';
+        try {
+          const cfgPath = path.join(app.getPath('userData'), 'db-config.json');
+          if (fs.existsSync(cfgPath)) {
+            const raw = fs.readFileSync(cfgPath, 'utf-8');
+            const json = JSON.parse(raw || '{}');
+            if (json && typeof json.dbDir === 'string' && json.dbDir.trim()) {
+              cfgDbDir = String(json.dbDir).trim();
+              // Validate
+              try { fs.mkdirSync(cfgDbDir, { recursive: true }); } catch {}
+              let can = false; try { fs.accessSync(cfgDbDir, fs.constants.W_OK); can = true; } catch {}
+              attempts.push({ kind: 'userConfig', dir: cfgDbDir, exists: true, canWrite: can, note: 'db-config.json' });
+              if (!can) cfgDbDir = '';
+            }
+          }
+        } catch {}
+
+        let dbDir = '';
+        if (cfgDbDir) {
+          dbDir = cfgDbDir;
+        } else if (envDir) {
+          dbDir = envDir;
           try { fs.mkdirSync(dbDir, { recursive: true }); } catch {}
-          let canWriteUser = false;
-          try { fs.accessSync(dbDir, fs.constants.W_OK); canWriteUser = true; } catch { canWriteUser = false; }
-          attempts.push({ kind: 'userData', dir: dbDir, exists: true, canWrite: canWriteUser, note: 'fallback from appRoot' });
+          let canWriteEnv = false;
+          try { fs.accessSync(dbDir, fs.constants.W_OK); canWriteEnv = true; } catch { canWriteEnv = false; }
+          attempts.push({ kind: 'env', dir: dbDir, exists: true, canWrite: canWriteEnv, note: 'RD_PLAN_DB_DIR' });
+          if (!canWriteEnv) {
+            // If explicit env is not writable, fall back later
+            dbDir = '';
+          }
+        }
+
+        if (!dbDir) {
+          dbDir = path.join(appRoot, 'DB');
+          // Ensure directory exists
+          try { fs.mkdirSync(dbDir, { recursive: true }); } catch {}
+          // Verify write access; if not writable (e.g., Program Files on Windows) OR appRoot looks temp, fallback to userData
+          let canWrite = false;
+          try { fs.accessSync(dbDir, fs.constants.W_OK); canWrite = true; } catch { canWrite = false; }
+          if (isLikelyTemp) {
+            attempts.push({ kind: 'appRoot', dir: dbDir, exists: true, canWrite, note: 'appRoot looks like temp, avoid portable here' });
+            canWrite = false; // force fallback when in temp
+          } else {
+            attempts.push({ kind: 'appRoot', dir: dbDir, exists: true, canWrite });
+          }
+          // Optional: allow forcing portable via CLI/env
+          const forcePortable = (process.argv || []).includes('--portable') || String(process.env.RD_PLAN_FORCE_PORTABLE).toLowerCase() === 'true';
+          if (forcePortable && !canWrite && !isLikelyTemp) {
+            attempts.push({ kind: 'forcePortable', dir: dbDir, exists: true, canWrite, note: 'forced but no write access' });
+          }
+          if (!canWrite) {
+            const userDataPath = app.getPath('userData');
+            dbDir = path.join(userDataPath, 'DB');
+            try { fs.mkdirSync(dbDir, { recursive: true }); } catch {}
+            let canWriteUser = false;
+            try { fs.accessSync(dbDir, fs.constants.W_OK); canWriteUser = true; } catch { canWriteUser = false; }
+            attempts.push({ kind: 'userData', dir: dbDir, exists: true, canWrite: canWriteUser, note: isLikelyTemp ? 'fallback because appRoot is temp' : 'fallback from appRoot' });
+          }
+        } else {
+          // envDir chosen
         }
         dbPath = path.join(dbDir, 'rd-plan.db');
         console.log('[DatabaseManager] Using local SQLite database at:', dbPath);

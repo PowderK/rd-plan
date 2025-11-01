@@ -688,6 +688,74 @@ ipcMain.handle('get-diagnostics', async () => {
     }
 });
 
+// DB directory config: get and set
+ipcMain.handle('get-db-config', async () => {
+    try {
+        const mgr = getDatabaseManager();
+        const diag = mgr.getDiagnostics?.() || {};
+        const userData = app.getPath('userData');
+        const cfgPath = path.join(userData, 'db-config.json');
+        let configuredDir: string | null = null;
+        try {
+            if (fs.existsSync(cfgPath)) {
+                const raw = fs.readFileSync(cfgPath, 'utf-8');
+                const json = JSON.parse(raw || '{}');
+                if (json && typeof json.dbDir === 'string' && json.dbDir.trim()) configuredDir = json.dbDir.trim();
+            }
+        } catch {}
+        const exePath = app.getPath('exe');
+        const appRoot = path.dirname(exePath);
+        const defaultAppDir = path.join(appRoot, 'DB');
+        const defaultUserDataDir = path.join(userData, 'DB');
+        return {
+            success: true,
+            currentPath: diag?.chosenDbPath || null,
+            configuredDir,
+            defaults: {
+                appDir: defaultAppDir,
+                userDataDir: defaultUserDataDir,
+            },
+            attempts: diag?.attempts || [],
+        };
+    } catch (e: any) {
+        return { success: false, message: e?.message || String(e) };
+    }
+});
+
+ipcMain.handle('set-db-dir', async (_event, targetDir: string) => {
+    try {
+        if (!targetDir || typeof targetDir !== 'string') throw new Error('Ungültiges Zielverzeichnis');
+        const userData = app.getPath('userData');
+        const cfgPath = path.join(userData, 'db-config.json');
+        // ensure dir exists
+        try { fs.mkdirSync(targetDir, { recursive: true }); } catch {}
+        try { fs.accessSync(targetDir, fs.constants.W_OK); } catch { throw new Error('Kein Schreibzugriff auf das Zielverzeichnis'); }
+        // copy current DB if exists
+        let src: string | null = null;
+        try {
+            const mgr = getDatabaseManager();
+            const diag = mgr.getDiagnostics?.() || {};
+            if (diag?.chosenDbPath && fs.existsSync(diag.chosenDbPath)) src = String(diag.chosenDbPath);
+        } catch {}
+        if (src) {
+            const dest = path.join(targetDir, 'rd-plan.db');
+            try { fs.copyFileSync(src, dest); } catch (e) { console.warn('[Main] copy DB failed', e); }
+        }
+        // write config
+        try {
+            fs.writeFileSync(cfgPath, JSON.stringify({ dbDir: targetDir }, null, 2), 'utf-8');
+        } catch (e) {
+            throw new Error('Konfiguration konnte nicht geschrieben werden');
+        }
+        // relaunch app
+        app.relaunch();
+        app.exit(0);
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, message: e?.message || String(e) };
+    }
+});
+
 // Window management functions
 function openWindow(htmlFile: string, windowVar: string, width = 800, height = 600) {
     const win = new BrowserWindow({

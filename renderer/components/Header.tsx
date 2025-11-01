@@ -1,4 +1,11 @@
 import React from 'react';
+// Inline das Header-Bild, damit es im Paket nicht als separate Asset-Datei fehlen kann
+// Vite '?inline' erzwingt Base64-Einbettung ins Bundle
+// Pfad relativ zu dieser Datei: ../../../media/Header.png
+// Hinweis: Bei sehr großen Dateien steigt die Bundle-Größe, aber Zuverlässigkeit geht vor
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+import headerPngDataUrl from '../../../media/Header.png?inline';
 
 type HeaderProps = {
   currentMonth?: string; // not displayed anymore
@@ -38,7 +45,7 @@ const Header: React.FC<HeaderProps> = ({ rescueStation, department, year }) => {
           width: 'min(1400px, 98vw)',
           margin: '0 auto',
           height: 'clamp(56px, 6.5vw, 90px)',
-          backgroundImage: `url(${new URL('../../../media/Header.png', import.meta.url).href})`,
+          backgroundImage: `url(${headerPngDataUrl})`,
           backgroundRepeat: 'no-repeat',
           backgroundSize: '100% 100%',
           backgroundPosition: 'left top'
