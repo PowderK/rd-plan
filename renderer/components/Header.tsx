@@ -5,7 +5,7 @@ import React from 'react';
 // Hinweis: Bei sehr großen Dateien steigt die Bundle-Größe, aber Zuverlässigkeit geht vor
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import headerPngDataUrl from '../../media/Header.png?inline';
+import headerPngUrl from '../../media/Header.png?url';
 
 type HeaderProps = {
   currentMonth?: string; // not displayed anymore
@@ -17,6 +17,8 @@ type HeaderProps = {
 
 const Header: React.FC<HeaderProps> = ({ rescueStation, department, year }) => {
   const [isDark, setIsDark] = React.useState(false);
+  const [imgError, setImgError] = React.useState<null | string>(null);
+  const [imgLoaded, setImgLoaded] = React.useState(false);
   const toggleTheme = () => {
     const root = document.documentElement;
     const nextIsDark = !(root.getAttribute('data-theme') === 'dark');
@@ -31,6 +33,9 @@ const Header: React.FC<HeaderProps> = ({ rescueStation, department, year }) => {
       const t = localStorage.getItem('rdplan.theme');
       if (t === 'dark') { document.documentElement.setAttribute('data-theme', 'dark'); setIsDark(true); }
       else { document.documentElement.removeAttribute('data-theme'); setIsDark(false); }
+    } catch {}
+    try {
+      console.log('[Header] img src preview:', (headerPngUrl && typeof headerPngUrl === 'string') ? headerPngUrl.slice(0, 128) : String(headerPngUrl));
     } catch {}
   }, []);
 
@@ -47,12 +52,35 @@ const Header: React.FC<HeaderProps> = ({ rescueStation, department, year }) => {
           width: 'min(1400px, 98vw)',
           margin: '0 auto',
           height: 'clamp(56px, 6.5vw, 90px)',
-          backgroundImage: `url(${headerPngDataUrl})`,
-          backgroundRepeat: 'no-repeat',
-          backgroundSize: '100% 100%',
-          backgroundPosition: 'left top'
+          overflow: 'hidden',
+          // dezentes Fallback-Gradient, falls das Bild nicht geladen werden kann
+          background: imgError ? 'linear-gradient(90deg, #0ea5e9 0%, #0369a1 100%)' : undefined
         }}
       >
+        {/* Bild als echtes <img>, absolut positioniert, damit es in allen Umgebungen sicher gerendert wird */}
+        <img
+          src={headerPngUrl}
+          alt="Header"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'fill',
+            pointerEvents: 'none',
+            userSelect: 'none',
+            display: imgError ? 'none' : 'block'
+          }}
+          onLoad={() => {
+            setImgLoaded(true);
+            try { console.log('[Header] img loaded ok'); } catch {}
+          }}
+          onError={(e) => {
+            const src = (e?.currentTarget as HTMLImageElement)?.src;
+            setImgError(src || 'unknown');
+            try { console.warn('[Header] img failed to load:', src); } catch {}
+          }}
+        />
         {/* Overlay-Inhalt innerhalb des Banners */}
         <div
           style={{
