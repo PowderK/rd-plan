@@ -408,6 +408,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                 }}
               >Jahr importieren</button>
               <button
+                onClick={() => setShowSettingsImportExport(true)}
+              >Einstellungen importieren/exportieren…</button>
+              <button
                 onClick={async () => {
                   try {
                     if (!rosterImportPath) {
@@ -813,7 +816,18 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                             <tr key={ln} className={styles.row}>
                               <td>{ln}</td>
                               <td>
-                                <select value={current ?? ''} onChange={e => setNameMappings(prev => ({ ...prev, [ln]: Number(e.target.value) || undefined }))}>
+                                <select value={current ?? ''} onChange={e => setNameMappings(prev => {
+                                  const next = { ...prev } as Record<string, number>;
+                                  const raw = e.target.value;
+                                  const num = Number(raw);
+                                  if (!raw) {
+                                    // Entfernen, wenn (Überspringen)
+                                    delete (next as any)[ln];
+                                  } else if (!Number.isNaN(num)) {
+                                    next[ln] = num;
+                                  }
+                                  return next;
+                                })}>
                                   {candidates.map(c => (
                                     <option key={c.id} value={c.id}>{c.label} · d={c.dist}</option>
                                   ))}

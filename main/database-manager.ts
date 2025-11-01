@@ -1,5 +1,6 @@
 import { app } from 'electron';
 import path from 'path';
+import fs from 'fs';
 import { AsyncDB, initializeDatabase as initSQLiteDatabase } from './database';
 
 export type DatabaseMode = 'sqlite' | 'central-sqlite';
@@ -428,6 +429,8 @@ export class DatabaseManager {
     if (this.config.mode === 'central-sqlite' && this.config.centralPath) {
       // Use central path for multi-user scenarios
       dbPath = this.config.centralPath;
+      // Ensure target directory exists (especially on Windows)
+      try { fs.mkdirSync(path.dirname(dbPath), { recursive: true }); } catch {}
       console.log('[DatabaseManager] Using central SQLite database at:', dbPath);
     } else {
       // Use DB folder in the application root (portable builds or installed app)
@@ -435,15 +438,25 @@ export class DatabaseManager {
       try {
         const exePath = app.getPath ? app.getPath('exe') : process.execPath;
         const appRoot = path.dirname(exePath);
-        const dbDir = path.join(appRoot, 'DB');
+        let dbDir = path.join(appRoot, 'DB');
         // Ensure directory exists
-        try { require('fs').mkdirSync(dbDir, { recursive: true }); } catch (e) { /* ignore */ }
+        try { fs.mkdirSync(dbDir, { recursive: true }); } catch {}
+        // Verify write access; if not writable (e.g., Program Files on Windows), fallback to userData
+        let canWrite = false;
+        try { fs.accessSync(dbDir, fs.constants.W_OK); canWrite = true; } catch { canWrite = false; }
+        if (!canWrite) {
+          const userDataPath = app.getPath('userData');
+          dbDir = path.join(userDataPath, 'DB');
+          try { fs.mkdirSync(dbDir, { recursive: true }); } catch {}
+        }
         dbPath = path.join(dbDir, 'rd-plan.db');
-        console.log('[DatabaseManager] Using local SQLite database at (app root DB):', dbPath);
+        console.log('[DatabaseManager] Using local SQLite database at:', dbPath);
       } catch (e) {
         // Fallback to userData if any error occurs
         const userDataPath = app.getPath('userData');
-        dbPath = path.join(userDataPath, 'rd-plan.db');
+        const dbDir = path.join(userDataPath, 'DB');
+        try { fs.mkdirSync(dbDir, { recursive: true }); } catch {}
+        dbPath = path.join(dbDir, 'rd-plan.db');
         console.log('[DatabaseManager] Fallback: Using local SQLite database at userData:', dbPath);
       }
     }
