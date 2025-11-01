@@ -330,10 +330,22 @@ export class DatabaseManager {
       dbPath = this.config.centralPath;
       console.log('[DatabaseManager] Using central SQLite database at:', dbPath);
     } else {
-      // Use local user data path
-      const userDataPath = app.getPath('userData');
-      dbPath = path.join(userDataPath, 'rd-plan.db');
-      console.log('[DatabaseManager] Using local SQLite database at:', dbPath);
+      // Use DB folder in the application root (portable builds or installed app)
+      // Determine app root from the executable path and place DB in <appRoot>/DB/rd-plan.db
+      try {
+        const exePath = app.getPath ? app.getPath('exe') : process.execPath;
+        const appRoot = path.dirname(exePath);
+        const dbDir = path.join(appRoot, 'DB');
+        // Ensure directory exists
+        try { require('fs').mkdirSync(dbDir, { recursive: true }); } catch (e) { /* ignore */ }
+        dbPath = path.join(dbDir, 'rd-plan.db');
+        console.log('[DatabaseManager] Using local SQLite database at (app root DB):', dbPath);
+      } catch (e) {
+        // Fallback to userData if any error occurs
+        const userDataPath = app.getPath('userData');
+        dbPath = path.join(userDataPath, 'rd-plan.db');
+        console.log('[DatabaseManager] Fallback: Using local SQLite database at userData:', dbPath);
+      }
     }
     
     const db = await this.initializeSQLiteWithPath(dbPath);

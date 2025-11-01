@@ -1,5 +1,6 @@
 import BetterSqlite3 from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 import { app } from 'electron';
  
 type AsyncStatement = {
@@ -18,9 +19,13 @@ export type AsyncDB = {
 };
 
 export const initializeDatabase = async (): Promise<AsyncDB> => {
-    // Use Electron's userData folder to store the DB so the path is stable
-    const userDataPath = app.getPath ? app.getPath('userData') : process.cwd();
-    const dbFile = path.join(userDataPath, 'rd-plan.db');
+    // Store the database in the application root under a `DB/` subfolder.
+    // Use the executable path to find the app root (works for portable builds).
+    const exePath = app.getPath ? app.getPath('exe') : process.execPath;
+    const appRoot = path.dirname(exePath);
+    const dbDir = path.join(appRoot, 'DB');
+    try { fs.mkdirSync(dbDir, { recursive: true }); } catch (e) { /* ignore */ }
+    const dbFile = path.join(dbDir, 'rd-plan.db');
     console.log('[DB] initializeDatabase using DB file:', dbFile);
     const raw = new BetterSqlite3(dbFile);
     const db: AsyncDB = {
