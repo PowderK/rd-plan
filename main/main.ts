@@ -688,6 +688,9 @@ ipcMain.handle('get-diagnostics', async () => {
     }
 });
 
+// Header background: set from file (store as data URL in settings)
+// (Entfernt) Header-Hintergrund-Auswahl – Header ist fest eingebettet
+
 // DB directory config: get and set
 ipcMain.handle('get-db-config', async () => {
     try {
@@ -947,7 +950,9 @@ app.whenReady().then(async () => {
     // the Electron insecure-CSP warning. We set a reasonably strict policy
     // keeping 'unsafe-inline' for styles because some renderer pages rely on it.
     try {
-        const csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';";
+        // Allow inline styles and data: images (for inline header image)
+        // Keep scripts restricted to 'self'
+        const csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;";
         session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
             const responseHeaders = details.responseHeaders || {};
             // Overwrite or set CSP header

@@ -341,6 +341,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                 Standard: <code>{dbConfig?.defaults?.appDir || '-'}</code> · Alternative: <code>{dbConfig?.defaults?.userDataDir || '-'}</code>
               </div>
             </div>
+
             {/* Reihenfolge: Jahr / Rettungswache / Abteilung */}
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
               <label>

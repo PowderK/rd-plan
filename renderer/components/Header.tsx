@@ -5,7 +5,7 @@ import React from 'react';
 // Hinweis: Bei sehr großen Dateien steigt die Bundle-Größe, aber Zuverlässigkeit geht vor
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import headerPngDataUrl from '../../../media/Header.png?inline';
+import headerPngDataUrl from '../../media/Header.png?inline';
 
 type HeaderProps = {
   currentMonth?: string; // not displayed anymore
@@ -33,6 +33,8 @@ const Header: React.FC<HeaderProps> = ({ rescueStation, department, year }) => {
       else { document.documentElement.removeAttribute('data-theme'); setIsDark(false); }
     } catch {}
   }, []);
+
+  // Kein benutzerdefiniertes Bild – fester Header
 
   return (
     <header style={{ position: 'sticky', top: 0, zIndex: 10 }}>
