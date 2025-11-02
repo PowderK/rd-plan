@@ -27,7 +27,15 @@
 
   async function chooseDir(){
     try {
-      const res = await (window.api?.showOpenDialog?.({ properties: ['openDirectory', 'createDirectory'] }) || Promise.resolve(null));
+      let res = null;
+      if (window.api?.showOpenDialog) {
+        res = await window.api.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
+      } else if (window.electronAPI?.invoke) {
+        // Fallback auf generische Bridge
+        res = await window.electronAPI.invoke('show-open-dialog', { properties: ['openDirectory', 'createDirectory'] });
+      } else {
+        throw new Error('Dialog-Bridge nicht verfügbar (api.showOpenDialog / electronAPI.invoke)');
+      }
       if (res && !res.canceled && Array.isArray(res.filePaths) && res.filePaths[0]) {
         const input = $('#dir');
         if (input) input.value = res.filePaths[0];
@@ -78,6 +86,9 @@
   }
 
   window.addEventListener('DOMContentLoaded', () => {
+    if (!window.api) {
+      setStatus('<span class="err">Fehler: Preload-Bridge nicht verfügbar. Bitte die App neu starten.</span>');
+    }
     $('#choose')?.addEventListener('click', chooseDir);
     $('#test')?.addEventListener('click', testDir);
     $('#save')?.addEventListener('click', saveAndRelaunch);
