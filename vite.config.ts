@@ -11,6 +11,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'renderer/index.html'),
+        setup: resolve(__dirname, 'renderer/setup.html'),
         settings: resolve(__dirname, 'renderer/settings.html'),
         personnel: resolve(__dirname, 'renderer/personnel.html'),
         addPerson: resolve(__dirname, 'renderer/addPerson.html'),

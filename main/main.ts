@@ -17,6 +17,40 @@ let vehiclesWindow: BrowserWindow | null = null;
 let addRtwWindow: BrowserWindow | null = null;
 let addNefWindow: BrowserWindow | null = null;
 
+// --- Setup helpers ---
+function getDbConfigPath() {
+    const userData = app.getPath('userData');
+    return path.join(userData, 'db-config.json');
+}
+
+function hasDbConfig(): boolean {
+    try { return fs.existsSync(getDbConfigPath()); } catch { return false; }
+}
+
+function suggestDefaultDbDir(): string {
+    const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
+    if (portableDir && portableDir.trim()) return path.join(portableDir, 'DB');
+    const exeDir = path.dirname(app.getPath('exe'));
+    return path.join(exeDir, 'DB');
+}
+
+let setupWindow: BrowserWindow | null = null;
+function openSetupWizard() {
+    setupWindow = new BrowserWindow({
+        width: 720,
+        height: 500,
+        resizable: false,
+        webPreferences: {
+            preload: path.join(__dirname, '../preload.js'),
+            nodeIntegration: false,
+            contextIsolation: true
+        }
+    });
+    const filePath = path.join(__dirname, '../renderer/setup.html');
+    setupWindow.loadFile(filePath);
+    setupWindow.on('closed', () => { setupWindow = null; });
+}
+
 // Helper function to ensure database is initialized
 async function ensureDatabaseAdapter(): Promise<DatabaseAdapter> {
     if (!databaseAdapter) {
@@ -477,6 +511,44 @@ ipcMain.handle('show-save-dialog', async (_event, options: any) => {
     return result;
 });
 
+// Setup IPCs
+ipcMain.handle('get-setup-defaults', async () => {
+    const defaults = {
+        suggestedDir: suggestDefaultDbDir(),
+        userDataDir: path.join(app.getPath('userData'), 'DB'),
+        portableDir: process.env.PORTABLE_EXECUTABLE_DIR || null,
+    };
+    return { success: true, defaults };
+});
+
+ipcMain.handle('test-dir-writable', async (_e, dir: string) => {
+    try {
+        if (!dir || typeof dir !== 'string') throw new Error('Ungültiger Pfad');
+        fs.mkdirSync(dir, { recursive: true });
+        const probe = path.join(dir, '.rd-plan-write-test.tmp');
+        fs.writeFileSync(probe, 'ok');
+        fs.unlinkSync(probe);
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, message: e?.message || String(e) };
+    }
+});
+
+ipcMain.handle('finalize-setup', async (_e, dir: string) => {
+    try {
+        if (!dir || typeof dir !== 'string' || !dir.trim()) throw new Error('Kein Zielordner gewählt');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.accessSync(dir, fs.constants.W_OK);
+        const cfgPath = getDbConfigPath();
+        fs.writeFileSync(cfgPath, JSON.stringify({ dbDir: dir }, null, 2), 'utf-8');
+        app.relaunch();
+        app.exit(0);
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, message: e?.message || String(e) };
+    }
+});
+
 // Message box handler (native Confirm/Info/Warning dialogs)
 ipcMain.handle('show-message-box', async (_event, options: Electron.MessageBoxOptions) => {
     const result = await dialog.showMessageBox(options);
@@ -659,6 +731,7 @@ ipcMain.handle('get-diagnostics', async () => {
         const dbDiag = mgr.getDiagnostics?.() || {};
         const rendererDir = path.join(__dirname, '../renderer');
         const assetsDir = path.join(rendererDir, 'assets');
+        const portableDir = process.env.PORTABLE_EXECUTABLE_DIR || null;
         let headerPngs: Array<{ file: string; absPath: string; size?: number }> = [];
         try {
             const files = fs.readdirSync(assetsDir).filter(f => /^Header-.*\.png$/i.test(f));
@@ -678,6 +751,7 @@ ipcMain.handle('get-diagnostics', async () => {
                 __dirname,
                 rendererDir,
                 assetsDir,
+                portableDir,
             },
             assets: {
                 headerPngs
@@ -706,8 +780,9 @@ ipcMain.handle('get-db-config', async () => {
                 if (json && typeof json.dbDir === 'string' && json.dbDir.trim()) configuredDir = json.dbDir.trim();
             }
         } catch {}
+        const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
         const exePath = app.getPath('exe');
-        const appRoot = path.dirname(exePath);
+        const appRoot = (portableDir && portableDir.trim()) ? portableDir : path.dirname(exePath);
         const defaultAppDir = path.join(appRoot, 'DB');
         const defaultUserDataDir = path.join(userData, 'DB');
         return {
@@ -719,6 +794,7 @@ ipcMain.handle('get-db-config', async () => {
                 userDataDir: defaultUserDataDir,
             },
             attempts: diag?.attempts || [],
+            env: { portableDir: portableDir || null },
         };
     } catch (e: any) {
         return { success: false, message: e?.message || String(e) };
@@ -961,6 +1037,12 @@ app.whenReady().then(async () => {
         });
     } catch (e) {
         console.warn('[Main] Failed to register CSP header handler', e);
+    }
+
+    // Wenn noch keine DB-Konfiguration vorhanden ist, starte den Setup-Assistenten
+    if (!hasDbConfig()) {
+        openSetupWizard();
+        return;
     }
 
     await createWindow();

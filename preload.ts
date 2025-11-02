@@ -139,6 +139,10 @@ contextBridge.exposeInMainWorld('api', {
     // DB config
     getDbConfig: () => ipcRenderer.invoke('get-db-config'),
     setDbDir: (dir: string) => ipcRenderer.invoke('set-db-dir', dir),
+    // Setup wizard
+    getSetupDefaults: () => ipcRenderer.invoke('get-setup-defaults'),
+    testDirWritable: (dir: string) => ipcRenderer.invoke('test-dir-writable', dir),
+    finalizeSetup: (dir: string) => ipcRenderer.invoke('finalize-setup', dir),
 });
 
 // Ergänze für Electron Dialog API

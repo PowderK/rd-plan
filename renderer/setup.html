@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>RD-Plan – Ersteinrichtung</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; }
+    h1 { font-size: 20px; margin-bottom: 8px; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    input[type="text"] { width: 480px; padding: 6px; }
+    button { padding: 6px 10px; }
+    .hint { color: #555; font-size: 12px; margin-top: 8px; }
+    .ok { color: #0a7f2e; }
+    .err { color: #b00020; }
+  </style>
+</head>
+<body>
+  <h1>Ersteinrichtung</h1>
+  <p>Bitte wählen Sie den Speicherort für die Datenbank (z. B. Netzlaufwerk). Sie können dies später in den Einstellungen ändern.</p>
+
+  <div class="row">
+    <input id="dir" type="text" placeholder="\\\\SERVER\\Freigabe\\RD-Plan\\DB oder Y:\\RD-Plan\\DB" />
+    <button id="choose">Ordner wählen…</button>
+    <button id="test">Prüfen</button>
+  </div>
+  <div id="defaults" class="hint"></div>
+  <div id="status" class="hint"></div>
+
+  <div style="margin-top:16px">
+    <button id="save" disabled>Übernehmen und neu starten</button>
+  </div>
+
+  <script>
+    const $ = (s)=>document.querySelector(s);
+    async function init() {
+      try {
+        const res = await window.api.getSetupDefaults();
+        if (res?.success) {
+          const def = res.defaults;
+          $('#defaults').textContent = `Vorschlag: ${def.suggestedDir}  •  Alternative: ${def.userDataDir}`;
+          $('#dir').value = def.suggestedDir || '';
+        }
+      } catch {}
+    }
+    $('#choose').addEventListener('click', async () => {
+      const res = await window.api.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
+      if (res && !res.canceled && res.filePaths && res.filePaths[0]) {
+        $('#dir').value = res.filePaths[0];
+      }
+    });
+    $('#test').addEventListener('click', async () => {
+      $('#status').textContent = 'Prüfe Schreibrechte…';
+      const dir = $('#dir').value.trim();
+      const res = await window.api.testDirWritable(dir);
+      if (res?.success) {
+        $('#status').innerHTML = `<span class="ok">OK: Schreibzugriff möglich.</span>`;
+        $('#save').disabled = false;
+      } else {
+        $('#status').innerHTML = `<span class="err">Fehler: ${res?.message || 'Unbekannt'}</span>`;
+        $('#save').disabled = true;
+      }
+    });
+    $('#save').addEventListener('click', async () => {
+      const dir = $('#dir').value.trim();
+      const res = await window.api.finalizeSetup(dir);
+      if (!res?.success) {
+        $('#status').innerHTML = `<span class="err">Speichern fehlgeschlagen: ${res?.message || 'Unbekannt'}</span>`;
+      }
+    });
+    init();
+  </script>
+</body>
+</html>

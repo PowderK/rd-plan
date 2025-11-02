@@ -452,6 +452,7 @@ export class DatabaseManager {
         const tmpDir = os.tmpdir ? os.tmpdir() : '';
         const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase();
         const isLikelyTemp = (!!tmpDir && norm(appRoot).startsWith(norm(tmpDir))) || norm(appRoot).includes('/appdata/local/temp/');
+        const portableDir = (process.env.PORTABLE_EXECUTABLE_DIR || '').trim();
         // 0) User config in userData/db-config.json
         let cfgDbDir = '';
         try {
@@ -483,6 +484,15 @@ export class DatabaseManager {
             // If explicit env is not writable, fall back later
             dbDir = '';
           }
+        }
+
+        if (!dbDir && portableDir) {
+          const pdir = path.join(portableDir, 'DB');
+          try { fs.mkdirSync(pdir, { recursive: true }); } catch {}
+          let canPortable = false;
+          try { fs.accessSync(pdir, fs.constants.W_OK); canPortable = true; } catch { canPortable = false; }
+          attempts.push({ kind: 'portableDir', dir: pdir, exists: true, canWrite: canPortable, note: 'PORTABLE_EXECUTABLE_DIR' });
+          if (canPortable) dbDir = pdir;
         }
 
         if (!dbDir) {
@@ -543,6 +553,7 @@ export class DatabaseManager {
         centralPath: this.config.centralPath || null,
         exePath,
         appRoot,
+        portableDir: process.env.PORTABLE_EXECUTABLE_DIR || null,
         userData: app.getPath('userData'),
         attempts,
         chosenDbPath: dbPath,
