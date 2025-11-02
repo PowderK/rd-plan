@@ -524,7 +524,8 @@ ipcMain.handle('create-personnel-template', async (_event, filePath: string) => 
 
 // File dialog handlers
 ipcMain.handle('show-open-dialog', async (_event, options: any) => {
-    const result = await dialog.showOpenDialog(options);
+    const parent = BrowserWindow.getFocusedWindow() || (setupWindow ?? undefined) || undefined;
+    const result = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options);
     return result;
 });
 
