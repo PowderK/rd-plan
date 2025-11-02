@@ -3,22 +3,26 @@
     "target": "ES2020",
     "module": "commonjs",
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "moduleResolution": "node",
-    "jsx": "react",
+    "jsx": "react-jsx",
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
     "types": [
       "node"
     ]
   },
   "include": [
-    "src/main/**/*",
-    "src/preload.ts"
+    "main/**/*.ts",
+    "preload.ts",
+    "renderer/**/*.ts",
+    "renderer/**/*.tsx",
+    "renderer/**/*.d.ts"
   ],
   "exclude": [
     "node_modules",
-    "dist",
-    "src/renderer"
+    "dist"
   ]
 }

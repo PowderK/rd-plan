@@ -1,3 +1,4 @@
+/// <reference path="../types/cssmodule.d.ts" />
 import React, { useState, useEffect } from 'react';
 import ImportYearTable from './ImportYearTable';
 import SettingsImportExport from './SettingsImportExport';
