@@ -23,6 +23,28 @@ function getDbConfigPath() {
     return path.join(userData, 'db-config.json');
 }
 
+function getGlobalDbConfigPath(): string | null {
+    try {
+        const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
+        const baseDir = (portableDir && portableDir.trim()) ? portableDir : path.dirname(app.getPath('exe'));
+        const p = path.join(baseDir, 'db-config.json');
+        return fs.existsSync(p) ? p : null;
+    } catch {
+        return null;
+    }
+}
+
+function readDbDirFromConfigFile(cfgPath: string): string | null {
+    try {
+        const raw = fs.readFileSync(cfgPath, 'utf-8');
+        const json = JSON.parse(raw || '{}');
+        const dir = (json && typeof json.dbDir === 'string') ? json.dbDir.trim() : '';
+        return dir || null;
+    } catch {
+        return null;
+    }
+}
+
 function hasDbConfig(): boolean {
     try { return fs.existsSync(getDbConfigPath()); } catch { return false; }
 }
@@ -513,8 +535,10 @@ ipcMain.handle('show-save-dialog', async (_event, options: any) => {
 
 // Setup IPCs
 ipcMain.handle('get-setup-defaults', async () => {
+    const globalCfg = getGlobalDbConfigPath();
+    const globalDir = globalCfg ? readDbDirFromConfigFile(globalCfg) : null;
     const defaults = {
-        suggestedDir: suggestDefaultDbDir(),
+        suggestedDir: globalDir || suggestDefaultDbDir(),
         userDataDir: path.join(app.getPath('userData'), 'DB'),
         portableDir: process.env.PORTABLE_EXECUTABLE_DIR || null,
     };
@@ -1039,10 +1063,27 @@ app.whenReady().then(async () => {
         console.warn('[Main] Failed to register CSP header handler', e);
     }
 
-    // Wenn noch keine DB-Konfiguration vorhanden ist, starte den Setup-Assistenten
+    // Wenn noch keine DB-Konfiguration vorhanden ist, versuche globale Vorgabe zu übernehmen – sonst Setup-Assistent starten
     if (!hasDbConfig()) {
-        openSetupWizard();
-        return;
+        let adopted = false;
+        try {
+            const globalCfgPath = getGlobalDbConfigPath();
+            if (globalCfgPath) {
+                const dir = readDbDirFromConfigFile(globalCfgPath);
+                if (dir) {
+                    const userCfgPath = getDbConfigPath();
+                    fs.mkdirSync(path.dirname(userCfgPath), { recursive: true });
+                    fs.writeFileSync(userCfgPath, JSON.stringify({ dbDir: dir }, null, 2), 'utf-8');
+                    adopted = true;
+                }
+            }
+        } catch (e) {
+            console.warn('[Main] Konnte globale db-config nicht übernehmen:', e);
+        }
+        if (!adopted) {
+            openSetupWizard();
+            return;
+        }
     }
 
     await createWindow();
