@@ -30,45 +30,6 @@
   <div style="margin-top:16px">
     <button id="save" disabled>Übernehmen und neu starten</button>
   </div>
-
-  <script>
-    const $ = (s)=>document.querySelector(s);
-    async function init() {
-      try {
-        const res = await window.api.getSetupDefaults();
-        if (res?.success) {
-          const def = res.defaults;
-          $('#defaults').textContent = `Vorschlag: ${def.suggestedDir}  •  Alternative: ${def.userDataDir}`;
-          $('#dir').value = def.suggestedDir || '';
-        }
-      } catch {}
-    }
-    $('#choose').addEventListener('click', async () => {
-      const res = await window.api.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
-      if (res && !res.canceled && res.filePaths && res.filePaths[0]) {
-        $('#dir').value = res.filePaths[0];
-      }
-    });
-    $('#test').addEventListener('click', async () => {
-      $('#status').textContent = 'Prüfe Schreibrechte…';
-      const dir = $('#dir').value.trim();
-      const res = await window.api.testDirWritable(dir);
-      if (res?.success) {
-        $('#status').innerHTML = `<span class="ok">OK: Schreibzugriff möglich.</span>`;
-        $('#save').disabled = false;
-      } else {
-        $('#status').innerHTML = `<span class="err">Fehler: ${res?.message || 'Unbekannt'}</span>`;
-        $('#save').disabled = true;
-      }
-    });
-    $('#save').addEventListener('click', async () => {
-      const dir = $('#dir').value.trim();
-      const res = await window.api.finalizeSetup(dir);
-      if (!res?.success) {
-        $('#status').innerHTML = `<span class="err">Speichern fehlgeschlagen: ${res?.message || 'Unbekannt'}</span>`;
-      }
-    });
-    init();
-  </script>
+  <script src="./setup.js"></script>
 </body>
 </html>
