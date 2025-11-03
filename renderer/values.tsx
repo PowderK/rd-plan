@@ -337,16 +337,29 @@ const ValuesPage: React.FC = () => {
     return rows;
   }, [roster, personnel, auswertungByType]);
 
-  // Merge 24h + ITW per person
-  const perPersonCombined = useMemo(() => {
-    const itwById: Record<number, number[]> = {};
-    for (const r of (perPersonITW || [])) itwById[r.id] = r.counts;
-    return (perPerson24h || []).map(r => ({
-      id: r.id,
-      name: r.name,
-      counts: r.counts.map((v, i) => v + (itwById[r.id]?.[i] || 0))
+  // Präsenz je Person: Tage mit Auswertung ≠ 'off' (tag|nacht|24h|itw)
+  const perPersonPresence = useMemo(() => {
+    const countsByPerson: Record<number, number[]> = {};
+    const ensure = (pid: number) => (countsByPerson[pid] ||= Array(12).fill(0));
+    for (const row of (roster || [])) {
+      try {
+        if (String(row.personType) !== 'person') continue;
+        const code = String(row.value || '').trim();
+        if (!code) continue;
+        if ((auswertungByType[code] || 'off') === 'off') continue;
+        const iso = String(row.date);
+        const month = new Date(iso + 'T00:00:00Z').getUTCMonth();
+        ensure(Number(row.personId))[month] += 1;
+      } catch {}
+    }
+    const rows = (personnel || []).map(p => ({
+      id: p.id,
+      name: `${p.vorname ? p.vorname + ' ' : ''}${p.name}`.trim(),
+      hlfb: !!(p as any)?.fahrzeugfuehrerHLFB,
+      counts: countsByPerson[p.id] || Array(12).fill(0)
     }));
-  }, [perPerson24h, perPersonITW]);
+    return rows;
+  }, [roster, personnel, auswertungByType]);
 
   // Per-Azubi Maschinist-Counts pro Monat (RTW tag_2/nacht_2 Slots)
   const perAzubiMaschinist = useMemo(() => {
@@ -392,7 +405,7 @@ const ValuesPage: React.FC = () => {
   // KPI: Mittelwert (24h + ITW) je Monat (nur Werte > 0 werden gemittelt)
   const rowAvgCombined = useMemo(() => {
     const avgs = Array(12).fill(0);
-    const rows = perPersonCombined || [];
+    const rows = perPersonPresence || [];
     for (let i = 0; i < 12; i++) {
       let sum = 0, cnt = 0;
       for (const r of rows) {
@@ -402,7 +415,7 @@ const ValuesPage: React.FC = () => {
       avgs[i] = cnt > 0 ? Math.round(sum / cnt) : 0;
     }
     return avgs;
-  }, [perPersonCombined]);
+  }, [perPersonPresence]);
 
   const fmt = (v: number) => new Intl.NumberFormat('de-DE').format(Number(v || 0));
   const styles = {
@@ -485,11 +498,11 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...styles.sectionSep }} colSpan={monthNames.length + 2} />
             </tr>
-            {perPersonCombined.map(row => {
+            {perPersonPresence.map(row => {
               const sum = row.counts.reduce((a, b) => a + b, 0);
               return (
                 <tr key={row.id} style={Number(row.id) % 2 === 0 ? styles.zebra1 : styles.zebra2}>
-                  <td style={styles.nameSticky as any}>{row.name}</td>
+                  <td style={{ ...(styles.nameSticky as any), color: row.hlfb ? '#1565c0' : undefined }}>{row.name}</td>
                   {row.counts.map((v, i) => (
                     <td key={i} style={styles.td}>{v ? fmt(v) : ''}</td>
                   ))}

@@ -804,7 +804,7 @@ const DutyRoster: React.FC = () => {
               ) : null,
               (
                 <tr key={person.id} style={{ background: rowIdx % 2 === 1 ? 'var(--hover)' : undefined }}>
-                  <td style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 1, border: '1px solid var(--line)', fontStyle: person.isAzubi ? 'italic' : undefined }}>
+                  <td style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 1, border: '1px solid var(--line)', fontStyle: person.isAzubi ? 'italic' : undefined, color: (!person.isAzubi && !!(personnel.find(p => p.id === person.origId)?.fahrzeugfuehrerHLFB)) ? '#1565c0' : undefined }}>
                     {person.name}{person.isAzubi && person.lehrjahr !== undefined ? ` (Azubi, ${person.lehrjahr}. Lj.)` : ''}
                   </td>
                   <td style={{ border: '1px solid var(--line)', textAlign: 'center', minWidth: 50 }}>
