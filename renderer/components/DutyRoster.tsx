@@ -588,6 +588,22 @@ const DutyRoster: React.FC = () => {
 
   const shiftsPerPersonInMonth = activePersonnelInMonth > 0 ? positionsAdjInMonth / activePersonnelInMonth : 0;
 
+  // Präsenz je Person im Monat: Anzahl Tage mit Auswertung ≠ 'off' (tag|nacht|24h|itw)
+  const perPersonPresenceInMonth: Record<string, number> = (() => {
+    const map: Record<string, number> = {};
+    for (const p of personnel) {
+      const key = `p_${p.id}`;
+      let presence = 0;
+      for (const d of days) {
+        const raw = String(roster[key]?.[d.iso]?.value || '').trim();
+        if (raw && (auswertungByType[raw] || 'off') !== 'off') presence++;
+      }
+      map[key] = presence;
+    }
+    return map;
+  })();
+
+  // 24h + ITW je Person im Monat (bestehend)
   const perPersonCombinedInMonth: Record<string, number> = (() => {
     const map: Record<string, number> = {};
     for (const p of personnel) {
@@ -606,6 +622,14 @@ const DutyRoster: React.FC = () => {
 
   const avgCombinedInMonth = (() => {
     const vals = Object.values(perPersonCombinedInMonth).filter(v => v > 0);
+    if (vals.length === 0) return 0;
+    const sum = vals.reduce((a, b) => a + b, 0);
+    return Math.round(sum / vals.length);
+  })();
+
+  // Mittelwert Präsenz (tage mit Auswertung ≠ off) je Monat – nur >0
+  const avgPresenceInMonth = (() => {
+    const vals = Object.values(perPersonPresenceInMonth).filter(v => v > 0);
     if (vals.length === 0) return 0;
     const sum = vals.reduce((a, b) => a + b, 0);
     return Math.round(sum / vals.length);
@@ -810,24 +834,24 @@ const DutyRoster: React.FC = () => {
                     {!person.isAzubi ? (
                       (() => {
                         const key = getStateKey(person);
-                        // individuelle 24h+ITW im Monat
-                        let indiv = 0;
+                        // Präsenz-Tage (Auswertung ≠ 'off') als Basis
+                        let presence = 0;
                         for (const d of days) {
                           const raw = (roster[key]?.[d.iso]?.value || '').trim();
-                          if (raw && auswertungByType[raw] === '24h') indiv++;
-                          const t = String(roster[key]?.[d.iso]?.type || '');
-                          if (t.startsWith('itw_') || (raw && auswertungByType[raw] === 'itw')) indiv++;
+                          if (raw && (auswertungByType[raw] || 'off') !== 'off') presence++;
                         }
-                        // Qualifikation HLF-B Fahrzeugführer -> 75%
+                        // Qualifikation HLF-B Fahrzeugführer -> 75% wirken auf Präsenz
                         const base = personnel.find(p => p.id === person.origId);
                         const hasHLFB = !!(base && (base as any).fahrzeugfuehrerHLFB);
-                        if (hasHLFB && indiv > 0) {
-                          indiv = indiv * 0.75;
+                        if (hasHLFB && presence > 0) {
+                          presence = presence * 0.75;
                         }
-                        const mw = avgCombinedInMonth;
+                        // Verhältnis der Gesamtlast pro Kopf
+                        // statt 24h+ITW‑Mittel nutzen wir die durchschnittliche Präsenz als Bezugsgröße
+                        const mw = avgPresenceInMonth;
                         const spp = shiftsPerPersonInMonth;
-                        if (mw <= 0 || spp <= 0 || indiv <= 0) return '';
-                        const target = Math.round((spp / mw) * indiv);
+                        if (mw <= 0 || spp <= 0 || presence <= 0) return '';
+                        const target = Math.round((spp / mw) * presence);
                         return target;
                       })()
                     ) : ''}
