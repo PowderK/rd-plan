@@ -572,18 +572,24 @@ const DutyRoster: React.FC = () => {
   const positionsAdjInMonth = Math.max(0, deptShiftsInMonth * (activeRtwCount * 4 + activeNefCount * 2) + itwShiftsInMonth - azubiMaschinistShiftsInMonth);
 
   const activePersonnelInMonth = (() => {
-    const set = new Set<string>();
+    // Gewichtete Personalanzahl: Personen mit mind. 1 Präsenz-Tag zählen,
+    // HLF‑B werden mit 0,75 gewichtet
+    let sum = 0;
     for (const p of personnel) {
       const key = `p_${p.id}`;
+      let presence = 0;
       for (const d of days) {
         const raw = String(roster[key]?.[d.iso]?.value || '').trim();
-        if (!raw) continue;
-        if ((auswertungByType[raw] || 'off') === 'off') continue;
-        set.add(key);
-        break;
+        if (raw && (auswertungByType[raw] || 'off') !== 'off') {
+          presence++;
+        }
+      }
+      if (presence > 0) {
+        const hasHLFB = !!(p as any).fahrzeugfuehrerHLFB;
+        sum += hasHLFB ? 0.75 : 1;
       }
     }
-    return set.size;
+    return sum;
   })();
 
   const shiftsPerPersonInMonth = activePersonnelInMonth > 0 ? positionsAdjInMonth / activePersonnelInMonth : 0;
