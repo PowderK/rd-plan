@@ -5,11 +5,27 @@ const AddItw: React.FC = () => {
   const [name, setName] = useState('');
   const [vorname, setVorname] = useState('');
 
+  const [saving, setSaving] = useState(false);
   const handleSave = async () => {
-    if (!name.trim() || !vorname.trim()) return;
-    await (window as any).api.addItwDoctor({ name, vorname });
-    if (window.opener) window.opener.postMessage('itw-updated', '*');
-    window.close();
+    try {
+      if (!name.trim() || !vorname.trim()) {
+        alert('Bitte Name und Vorname angeben.');
+        return;
+      }
+      setSaving(true);
+      const api = (window as any).api;
+      if (!api?.addItwDoctor) {
+        alert('Aktion nicht verfügbar (Preload-Bridge fehlt).');
+        return;
+      }
+      await api.addItwDoctor({ name, vorname });
+      try { if (window.opener) window.opener.postMessage('itw-updated', '*'); } catch {}
+      window.close();
+    } catch (e: any) {
+      alert('Speichern fehlgeschlagen: ' + (e?.message || String(e)));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -21,7 +37,7 @@ const AddItw: React.FC = () => {
       <div style={{ marginBottom: 12 }}>
         <label>Vorname: <input value={vorname} onChange={e => setVorname(e.target.value)} /></label>
       </div>
-      <button onClick={handleSave}>Speichern</button>
+  <button onClick={handleSave} disabled={saving}>Speichern</button>
       <button onClick={() => window.close()} style={{ marginLeft: 8 }}>Abbrechen</button>
     </div>
   );

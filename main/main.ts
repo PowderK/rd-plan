@@ -49,6 +49,20 @@ function hasDbConfig(): boolean {
     try { return fs.existsSync(getDbConfigPath()); } catch { return false; }
 }
 
+function writeGlobalDbConfig(dbDir: string): { success: boolean; path?: string; message?: string } {
+    try {
+        const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
+        const baseDir = (portableDir && portableDir.trim()) ? portableDir : path.dirname(app.getPath('exe'));
+        const p = path.join(baseDir, 'db-config.json');
+        const payload = { dbDir } as any;
+        try { fs.mkdirSync(baseDir, { recursive: true }); } catch {}
+        fs.writeFileSync(p, JSON.stringify(payload, null, 2), 'utf-8');
+        return { success: true, path: p };
+    } catch (e: any) {
+        return { success: false, message: e?.message || String(e) };
+    }
+}
+
 function suggestDefaultDbDir(): string {
     const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
     if (portableDir && portableDir.trim()) return path.join(portableDir, 'DB');
@@ -566,6 +580,13 @@ ipcMain.handle('finalize-setup', async (_e, dir: string) => {
         fs.accessSync(dir, fs.constants.W_OK);
         const cfgPath = getDbConfigPath();
         fs.writeFileSync(cfgPath, JSON.stringify({ dbDir: dir }, null, 2), 'utf-8');
+        // zusätzlich globale Konfiguration neben der EXE/PORTABLE_EXECUTABLE_DIR schreiben (Best Effort)
+        try {
+            const res = writeGlobalDbConfig(dir);
+            if (!res.success) console.warn('[Main] writeGlobalDbConfig failed:', res.message);
+        } catch (e) {
+            console.warn('[Main] writeGlobalDbConfig threw:', e);
+        }
         app.relaunch();
         app.exit(0);
         return { success: true };
@@ -850,6 +871,13 @@ ipcMain.handle('set-db-dir', async (_event, targetDir: string) => {
             fs.writeFileSync(cfgPath, JSON.stringify({ dbDir: targetDir }, null, 2), 'utf-8');
         } catch (e) {
             throw new Error('Konfiguration konnte nicht geschrieben werden');
+        }
+        // Best Effort: globale Konfiguration ebenfalls aktualisieren
+        try {
+            const res = writeGlobalDbConfig(targetDir);
+            if (!res.success) console.warn('[Main] writeGlobalDbConfig failed:', res.message);
+        } catch (e) {
+            console.warn('[Main] writeGlobalDbConfig threw:', e);
         }
         // relaunch app
         app.relaunch();

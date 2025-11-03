@@ -6,11 +6,27 @@ const AddAzubi: React.FC = () => {
   const [vorname, setVorname] = useState('');
   const [lehrjahr, setLehrjahr] = useState(1);
 
+  const [saving, setSaving] = useState(false);
   const handleSave = async () => {
-    if (!name.trim() || !vorname.trim() || ![1,2,3].includes(lehrjahr)) return;
-    await (window as any).api.addAzubi({ name, vorname, lehrjahr });
-    if (window.opener) window.opener.postMessage('azubis-updated', '*');
-    window.close();
+    try {
+      if (!name.trim() || !vorname.trim() || ![1,2,3].includes(lehrjahr)) {
+        alert('Bitte Name, Vorname und gültiges Lehrjahr (1-3) angeben.');
+        return;
+      }
+      setSaving(true);
+      const api = (window as any).api;
+      if (!api?.addAzubi) {
+        alert('Aktion nicht verfügbar (Preload-Bridge fehlt).');
+        return;
+      }
+      await api.addAzubi({ name, vorname, lehrjahr });
+      try { if (window.opener) window.opener.postMessage('azubis-updated', '*'); } catch {}
+      window.close();
+    } catch (e: any) {
+      alert('Speichern fehlgeschlagen: ' + (e?.message || String(e)));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -31,7 +47,7 @@ const AddAzubi: React.FC = () => {
           </select>
         </label>
       </div>
-      <button onClick={handleSave}>Speichern</button>
+  <button onClick={handleSave} disabled={saving}>Speichern</button>
       <button onClick={() => window.close()} style={{ marginLeft: 8 }}>Abbrechen</button>
     </div>
   );
