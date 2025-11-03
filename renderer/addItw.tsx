@@ -1,13 +1,17 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 const AddItw: React.FC = () => {
+  useEffect(() => {
+    try { console.log('[AddItw] mounted. api keys:', Object.keys((window as any).api || {})); } catch {}
+  }, []);
   const [name, setName] = useState('');
   const [vorname, setVorname] = useState('');
 
   const [saving, setSaving] = useState(false);
   const handleSave = async () => {
     try {
+      console.log('[AddItw] save clicked');
       if (!name.trim() || !vorname.trim()) {
         alert('Bitte Name und Vorname angeben.');
         return;
@@ -19,6 +23,7 @@ const AddItw: React.FC = () => {
         return;
       }
       await api.addItwDoctor({ name, vorname });
+      console.log('[AddItw] saved successfully');
       try { if (window.opener) window.opener.postMessage('itw-updated', '*'); } catch {}
       window.close();
     } catch (e: any) {

@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 const AddAzubi: React.FC = () => {
+  useEffect(() => {
+    try { console.log('[AddAzubi] mounted. api keys:', Object.keys((window as any).api || {})); } catch {}
+  }, []);
   const [name, setName] = useState('');
   const [vorname, setVorname] = useState('');
   const [lehrjahr, setLehrjahr] = useState(1);
@@ -9,6 +12,7 @@ const AddAzubi: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const handleSave = async () => {
     try {
+      console.log('[AddAzubi] save clicked');
       if (!name.trim() || !vorname.trim() || ![1,2,3].includes(lehrjahr)) {
         alert('Bitte Name, Vorname und gültiges Lehrjahr (1-3) angeben.');
         return;
@@ -20,6 +24,7 @@ const AddAzubi: React.FC = () => {
         return;
       }
       await api.addAzubi({ name, vorname, lehrjahr });
+      console.log('[AddAzubi] saved successfully');
       try { if (window.opener) window.opener.postMessage('azubis-updated', '*'); } catch {}
       window.close();
     } catch (e: any) {
