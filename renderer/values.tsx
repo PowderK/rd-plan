@@ -30,7 +30,8 @@ function useRoster(year: number) {
 }
 
 function usePersonnel() {
-  const [list, setList] = useState<{ id:number; name:string; vorname:string }[]>([]);
+  // Wir laden die vollständigen Personen-Daten, damit wir Flags wie fahrzeugfuehrerHLFB auswerten können
+  const [list, setList] = useState<Array<{ id:number; name:string; vorname:string; fahrzeugfuehrerHLFB?: boolean }>>([]);
   useEffect(() => {
     (async () => {
       try {
@@ -204,10 +205,15 @@ function computePositionsPerMonth(
   return positions;
 }
 
-function computeActivePersonnelPerMonth(year: number, roster: any[], auswertungByType: Record<string, 'off'|'tag'|'nacht'|'24h'|'itw'>) {
-  // Zählt pro Monat die Anzahl Stammpersonal (personType==='person'),
-  // die mindestens eine Schicht (beliebiger Code, nicht leer) in diesem Monat haben
-  const setByMonth: Array<Set<string>> = Array.from({ length: 12 }, () => new Set());
+function computeActivePersonnelPerMonth(
+  year: number,
+  roster: any[],
+  auswertungByType: Record<string, 'off'|'tag'|'nacht'|'24h'|'itw'>,
+  personnel: Array<{ id:number; fahrzeugfuehrerHLFB?: boolean }>
+) {
+  // Ermittelt je Monat die anwesenden Personen (mind. eine Schicht mit Auswertung ≠ off)
+  // und bildet eine gewichtete Summe: Standard 1.0, FzF HLF‑B -> 0.75
+  const presentByMonth: Array<Set<number>> = Array.from({ length: 12 }, () => new Set());
   for (const row of (roster || [])) {
     try {
       if (String(row.personType) !== 'person') continue; // nur Stammpersonal
@@ -219,11 +225,22 @@ function computeActivePersonnelPerMonth(year: number, roster: any[], auswertungB
       const iso = String(row.date);
       const m = new Date(iso + 'T00:00:00Z');
       const month = m.getUTCMonth();
-      const key = `${row.personType}:${row.personId}`;
-      setByMonth[month].add(key);
+      const pid = Number(row.personId);
+      presentByMonth[month].add(pid);
     } catch {}
   }
-  return setByMonth.map(s => s.size);
+  // Gewichtung anwenden
+  const byId: Record<number, { fahrzeugfuehrerHLFB?: boolean }> = {};
+  for (const p of (personnel || [])) byId[p.id] = { fahrzeugfuehrerHLFB: !!p.fahrzeugfuehrerHLFB };
+  const HLF_B_WEIGHT = 0.75; // Annahme: „nur 75% fahren“ => 0.75 Gewicht (leicht änderbar bei Bedarf)
+  return presentByMonth.map(set => {
+    let sum = 0;
+    for (const pid of set) {
+      const isHLFB = !!byId[pid]?.fahrzeugfuehrerHLFB;
+      sum += isHLFB ? HLF_B_WEIGHT : 1;
+    }
+    return sum;
+  });
 }
 
 function computeShiftsPerPerson(row1: number[], row2: number[]) {
@@ -268,7 +285,7 @@ const ValuesPage: React.FC = () => {
     () => computePositionsPerMonth(year, { rtw, nef }, { rtwActs, nefActs }, deptShifts, rowItw),
     [year, rtw, nef, rtwActs, nefActs, deptShifts, rowItw]
   );
-  const row2 = useMemo(() => computeActivePersonnelPerMonth(year, roster, auswertungByType), [year, roster, auswertungByType]);
+  const row2 = useMemo(() => computeActivePersonnelPerMonth(year, roster, auswertungByType, personnel), [year, roster, auswertungByType, personnel]);
   // row3 wird weiter unten nach Abzug der Azubis von den Positionen berechnet
 
   // Per-Person 24h-Counts pro Monat (gemäß Auswertungseinstellungen)
@@ -426,8 +443,8 @@ const ValuesPage: React.FC = () => {
             </tr>
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
-                <div style={{ fontWeight: 600 }}>Anzahl Personal</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Stammpersonal mit mind. einer Schicht (Auswertung ≠ off) im Monat</div>
+                <div style={{ fontWeight: 600 }}>Anzahl Personal (gewichtet)</div>
+                <div style={{ fontSize: 12, color: '#666' }}>Stammpersonal mit mind. einer Schicht (Auswertung ≠ off) im Monat; FzF HLF‑B zählt mit 0,75</div>
               </td>
               {row2.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
