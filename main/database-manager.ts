@@ -13,7 +13,9 @@ export interface DatabaseConfig {
 }
 
 export interface DatabaseAdapter {
-  getPersonnel(): Promise<any[]>;
+  getPersonnel(includeInactive?: boolean): Promise<any[]>;
+  setPersonnelActive(id: number, active: boolean): Promise<void>;
+  getPersonById(id: number): Promise<any | null>;
   addPersonnel(person: any): Promise<void>;
   updatePersonnel(person: any): Promise<void>;
   deletePersonnel(id: number): Promise<void>;
@@ -99,9 +101,17 @@ export interface DatabaseAdapter {
 class SQLiteAdapter implements DatabaseAdapter {
   constructor(private db: AsyncDB) {}
   
-  async getPersonnel() {
+  async getPersonnel(includeInactive?: boolean) {
     const { getPersonnel } = await import('./database');
-    return getPersonnel(this.db);
+    return getPersonnel(this.db, !!includeInactive);
+  }
+  async setPersonnelActive(id: number, active: boolean) {
+    const { setPersonnelActive } = await import('./database');
+    return setPersonnelActive(this.db, id, active);
+  }
+  async getPersonById(id: number) {
+    const { getPersonById } = await import('./database');
+    return getPersonById(this.db, id);
   }
   
   async addPersonnel(person: any) {
@@ -618,7 +628,8 @@ export class DatabaseManager {
             nef INTEGER NOT NULL DEFAULT 0,
             itwMaschinist INTEGER NOT NULL DEFAULT 0,
             itwFahrzeugfuehrer INTEGER NOT NULL DEFAULT 0,
-            sort INTEGER NOT NULL DEFAULT 0
+      sort INTEGER NOT NULL DEFAULT '0',
+      active INTEGER NOT NULL DEFAULT '1'
         );
         
         CREATE TABLE IF NOT EXISTS settings (
@@ -705,6 +716,18 @@ export class DatabaseManager {
     `);
     
     console.log('[DatabaseManager] SQLite schema initialized');
+    // --- Lightweight migrations to ensure columns exist ---
+    try {
+      const cols: any[] = await db.all("PRAGMA table_info('personnel')");
+      const hasActive = cols.some((c: any) => c.name === 'active');
+      if (!hasActive) {
+        console.log('[DatabaseManager] Adding missing column "active" to personnel table');
+        await db.exec("ALTER TABLE personnel ADD COLUMN active INTEGER DEFAULT 1");
+        try { await db.exec("UPDATE personnel SET active = 1 WHERE active IS NULL"); } catch {}
+      }
+    } catch (e) {
+      console.warn('[DatabaseManager] Warning while ensuring personnel.active column', e);
+    }
   }
   
   getAdapter(): DatabaseAdapter {

@@ -162,14 +162,14 @@ ipcMain.handle('set-setting', async (_event, key: string, value: string) => {
 });
 
 // Personnel handlers
-ipcMain.handle('get-personnel', async () => {
+ipcMain.handle('get-personnel', async (_event, includeInactive?: boolean) => {
     const adapter = await ensureDatabaseAdapter();
-    return await adapter.getPersonnel();
+    return await adapter.getPersonnel(!!includeInactive);
 });
 
-ipcMain.handle('get-personnel-list', async () => {
+ipcMain.handle('get-personnel-list', async (_event, includeInactive?: boolean) => {
     const adapter = await ensureDatabaseAdapter();
-    return await adapter.getPersonnel();
+    return await adapter.getPersonnel(!!includeInactive);
 });
 
 ipcMain.handle('add-personnel', async (_event, person: any) => {
@@ -189,6 +189,14 @@ ipcMain.handle('update-personnel', async (_event, person: any) => {
 ipcMain.handle('delete-personnel', async (_event, id: number) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.deletePersonnel(id);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    return true;
+});
+
+// Set active/inactive (soft hide)
+ipcMain.handle('set-person-active', async (_event, id: number, active: boolean) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.setPersonnelActive(id, !!active);
     BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
     return true;
 });
@@ -224,8 +232,13 @@ ipcMain.handle('delete-person', async (_event, id: number) => {
 
 ipcMain.handle('get-person', async (_event, id: number) => {
     const adapter = await ensureDatabaseAdapter();
-    const list = await adapter.getPersonnel();
-    return (list || []).find((p: any) => Number(p?.id) === Number(id)) || null;
+    try {
+        const p = await adapter.getPersonById(id);
+        return p || null;
+    } catch {
+        const list = await adapter.getPersonnel(true);
+        return (list || []).find((p: any) => Number(p?.id) === Number(id)) || null;
+    }
 });
 
 // Shift type handlers

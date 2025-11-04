@@ -33,7 +33,7 @@ try {
 
 contextBridge.exposeInMainWorld('api', {
     getShifts: () => ipcRenderer.invoke('get-shifts'),
-    getPersonnel: () => ipcRenderer.invoke('get-personnel'),
+    getPersonnel: (includeInactive?: boolean) => ipcRenderer.invoke('get-personnel', includeInactive === true),
     updateShift: (shift: any) => ipcRenderer.invoke('update-shift', shift),
     getSetting: (key: string) => ipcRenderer.invoke('get-setting', key),
     setSetting: (key: string, value: string) => ipcRenderer.invoke('set-setting', key, value),
@@ -44,10 +44,11 @@ contextBridge.exposeInMainWorld('api', {
     openAddPersonWindow: () => ipcRenderer.send('open-add-person-window'),
     openEditPersonWindow: (id: number) => ipcRenderer.send('open-edit-person-window', id),
     openConfirmDeleteWindow: (id: number, type: string = 'person') => ipcRenderer.send('open-confirm-delete-window', id, type),
-    getPersonnelList: () => ipcRenderer.invoke('get-personnel-list'),
+    getPersonnelList: (includeInactive?: boolean) => ipcRenderer.invoke('get-personnel-list', includeInactive === true),
     addPerson: (person: any) => ipcRenderer.invoke('add-person', person),
     updatePerson: (person: any) => ipcRenderer.invoke('update-person', person),
     deletePerson: (id: number) => ipcRenderer.invoke('delete-person', id),
+    setPersonActive: (id: number, active: boolean) => ipcRenderer.invoke('set-person-active', id, active),
     updatePersonnelOrder: (order: number[]) => ipcRenderer.invoke('update-personnel-order', order),
     onPersonnelUpdated: (callback: () => void) => ipcRenderer.on('personnel-updated', callback),
     offPersonnelUpdated: (callback: () => void) => ipcRenderer.removeListener('personnel-updated', callback),

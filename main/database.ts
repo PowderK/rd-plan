@@ -73,7 +73,8 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
             nef INTEGER NOT NULL DEFAULT 0,
             itwMaschinist INTEGER NOT NULL DEFAULT 0,
             itwFahrzeugfuehrer INTEGER NOT NULL DEFAULT 0,
-            sort INTEGER NOT NULL DEFAULT 0
+            sort INTEGER NOT NULL DEFAULT 0,
+            active INTEGER NOT NULL DEFAULT 1
         )
     `);
 
@@ -103,6 +104,12 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
             console.log('[DB] Adding missing column "itwFahrzeugfuehrer" to personnel table');
             await db.exec("ALTER TABLE personnel ADD COLUMN itwFahrzeugfuehrer INTEGER DEFAULT 0");
             await db.exec("UPDATE personnel SET itwFahrzeugfuehrer = 0 WHERE itwFahrzeugfuehrer IS NULL");
+        }
+        // Migration: add 'active' column if missing (default 1)
+        if (!colsAfter.some((c: any) => c.name === 'active')) {
+            console.log('[DB] Adding missing column "active" to personnel table');
+            await db.exec("ALTER TABLE personnel ADD COLUMN active INTEGER DEFAULT 1");
+            await db.exec("UPDATE personnel SET active = 1 WHERE active IS NULL");
         }
     } catch (e) {
         console.warn('[DB] Warning while ensuring nef defaults:', e);
@@ -475,13 +482,16 @@ export const deleteShift = async (db: AsyncDB, id: number) => {
     await db.run('DELETE FROM shifts WHERE id = ?', [id]);
 };
 
-export const getPersonnel = async (db: AsyncDB) => {
-    return await db.all('SELECT * FROM personnel ORDER BY sort ASC, id ASC');
+export const getPersonnel = async (db: AsyncDB, includeInactive: boolean = false) => {
+    if (includeInactive) {
+        return await db.all('SELECT * FROM personnel ORDER BY sort ASC, id ASC');
+    }
+    return await db.all('SELECT * FROM personnel WHERE COALESCE(active,1)=1 ORDER BY sort ASC, id ASC');
 };
 
 export const addPersonnel = async (db: AsyncDB, person: any) => {
-    const { name, vorname, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort } = person;
-    await db.run('INSERT INTO personnel (name, vorname, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [name, vorname, teilzeit, fahrzeugfuehrer ? 1 : 0, fahrzeugfuehrerHLFB ? 1 : 0, nef ? 1 : 0, itwMaschinist ? 1 : 0, itwFahrzeugfuehrer ? 1 : 0, sort ?? 0]);
+    const { name, vorname, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, active } = person;
+    await db.run('INSERT INTO personnel (name, vorname, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [name, vorname, teilzeit, fahrzeugfuehrer ? 1 : 0, fahrzeugfuehrerHLFB ? 1 : 0, nef ? 1 : 0, itwMaschinist ? 1 : 0, itwFahrzeugfuehrer ? 1 : 0, sort ?? 0, (active === 0 || active === false) ? 0 : 1]);
 };
 
 export const updatePersonnel = async (db: AsyncDB, person: any) => {
@@ -491,6 +501,14 @@ export const updatePersonnel = async (db: AsyncDB, person: any) => {
 
 export const deletePersonnel = async (db: AsyncDB, id: number) => {
     await db.run('DELETE FROM personnel WHERE id = ?', [id]);
+};
+
+export const setPersonnelActive = async (db: AsyncDB, id: number, active: boolean) => {
+    await db.run('UPDATE personnel SET active = ? WHERE id = ?', [active ? 1 : 0, id]);
+};
+
+export const getPersonById = async (db: AsyncDB, id: number) => {
+    return await db.get('SELECT * FROM personnel WHERE id = ?', [id]);
 };
 
 export const updatePersonnelOrder = async (db: AsyncDB, order: number[]) => {

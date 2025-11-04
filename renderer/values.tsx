@@ -417,6 +417,28 @@ const ValuesPage: React.FC = () => {
     return avgs;
   }, [perPersonPresence]);
 
+  // Soll-Schichten pro Person und Monat ermitteln (Split-Zellen: Anwesenheit | Soll)
+  // Formel: target = round((spp / avgPresence) * presenceWeighted)
+  // wobei spp = row1Adj / row2 (Positionslast pro Kopf), avgPresence = rowAvgCombined,
+  // presenceWeighted = presence * (0.75 bei HLF‑B, sonst 1)
+  const perPersonTargets = useMemo(() => {
+    const spp: number[] = row1Adj.map((pos, i) => (row2[i] > 0 ? pos / row2[i] : 0));
+    const avgP = rowAvgCombined;
+    return (perPersonPresence || []).map(r => {
+      const targets = r.counts.map((presence: number, i: number) => {
+        const weightedPresence = presence * (r.hlfb ? 0.75 : 1);
+        const denom = avgP[i] || 0;
+        const perCapita = spp[i] || 0;
+        if (denom <= 0 || perCapita <= 0 || weightedPresence <= 0) return 0;
+        return Math.round((perCapita / denom) * weightedPresence);
+      });
+      return { id: r.id, targets } as { id: number, targets: number[] };
+    });
+  }, [perPersonPresence, row1Adj, row2, rowAvgCombined]);
+
+  // Summe Positionen gesamt (netto) über das Jahr
+  const sumPositionsYear = useMemo(() => (row1Adj || []).reduce((a, b) => a + (Number(b) || 0), 0), [row1Adj]);
+
   const fmt = (v: number) => new Intl.NumberFormat('de-DE').format(Number(v || 0));
   const styles = {
     table: { borderCollapse: 'collapse', minWidth: 980 } as React.CSSProperties,
@@ -452,7 +474,7 @@ const ValuesPage: React.FC = () => {
                 <div style={{ fontSize: 12, color: '#666' }}>Abteilungsschichten × (RTW×4 + NEF×2) + ITW − Azubis (Maschinist)</div>
               </td>
               {row1Adj.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
-              <td style={{ ...styles.td, ...styles.kpiRow }} />
+              <td style={{ ...styles.td, ...styles.kpiRow }}>{fmt(sumPositionsYear)}</td>
             </tr>
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
@@ -499,14 +521,35 @@ const ValuesPage: React.FC = () => {
               <td style={{ ...styles.sectionSep }} colSpan={monthNames.length + 2} />
             </tr>
             {perPersonPresence.map(row => {
-              const sum = row.counts.reduce((a, b) => a + b, 0);
+              const sumPresence = row.counts.reduce((a, b) => a + b, 0);
+              const targRow = perPersonTargets.find(t => t.id === row.id);
+              const targets = targRow?.targets || Array(12).fill(0);
+              const sumTargets = targets.reduce((a, b) => a + b, 0);
               return (
                 <tr key={row.id} style={Number(row.id) % 2 === 0 ? styles.zebra1 : styles.zebra2}>
                   <td style={{ ...(styles.nameSticky as any), color: row.hlfb ? '#1565c0' : undefined }}>{row.name}</td>
                   {row.counts.map((v, i) => (
-                    <td key={i} style={styles.td}>{v ? fmt(v) : ''}</td>
+                    <td key={i} style={styles.td}>
+                      {v ? (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                          <span>{fmt(v)}</span>
+                          <span style={{ color: '#374151' }}>|</span>
+                          <span style={{ color: '#0f766e' }}>{targets[i] ? fmt(targets[i]) : ''}</span>
+                        </div>
+                      ) : (targets[i] ? (
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}><span style={{ color: '#0f766e' }}>{fmt(targets[i])}</span></div>
+                      ) : '')}
+                    </td>
                   ))}
-                  <td style={styles.td}>{sum ? fmt(sum) : ''}</td>
+                  <td style={styles.td}>
+                    {(sumPresence || sumTargets) ? (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                        <span>{sumPresence ? fmt(sumPresence) : ''}</span>
+                        <span style={{ color: '#374151' }}>|</span>
+                        <span style={{ color: '#0f766e' }}>{sumTargets ? fmt(sumTargets) : ''}</span>
+                      </div>
+                    ) : ''}
+                  </td>
                 </tr>
               );
             })}

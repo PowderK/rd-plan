@@ -4,7 +4,7 @@ import styles from './MonthTabs.module.css';
 interface MonthTabsProps {
     currentMonth: number;
     onMonthChange: (month: number) => void;
-    personnel: { id: number; name: string; vorname: string; fahrzeugfuehrer?: boolean; nef?: boolean }[];
+    personnel: { id: number; name: string; vorname: string; fahrzeugfuehrer?: boolean; nef?: boolean; fahrzeugfuehrerHLFB?: boolean | number; teilzeit?: number }[];
     azubis: { id: number; name: string; vorname: string; lehrjahr: number }[];
     roster: Record<string, Record<string, { value: string; type: string }>>;
     year: number;
@@ -665,41 +665,51 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             return sum;
                         })();
                         const positionsAdjInMonth = Math.max(0, deptShiftsInMonth * (activeRtwCount * 4 + activeNefCount * 2) + itwShiftsInMonth - azubiMaschinistShiftsInMonth);
-                        // Aktives Stammpersonal im Monat (mind. ein echter Code mit Auswertung != off)
+                        // Aktives Stammpersonal im Monat (mind. ein Präsenz-Tag) – ungewichtet
                         const activePersonnelInMonth = (() => {
-                            const set = new Set<string>();
+                            let sum = 0;
                             for (const p of personnel || []) {
                                 const key = `p_${p.id}`;
+                                let presence = 0;
                                 for (const iso of allMonthDays) {
                                     const raw = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.value || '').trim();
                                     if (!raw) continue;
-                                    if ((auswertungByType[raw] || 'off') === 'off') continue;
-                                    set.add(key);
-                                    break;
+                                    if ((auswertungByType[raw] || 'off') !== 'off') presence++;
+                                }
+                                if (presence > 0) {
+                                    sum += 1;
                                 }
                             }
-                            return set.size;
+                            return sum;
                         })();
                         const shiftsPerPersonInMonth = activePersonnelInMonth > 0 ? (positionsAdjInMonth / activePersonnelInMonth) : 0;
-                        // Individuelle 24h+ITW je Person
-                        const perPersonCombinedInMonth: Record<string, number> = (() => {
+                        // Präsenz je Person im Monat (Auswertung != 'off') – RAW und gewichtete (HLF‑B=round(0,75×Ai))
+                        const perPersonPresenceInMonth: Record<string, number> = (() => {
                             const map: Record<string, number> = {};
                             for (const p of personnel || []) {
                                 const key = `p_${p.id}`;
-                                let c24 = 0, cItw = 0;
+                                let presence = 0;
                                 for (const iso of allMonthDays) {
                                     const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
                                     const raw = String(cell?.value || '').trim();
-                                    if (raw && auswertungByType[raw] === '24h') c24++;
-                                    const t = String(cell?.type || '');
-                                    if (t.startsWith('itw_') || (raw && auswertungByType[raw] === 'itw')) cItw++;
+                                    if (raw && (auswertungByType[raw] || 'off') !== 'off') presence++;
                                 }
-                                map[key] = c24 + cItw;
+                                map[key] = presence;
                             }
                             return map;
                         })();
-                        const avgCombinedInMonth = (() => {
-                            const vals = Object.values(perPersonCombinedInMonth).filter(v => v > 0);
+                        const perPersonPresenceWeightedInMonth: Record<string, number> = (() => {
+                            const map: Record<string, number> = {};
+                            for (const p of personnel || []) {
+                                const key = `p_${p.id}`;
+                                const raw = perPersonPresenceInMonth[key] || 0;
+                                const hasHLFB = !!(p as any).fahrzeugfuehrerHLFB;
+                                map[key] = hasHLFB ? Math.round(raw * 0.75) : raw;
+                            }
+                            return map;
+                        })();
+                        const avgPresenceInMonth = (() => {
+                            const vals = Object.values(perPersonPresenceWeightedInMonth).filter(v => v > 0);
                             if (vals.length === 0) return 0;
                             const sum = vals.reduce((a, b) => a + b, 0);
                             return Math.round(sum / vals.length);
@@ -737,7 +747,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             perPersonNefInMonth[key] = nefCnt;
                             perPersonItwInMonth[key] = itwCnt;
                         }
-                        // Jahres-Soll je Person: Summe der monatlichen Soll-Ziele über alle Monate
+                        // Jahres-Soll je Person: Summe der monatlichen Soll-Ziele über alle Monate (auf Basis Präsenz, HLF‑B=0,75)
                         const computeTargetsForMonth = (mIdx: number) => {
                             const daysInMonth = new Date(year, mIdx + 1, 0).getDate();
                             const allMonthDays: string[] = [];
@@ -790,38 +800,38 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             })();
                             const positionsAdjInMonthCalc = Math.max(0, deptShiftsInMonthCalc * (activeRtwCountM * 4 + activeNefCountM * 2) + itwShiftsInMonthCalc - azubiMaschinistShiftsInMonthCalc);
                             const activePersonnelInMonthCalc = (() => {
-                                const set = new Set<string>();
+                                let sum = 0;
                                 for (const p of personnel || []) {
                                     const key = `p_${p.id}`;
+                                    let presence = 0;
                                     for (const iso of allMonthDays) {
                                         const raw = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.value || '').trim();
                                         if (!raw) continue;
-                                        if ((auswertungByType[raw] || 'off') === 'off') continue;
-                                        set.add(key);
-                                        break;
+                                        if ((auswertungByType[raw] || 'off') !== 'off') presence++;
+                                    }
+                                    if (presence > 0) {
+                                        sum += 1;
                                     }
                                 }
-                                return set.size;
+                                return sum;
                             })();
                             const shiftsPerPersonInMonthCalc = activePersonnelInMonthCalc > 0 ? (positionsAdjInMonthCalc / activePersonnelInMonthCalc) : 0;
-                            const perPersonCombinedInMonthCalc: Record<string, number> = (() => {
+                            const perPersonPresenceInMonthCalc: Record<string, number> = (() => {
                                 const map: Record<string, number> = {};
                                 for (const p of personnel || []) {
                                     const key = `p_${p.id}`;
-                                    let c24 = 0, cItw = 0;
+                                    let presence = 0;
                                     for (const iso of allMonthDays) {
                                         const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
                                         const raw = String(cell?.value || '').trim();
-                                        if (raw && auswertungByType[raw] === '24h') c24++;
-                                        const t = String(cell?.type || '');
-                                        if (t.startsWith('itw_') || (raw && auswertungByType[raw] === 'itw')) cItw++;
+                                        if (raw && (auswertungByType[raw] || 'off') !== 'off') presence++;
                                     }
-                                    map[key] = c24 + cItw;
+                                    map[key] = presence;
                                 }
                                 return map;
                             })();
-                            const avgCombinedInMonthCalc = (() => {
-                                const vals = Object.values(perPersonCombinedInMonthCalc).filter(v => v > 0);
+                            const avgPresenceInMonthCalc = (() => {
+                                const vals = Object.values(perPersonPresenceInMonthCalc).filter(v => v > 0);
                                 if (vals.length === 0) return 0;
                                 const sum = vals.reduce((a, b) => a + b, 0);
                                 return Math.round(sum / vals.length);
@@ -829,8 +839,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             const targets: Record<string, number> = {};
                             for (const p of personnel || []) {
                                 const key = `p_${p.id}`;
-                                const indiv = perPersonCombinedInMonthCalc[key] || 0;
-                                const mw = avgCombinedInMonthCalc;
+                                let indiv = perPersonPresenceInMonthCalc[key] || 0; // raw presence
+                                // HLF‑B: 15% direkt von der Anwesenheit abziehen und auf ganze Zahl runden
+                                const hasHLFB = !!(p as any).fahrzeugfuehrerHLFB;
+                                if (hasHLFB && indiv > 0) indiv = Math.round(indiv * 0.85);
+                                const mw = avgPresenceInMonthCalc; // ungewichtet
                                 const spp = shiftsPerPersonInMonthCalc;
                                 const t = (mw > 0 && spp > 0 && indiv > 0) ? Math.round((spp / mw) * indiv) : 0;
                                 targets[key] = t;
@@ -860,12 +873,29 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             }
                             drivenYearMap[key] = sum;
                         }
+                        // Hamilton-Verteilung für den aktuellen Monat (Summe == positionsAdjInMonth)
+                        const allocTargetsInMonth: Record<string, number> = (() => {
+                            const entries = (personnel || []).map(p => {
+                                const key = `p_${p.id}`;
+                                return { key, w: perPersonPresenceWeightedInMonth[key] || 0 };
+                            }).filter(e => e.w > 0);
+                            const totalW = entries.reduce((s, e) => s + e.w, 0);
+                            const res: Record<string, number> = {};
+                            if (positionsAdjInMonth <= 0 || totalW <= 0) return res;
+                            const parts = entries.map(e => ({ key: e.key, exact: (positionsAdjInMonth * e.w) / totalW }));
+                            const floors = parts.map(p => ({ key: p.key, v: Math.floor(p.exact), frac: p.exact - Math.floor(p.exact) }));
+                            let assigned = floors.reduce((s, f) => s + f.v, 0);
+                            let rest = positionsAdjInMonth - assigned;
+                            floors.sort((a, b) => b.frac - a.frac);
+                            for (let i = 0; i < floors.length && rest > 0; i++, rest--) floors[i].v += 1;
+                            for (const f of floors) res[f.key] = f.v;
+                            return res;
+                        })();
+
                         const items = (personnel || []).map(p => {
                             const key = `p_${p.id}`;
-                            const indiv = perPersonCombinedInMonth[key] || 0;
-                            const mw = avgCombinedInMonth;
-                            const spp = shiftsPerPersonInMonth;
-                            const target = (mw > 0 && spp > 0 && indiv > 0) ? Math.round((spp / mw) * indiv) : '';
+                            // Anzeige-Ziel aus Hamilton-Allokation
+                            const target = (allocTargetsInMonth[key] ?? 0) || '';
                             const count = perPersonAssignedWeightedInMonth[key] || 0;
                             const tn = perPersonRtwTagNightInMonth[key] || { tag: 0, nacht: 0 };
                             const nef = perPersonNefInMonth[key] || 0;
@@ -876,7 +906,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 return ty - dy;
                             })();
                             const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
-                            return { name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, teilzeit } as { name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, teilzeit: number };
+                            const hlfb = !!(p as any).fahrzeugfuehrerHLFB;
+                            return { name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, teilzeit, hlfb } as { name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, teilzeit: number, hlfb: boolean };
                         });
                         // Farbliche Hervorhebung: nur Personen mit Monats-Soll > 0 berücksichtigen, Rest (Jahr) auf 100%-Äquivalent normalisieren
                         const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
@@ -926,7 +957,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         }
                                         return (
                                             <div key={idx} className={styles.sidebarItem} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto auto', alignItems: 'center', gap: 8 }}>
-                                            <span className={styles.sidebarName}>{it.name}</span>
+                                            <span className={styles.sidebarName} style={{ color: it.hlfb ? '#1565c0' : undefined }}>{it.name}</span>
                                             <span className={styles.sidebarVal}>{(it.target === '' ? '–' : it.target) + ' | ' + it.count}</span>
                                             <span className={styles.sidebarVal}>{it.nef}</span>
                                             <span className={styles.sidebarVal}>{it.itw}</span>
@@ -976,30 +1007,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             const weekday = local.toLocaleDateString('de-DE', { weekday: 'short' });
                             allMonthDays.push({ date: iso, weekday, day: d, dayOfYear: idx });
                         }
-                        // Aktives Muster je Datum bestimmen (letzte Sequenz mit startDate <= Datum)
-                        const getActivePatternFor = (iso: string): string[] => {
-                            const seqs = (itwPatternSeqs && itwPatternSeqs.length > 0) ? itwPatternSeqs : [];
-                            let active = seqs[0];
-                            for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
-                            return (active && active.pattern) ? active.pattern : [];
-                        };
-                        const getIndexSinceStart = (startIso: string, iso: string): number => {
-                            const start = new Date(startIso + 'T00:00:00Z');
-                            const cur = new Date(iso + 'T00:00:00Z');
-                            const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000*60*60*24));
-                            return ((diffDays % 21) + 21) % 21;
-                        };
-                        // Nur Tage anzeigen, an denen gemäß aktivem Muster "IW" ist und kein Feiertag ist
-                        // Tage laut IW-Muster (keine Feiertage)
-                        const iwDaysAll = allMonthDays.filter(d => {
-                            if (holidays.has(d.date)) return false;
-                            const seqs = (itwPatternSeqs && itwPatternSeqs.length > 0) ? itwPatternSeqs : [];
-                            let active = seqs[0];
-                            for (const s of seqs) { if (s.startDate <= d.date) active = s; else break; }
-                            const idx = getIndexSinceStart(active.startDate, d.date);
-                            return ((active && active.pattern) ? active.pattern : [])[idx] === 'IW';
-                        });
-                        // Zusätzlich: Bereits zugewiesene ITW-Slots (unabhängig vom Muster) in diesem Monat
+                        // Nur Tage anzeigen, an denen im Dienstplan tatsächlich ITW gefahren wird (Slot oder Auswertung = ITW) – Musterfolge ignorieren
                         const assignedItwDates = new Set<string>();
                         try {
                             const mergedKeys = Array.from(new Set([...(Object.keys(localRoster || {})), ...(Object.keys(roster || {}))]));
@@ -1007,11 +1015,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 const rec = (localRoster as any)?.[key] || (roster as any)?.[key] || {};
                                 for (const iso of Object.keys(rec)) {
                                     const entry = rec[iso];
-                                    if (!entry || !entry.type || typeof entry.type !== 'string') continue;
-                                    if (!/^itw_/.test(entry.type)) continue;
+                                    if (!entry) continue;
+                                    const t = String(entry.type || '');
+                                    const raw = String(entry.value || '').trim();
+                                    const isItw = t.startsWith('itw_') || (raw && auswertungByType[raw] === 'itw');
+                                    if (!isItw) continue;
                                     const dt = new Date(iso + 'T00:00:00Z');
                                     if (dt.getUTCFullYear() === year && dt.getUTCMonth() === currentMonth) {
-                                        // Feiertage weiterhin aussparen
                                         if (!holidays.has(iso)) assignedItwDates.add(iso);
                                     }
                                 }
@@ -1019,9 +1029,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         } catch {}
                         // Manuell hinzugefügte Zusatz-Tage (bereits gefiltert auf Monat)
                         const extras = Array.from(itwExtraDays || []);
-                        // Union bilden und aufsteigend sortieren
+                        // Union aus tatsächlichen ITW-Tagen und manuell hinzugefügten Tagen bilden und aufsteigend sortieren
                         const daysSet = new Map<string, { date: string; weekday: string; day: number; dayOfYear: number }>();
-                        for (const d of iwDaysAll) daysSet.set(d.date, d);
                         for (const iso of assignedItwDates) {
                             if (!daysSet.has(iso)) {
                                 const local = new Date(year, currentMonth, Number(iso.slice(8,10)));
@@ -1122,7 +1131,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         </div>
                     </div>
                     {(() => {
-                        // Kontrollkasten-Berechnungen (Monatsbasis) – identisch wie in RTW/NEF-Ansicht
+                        // Kontrollkasten-Berechnungen (Monatsbasis) – identisch wie in RTW/NEF-Ansicht (mit Präsenz & HLF‑B Gewichtung)
                         const daysInMonth = new Date(year, currentMonth + 1, 0).getDate();
                         const allMonthDays: string[] = [];
                         for (let i = 1; i <= daysInMonth; i++) {
@@ -1174,38 +1183,38 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         })();
                         const positionsAdjInMonth = Math.max(0, deptShiftsInMonth * (activeRtwCount * 4 + activeNefCount * 2) + itwShiftsInMonth - azubiMaschinistShiftsInMonth);
                         const activePersonnelInMonth = (() => {
-                            const set = new Set<string>();
+                            let sum = 0;
                             for (const p of personnel || []) {
                                 const key = `p_${p.id}`;
+                                let presence = 0;
                                 for (const iso of allMonthDays) {
                                     const raw = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.value || '').trim();
                                     if (!raw) continue;
-                                    if ((auswertungByType[raw] || 'off') === 'off') continue;
-                                    set.add(key);
-                                    break;
+                                    if ((auswertungByType[raw] || 'off') !== 'off') presence++;
+                                }
+                                if (presence > 0) {
+                                    sum += 1;
                                 }
                             }
-                            return set.size;
+                            return sum;
                         })();
                         const shiftsPerPersonInMonth = activePersonnelInMonth > 0 ? (positionsAdjInMonth / activePersonnelInMonth) : 0;
-                        const perPersonCombinedInMonth: Record<string, number> = (() => {
+                        const perPersonPresenceInMonth: Record<string, number> = (() => {
                             const map: Record<string, number> = {};
                             for (const p of personnel || []) {
                                 const key = `p_${p.id}`;
-                                let c24 = 0, cItw = 0;
+                                let presence = 0;
                                 for (const iso of allMonthDays) {
                                     const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
                                     const raw = String(cell?.value || '').trim();
-                                    if (raw && auswertungByType[raw] === '24h') c24++;
-                                    const t = String(cell?.type || '');
-                                    if (t.startsWith('itw_') || (raw && auswertungByType[raw] === 'itw')) cItw++;
+                                    if (raw && (auswertungByType[raw] || 'off') !== 'off') presence++;
                                 }
-                                map[key] = c24 + cItw;
+                                map[key] = presence;
                             }
                             return map;
                         })();
-                        const avgCombinedInMonth = (() => {
-                            const vals = Object.values(perPersonCombinedInMonth).filter(v => v > 0);
+                        const avgPresenceInMonth = (() => {
+                            const vals = Object.values(perPersonPresenceInMonth).filter(v => v > 0);
                             if (vals.length === 0) return 0;
                             const sum = vals.reduce((a, b) => a + b, 0);
                             return Math.round(sum / vals.length);
@@ -1289,51 +1298,61 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             })();
                             const positionsAdjInMonthCalc = Math.max(0, deptShiftsInMonthCalc * (activeRtwCountM * 4 + activeNefCountM * 2) + itwShiftsInMonthCalc - azubiMaschinistShiftsInMonthCalc);
                             const activePersonnelInMonthCalc = (() => {
-                                const set = new Set<string>();
+                                let sum = 0;
                                 for (const p of personnel || []) {
                                     const key = `p_${p.id}`;
+                                    let presence = 0;
                                     for (const iso of allMonthDays) {
                                         const raw = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.value || '').trim();
                                         if (!raw) continue;
-                                        if ((auswertungByType[raw] || 'off') === 'off') continue;
-                                        set.add(key);
-                                        break;
+                                        if ((auswertungByType[raw] || 'off') !== 'off') presence++;
+                                    }
+                                    if (presence > 0) {
+                                        sum += 1;
                                     }
                                 }
-                                return set.size;
+                                return sum;
                             })();
                             const shiftsPerPersonInMonthCalc = activePersonnelInMonthCalc > 0 ? (positionsAdjInMonthCalc / activePersonnelInMonthCalc) : 0;
-                            const perPersonCombinedInMonthCalc: Record<string, number> = (() => {
+                            const perPersonPresenceInMonthCalc: Record<string, number> = (() => {
                                 const map: Record<string, number> = {};
                                 for (const p of personnel || []) {
                                     const key = `p_${p.id}`;
-                                    let c24 = 0, cItw = 0;
+                                    let presence = 0;
                                     for (const iso of allMonthDays) {
                                         const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
                                         const raw = String(cell?.value || '').trim();
-                                        if (raw && auswertungByType[raw] === '24h') c24++;
-                                        const t = String(cell?.type || '');
-                                        if (t.startsWith('itw_') || (raw && auswertungByType[raw] === 'itw')) cItw++;
+                                        if (raw && (auswertungByType[raw] || 'off') !== 'off') presence++;
                                     }
-                                    map[key] = c24 + cItw;
+                                    map[key] = presence;
                                 }
                                 return map;
                             })();
-                            const avgCombinedInMonthCalc = (() => {
-                                const vals = Object.values(perPersonCombinedInMonthCalc).filter(v => v > 0);
-                                if (vals.length === 0) return 0;
-                                const sum = vals.reduce((a, b) => a + b, 0);
-                                return Math.round(sum / vals.length);
+                            const perPersonPresenceWeightedInMonthCalc: Record<string, number> = (() => {
+                                const map: Record<string, number> = {};
+                                for (const p of personnel || []) {
+                                    const key = `p_${p.id}`;
+                                    const raw = perPersonPresenceInMonthCalc[key] || 0;
+                                    const hasHLFB = !!(p as any).fahrzeugfuehrerHLFB;
+                                    map[key] = hasHLFB ? Math.round(raw * 0.75) : raw;
+                                }
+                                return map;
                             })();
-                            const targets: Record<string, number> = {};
-                            for (const p of personnel || []) {
+                            // Hamilton-Allokation: Summe == positionsAdjInMonthCalc
+                            const entries = (personnel || []).map(p => {
                                 const key = `p_${p.id}`;
-                                const indiv = perPersonCombinedInMonthCalc[key] || 0;
-                                const mw = avgCombinedInMonthCalc;
-                                const spp = shiftsPerPersonInMonthCalc;
-                                const t = (mw > 0 && spp > 0 && indiv > 0) ? Math.round((spp / mw) * indiv) : 0;
-                                targets[key] = t;
-                            }
+                                return { key, w: perPersonPresenceWeightedInMonthCalc[key] || 0 };
+                            }).filter(e => e.w > 0);
+                            const totalW = entries.reduce((s, e) => s + e.w, 0);
+                            const targets: Record<string, number> = {};
+                            if (positionsAdjInMonthCalc <= 0 || totalW <= 0) return targets;
+                            const parts = entries.map(e => ({ key: e.key, exact: (positionsAdjInMonthCalc * e.w) / totalW }));
+                            const floors = parts.map(p => ({ key: p.key, v: Math.floor(p.exact), frac: p.exact - Math.floor(p.exact) }));
+                            let assigned = floors.reduce((s, f) => s + f.v, 0);
+                            let rest = positionsAdjInMonthCalc - assigned;
+                            floors.sort((a, b) => b.frac - a.frac);
+                            for (let i = 0; i < floors.length && rest > 0; i++, rest--) floors[i].v += 1;
+                            for (const f of floors) targets[f.key] = f.v;
                             return targets;
                         };
                         const targetYearMap: Record<string, number> = {};
@@ -1358,12 +1377,37 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             }
                             drivenYearMap[key] = sum;
                         }
+                        // Gewichtete Präsenz für aktuellen Monat (HLF‑B = round(0,75×Ai)) und Hamilton-Allokation (ITW-Ansicht)
+                        const perPersonPresenceWeightedInMonth_CUR: Record<string, number> = (() => {
+                            const map: Record<string, number> = {};
+                            for (const p of personnel || []) {
+                                const key = `p_${p.id}`;
+                                const raw = perPersonPresenceInMonth[key] || 0;
+                                const hasHLFB = !!(p as any).fahrzeugfuehrerHLFB;
+                                map[key] = hasHLFB ? Math.round(raw * 0.75) : raw;
+                            }
+                            return map;
+                        })();
+                        const allocTargetsInMonth: Record<string, number> = (() => {
+                            const entries = (personnel || []).map(p => {
+                                const key = `p_${p.id}`;
+                                return { key, w: perPersonPresenceWeightedInMonth_CUR[key] || 0 };
+                            }).filter(e => e.w > 0);
+                            const totalW = entries.reduce((s, e) => s + e.w, 0);
+                            const res: Record<string, number> = {};
+                            if (positionsAdjInMonth <= 0 || totalW <= 0) return res;
+                            const parts = entries.map(e => ({ key: e.key, exact: (positionsAdjInMonth * e.w) / totalW }));
+                            const floors = parts.map(p => ({ key: p.key, v: Math.floor(p.exact), frac: p.exact - Math.floor(p.exact) }));
+                            let assigned = floors.reduce((s, f) => s + f.v, 0);
+                            let rest = positionsAdjInMonth - assigned;
+                            floors.sort((a, b) => b.frac - a.frac);
+                            for (let i = 0; i < floors.length && rest > 0; i++, rest--) floors[i].v += 1;
+                            for (const f of floors) res[f.key] = f.v;
+                            return res;
+                        })();
                         const items = (personnel || []).map(p => {
                             const key = `p_${p.id}`;
-                            const indiv = perPersonCombinedInMonth[key] || 0;
-                            const mw = avgCombinedInMonth;
-                            const spp = shiftsPerPersonInMonth;
-                            const target = (mw > 0 && spp > 0 && indiv > 0) ? Math.round((spp / mw) * indiv) : '';
+                            const target = (allocTargetsInMonth[key] ?? 0) || '';
                             const count = perPersonAssignedWeightedInMonth[key] || 0;
                             const tn = perPersonRtwTagNightInMonth[key] || { tag: 0, nacht: 0 };
                             const nef = perPersonNefInMonth[key] || 0;
@@ -1374,7 +1418,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 return ty - dy;
                             })();
                             const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
-                            return { name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, teilzeit } as { name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, teilzeit: number };
+                            const hlfb = !!(p as any).fahrzeugfuehrerHLFB;
+                            return { name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, teilzeit, hlfb } as { name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, teilzeit: number, hlfb: boolean };
                         });
                         const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
                         const eligible = itemsWithIndex.filter(it => typeof it.target === 'number' && (it.target as number) > 0);
@@ -1420,7 +1465,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         }
                                         return (
                                             <div key={idx} className={styles.sidebarItem} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto auto', alignItems: 'center', gap: 8 }}>
-                                                <span className={styles.sidebarName}>{it.name}</span>
+                                                <span className={styles.sidebarName} style={{ color: it.hlfb ? '#1565c0' : undefined }}>{it.name}</span>
                                                 <span className={styles.sidebarVal}>{(it.target === '' ? '–' : it.target) + ' | ' + it.count}</span>
                                                 <span className={styles.sidebarVal}>{it.nef}</span>
                                                 <span className={styles.sidebarVal}>{it.itw}</span>

@@ -13,6 +13,7 @@ interface Person {
   itwMaschinist?: boolean;
   itwFahrzeugfuehrer?: boolean;
   sort?: number;
+  active?: number | boolean;
 }
 
 interface Azubi { id: number; name: string; vorname: string; lehrjahr: number }
@@ -40,13 +41,14 @@ const PersonnelOverview: React.FC = () => {
   const [selectedItwId, setSelectedItwId] = useState<number | null>(null);
   const [originalItws, setOriginalItws] = useState<ItwDoctor[] | null>(null);
   const [showExcelImport, setShowExcelImport] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
 
   const loadPersonnel = useCallback(async () => {
     setLoading(true);
-    const list = await (window as any).api.getPersonnelList();
+    const list = await (window as any).api.getPersonnelList(showInactive);
     setPersonnel(list);
     setLoading(false);
-  }, []);
+  }, [showInactive]);
 
   const loadAzubis = useCallback(async () => {
     const list = await (window as any).api.getAzubiList();
@@ -162,6 +164,12 @@ const PersonnelOverview: React.FC = () => {
             itwFahrzeugfuehrer: p.itwFahrzeugfuehrer || false,
             sort: p.sort ?? 0,
           });
+          // Aktiv-Status separat behandeln, sofern geändert
+          const prevActive = (orig?.active ?? 1) ? true : false;
+          const nextActive = (p.active ?? 1) ? true : false;
+          if (prevActive !== nextActive) {
+            await (window as any).api.setPersonActive(p.id, nextActive);
+          }
         }
       }
       setEditing(false);
@@ -304,6 +312,11 @@ const PersonnelOverview: React.FC = () => {
   {/* Überschrift entfernt */}
       {loading ? <div>Lade Daten...</div> : (
       <>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Inaktive anzeigen
+        </label>
+      </div>
       {/* Stammpersonal: Buttons unter der Tabelle */}
       <table className={styles.table}>
         <thead>
@@ -316,6 +329,7 @@ const PersonnelOverview: React.FC = () => {
             <th className={styles.checkboxCell}>NEF</th>
             <th className={styles.checkboxCell}>ITW Ma.</th>
             <th className={styles.checkboxCell}>ITW FzF</th>
+            <th className={styles.checkboxCell}>Aktiv</th>
             <th style={{ width: 60 }} className={styles.center}>#</th>
           </tr>
         </thead>
@@ -324,6 +338,7 @@ const PersonnelOverview: React.FC = () => {
             const selected = person.id === selectedPersonId;
             const isOver = dragContext === 'person' && dragOverId === person.id;
             const rowClass = [styles.row, selected ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
+            const inactive = !(person.active ?? 1);
             return (
               <tr
                 key={person.id}
@@ -334,7 +349,7 @@ const PersonnelOverview: React.FC = () => {
                 onDrop={() => !editing && onDrop(person.id)}
                 onClick={() => handleRowClick(person.id)}
                 className={rowClass}
-                style={{ cursor: editing ? 'default' : 'move' }}
+                style={{ cursor: editing ? 'default' : 'move', opacity: inactive ? 0.6 : 1 }}
               >
                 <td>{editing ? <input value={person.name} onChange={e => updateField(person.id, 'name', e.target.value)} /> : person.name}</td>
                 <td>{editing ? <input value={person.vorname} onChange={e => updateField(person.id, 'vorname', e.target.value)} /> : person.vorname}</td>
@@ -344,6 +359,7 @@ const PersonnelOverview: React.FC = () => {
                 <td className={styles.checkboxCell}><input type="checkbox" disabled={!editing} checked={!!person.nef} onChange={e => editing && updateField(person.id, 'nef', e.target.checked)} /></td>
                 <td className={styles.checkboxCell}><input type="checkbox" disabled={!editing} checked={!!person.itwMaschinist} onChange={e => editing && updateField(person.id, 'itwMaschinist', e.target.checked)} /></td>
                 <td className={styles.checkboxCell}><input type="checkbox" disabled={!editing} checked={!!person.itwFahrzeugfuehrer} onChange={e => editing && updateField(person.id, 'itwFahrzeugfuehrer', e.target.checked)} /></td>
+                <td className={styles.checkboxCell}><input type="checkbox" disabled={!editing} checked={(person.active ?? 1) ? true : false} onChange={e => editing && updateField(person.id, 'active', e.target.checked)} /></td>
                 <td className={styles.center}>{selected ? '✓' : ''}</td>
               </tr>
             );

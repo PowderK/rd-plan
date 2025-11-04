@@ -29,7 +29,7 @@ function useRoster(year: number) {
 }
 
 function usePersonnel() {
-  const [list, setList] = useState<{ id:number; name:string; vorname:string }[]>([]);
+  const [list, setList] = useState<{ id:number; name:string; vorname:string; fahrzeugfuehrerHLFB?: boolean }[]>([]);
   useEffect(() => {
     (async () => {
       try {
@@ -201,8 +201,14 @@ function computePositionsPerMonth(
   return positions;
 }
 
-function computeActivePersonnelPerMonth(year: number, roster: any[], auswertungByType: Record<string, 'off'|'tag'|'nacht'|'24h'|'itw'>) {
-  const setByMonth: Array<Set<string>> = Array.from({ length: 12 }, () => new Set());
+function computeActivePersonnelPerMonth(
+  year: number,
+  roster: any[],
+  auswertungByType: Record<string, 'off'|'tag'|'nacht'|'24h'|'itw'>,
+  personnel: Array<{ id:number; fahrzeugfuehrerHLFB?: boolean }>
+) {
+  // Ermittelt Anwesenheit pro Monat und zählt UNGEWICHTET: jede Person mit >0 Präsenz zählt 1
+  const presentByMonth: Array<Set<number>> = Array.from({ length: 12 }, () => new Set());
   for (const row of (roster || [])) {
     try {
       if (String(row.personType) !== 'person') continue;
@@ -213,11 +219,10 @@ function computeActivePersonnelPerMonth(year: number, roster: any[], auswertungB
       const iso = String(row.date);
       const m = new Date(iso + 'T00:00:00Z');
       const month = m.getUTCMonth();
-      const key = `${row.personType}:${row.personId}`;
-      setByMonth[month].add(key);
+      presentByMonth[month].add(Number(row.personId));
     } catch {}
   }
-  return setByMonth.map(s => s.size);
+  return presentByMonth.map(set => set.size);
 }
 
 function computeShiftsPerPerson(row1: number[], row2: number[]) {
@@ -258,7 +263,7 @@ const ValuesPage: React.FC = () => {
     () => computePositionsPerMonth(year, { rtw, nef }, { rtwActs, nefActs }, deptShifts, rowItw),
     [year, rtw, nef, rtwActs, nefActs, deptShifts, rowItw]
   );
-  const row2 = useMemo(() => computeActivePersonnelPerMonth(year, roster, auswertungByType), [year, roster, auswertungByType]);
+  const row2 = useMemo(() => computeActivePersonnelPerMonth(year, roster, auswertungByType, personnel), [year, roster, auswertungByType, personnel]);
 
   const perPerson24h = useMemo(() => {
     const countsByPerson: Record<number, number[]> = {};
@@ -306,15 +311,42 @@ const ValuesPage: React.FC = () => {
     return rows;
   }, [roster, personnel, auswertungByType]);
 
-  const perPersonCombined = useMemo(() => {
-    const itwById: Record<number, number[]> = {};
-    for (const r of (perPersonITW || [])) itwById[r.id] = r.counts;
-    return (perPerson24h || []).map(r => ({
+  // Präsenz je Person (Auswertung ≠ 'off'), inkl. HLF‑B Flag
+  const perPersonPresence = useMemo(() => {
+    const countsByPerson: Record<number, number[]> = {};
+    const ensure = (pid: number) => (countsByPerson[pid] ||= Array(12).fill(0));
+    for (const row of (roster || [])) {
+      try {
+        if (String(row.personType) !== 'person') continue;
+        const code = String(row.value || '').trim();
+        if (!code) continue;
+        if ((auswertungByType[code] || 'off') === 'off') continue;
+        const iso = String(row.date);
+        const month = new Date(iso + 'T00:00:00Z').getUTCMonth();
+        ensure(Number(row.personId))[month] += 1;
+      } catch {}
+    }
+    const byId: Record<number, boolean> = {};
+    for (const p of (personnel || [])) byId[p.id] = !!(p as any).fahrzeugfuehrerHLFB;
+    const rows = (personnel || []).map(p => ({
+      id: p.id,
+      name: `${p.vorname ? p.vorname + ' ' : ''}${p.name}`.trim(),
+      hlfb: byId[p.id] || false,
+      counts: countsByPerson[p.id] || Array(12).fill(0)
+    }));
+    return rows;
+  }, [roster, personnel, auswertungByType]);
+
+  // Gewichtete Präsenz je Person/Monat für Anzeige & Berechnung (HLF‑B = round(0,75 × Ai,m))
+  const perPersonPresenceWeighted = useMemo(() => {
+    const rows = (perPersonPresence || []).map(r => ({
       id: r.id,
       name: r.name,
-      counts: r.counts.map((v, i) => v + (itwById[r.id]?.[i] || 0))
+      hlfb: r.hlfb,
+      counts: (r.counts || []).map((v: number) => r.hlfb ? Math.round(Number(v || 0) * 0.75) : Number(v || 0))
     }));
-  }, [perPerson24h, perPersonITW]);
+    return rows;
+  }, [perPersonPresence]);
 
   const perAzubiMaschinist = useMemo(() => {
     const countsByAzubi: Record<number, number[]> = {};
@@ -352,7 +384,7 @@ const ValuesPage: React.FC = () => {
 
   const rowAvgCombined = useMemo(() => {
     const avgs = Array(12).fill(0);
-    const rows = perPersonCombined || [];
+    const rows = perPersonPresence || [];
     for (let i = 0; i < 12; i++) {
       let sum = 0, cnt = 0;
       for (const r of rows) {
@@ -362,7 +394,46 @@ const ValuesPage: React.FC = () => {
       avgs[i] = cnt > 0 ? Math.round(sum / cnt) : 0;
     }
     return avgs;
-  }, [perPersonCombined]);
+  }, [perPersonPresence]);
+
+  // Soll-Berechnung pro Person/Monat via Hamilton (größtes Rest-Verfahren) auf Basis gewichteter Präsenz
+  const perPersonTargets = useMemo(() => {
+    const byId: Record<number, number[]> = {};
+    for (const r of (perPersonPresenceWeighted || [])) byId[r.id] = r.counts.slice();
+    const idList = (perPersonPresenceWeighted || []).map(r => r.id);
+    const targetsById: Record<number, number[]> = Object.fromEntries(idList.map(id => [id, Array(12).fill(0)]));
+
+    for (let m = 0; m < 12; m++) {
+      const required = Number(row1Adj[m] || 0);
+      if (required <= 0) continue;
+      const weights = idList.map(id => ({ id, w: Number((byId[id] || [])[m] || 0) }));
+      const active = weights.filter(x => x.w > 0);
+      const totalW = active.reduce((a, b) => a + b.w, 0);
+      if (totalW <= 0) continue;
+      const parts = active.map(a => ({ id: a.id, exact: (required * a.w) / totalW }));
+      const floors = parts.map(p => ({ id: p.id, v: Math.floor(p.exact), frac: p.exact - Math.floor(p.exact) }));
+      let assigned = floors.reduce((s, f) => s + f.v, 0);
+      let rest = required - assigned;
+      floors.sort((a, b) => b.frac - a.frac);
+      for (let i = 0; i < floors.length && rest > 0; i++, rest--) floors[i].v += 1;
+      for (const f of floors) targetsById[f.id][m] = f.v;
+    }
+    return idList.map(id => ({ id, targets: targetsById[id] || Array(12).fill(0) }));
+  }, [perPersonPresenceWeighted, row1Adj]);
+
+  // Gesamt-Soll pro Monat (Summe aller Personen-Soll je Monat)
+  const totalTargetsPerMonth = useMemo(() => {
+    const sums = Array(12).fill(0);
+    for (const r of (perPersonTargets || [])) {
+      (r.targets || []).forEach((v, i) => { sums[i] += Number(v || 0); });
+    }
+    return sums;
+  }, [perPersonTargets]);
+
+  // Jahres-Gesamtsumme der Positionen
+  const sumPositionsYear = useMemo(() => (row1Adj || []).reduce((a, b) => a + (Number(b) || 0), 0), [row1Adj]);
+  // Jahres-Gesamtsumme der Soll-Schichten
+  const sumTargetsYear = useMemo(() => (totalTargetsPerMonth || []).reduce((a, b) => a + (Number(b) || 0), 0), [totalTargetsPerMonth]);
 
   const fmt = (v: number) => new Intl.NumberFormat('de-DE').format(Number(v || 0));
   const styles = {
@@ -399,12 +470,12 @@ const ValuesPage: React.FC = () => {
                 <div style={{ fontSize: 12, color: '#666' }}>Abteilungsschichten × (RTW×4 + NEF×2) + ITW − Azubis (Maschinist)</div>
               </td>
               {row1Adj.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
-              <td style={{ ...styles.td, ...styles.kpiRow }} />
+              <td style={{ ...styles.td, ...styles.kpiRow }}>{fmt(sumPositionsYear)}</td>
             </tr>
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
-                <div style={{ fontWeight: 600 }}>Anzahl Personal</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Stammpersonal mit mind. einer Schicht (Auswertung ≠ off) im Monat</div>
+                <div style={{ fontWeight: 600 }}>Anzahl Personal (gewichtet)</div>
+                <div style={{ fontSize: 12, color: '#666' }}>Stammpersonal mit mind. einer Schicht (Auswertung ≠ off); HLF‑B ungewichtet gezählt</div>
               </td>
               {row2.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
@@ -441,18 +512,75 @@ const ValuesPage: React.FC = () => {
               {row3.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
             </tr>
+            {/* Kontrolle: Positionen vs. Soll (grün/rot je Monat und Summe) */}
+            <tr>
+              <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
+                <div style={{ fontWeight: 600 }}>Kontrolle: Positionen vs. Soll</div>
+                <div style={{ fontSize: 12, color: '#666' }}>Grün = gleich, Rot = abweichend</div>
+              </td>
+              {row1Adj.map((pos, i) => {
+                const soll = totalTargetsPerMonth[i] || 0;
+                const ok = Number(pos || 0) === Number(soll || 0);
+                const bg = ok ? '#e7f6ec' : '#fdeaea';
+                const border = ok ? '1px solid #b7ebc6' : '1px solid #f5c2c7';
+                return (
+                  <td key={i} style={{ ...styles.td, ...styles.kpiRow, background: bg, border }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                      <span>{fmt(pos)}</span>
+                      <span style={{ color: '#374151' }}>|</span>
+                      <span>{fmt(soll)}</span>
+                    </div>
+                  </td>
+                );
+              })}
+              {(() => {
+                const ok = Number(sumPositionsYear || 0) === Number(sumTargetsYear || 0);
+                const bg = ok ? '#e7f6ec' : '#fdeaea';
+                const border = ok ? '1px solid #b7ebc6' : '1px solid #f5c2c7';
+                return (
+                  <td style={{ ...styles.td, ...styles.kpiRow, background: bg, border }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                      <span>{fmt(sumPositionsYear)}</span>
+                      <span style={{ color: '#374151' }}>|</span>
+                      <span>{fmt(sumTargetsYear)}</span>
+                    </div>
+                  </td>
+                );
+              })()}
+            </tr>
             <tr>
               <td style={{ ...styles.sectionSep }} colSpan={monthNames.length + 2} />
             </tr>
-            {perPersonCombined.map(row => {
-              const sum = row.counts.reduce((a, b) => a + b, 0);
+              {perPersonPresenceWeighted.map(row => {
+              const sumPresence = row.counts.reduce((a, b) => a + b, 0);
+              const targRow = perPersonTargets.find(t => t.id === row.id);
+              const targets = targRow?.targets || Array(12).fill(0);
+              const sumTargets = targets.reduce((a, b) => a + b, 0);
               return (
                 <tr key={row.id} style={Number(row.id) % 2 === 0 ? styles.zebra1 : styles.zebra2}>
-                  <td style={styles.nameSticky as any}>{row.name}</td>
+                  <td style={{ ...(styles.nameSticky as any), color: row.hlfb ? '#1565c0' : undefined }}>{row.name}</td>
                   {row.counts.map((v, i) => (
-                    <td key={i} style={styles.td}>{v ? fmt(v) : ''}</td>
+                    <td key={i} style={styles.td}>
+                      {v ? (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                          <span>{fmt(v)}</span>
+                          <span style={{ color: '#374151' }}>|</span>
+                          <span style={{ color: '#0f766e' }}>{targets[i] ? fmt(targets[i]) : ''}</span>
+                        </div>
+                      ) : (targets[i] ? (
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}><span style={{ color: '#0f766e' }}>{fmt(targets[i])}</span></div>
+                      ) : '')}
+                    </td>
                   ))}
-                  <td style={styles.td}>{sum ? fmt(sum) : ''}</td>
+                  <td style={styles.td}>
+                    {(sumPresence || sumTargets) ? (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                        <span>{sumPresence ? fmt(sumPresence) : ''}</span>
+                        <span style={{ color: '#374151' }}>|</span>
+                        <span style={{ color: '#0f766e' }}>{sumTargets ? fmt(sumTargets) : ''}</span>
+                      </div>
+                    ) : ''}
+                  </td>
                 </tr>
               );
             })}
