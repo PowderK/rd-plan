@@ -90,3 +90,53 @@ Ziel: Nach Fertigstellung eines Plans wird er freigegeben und ist nur mit Passwo
 - Plan-Freigabe mit Passwortschutz: 1–2 PT (inkl. Hashing, IPC, UI, Disable/Enforcement)
 
 > PT = Personentage; tatsächlicher Aufwand hängt von Details (z. B. Konfliktlogik bei Makros, Mehrbenutzerbetrieb) ab.
+
+---
+
+## 4) Editieren von Kolleg:innen im Popup (analog „Erstellen“)
+
+Ziel: Das Bearbeiten einer Person soll in einem eigenen Popup-Fenster erfolgen – identisches Layout/Flow wie beim „Hinzufügen“ – um Konsistenz und Fokus zu verbessern.
+
+- User Story
+  - Als Nutzer:in möchte ich eine bestehende Person im selben Popup-Dialog wie beim Erstellen bearbeiten, damit ich Felder übersichtlich und mit identischem Formular-Flow anpassen kann.
+
+- Scope
+  - Öffnen über „Ändern“-Aktion oder Doppelklick in der Personalübersicht.
+  - Formular entspricht dem Add-Dialog (Name, Vorname, Teilzeit, FzF, FzF HLF‑B, NEF, ITW Ma/FzF, Aktiv), inkl. Pflichtfeld-Validierung.
+  - Speichern/Abbrechen-Buttons, Broadcast „personnel-updated“ beim Erfolg.
+  - CSP- und Preload-APIs wie im Add-Dialog verwenden.
+
+- Akzeptanzkriterien
+  - Bearbeiten-Dialog öffnet mit vorbefüllten Daten; Änderungen werden gespeichert und sind direkt sichtbar.
+  - Pflichtfelder (z. B. Name) werden validiert; Nutzer:in erhält klare Hinweise.
+  - Kein Inline-Formularmix mehr nötig – Popup ist der zentrale Flow.
+
+- Technikvorschlag
+  - Renderer: Neues `editPerson.html`/TSX existiert bereits; Button/Handler in der Übersicht sicherstellen (Fenster per `open-edit-person-window`).
+  - Preload/Main: IPC `get-person`, `update-person` vorhanden; ggf. Validierung verbessern und Fehler dialogisch anzeigen.
+
+---
+
+## 5) Qualifikations-Zeiträume pro Person (monatliche Auflösung, Aktiv/Inaktiv je Zeitraum)
+
+Ziel: Qualifikationen (z. B. „FzF RTW“) zeitlich befristet und monatsgenau pflegen, inkl. automatischer Aktiv/Inaktiv-Steuerung je Zeitraum.
+
+- User Story
+  - Als Planer:in möchte ich für Kolleg:innen Qualifikationen mit Start-/End-Monat pflegen (z. B. FzF RTW ab 2025‑02 bis 2026‑01) und der Plan soll die Einteilung entsprechend erlauben oder verhindern.
+
+- Scope
+  - Neue Entität „QualificationPeriod“ pro Person: Typ (z. B. FzF RTW, NEF, ITW‑Ma/FzF), Gültig von/bis (Monatsauflösung), Status (aktiv/inaktiv innerhalb des Zeitraums optional).
+  - UI: Verwaltung in Personen-Popup (Tab „Qualifikationen“), Liste + „Hinzufügen“, „Bearbeiten“, „Löschen“.
+  - Logik: Einteilungs-/Kontrolllogik berücksichtigt nur aktuell gültige Qualifikationen; bei fehlender Qualifikation Warnung oder Block (konfigurierbar).
+  - Optional: Historienansicht und CSV/Excel‑Export.
+
+- Akzeptanzkriterien
+  - Für einen Monat ohne FzF‑RTW‑Quali darf die Person nicht als FzF RTW zugeordnet werden (oder es erscheint eine deutliche Warnung, je nach Einstellung).
+  - Aktiv/Inaktiv-Schalter pro Zeitraum wirkt sich sofort auf Einteilung/Kontrolle aus.
+  - Werte/Reporting berücksichtigen den gültigen Qualistand.
+
+- Technikvorschlag
+  - DB: Neue Tabelle `qualification_periods(id, personId, qualType TEXT, startYM TEXT, endYM TEXT, active INTEGER DEFAULT 1)`, Index auf (personId, qualType, startYM, endYM).
+  - IPC: CRUD-Handler (`get-qualification-periods(personId)`, `add/update/delete-qualification-period`).
+  - Renderer: Tab im Personen-Dialog, Validierung (start<=end, Monatsformat YYYY‑MM), Anzeige der Wirksamkeit zum aktuellen Planmonat.
+  - Enforcement: In `MonthTabs` und Zuweisungslogik vor Zuordnung Quali prüfen; Setting zur „Warnen vs. Verhindern“‑Strategie.
