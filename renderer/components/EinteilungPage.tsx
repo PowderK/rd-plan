@@ -78,18 +78,38 @@ const EinteilungPage: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: 8 }}>
-      <MonthTabs
-        currentMonth={currentMonth}
-        onMonthChange={handleMonthChange}
-        personnel={personnel}
-        azubis={azubis}
-        roster={roster}
-        year={year}
-        shiftPattern={[]}
-        deptPatternSeqs={deptPatternSeqs}
-        onRosterChanged={handleRosterChanged}
-        onEntryAssigned={handleEntryAssigned}
+    <div
+      style={{
+        padding: 8,
+        display: 'grid',
+        gridTemplateColumns: '1fr 260px',
+        gap: 12,
+        alignItems: 'start'
+      }}
+    >
+      {/* Hauptbereich: Einteilung */}
+      <div style={{ minWidth: 0 }}>
+        <MonthTabs
+          currentMonth={currentMonth}
+          onMonthChange={handleMonthChange}
+          personnel={personnel}
+          azubis={azubis}
+          roster={roster}
+          year={year}
+          shiftPattern={[]}
+          deptPatternSeqs={deptPatternSeqs}
+          onRosterChanged={handleRosterChanged}
+          onEntryAssigned={handleEntryAssigned}
+        />
+      </div>
+      {/* Rechte Sidebar: Zielcontainer für den Kontrollkasten (unterhalb des Headers, analog Menü) */}
+      <div
+        id="einteilung-right-sidebar"
+        style={{
+          position: 'sticky',
+          top: 0, // beginnt unterhalb des Headers, da dieser außerhalb von <main> sticky ist
+          alignSelf: 'start'
+        }}
       />
     </div>
   );

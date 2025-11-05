@@ -207,8 +207,9 @@
   border-radius: 6px;
   padding: 8px;
   position: sticky;
-  top: 8px;
-  max-height: calc(100vh - 24px);
+  top: 0;
+  /* Beginnt unterhalb des Headers (da in <main> gerendert) – keine zusätzliche Verschiebung nötig */
+  max-height: calc(100vh - 16px);
   overflow: auto;
   background: var(--bg);
 }
