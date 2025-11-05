@@ -4,11 +4,17 @@ RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die 
 
 ## Funktionen
 
-- Anzeige des aktuellen Monats und der Rettungswache
-- Zweigeteilte Ansicht für die Einteilung und das Personal
-- Monatliche Tabs zur Navigation zwischen den Schichten
-- Einstellungsmenü zur Anpassung der Anwendung
-- SQLite-Datenbank zur Speicherung von Schicht- und Personaldaten
+- Monats-Tabs zur Navigation und Einteilung pro Monat
+- Einteilung mit rechter Sidebar (Kontrollkasten) unterhalb des Headers via Portal
+- Kontrollkasten je Ansicht (RTW/NEF und ITW) mit konsistenten Kennzahlen:
+	- Soll | Ist (Monat, Hamilton-Verteilung)
+	- NEF- und ITW-Anteile (Monat)
+	- Jahres-Rest (Ziel − gefahren)
+	- Tag/Nacht-Balken mit Ziffern direkt im Segment (globale Jahreswerte)
+	- Restschichten-Balken (80 px) mit intelligenter Ampel-Färbung
+- Filter der Tage nach Abteilung: In der RTW/NEF-Ansicht werden nur Tage der eingestellten Abteilung angezeigt
+- Einstellungsmenü, Fahrzeug- und Musterverwaltung (RTW/NEF/ITW), Feiertage
+- Electron + React + TypeScript + Vite
 
 ## Projektstruktur
 
@@ -67,21 +73,34 @@ npm run build
 npm run start
 ```
 
+## Einteilung & Kontrollkasten
+
+- Rechte Sidebar (Kontrollkasten) wird mittels React-Portal unterhalb des Headers gerendert und bleibt sticky.
+- Tag/Nacht-Anzeige als geteilter Balken (links Nacht blau, rechts Tag orange) mit Ziffern in den Segmenten (Einblendung ab ~18 px Segmentbreite).
+- Restschichten-Balken (80 px breit) zeigt die verbleibenden Anwesenheitsschichten im restlichen Jahr abzüglich bereits eingeteilter Schichten. Ampel-Färbung:
+	- Rot, wenn verbleibende Anwesenheit < verbleibendes Jahres-Soll
+	- Gelb, wenn der positive Puffer ≤ 20% des verbleibenden Solls ist
+	- Grün, wenn der Puffer > 20% des verbleibenden Solls ist
+- In der RTW/NEF-Ansicht werden nur die Tage angezeigt, die zur aktuell eingestellten Abteilung gehören.
+
 ## Planungslogik (Schichtverteilung)
 
-Die Schichtverteilung in RD-Plan versucht, Schichten gleichmäßig auf das verfügbare Personal zu verteilen. Wichtige Punkte:
-
-- Nur Schichten fließen in die Berechnung ein, bei denen die jeweilige Person tatsächlich für den Rettungsdienst verfügbar ist. Abwesenheiten oder eingeschränkte Verfügbarkeit (z. B. Kantinenzeiten, Fortbildungen, Urlaub) werden nicht als zu verteilende Schichten gezählt.
-- Die Berechnung betrachtet für jede Person nur die Schichten, die als "verfügbar für Rettungsdienst" markiert sind. Dadurch lässt sich die Verteilung korrekt auf Teams anwenden, in denen Kolleginnen und Kollegen zusätzliche Aufgaben haben (z. B. gleichzeitig Dienst im Löschzug bei Berufsfeuerwehren mit 24‑h‑Diensten).
-- Ziel ist eine faire, gleichmäßige Lastverteilung unter Berücksichtigung von Verfügbarkeiten — nicht die Planung von Fortbildungen, Pausen oder sonstigen außerbetrieblichen Aktivitäten.
-
-Hinweis: Die konkrete Markierung "verfügbar / nicht verfügbar" für einzelne Schichten hängt von der UI-Eingabe ab (z. B. Abwesenheitskennzeichnung). Wenn du spezielle Regeln (z. B. Gewichtung bestimmter Dienste) benötigst, können wir die Logik erweitern.
+- Monats-Soll pro Person via Hamilton-Verteilung auf Basis gewichteter Präsenz:
+	- Präsenz eines Monats: Anzahl Tage mit Auswertung != 'off'
+	- HLF‑B wird mit Faktor 0,75 gewichtet (round(0,75 × Präsenz))
+	- Hamilton (größtes Rest-Verfahren) verteilt die Monats-Positionen proportional zur gewichteten Präsenz
+- Jahresziel (Gesamt-Soll): Summe der monatlichen Soll-Ziele über alle 12 Monate
+- Gefahrene Jahreslast: Summe aller gewerteten Einsätze über das Jahr
+	- RTW (FzF/Masch, pos 1/2): +1
+	- ITW (pos 1/2): +1
+	- NEF Assistenz: +2
+- Jahres-Rest im Kontrollkasten: Jahresziel − gefahrene Jahreslast (zusätzlich farblich hinterlegt je nach Puffer)
+- Tag/Nacht-Werte sind global über das Jahr gerechnet (nicht monatlich), damit sie in beiden Ansichten konsistent sind.
 
 ## Entwicklungsstatus
 
-Die Anwendung befindet sich noch in aktiver Entwicklung. Der Funktionsumfang ist noch nicht vollständig getestet, und es können sich APIs, die Datenbankstruktur oder das Verhalten zwischen Versionen ändern.
-
-Wichtiger Hinweis: Diese Software ist derzeit nicht für den produktiven / Realbetrieb vorgesehen. Verwende sie in produktiven Umgebungen nur mit Vorsicht und nach eigener Prüfung. Für Einsätze in kritischen Umgebungen sind zusätzliche Tests, Sicherheitsprüfungen und organisatorische Maßnahmen erforderlich.
+Die Anwendung befindet sich in aktiver Entwicklung. Der Funktionsumfang wird laufend erweitert (z. B. jüngst: vereinheitlichte Jahres‑Soll‑Berechnung, globale Tag/Nacht‑Werte, Restbalken mit Ampellogik, Abteilungs‑Filterung der Tage).
+Wichtiger Hinweis: Nutzung im Produktivbetrieb nur nach eigener Prüfung. Für kritische Umgebungen sind zusätzliche Tests/Sicherheitsprüfungen erforderlich.
 
 ## Lizenz
 
