@@ -1,3 +1,7 @@
+## Build 306 - 2025-11-05
+
+- automated build
+
 ## Build 305 - 2025-11-05
 
 - automated build
