@@ -384,6 +384,14 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
 
     await fixDutyRosterUniqueConstraint(db);
 
+    // --- Migration: manual_edit Spalte für duty_roster hinzufügen ---
+    const dutyRosterCols = await db.all("PRAGMA table_info('duty_roster')");
+    if (!dutyRosterCols.some((c: any) => c.name === 'manual_edit')) {
+        console.log('[DB] Adding missing column "manual_edit" to duty_roster table');
+        await db.exec("ALTER TABLE duty_roster ADD COLUMN manual_edit INTEGER DEFAULT 0");
+        await db.exec("UPDATE duty_roster SET manual_edit = 0 WHERE manual_edit IS NULL");
+    }
+
     // --- ITW Ärzte Tabelle ---
     await db.exec(`
         CREATE TABLE IF NOT EXISTS itw_doctors (
@@ -679,8 +687,8 @@ export const setDutyRosterEntry = async (db: AsyncDB, entry: { personId: number,
         return;
     }
     await db.run(`
-        INSERT INTO duty_roster (personId, personType, date, value, type) VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(personId, personType, date) DO UPDATE SET value = excluded.value, type = excluded.type
+        INSERT INTO duty_roster (personId, personType, date, value, type, manual_edit) VALUES (?, ?, ?, ?, ?, 1)
+        ON CONFLICT(personId, personType, date) DO UPDATE SET value = excluded.value, type = excluded.type, manual_edit = 1
     `, [entry.personId, entry.personType || 'person', entry.date, entry.value ?? '', entry.type ?? 'text']);
 };
 
@@ -710,6 +718,52 @@ export const bulkSetDutyRosterEntries = async (db: AsyncDB, entries: { personId:
     } catch (e) {
         await db.run('ROLLBACK');
         console.error('[DB] bulkSetDutyRosterEntries rollback', e);
+        throw e;
+    }
+};
+
+// Bulk Import für Importe, die manuelle Bearbeitungen respektieren
+export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { personId: number, personType: string, date: string, value: string, type: string }[], respectManualEdits: boolean = true) => {
+    if (!Array.isArray(entries) || entries.length === 0) return { imported: 0, skipped: 0 };
+    await db.run('BEGIN');
+    let imported = 0;
+    let skipped = 0;
+    try {
+        for (const e of entries) {
+            if (!e || !e.personId || !e.date) continue;
+            
+            if (respectManualEdits) {
+                // Prüfe ob Eintrag bereits existiert und manuell bearbeitet wurde
+                const existing = await db.get(`
+                    SELECT manual_edit FROM duty_roster 
+                    WHERE personId = ? AND personType = ? AND date = ?
+                `, [e.personId, e.personType || 'person', e.date]);
+                
+                if (existing && existing.manual_edit === 1) {
+                    skipped++;
+                    continue; // Überspringe manuell bearbeitete Einträge
+                }
+            }
+            
+            try {
+                await db.run(`
+                    INSERT INTO duty_roster (personId, personType, date, value, type, manual_edit) VALUES (?, ?, ?, ?, ?, 0)
+                    ON CONFLICT(personId, personType, date) DO UPDATE SET 
+                        value = excluded.value, 
+                        type = excluded.type,
+                        manual_edit = CASE WHEN duty_roster.manual_edit = 1 AND ? THEN 1 ELSE 0 END
+                `, [e.personId, e.personType || 'person', e.date, e.value ?? '', e.type ?? 'text', respectManualEdits ? 1 : 0]);
+                imported++;
+            } catch (ie) {
+                console.warn('[DB] bulkImportDutyRosterEntries skip entry error', ie);
+            }
+        }
+        await db.run('COMMIT');
+        console.log('[DB] bulkImportDutyRosterEntries committed', { total: entries.length, imported, skipped });
+        return { imported, skipped };
+    } catch (e) {
+        await db.run('ROLLBACK');
+        console.error('[DB] bulkImportDutyRosterEntries rollback', e);
         throw e;
     }
 };

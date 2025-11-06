@@ -63,7 +63,7 @@ const DutyRoster: React.FC = () => {
     '3', '2', '1', '3', '1', '3', '2', '1', '3', '2', '1', '2', '1', '3', '2', '1', '3', '2', '3', '2', '1'
   ]);
   // Dienstplan-State: { [personId: string]: { [dayIndex]: { value, type } } }
-  const [roster, setRoster] = useState<Record<string, Record<string, { value: string, type: string }>>>({});
+  const [roster, setRoster] = useState<Record<string, Record<string, { value: string, type: string, manualEdit?: boolean }>>>({});
   // Editierstatus: [personId: string][dayIdx] => true/false
   const [editing, setEditing] = useState<Record<string, Record<number, boolean>>>({});
   // Monats-Import direkt für currentMonth
@@ -192,7 +192,7 @@ const DutyRoster: React.FC = () => {
       // IDs für Mapping vorbereiten (immer aktuell aus den geladenen Listen)
       const personalIds = new Set(list.map((p: { id: number }) => p.id));
       const azubiIds = new Set(azubiList.map((a: { id: number }) => a.id));
-  const rosterObj: Record<string, Record<string, { value: string, type: string }>> = {};
+  const rosterObj: Record<string, Record<string, { value: string, type: string, manualEdit?: boolean }>> = {};
       entries.forEach((entry: any) => {
         const iso = String(entry.date);
         if (!iso) return;
@@ -222,7 +222,7 @@ const DutyRoster: React.FC = () => {
           key = String(entry.personId);
         }
         if (!rosterObj[key]) rosterObj[key] = {};
-        rosterObj[key][iso] = { value: entry.value, type: String(entry.type || '') };
+        rosterObj[key][iso] = { value: entry.value, type: String(entry.type || ''), manualEdit: !!entry.manual_edit };
       });
       console.log('[Renderer] constructed rosterObj keys=', Object.keys(rosterObj).slice(0,20), 'total=', Object.keys(rosterObj).length);
       setRoster(rosterObj);
@@ -444,7 +444,7 @@ const DutyRoster: React.FC = () => {
     // IDs für Mapping IMMER aus aktuellem State
     const personalIds = new Set(list.map((p: { id: number }) => p.id));
     const azubiIds = new Set(azubiList.map((a: { id: number }) => a.id));
-    const rosterObj: Record<string, Record<string, { value: string, type: string }>> = {};
+    const rosterObj: Record<string, Record<string, { value: string, type: string, manualEdit?: boolean }>> = {};
     entries.forEach((entry: any) => {
       const iso = String(entry.date);
       if (iso) {
@@ -474,7 +474,7 @@ const DutyRoster: React.FC = () => {
           key = String(entry.personId);
         }
         if (!rosterObj[key]) rosterObj[key] = {};
-        rosterObj[key][iso] = { value: entry.value, type: String(entry.type || '') };
+        rosterObj[key][iso] = { value: entry.value, type: String(entry.type || ''), manualEdit: !!entry.manual_edit };
       }
     });
       console.log('[Renderer] reloadRoster constructed rosterObj keys=', Object.keys(rosterObj).slice(0,20), 'total=', Object.keys(rosterObj).length);
@@ -869,8 +869,29 @@ const DutyRoster: React.FC = () => {
                     const code = (cell.value || '').trim();
                     const hex = colorByType[code] || '';
                     const bgTint = hex ? hexToRgba(hex, 0.2) : undefined; // sanfter Hintergrund
+                    const isManualEdit = cell.manualEdit;
+                    
+                    // Debug: Log wenn manuelle Bearbeitung erkannt wird
+                    if (isManualEdit && code) {
+                      console.log('[DEBUG] Rendering manual edit:', { 
+                        person: person.name, 
+                        dayIdx, 
+                        iso, 
+                        code, 
+                        isManualEdit,
+                        cell
+                      });
+                    }
+                    const cellStyle = { 
+                      minWidth: 90, 
+                      cursor: 'pointer', 
+                      border: '1px solid var(--line)', 
+                      whiteSpace: 'nowrap', 
+                      background: bgTint,
+                      ...(isManualEdit ? { borderLeft: '4px solid #1976d2' } : {})
+                    };
                     return (
-                      <td key={dayIdx} style={{ minWidth: 90, cursor: 'pointer', border: '1px solid var(--line)', whiteSpace: 'nowrap', background: bgTint }}
+                      <td key={dayIdx} style={cellStyle}
                           onClick={() => {
                             if (!isEditing) {
                               console.log('[DEBUG] Zellenklick:', { dayIdx, iso: days[dayIdx].iso, date: days[dayIdx].date });

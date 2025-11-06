@@ -318,12 +318,24 @@ export class RosterImporter {
 
             if (entriesToImport.length > 0) {
                 console.log(`[RosterImporter] Schreibe ${entriesToImport.length} Einträge in duty_roster.`);
-                await this.dbAdapter.bulkSetDutyRosterEntries(entriesToImport);
+                
+                // Bei Monatsimport (month definiert) respektiere manuelle Bearbeitungen
+                // Bei Jahresimport (month undefined) überschreibe alles
+                const respectManualEdits = month !== undefined;
+                
+                if (respectManualEdits) {
+                    const result = await this.dbAdapter.bulkImportDutyRosterEntries(entriesToImport, true);
+                    console.log(`[RosterImporter] Monatsimport: ${result.imported} importiert, ${result.skipped} übersprungen (manuell bearbeitet)`);
+                    return { success: true, message: `Dienstplan erfolgreich importiert. ${result.imported} Einträge verarbeitet, ${result.skipped} manuelle Änderungen geschützt.`, importedCount: result.imported };
+                } else {
+                    await this.dbAdapter.bulkSetDutyRosterEntries(entriesToImport);
+                    return { success: true, message: `Dienstplan erfolgreich importiert. ${entriesToImport.length} Einträge verarbeitet.`, importedCount: entriesToImport.length };
+                }
             } else {
                 console.warn('[RosterImporter] Keine Einträge zum Import gefunden.');
             }
 
-            return { success: true, message: `Dienstplan erfolgreich importiert. ${entriesToImport.length} Einträge verarbeitet.`, importedCount: entriesToImport.length };
+            return { success: true, message: `Keine Einträge zum Import gefunden.`, importedCount: 0 };
 
         } catch (error) {
             console.error('Fehler beim Importieren des Dienstplans:', error);

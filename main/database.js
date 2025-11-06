@@ -635,8 +635,8 @@ const deleteHoliday = async (db, date) => {
 exports.deleteHoliday = deleteHoliday;
 const setDutyRosterEntry = async (db, entry) => {
     await db.run(`
-        INSERT INTO duty_roster (personId, personType, date, value, type) VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(personId, personType, date) DO UPDATE SET value = excluded.value, type = excluded.type
+        INSERT INTO duty_roster (personId, personType, date, value, type, manual_edit) VALUES (?, ?, ?, ?, ?, 1)
+        ON CONFLICT(personId, personType, date) DO UPDATE SET value = excluded.value, type = excluded.type, manual_edit = 1
     `, [entry.personId, entry.personType, entry.date, entry.value, entry.type]);
     console.log(`[DB] [${new Date().toISOString()}] setDutyRosterEntry successful`, entry);
     try {
@@ -682,6 +682,54 @@ const bulkSetDutyRosterEntries = async (db, entries) => {
     }
 };
 exports.bulkSetDutyRosterEntries = bulkSetDutyRosterEntries;
+
+// Bulk Import für Importe, die manuelle Bearbeitungen respektieren
+const bulkImportDutyRosterEntries = async (db, entries, respectManualEdits = true) => {
+    if (!Array.isArray(entries) || entries.length === 0) return { imported: 0, skipped: 0 };
+    await db.run('BEGIN');
+    let imported = 0;
+    let skipped = 0;
+    try {
+        for (const e of entries) {
+            if (!e || !e.personId || !e.date) continue;
+            
+            if (respectManualEdits) {
+                // Prüfe ob Eintrag bereits existiert und manuell bearbeitet wurde
+                const existing = await db.get(`
+                    SELECT manual_edit FROM duty_roster 
+                    WHERE personId = ? AND personType = ? AND date = ?
+                `, [e.personId, e.personType || 'person', e.date]);
+                
+                if (existing && existing.manual_edit === 1) {
+                    skipped++;
+                    continue; // Überspringe manuell bearbeitete Einträge
+                }
+            }
+            
+            try {
+                await db.run(`
+                    INSERT INTO duty_roster (personId, personType, date, value, type, manual_edit) VALUES (?, ?, ?, ?, ?, 0)
+                    ON CONFLICT(personId, personType, date) DO UPDATE SET 
+                        value = excluded.value, 
+                        type = excluded.type,
+                        manual_edit = CASE WHEN duty_roster.manual_edit = 1 AND ? THEN 1 ELSE 0 END
+                `, [e.personId, e.personType || 'person', e.date, e.value ?? '', e.type ?? 'text', respectManualEdits ? 1 : 0]);
+                imported++;
+            } catch (ie) {
+                console.warn('[DB] bulkImportDutyRosterEntries skip entry error', ie);
+            }
+        }
+        await db.run('COMMIT');
+        console.log('[DB] bulkImportDutyRosterEntries committed', { total: entries.length, imported, skipped });
+        return { imported, skipped };
+    } catch (e) {
+        await db.run('ROLLBACK');
+        console.error('[DB] bulkImportDutyRosterEntries rollback', e);
+        throw e;
+    }
+};
+exports.bulkImportDutyRosterEntries = bulkImportDutyRosterEntries;
+
 const getAzubiList = async (db) => {
     return await db.all('SELECT * FROM azubis ORDER BY sort ASC, id ASC');
 };
