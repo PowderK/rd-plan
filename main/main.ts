@@ -341,6 +341,43 @@ ipcMain.handle('update-azubi-order', async (_event, order: number[]) => {
     return true;
 });
 
+ipcMain.handle('get-azubi', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getAzubi(id);
+});
+
+// Azubi Period handlers
+ipcMain.handle('get-azubi-periods', async (_event, azubiId: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getAzubiPeriods(azubiId);
+});
+
+ipcMain.handle('get-all-azubi-periods', async () => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getAllAzubiPeriods();
+});
+
+ipcMain.handle('add-azubi-period', async (_event, period: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addAzubiPeriod(period);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubis-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('update-azubi-period', async (_event, id: number, period: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateAzubiPeriod({ ...period, id });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubis-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('delete-azubi-period', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteAzubiPeriod(id);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubis-updated'); } catch {} });
+    return true;
+});
+
 // ITW Doctor handlers
 ipcMain.handle('get-itw-doctors', async () => {
     const adapter = await ensureDatabaseAdapter();

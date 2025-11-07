@@ -85,6 +85,86 @@ interface RosterEntry {
 export class RosterImporter {
     constructor(private dbAdapter: DatabaseAdapter) {}
 
+    // Sammelt unbekannte Dienstarten aus allen Dienst-Einträgen
+    private async collectUnknownShiftTypes(
+        entriesToImport: Array<{ value: string; type: string }>
+    ): Promise<string[]> {
+        // Hole bekannte Dienstarten
+        const existingShiftTypes = await this.dbAdapter.getShiftTypes();
+        const existingCodes = new Set(existingShiftTypes.map((st: any) => st.code));
+        
+        // Sammle alle eindeutigen Dienstarten aus den Import-Einträgen
+        const foundShiftTypes = new Set<string>();
+        for (const entry of entriesToImport) {
+            const value = entry.value?.trim();
+            if (value && value.length > 0) {
+                foundShiftTypes.add(value);
+            }
+        }
+        
+        // Finde unbekannte Dienstarten
+        const unknownShiftTypes = Array.from(foundShiftTypes).filter(code => !existingCodes.has(code));
+        
+        console.log('[RosterImporter] Gefundene Dienstarten:', Array.from(foundShiftTypes));
+        console.log('[RosterImporter] Bekannte Dienstarten:', Array.from(existingCodes));
+        console.log('[RosterImporter] Unbekannte Dienstarten:', unknownShiftTypes);
+        
+        return unknownShiftTypes;
+    }
+
+    // Sammelt unbekannte Namen aus dem Azubi-Block für Monatsimport
+    private async collectUnknownAzubiNames(
+        worksheet: XLSX.WorkSheet, 
+        fixed: any, 
+        year: number, 
+        month: number,
+        fullNameMap: Map<string, {id: number, type: 'person' | 'azubi'}>,
+        lastNameMap: Map<string, {id: number, type: 'person' | 'azubi'} | 'conflict'>,
+        mapByLastName: Record<string, number>,
+        idMap: Map<number, {id: number, type: 'person' | 'azubi'}>
+    ): Promise<string[]> {
+        const unknownNames = new Set<string>();
+        
+        for (let col = fixed.firstDateCol; col < fixed.firstDateCol + 2000; col++) {
+            const dateAddr = XLSX.utils.encode_cell({ r: fixed.headerRow, c: col });
+            const dateCell = worksheet[dateAddr];
+            if (!dateCell || dateCell.v == null) break;
+            
+            const dateValue = parseHeaderDate(dateCell.v, year);
+            if (!dateValue || dateValue.getFullYear() !== year || dateValue.getMonth() !== month) continue;
+            
+            for (let row = fixed.azubiStart; row <= fixed.azubiEnd; row++) {
+                const nameAddr = XLSX.utils.encode_cell({ r: row, c: fixed.nameCol });
+                const nameCell = worksheet[nameAddr];
+                if (!nameCell || nameCell.v == null) continue;
+                
+                const rawName = String(nameCell.v).trim();
+                if (!rawName) continue;
+                
+                // Check if this name is already known
+                const keyFull = rawName.toLowerCase();
+                let personInfo = fullNameMap.get(keyFull) || null;
+                if (!personInfo) {
+                    const keyLast = normalizeLastName(rawName);
+                    const mappedId = mapByLastName[keyLast];
+                    if (mappedId && idMap.has(mappedId)) {
+                        personInfo = idMap.get(mappedId)!;
+                    } else {
+                        const ln = lastNameMap.get(keyLast);
+                        if (ln && ln !== 'conflict') personInfo = ln;
+                    }
+                }
+                
+                // If name is unknown, add to collection
+                if (!personInfo) {
+                    unknownNames.add(rawName);
+                }
+            }
+        }
+        
+        return Array.from(unknownNames).sort();
+    }
+
     // Parse-only preview: returns unmatched names and simple stats without writing to DB
     public async previewDutyRoster(filePath: string, year: number, month?: number): Promise<{ success: boolean; total: number; matched: number; unmatchedNames: string[]; overwrites: number; message?: string; }> {
         try {
@@ -170,7 +250,7 @@ export class RosterImporter {
             return { success: false, total: 0, matched: 0, unmatchedNames: [], overwrites: 0, message: msg };
         }
     }
-    public async importDutyRoster(filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number> }): Promise<{success: boolean, message: string, importedCount: number}> {
+    public async importDutyRoster(filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number>; newAzubis?: Array<{name: string, vorname: string, lehrjahr: number}>; newShiftTypes?: Array<{code: string, description: string, color: string, auswertung: string}> }): Promise<{success: boolean, message: string, importedCount: number, unknownAzubis?: string[], unknownShiftTypes?: string[]}> {
         try {
             const workbook = XLSX.readFile(filePath);
             const sheetNames = workbook.SheetNames;
@@ -190,7 +270,16 @@ export class RosterImporter {
                 idMap.set(p.id, { id: p.id, type: 'person' });
             }
             for (const a of azubis) {
-                fullNameMap.set(`${a.name}, ${a.vorname}`.toLowerCase(), { id: a.id, type: 'azubi' });
+                // Add multiple name formats for azubis
+                const fullName = `${a.name}, ${a.vorname}`.toLowerCase();
+                const nameOnly = a.name.toLowerCase();
+                
+                fullNameMap.set(fullName, { id: a.id, type: 'azubi' });
+                // Also add name-only format for azubis without vorname
+                if (!a.vorname || a.vorname.trim() === '') {
+                    fullNameMap.set(nameOnly, { id: a.id, type: 'azubi' });
+                }
+                
                 const key = normalizeLastName(String(a.name || ''));
                 if (!key) continue;
                 if (lastNameMap.has(key)) lastNameMap.set(key, 'conflict'); else lastNameMap.set(key, { id: a.id, type: 'azubi' });
@@ -264,6 +353,7 @@ export class RosterImporter {
                             // Lookup order: full name -> last name -> mapping override
                             const keyFull = rawName.toLowerCase();
                             let personInfo = fullNameMap.get(keyFull) || null;
+                            
                             if (!personInfo) {
                                 const keyLast = normalizeLastName(rawName);
                                 // mapping override first
@@ -278,6 +368,10 @@ export class RosterImporter {
                                         continue;
                                     }
                                 }
+                            }
+                            
+                            if (personInfo) {
+                                console.log(`[RosterImporter] Name '${rawName}' zugeordnet zu ${personInfo.type} ID ${personInfo.id}`);
                             }
                             if (!personInfo) continue;
 
@@ -311,12 +405,105 @@ export class RosterImporter {
                     }
                 }
 
-                // Process personnel and azubi blocks
+                // Process personnel block always
                 processBlock(fixed.personnelStart, fixed.personnelEnd, 'Personal');
-                processBlock(fixed.azubiStart, fixed.azubiEnd, 'Azubis');
+                
+                // Process azubi block only for month imports (not year imports)
+                if (month !== undefined) {
+                    // For month imports, collect unknown azubi names first
+                    const unknownAzubiNames = await this.collectUnknownAzubiNames(worksheet, fixed, year, month, fullNameMap, lastNameMap, mapByLastName, idMap);
+                    
+                    if (unknownAzubiNames.length > 0) {
+                        // If new azubis are provided in options, create them first
+                        if (options?.newAzubis && options.newAzubis.length > 0) {
+                            console.log('[RosterImporter] Erstelle neue Azubis:', options.newAzubis);
+                            for (const newAzubi of options.newAzubis) {
+                                await this.dbAdapter.addAzubi(newAzubi);
+                            }
+                            // Reload azubi list and rebuild ALL maps completely
+                            const updatedAzubis = await this.dbAdapter.getAzubiList();
+                            // Clear existing azubi entries from maps
+                            fullNameMap.clear();
+                            lastNameMap.clear();
+                            idMap.clear();
+                            
+                            // Rebuild maps with personnel
+                            for (const p of personnel) {
+                                fullNameMap.set(`${p.name}, ${p.vorname}`.toLowerCase(), { id: p.id, type: 'person' });
+                                const key = normalizeLastName(String(p.name || ''));
+                                if (key) {
+                                    if (lastNameMap.has(key)) lastNameMap.set(key, 'conflict'); 
+                                    else lastNameMap.set(key, { id: p.id, type: 'person' });
+                                }
+                                idMap.set(p.id, { id: p.id, type: 'person' });
+                            }
+                            
+                            // Rebuild maps with updated azubis
+                            for (const a of updatedAzubis) {
+                                // Add multiple name formats for azubis
+                                const fullName = `${a.name}, ${a.vorname}`.toLowerCase();
+                                const nameOnly = a.name.toLowerCase();
+                                
+                                fullNameMap.set(fullName, { id: a.id, type: 'azubi' });
+                                // Also add name-only format for azubis without vorname
+                                if (!a.vorname || a.vorname.trim() === '') {
+                                    fullNameMap.set(nameOnly, { id: a.id, type: 'azubi' });
+                                }
+                                
+                                const key = normalizeLastName(String(a.name || ''));
+                                if (key) {
+                                    if (lastNameMap.has(key)) lastNameMap.set(key, 'conflict'); 
+                                    else lastNameMap.set(key, { id: a.id, type: 'azubi' });
+                                }
+                                idMap.set(a.id, { id: a.id, type: 'azubi' });
+                                
+                                console.log(`[RosterImporter] Azubi in Maps: fullName='${fullName}', nameOnly='${nameOnly}', key='${key}'`);
+                            }
+                            console.log('[RosterImporter] Maps nach Azubi-Erstellung aktualisiert. Neue Azubi-Anzahl:', updatedAzubis.length);
+                        } else {
+                            // Return unknown names for user dialog
+                            console.log('[RosterImporter] Gefundene unbekannte Azubi-Namen für Dialog:', unknownAzubiNames);
+                            return { 
+                                success: true, 
+                                message: `Unbekannte Azubi-Namen gefunden: ${unknownAzubiNames.join(', ')}`, 
+                                importedCount: 0,
+                                unknownAzubis: unknownAzubiNames 
+                            };
+                        }
+                    }
+                    
+                    processBlock(fixed.azubiStart, fixed.azubiEnd, 'Azubis');
+                } else {
+                    console.log('[RosterImporter] Jahresimport: Azubi-Block übersprungen');
+                }
             }
 
             if (entriesToImport.length > 0) {
+                // Check for unknown shift types
+                const unknownShiftTypes = await this.collectUnknownShiftTypes(entriesToImport);
+                
+                if (unknownShiftTypes.length > 0) {
+                    // If new shift types are provided in options, create them first
+                    if (options?.newShiftTypes && options.newShiftTypes.length > 0) {
+                        console.log('[RosterImporter] Erstelle neue Dienstarten:', options.newShiftTypes);
+                        for (const newShiftType of options.newShiftTypes) {
+                            await this.dbAdapter.addShiftType({ code: newShiftType.code, description: newShiftType.description });
+                            // Set color and auswertung in settings
+                            await this.dbAdapter.setSetting(`color_${newShiftType.code}`, newShiftType.color);
+                            await this.dbAdapter.setSetting(`auswertung_${newShiftType.code}`, newShiftType.auswertung);
+                        }
+                    } else {
+                        // Return unknown shift types for user dialog
+                        console.log('[RosterImporter] Gefundene unbekannte Dienstarten für Dialog:', unknownShiftTypes);
+                        return { 
+                            success: true, 
+                            message: `Unbekannte Dienstarten gefunden: ${unknownShiftTypes.join(', ')}`, 
+                            importedCount: 0,
+                            unknownShiftTypes: unknownShiftTypes 
+                        };
+                    }
+                }
+
                 console.log(`[RosterImporter] Schreibe ${entriesToImport.length} Einträge in duty_roster.`);
                 
                 // Bei Monatsimport (month definiert) respektiere manuelle Bearbeitungen

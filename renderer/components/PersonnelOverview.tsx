@@ -2,6 +2,212 @@ import React, { useState, useEffect, useCallback } from 'react';
 import styles from './PersonnelOverview.module.css';
 import ExcelImport from './ExcelImport';
 
+// Zeiträume Manager Komponente
+const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ azubi, onClose }) => {
+  const [periods, setPeriods] = useState<AzubiPeriod[]>([]);
+  const [newPeriod, setNewPeriod] = useState({ start_date: '', end_date: '', description: '' });
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const loadPeriods = async () => {
+      try {
+        const azubiPeriods = await (window as any).api.getAzubiPeriods(azubi.id);
+        setPeriods(azubiPeriods);
+      } catch (error) {
+        console.error('Fehler beim Laden der Zeiträume:', error);
+      }
+    };
+    loadPeriods();
+  }, [azubi.id]);
+
+  const addPeriod = async () => {
+    try {
+      if (!newPeriod.start_date || !newPeriod.end_date) {
+        alert('Bitte geben Sie Start- und Enddatum ein.');
+        return;
+      }
+
+      if (new Date(newPeriod.start_date) >= new Date(newPeriod.end_date)) {
+        alert('Das Startdatum muss vor dem Enddatum liegen.');
+        return;
+      }
+
+      setLoading(true);
+      await (window as any).api.addAzubiPeriod({
+        azubi_id: azubi.id,
+        start_date: newPeriod.start_date,
+        end_date: newPeriod.end_date,
+        description: newPeriod.description || undefined
+      });
+
+      // Zeiträume neu laden
+      const updatedPeriods = await (window as any).api.getAzubiPeriods(azubi.id);
+      setPeriods(updatedPeriods);
+      setNewPeriod({ start_date: '', end_date: '', description: '' });
+    } catch (error) {
+      console.error('Fehler beim Hinzufügen des Zeitraums:', error);
+      alert('Fehler beim Hinzufügen des Zeitraums!');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deletePeriod = async (periodId: number) => {
+    try {
+      if (!confirm('Zeitraum wirklich löschen?')) {
+        return;
+      }
+
+      setLoading(true);
+      await (window as any).api.deleteAzubiPeriod(periodId);
+
+      // Zeiträume neu laden
+      const updatedPeriods = await (window as any).api.getAzubiPeriods(azubi.id);
+      setPeriods(updatedPeriods);
+    } catch (error) {
+      console.error('Fehler beim Löschen des Zeitraums:', error);
+      alert('Fehler beim Löschen des Zeitraums!');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ 
+      position: 'fixed', 
+      top: 0, 
+      left: 0, 
+      right: 0, 
+      bottom: 0, 
+      backgroundColor: 'rgba(0,0,0,0.5)', 
+      zIndex: 1000,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: '8px',
+        padding: '24px',
+        maxWidth: '600px',
+        width: '90%',
+        maxHeight: '80vh',
+        overflow: 'auto',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+      }}>
+        <h2>Zeiträume für {azubi.vorname} {azubi.name}</h2>
+        
+        {/* Aktuelle Zeiträume anzeigen */}
+        {periods.length > 0 ? (
+          <div style={{ marginBottom: 24 }}>
+            <h3>Aktuelle Zeiträume:</h3>
+            {periods.map(period => (
+              <div key={period.id} style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                marginBottom: 12, 
+                padding: 12, 
+                backgroundColor: '#f5f5f5', 
+                borderRadius: 4 
+              }}>
+                <div style={{ flexGrow: 1 }}>
+                  <strong>{new Date(period.start_date).toLocaleDateString('de-DE')} - {new Date(period.end_date).toLocaleDateString('de-DE')}</strong>
+                  {period.description && <div style={{ fontSize: '0.9em', color: '#666' }}>{period.description}</div>}
+                </div>
+                <button 
+                  onClick={() => deletePeriod(period.id)} 
+                  disabled={loading}
+                  style={{ 
+                    marginLeft: 12, 
+                    backgroundColor: '#ff4444', 
+                    color: 'white', 
+                    border: 'none', 
+                    padding: '6px 12px', 
+                    borderRadius: 4, 
+                    cursor: loading ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  Löschen
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p style={{ color: '#666', fontStyle: 'italic', marginBottom: 24 }}>Keine Zeiträume definiert</p>
+        )}
+
+        {/* Neuen Zeitraum hinzufügen */}
+        <div style={{ border: '1px solid #ddd', padding: 16, borderRadius: 4, backgroundColor: '#fafafa' }}>
+          <h3>Neuen Zeitraum hinzufügen:</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4, fontSize: '0.9em', fontWeight: 'bold' }}>Von:</label>
+              <input 
+                type="date" 
+                value={newPeriod.start_date} 
+                onChange={e => setNewPeriod({...newPeriod, start_date: e.target.value})}
+                style={{ width: '100%', padding: '8px' }}
+                disabled={loading}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4, fontSize: '0.9em', fontWeight: 'bold' }}>Bis:</label>
+              <input 
+                type="date" 
+                value={newPeriod.end_date} 
+                onChange={e => setNewPeriod({...newPeriod, end_date: e.target.value})}
+                style={{ width: '100%', padding: '8px' }}
+                disabled={loading}
+              />
+            </div>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', marginBottom: 4, fontSize: '0.9em', fontWeight: 'bold' }}>Beschreibung (optional):</label>
+            <input 
+              type="text" 
+              value={newPeriod.description} 
+              onChange={e => setNewPeriod({...newPeriod, description: e.target.value})}
+              placeholder="z.B. 2. Lehrjahr, Praktikum..."
+              style={{ width: '100%', padding: '8px' }}
+              disabled={loading}
+            />
+          </div>
+          <button 
+            onClick={addPeriod}
+            disabled={loading}
+            style={{ 
+              backgroundColor: '#007acc', 
+              color: 'white', 
+              border: 'none', 
+              padding: '10px 20px', 
+              borderRadius: 4, 
+              cursor: loading ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {loading ? 'Wird hinzugefügt...' : 'Hinzufügen'}
+          </button>
+        </div>
+
+        <div style={{ marginTop: 24, textAlign: 'right' }}>
+          <button 
+            onClick={onClose}
+            style={{ 
+              backgroundColor: '#6c757d', 
+              color: 'white', 
+              border: 'none', 
+              padding: '10px 20px', 
+              borderRadius: 4, 
+              cursor: 'pointer'
+            }}
+          >
+            Schließen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 interface Person {
   id: number;
   name: string;
@@ -18,10 +224,20 @@ interface Person {
 
 interface Azubi { id: number; name: string; vorname: string; lehrjahr: number }
 interface ItwDoctor { id: number; name: string; vorname: string }
+interface AzubiPeriod {
+  id: number;
+  azubi_id: number;
+  start_date: string;
+  end_date: string;
+  description?: string;
+}
 
 const PersonnelOverview: React.FC = () => {
   const [personnel, setPersonnel] = useState<Person[]>([]);
   const [azubis, setAzubis] = useState<Azubi[]>([]);
+  const [azubiPeriods, setAzubiPeriods] = useState<Record<number, AzubiPeriod[]>>({});
+  const [showPeriodManager, setShowPeriodManager] = useState(false);
+  const [selectedAzubiForPeriods, setSelectedAzubiForPeriods] = useState<Azubi | null>(null);
   const [itws, setItws] = useState<ItwDoctor[]>([]);
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [draggedAzubiId, setDraggedAzubiId] = useState<number | null>(null);
@@ -53,6 +269,16 @@ const PersonnelOverview: React.FC = () => {
   const loadAzubis = useCallback(async () => {
     const list = await (window as any).api.getAzubiList();
     setAzubis(list);
+    // Lade Zeiträume für alle Azubis
+    const allPeriods = await (window as any).api.getAllAzubiPeriods();
+    const periodsByAzubi: Record<number, AzubiPeriod[]> = {};
+    allPeriods.forEach((period: AzubiPeriod) => {
+      if (!periodsByAzubi[period.azubi_id]) {
+        periodsByAzubi[period.azubi_id] = [];
+      }
+      periodsByAzubi[period.azubi_id].push(period);
+    });
+    setAzubiPeriods(periodsByAzubi);
   }, []);
 
   const loadItws = useCallback(async () => {
@@ -391,6 +617,7 @@ const PersonnelOverview: React.FC = () => {
               <th>Name</th>
               <th>Vorname</th>
               <th className={styles.narrow}>Lehrjahr</th>
+              <th>Zeiträume</th>
               <th className={styles.center} style={{ width: 60 }}>#</th>
             </tr>
           </thead>
@@ -398,6 +625,11 @@ const PersonnelOverview: React.FC = () => {
             {azubis.map(a => {
               const isOver = dragContext === 'azubi' && dragOverId === a.id;
               const rowClass = [styles.row, selectedAzubiId === a.id ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
+              const periods = azubiPeriods[a.id] || [];
+              const periodsText = periods.length > 0 
+                ? periods.map(p => `${new Date(p.start_date).toLocaleDateString('de-DE')} - ${new Date(p.end_date).toLocaleDateString('de-DE')}`).join(', ')
+                : 'Keine Zeiträume definiert';
+              
               return (
                 <tr key={a.id}
                     draggable={!editingAzubis}
@@ -411,6 +643,9 @@ const PersonnelOverview: React.FC = () => {
                   <td>{editingAzubis ? <input value={a.name} onChange={e => updateAzubiField(a.id, 'name', e.target.value)} /> : a.name}</td>
                   <td>{editingAzubis ? <input value={a.vorname} onChange={e => updateAzubiField(a.id, 'vorname', e.target.value)} /> : a.vorname}</td>
                   <td>{editingAzubis ? <input type="number" className={styles.narrow} value={a.lehrjahr} onChange={e => updateAzubiField(a.id, 'lehrjahr', Number(e.target.value))} /> : a.lehrjahr}</td>
+                  <td style={{ fontSize: '0.9em', color: periods.length > 0 ? '#333' : '#999', maxWidth: '200px', wordWrap: 'break-word' }}>
+                    {periodsText}
+                  </td>
                   <td className={styles.center}>{selectedAzubiId === a.id ? '✓' : ''}</td>
                 </tr>
               );
@@ -422,6 +657,19 @@ const PersonnelOverview: React.FC = () => {
             <button onClick={() => (window as any).api.openAddAzubiWindow()}>Hinzufügen</button>
             <button onClick={startEditingAzubis} disabled={azubis.length === 0}>Ändern</button>
             <button onClick={handleDeleteSelectedAzubi} disabled={selectedAzubiId == null}>Löschen</button>
+            <button 
+              onClick={() => {
+                const selectedAzubi = azubis.find(a => a.id === selectedAzubiId);
+                if (selectedAzubi) {
+                  setSelectedAzubiForPeriods(selectedAzubi);
+                  setShowPeriodManager(true);
+                }
+              }} 
+              disabled={selectedAzubiId == null}
+              style={{ marginLeft: 16, backgroundColor: '#007acc', color: 'white' }}
+            >
+              Zeiträume verwalten
+            </button>
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -476,6 +724,19 @@ const PersonnelOverview: React.FC = () => {
           </div>
         )}
       </div>
+      
+      {/* Zeiträume Manager Dialog */}
+      {showPeriodManager && selectedAzubiForPeriods && (
+        <AzubiPeriodsManager 
+          azubi={selectedAzubiForPeriods}
+          onClose={() => {
+            setShowPeriodManager(false);
+            setSelectedAzubiForPeriods(null);
+            loadAzubis(); // Daten neu laden nach Änderungen
+          }}
+        />
+      )}
+      
       {/* Globale Bottom-Buttons entfernt, da Aktionen nun unter jeder Tabelle stehen */}
     </div>
   );

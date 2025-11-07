@@ -73,7 +73,15 @@ contextBridge.exposeInMainWorld('api', {
     addAzubi: (azubi: any) => ipcRenderer.invoke('add-azubi', azubi),
     updateAzubi: (azubi: any) => ipcRenderer.invoke('update-azubi', azubi),
     deleteAzubi: (id: number) => ipcRenderer.invoke('delete-azubi', id),
+    getAzubi: (id: number) => ipcRenderer.invoke('get-azubi', id),
     updateAzubiOrder: (order: number[]) => ipcRenderer.invoke('update-azubi-order', order),
+    // Azubi Periods
+    getAzubiPeriods: (azubiId: number) => ipcRenderer.invoke('get-azubi-periods', azubiId),
+    getAllAzubiPeriods: () => ipcRenderer.invoke('get-all-azubi-periods'),
+    addAzubiPeriod: (period: any) => ipcRenderer.invoke('add-azubi-period', period),
+    updateAzubiPeriod: (id: number, period: any) => ipcRenderer.invoke('update-azubi-period', id, period),
+    deleteAzubiPeriod: (id: number) => ipcRenderer.invoke('delete-azubi-period', id),
+    // Windows
     openAddAzubiWindow: () => ipcRenderer.send('open-add-azubi-window'),
     openEditAzubiWindow: (id: number) => ipcRenderer.send('open-edit-azubi-window', id),
     onAzubisUpdated: (callback: () => void) => ipcRenderer.on('azubis-updated', callback),

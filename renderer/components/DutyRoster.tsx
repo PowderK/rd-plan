@@ -47,6 +47,48 @@ const getDaysInMonthView = (year: number, month: number) => {
 
 const months = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 
+// Helper function to check if azubi is active on a specific date
+const isAzubiActiveOnDate = (azubiPeriods: any[], checkDate: string): boolean => {
+  if (!azubiPeriods || azubiPeriods.length === 0) {
+    // No periods defined = always active (backward compatibility)
+    return true;
+  }
+  
+  const check = new Date(checkDate);
+  return azubiPeriods.some(period => {
+    const start = new Date(period.start_date);
+    const end = new Date(period.end_date);
+    return check >= start && check <= end;
+  });
+};
+
+// Helper function to filter azubis based on their active periods for a specific month
+const filterActiveAzubisForMonth = (azubis: any[], allPeriods: any[], year: number, month: number): any[] => {
+  if (!allPeriods || allPeriods.length === 0) {
+    return azubis; // No periods defined = all azubis active
+  }
+  
+  // Check if azubi is active at any point during the month
+  const startOfMonth = new Date(year, month - 1, 1);
+  const endOfMonth = new Date(year, month, 0);
+  
+  return azubis.filter(azubi => {
+    const azubiPeriods = allPeriods.filter(p => p.azubi_id === azubi.id);
+    
+    if (azubiPeriods.length === 0) {
+      return true; // No periods = always active
+    }
+    
+    return azubiPeriods.some(period => {
+      const periodStart = new Date(period.start_date);
+      const periodEnd = new Date(period.end_date);
+      
+      // Check if period overlaps with the month
+      return periodStart <= endOfMonth && periodEnd >= startOfMonth;
+    });
+  });
+};
+
 const DutyRoster: React.FC = () => {
   const [personnel, setPersonnel] = useState<Person[]>([]);
   const [year, setYear] = useState<number>(new Date().getFullYear());
@@ -70,7 +112,18 @@ const DutyRoster: React.FC = () => {
   const [showImportTable, setShowImportTable] = useState(false);
   const [importTableMonth, setImportTableMonth] = useState<number|null>(null);
   const [azubis, setAzubis] = useState<{ id: number; name: string; vorname: string; lehrjahr: number }[]>([]);
+  const [azubiPeriods, setAzubiPeriods] = useState<any[]>([]);
+  const [filteredAzubis, setFilteredAzubis] = useState<{ id: number; name: string; vorname: string; lehrjahr: number }[]>([]);
   const [itwDates, setItwDates] = useState<Set<string>>(new Set());
+  // New Azubi Dialog States
+  const [showNewAzubiDialog, setShowNewAzubiDialog] = useState(false);
+  const [unknownAzubiNames, setUnknownAzubiNames] = useState<string[]>([]);
+  const [pendingImportPath, setPendingImportPath] = useState<string>('');
+  // New ShiftType Dialog States
+  const [showNewShiftTypeDialog, setShowNewShiftTypeDialog] = useState(false);
+  const [unknownShiftTypes, setUnknownShiftTypes] = useState<string[]>([]);
+  const [pendingImportYear, setPendingImportYear] = useState<number>(0);
+  const [pendingImportMonth, setPendingImportMonth] = useState<number | undefined>(undefined);
   // Fahrzeuge und Aktivierungen für Positions-Berechnungen
   const [rtwVehicles, setRtwVehicles] = useState<{ id:number; name:string }[]>([]);
   const [nefVehicles, setNefVehicles] = useState<{ id:number; name:string }[]>([]);
@@ -81,8 +134,11 @@ const DutyRoster: React.FC = () => {
     (async () => {
       const list = await (window as any).api.getPersonnelList();
       const azubiList = await (window as any).api.getAzubiList();
+      const allPeriods = await (window as any).api.getAllAzubiPeriods();
+      
       setPersonnel(list);
       setAzubis(azubiList);
+      setAzubiPeriods(allPeriods);
       const y = await (window as any).api.getSetting('year');
       if (y) setYear(Number(y));
   const types = await (window as any).api.getShiftTypes();
@@ -295,6 +351,12 @@ const DutyRoster: React.FC = () => {
 
   // Monatsweise Ansicht: ausgewählter Monat und Tage
   const [currentMonth, setCurrentMonth] = useState<number>(new Date().getMonth());
+
+  // Filter azubis based on active periods for current month
+  useEffect(() => {
+    const filtered = filterActiveAzubisForMonth(azubis, azubiPeriods, year, currentMonth + 1);
+    setFilteredAzubis(filtered);
+  }, [azubis, azubiPeriods, year, currentMonth]);
   const days = getDaysInMonthView(year, currentMonth);
   // Debug: Zeige die ersten 5 Tage im Jahr
   console.log('[DEBUG] days[0-4]:', days.slice(0,5));
@@ -303,7 +365,7 @@ const DutyRoster: React.FC = () => {
   type Row = { id: string; origId: number; name: string; vorname: string; isAzubi: boolean; lehrjahr?: number };
   const allRows: Row[] = [
     ...personnel.map(p => ({ id: `p_${p.id}`, origId: p.id, name: p.name, vorname: p.vorname, isAzubi: false })),
-    ...azubis.map(a => ({ id: `a_${a.id}`, origId: a.id, name: a.name, vorname: a.vorname, isAzubi: true, lehrjahr: a.lehrjahr }))
+    ...filteredAzubis.map(a => ({ id: `a_${a.id}`, origId: a.id, name: a.name, vorname: a.vorname, isAzubi: true, lehrjahr: a.lehrjahr }))
   ];
   // Sortiere Azubis nach Lehrjahr, Personal bleibt oben
   allRows.sort((a, b) => {
@@ -351,6 +413,64 @@ const DutyRoster: React.FC = () => {
     return itwDates.has(iso);
   };
 
+  // New Azubi Dialog Handler
+  const handleCreateNewAzubis = async (newAzubis: Array<{name: string, vorname: string, lehrjahr: number}>) => {
+    try {
+      const retryResult = await (window as any).api.importDutyRoster(pendingImportPath, year, currentMonth, { newAzubis });
+      if (retryResult.success) {
+        alert(`Import erfolgreich: ${retryResult.importedCount} Einträge wurden verarbeitet. ${newAzubis.length} neue Azubis wurden angelegt.`);
+        await reloadRoster();
+      } else {
+        alert(`Import fehlgeschlagen: ${retryResult.message}`);
+      }
+    } catch (error) {
+      console.error('Fehler beim erneuten Import:', error);
+      alert('Fehler beim Import.');
+    }
+    setShowNewAzubiDialog(false);
+  };
+
+  const handleCancelNewAzubis = () => {
+    setShowNewAzubiDialog(false);
+  };
+
+  // New ShiftType Dialog Handlers
+  const handleCreateNewShiftTypes = async (newShiftTypes: Array<{code: string, description: string, color: string, auswertung: string}>) => {
+    try {
+      const retryResult = await (window as any).api.importDutyRoster(pendingImportPath, pendingImportYear, pendingImportMonth, { newShiftTypes });
+      if (retryResult.success) {
+        // Check if there are still unknown azubis after creating shift types
+        if (retryResult.unknownAzubis && retryResult.unknownAzubis.length > 0) {
+          const createNewAzubis = window.confirm(
+            `Folgende unbekannte Azubi-Namen wurden gefunden:\n${retryResult.unknownAzubis.join('\n')}\n\nMöchten Sie diese als neue Azubis anlegen?`
+          );
+          
+          if (createNewAzubis) {
+            setShowNewAzubiDialog(true);
+            setUnknownAzubiNames(retryResult.unknownAzubis);
+            // Keep the same pending import parameters
+          } else {
+            alert(`Import erfolgreich: ${retryResult.importedCount} Einträge wurden verarbeitet. ${newShiftTypes.length} neue Dienstarten wurden angelegt.`);
+            await reloadRoster();
+          }
+        } else {
+          alert(`Import erfolgreich: ${retryResult.importedCount} Einträge wurden verarbeitet. ${newShiftTypes.length} neue Dienstarten wurden angelegt.`);
+          await reloadRoster();
+        }
+      } else {
+        alert(`Import fehlgeschlagen: ${retryResult.message}`);
+      }
+    } catch (error) {
+      console.error('Fehler beim erneuten Import:', error);
+      alert('Fehler beim Import.');
+    }
+    setShowNewShiftTypeDialog(false);
+  };
+
+  const handleCancelNewShiftTypes = () => {
+    setShowNewShiftTypeDialog(false);
+  };
+
   // Import-Handler
   const handleImport = async () => {
     const rosterImportPath = await (window as any).api.getSetting('rosterImportPath');
@@ -364,6 +484,40 @@ const DutyRoster: React.FC = () => {
     try {
         const result = await (window as any).api.importDutyRoster(rosterImportPath, year, currentMonth);
         if (result.success) {
+            // Check if unknown shift types were found
+            if (result.unknownShiftTypes && result.unknownShiftTypes.length > 0) {
+                const createNewShiftTypes = window.confirm(
+                    `Folgende unbekannte Dienstarten wurden gefunden:\n${result.unknownShiftTypes.join('\n')}\n\nMöchten Sie diese als neue Dienstarten anlegen?`
+                );
+                
+                if (createNewShiftTypes) {
+                    // Show new shift type dialog
+                    setShowNewShiftTypeDialog(true);
+                    setUnknownShiftTypes(result.unknownShiftTypes);
+                    setPendingImportPath(rosterImportPath);
+                    setPendingImportYear(year);
+                    setPendingImportMonth(currentMonth);
+                }
+                return;
+            }
+            
+            // Check if unknown azubis were found
+            if (result.unknownAzubis && result.unknownAzubis.length > 0) {
+                const createNewAzubis = window.confirm(
+                    `Folgende unbekannte Azubi-Namen wurden gefunden:\n${result.unknownAzubis.join('\n')}\n\nMöchten Sie diese als neue Azubis anlegen?`
+                );
+                
+                if (createNewAzubis) {
+                    // Show new azubi dialog
+                    setShowNewAzubiDialog(true);
+                    setUnknownAzubiNames(result.unknownAzubis);
+                    setPendingImportPath(rosterImportPath);
+                    setPendingImportYear(year);
+                    setPendingImportMonth(currentMonth);
+                }
+                return;
+            }
+            
             alert(`Import erfolgreich: ${result.importedCount} Einträge wurden verarbeitet.`);
             await reloadRoster();
         } else {
@@ -420,8 +574,11 @@ const DutyRoster: React.FC = () => {
   const reloadRoster = async (yearOverride?: number) => {
     const list = await (window as any).api.getPersonnelList();
     const azubiList = await (window as any).api.getAzubiList();
+    const allPeriods = await (window as any).api.getAllAzubiPeriods();
+    
     setPersonnel(list);
     setAzubis(azubiList);
+    setAzubiPeriods(allPeriods);
     // Hole Dienstplan-Einträge für das lokal ausgewählte Jahr (nicht globales Setting)
     const yUse = typeof yearOverride === 'number' ? yearOverride : year;
     const entries = await (window as any).api.getDutyRoster(yUse);
@@ -558,8 +715,8 @@ const DutyRoster: React.FC = () => {
   const azubiMaschinistShiftsInMonth = (() => {
     let sum = 0;
     const reMasch = /^rtw\d+_(tag|nacht)_2$/;
-    const azubiIdSet = new Set(azubis.map(a => a.id));
-    for (const a of azubis) {
+    const azubiIdSet = new Set(filteredAzubis.map(a => a.id));
+    for (const a of filteredAzubis) {
       const key = `a_${a.id}`;
       for (const d of days) {
         const t = String(roster[key]?.[d.iso]?.type || '');
@@ -943,15 +1100,237 @@ const DutyRoster: React.FC = () => {
             year={year}
             personnel={[
               ...personnel.map(p => ({ id: `p_${p.id}`, name: p.name, vorname: p.vorname, isAzubi: false })),
-              ...azubis.map(a => ({ id: `a_${a.id}`, name: a.name, vorname: a.vorname, isAzubi: true, lehrjahr: a.lehrjahr }))
+              ...filteredAzubis.map(a => ({ id: `a_${a.id}`, name: a.name, vorname: a.vorname, isAzubi: true, lehrjahr: a.lehrjahr }))
             ]}
             onImport={handleImportTableImport}
             onCancel={handleImportTableCancel}
           />
         </div>
       )}
+
+      {/* New Azubi Dialog */}
+      {showNewAzubiDialog && (
+        <NewAzubiDialog
+          unknownNames={unknownAzubiNames}
+          onConfirm={handleCreateNewAzubis}
+          onCancel={handleCancelNewAzubis}
+        />
+      )}
+
+      {/* New ShiftType Dialog */}
+      {showNewShiftTypeDialog && (
+        <NewShiftTypeDialog
+          unknownShiftTypes={unknownShiftTypes}
+          onConfirm={handleCreateNewShiftTypes}
+          onCancel={handleCancelNewShiftTypes}
+        />
+      )}
+
     {/* Version/Build Anzeige entfernt */}
   </div>
+  );
+};
+
+// New ShiftType Dialog Component
+interface NewShiftTypeDialogProps {
+  unknownShiftTypes: string[];
+  onConfirm: (shiftTypes: Array<{code: string, description: string, color: string, auswertung: string}>) => void;
+  onCancel: () => void;
+}
+
+const NewShiftTypeDialog: React.FC<NewShiftTypeDialogProps> = ({ unknownShiftTypes, onConfirm, onCancel }) => {
+  const [shiftTypeData, setShiftTypeData] = useState<Array<{code: string, description: string, color: string, auswertung: string}>>(() => {
+    return unknownShiftTypes.map(code => ({
+      code: code,
+      description: code, // Default description is the code itself
+      color: '#cccccc', // Default gray color
+      auswertung: 'off' // Default: no counting
+    }));
+  });
+
+  const handleDescriptionChange = (index: number, value: string) => {
+    const newData = [...shiftTypeData];
+    newData[index].description = value;
+    setShiftTypeData(newData);
+  };
+
+  const handleColorChange = (index: number, value: string) => {
+    const newData = [...shiftTypeData];
+    newData[index].color = value;
+    setShiftTypeData(newData);
+  };
+
+  const handleAuswertungChange = (index: number, value: string) => {
+    const newData = [...shiftTypeData];
+    newData[index].auswertung = value;
+    setShiftTypeData(newData);
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+      background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }}>
+      <div style={{
+        background: 'white', padding: '20px', borderRadius: '8px', minWidth: '600px', maxWidth: '800px', maxHeight: '80vh', overflow: 'auto'
+      }}>
+        <h3>Neue Dienstarten anlegen</h3>
+        <p>Folgende unbekannte Dienstarten wurden gefunden:</p>
+        
+        {shiftTypeData.map((shiftType, index) => (
+          <div key={index} style={{ marginBottom: '20px', border: '1px solid #ddd', padding: '15px', borderRadius: '4px' }}>
+            <div><strong>Code:</strong> {shiftType.code}</div>
+            
+            <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center' }}>
+              <div>
+                <label>Bezeichnung: </label>
+                <input 
+                  type="text" 
+                  value={shiftType.description} 
+                  onChange={(e) => handleDescriptionChange(index, e.target.value)}
+                  style={{ width: '150px', padding: '4px' }}
+                  placeholder="z.B. Tagdienst"
+                />
+              </div>
+              
+              <div>
+                <label>Farbe: </label>
+                <input 
+                  type="color" 
+                  value={shiftType.color} 
+                  onChange={(e) => handleColorChange(index, e.target.value)}
+                  style={{ width: '50px', height: '30px', padding: '2px' }}
+                />
+              </div>
+              
+              <div>
+                <label>Auswertung: </label>
+                <select 
+                  value={shiftType.auswertung} 
+                  onChange={(e) => handleAuswertungChange(index, e.target.value)}
+                  style={{ padding: '4px' }}
+                >
+                  <option value="off">Nicht zählen</option>
+                  <option value="tag">Tagdienst</option>
+                  <option value="nacht">Nachtdienst</option>
+                  <option value="24h">24h-Dienst</option>
+                  <option value="itw">ITW-Dienst</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        ))}
+        
+        <div style={{ marginTop: '20px', textAlign: 'right' }}>
+          <button 
+            onClick={onCancel}
+            style={{ marginRight: '10px', padding: '8px 16px' }}
+          >
+            Abbrechen
+          </button>
+          <button 
+            onClick={() => onConfirm(shiftTypeData)}
+            style={{ padding: '8px 16px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px' }}
+          >
+            Dienstarten anlegen und Import fortsetzen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// New Azubi Dialog Component
+interface NewAzubiDialogProps {
+  unknownNames: string[];
+  onConfirm: (azubis: Array<{name: string, vorname: string, lehrjahr: number}>) => void;
+  onCancel: () => void;
+}
+
+const NewAzubiDialog: React.FC<NewAzubiDialogProps> = ({ unknownNames, onConfirm, onCancel }) => {
+  const [azubiData, setAzubiData] = useState<Array<{name: string, vorname: string, lehrjahr: number}>>(() => {
+    return unknownNames.map(fullName => {
+      const parts = fullName.split(',').map(p => p.trim());
+      return {
+        name: parts[0] || fullName,
+        vorname: parts[1] || '',
+        lehrjahr: 1
+      };
+    });
+  });
+
+  const handleLehrjahrChange = (index: number, value: string) => {
+    const newData = [...azubiData];
+    newData[index].lehrjahr = parseInt(value) || 1;
+    setAzubiData(newData);
+  };
+
+  const handleVornameChange = (index: number, value: string) => {
+    const newData = [...azubiData];
+    newData[index].vorname = value;
+    setAzubiData(newData);
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+      background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }}>
+      <div style={{
+        background: 'white', padding: '20px', borderRadius: '8px', minWidth: '400px', maxWidth: '600px'
+      }}>
+        <h3>Neue Azubis anlegen</h3>
+        <p>Folgende unbekannte Namen wurden gefunden:</p>
+        
+        {azubiData.map((azubi, index) => (
+          <div key={index} style={{ marginBottom: '15px', border: '1px solid #ddd', padding: '10px', borderRadius: '4px' }}>
+            <div><strong>Original:</strong> {unknownNames[index]}</div>
+            <div style={{ marginTop: '5px' }}>
+              <label>Nachname: </label>
+              <input 
+                type="text" 
+                value={azubi.name} 
+                readOnly 
+                style={{ marginRight: '10px', padding: '2px' }}
+              />
+              <label>Vorname: </label>
+              <input 
+                type="text" 
+                value={azubi.vorname} 
+                onChange={(e) => handleVornameChange(index, e.target.value)}
+                style={{ marginRight: '10px', padding: '2px' }}
+              />
+              <label>Lehrjahr: </label>
+              <select 
+                value={azubi.lehrjahr} 
+                onChange={(e) => handleLehrjahrChange(index, e.target.value)}
+                style={{ padding: '2px' }}
+              >
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+                <option value={3}>3</option>
+                <option value={4}>4</option>
+              </select>
+            </div>
+          </div>
+        ))}
+        
+        <div style={{ marginTop: '20px', textAlign: 'right' }}>
+          <button 
+            onClick={onCancel}
+            style={{ marginRight: '10px', padding: '8px 16px' }}
+          >
+            Abbrechen
+          </button>
+          <button 
+            onClick={() => onConfirm(azubiData)}
+            style={{ padding: '8px 16px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px' }}
+          >
+            Azubis anlegen und Import fortsetzen
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };
 

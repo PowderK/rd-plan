@@ -27,10 +27,18 @@ export interface DatabaseAdapter {
   bulkImportDutyRosterEntries(entries: any[], respectManualEdits?: boolean): Promise<{ imported: number, skipped: number }>;
   
   getAzubiList(): Promise<any[]>;
+  getAzubi(id: number): Promise<any | null>;
   addAzubi(azubi: any): Promise<void>;
   updateAzubi(azubi: any): Promise<void>;
   deleteAzubi(id: number): Promise<void>;
   updateAzubiOrder(order: number[]): Promise<void>;
+  
+  // Azubi Periods
+  getAzubiPeriods(azubiId: number): Promise<any[]>;
+  getAllAzubiPeriods(): Promise<any[]>;
+  addAzubiPeriod(period: any): Promise<void>;
+  updateAzubiPeriod(period: any): Promise<void>;
+  deleteAzubiPeriod(id: number): Promise<void>;
   
   getItwDoctors(): Promise<any[]>;
   addItwDoctor(doc: any): Promise<void>;
@@ -160,6 +168,11 @@ class SQLiteAdapter implements DatabaseAdapter {
     return getAzubiList(this.db);
   }
   
+  async getAzubi(id: number) {
+    const { getAzubi } = await import('./database');
+    return getAzubi(this.db, id);
+  }
+  
   async addAzubi(azubi: any) {
     const { addAzubi } = await import('./database');
     return addAzubi(this.db, azubi);
@@ -178,6 +191,32 @@ class SQLiteAdapter implements DatabaseAdapter {
   async updateAzubiOrder(order: number[]) {
     const { updateAzubiOrder } = await import('./database');
     return updateAzubiOrder(this.db, order);
+  }
+
+  // Azubi Periods
+  async getAzubiPeriods(azubiId: number) {
+    const { getAzubiPeriods } = await import('./database');
+    return getAzubiPeriods(this.db, azubiId);
+  }
+  
+  async getAllAzubiPeriods() {
+    const { getAllAzubiPeriods } = await import('./database');
+    return getAllAzubiPeriods(this.db);
+  }
+  
+  async addAzubiPeriod(period: any) {
+    const { addAzubiPeriod } = await import('./database');
+    return addAzubiPeriod(this.db, period);
+  }
+  
+  async updateAzubiPeriod(period: any) {
+    const { updateAzubiPeriod } = await import('./database');
+    return updateAzubiPeriod(this.db, period);
+  }
+  
+  async deleteAzubiPeriod(id: number) {
+    const { deleteAzubiPeriod } = await import('./database');
+    return deleteAzubiPeriod(this.db, id);
   }
   
   async getItwDoctors() {
@@ -681,6 +720,15 @@ export class DatabaseManager {
             vorname TEXT NOT NULL,
             lehrjahr INTEGER NOT NULL,
             sort INTEGER NOT NULL DEFAULT 0
+        );
+        
+        CREATE TABLE IF NOT EXISTS azubi_periods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            azubi_id INTEGER NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            description TEXT,
+            FOREIGN KEY (azubi_id) REFERENCES azubis (id) ON DELETE CASCADE
         );
         
         CREATE TABLE IF NOT EXISTS itw_doctors (

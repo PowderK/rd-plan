@@ -306,6 +306,18 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         await db.exec("UPDATE azubis SET sort = 0 WHERE sort IS NULL");
     }
 
+    // --- Azubi Periods Tabelle ---
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS azubi_periods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            azubi_id INTEGER NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            description TEXT,
+            FOREIGN KEY (azubi_id) REFERENCES azubis (id) ON DELETE CASCADE
+        )
+    `);
+
     // Migration: Falls Spalte personType fehlt, hinzufügen
     const columns = await db.all("PRAGMA table_info('duty_roster')");
     if (!columns.some((col: any) => col.name === 'personType')) {
@@ -796,6 +808,31 @@ export const updateAzubi = async (db: AsyncDB, azubi: { id: number, name: string
 
 export const deleteAzubi = async (db: AsyncDB, id: number) => {
     await db.run('DELETE FROM azubis WHERE id = ?', [id]);
+};
+
+// --- Azubi Periods Functions ---
+export const getAzubiPeriods = async (db: AsyncDB, azubiId: number) => {
+    return await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ? ORDER BY start_date ASC', [azubiId]);
+};
+
+export const getAllAzubiPeriods = async (db: AsyncDB) => {
+    return await db.all('SELECT * FROM azubi_periods ORDER BY azubi_id, start_date ASC');
+};
+
+export const addAzubiPeriod = async (db: AsyncDB, period: { azubi_id: number, start_date: string, end_date: string, description?: string }) => {
+    console.log('[DB] addAzubiPeriod', period);
+    await db.run('INSERT INTO azubi_periods (azubi_id, start_date, end_date, description) VALUES (?, ?, ?, ?)', 
+        [period.azubi_id, period.start_date, period.end_date, period.description || '']);
+    console.log('[DB] addAzubiPeriod erfolgreich');
+};
+
+export const updateAzubiPeriod = async (db: AsyncDB, period: { id: number, azubi_id: number, start_date: string, end_date: string, description?: string }) => {
+    await db.run('UPDATE azubi_periods SET azubi_id = ?, start_date = ?, end_date = ?, description = ? WHERE id = ?', 
+        [period.azubi_id, period.start_date, period.end_date, period.description || '', period.id]);
+};
+
+export const deleteAzubiPeriod = async (db: AsyncDB, id: number) => {
+    await db.run('DELETE FROM azubi_periods WHERE id = ?', [id]);
 };
 
 export const updateAzubiOrder = async (db: AsyncDB, order: number[]) => {
