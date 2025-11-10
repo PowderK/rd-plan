@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import ImportYearTable from './ImportYearTable';
 import SettingsImportExport from './SettingsImportExport';
+import ExcelImport from './ExcelImport';
 import { BUILD_INFO } from '../buildInfo';
 import styles from './PersonnelOverview.module.css';
 
@@ -42,6 +43,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [selectedHolidayIndex, setSelectedHolidayIndex] = useState<number | null>(null);
   // Settings Import/Export UI State
   const [showSettingsImportExport, setShowSettingsImportExport] = useState(false);
+  const [showExcelImport, setShowExcelImport] = useState(false);
   const [rosterImportPath, setRosterImportPath] = useState('');
   const [doBackup, setDoBackup] = useState<boolean>(true);
   const [showRestore, setShowRestore] = useState<boolean>(false);
@@ -61,6 +63,11 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   // DB path config UI
   const [dbConfig, setDbConfig] = useState<{ currentPath: string|null, configuredDir: string|null, defaults?: { appDir: string, userDataDir: string } } | null>(null);
   const [dbDirInput, setDbDirInput] = useState<string>('');
+  // Qualification Types Management UI
+  const [qualificationTypes, setQualificationTypes] = useState<{ id: number; name: string; description?: string; category?: string; active: boolean; sort: number }[]>([]);
+  const [editingQualificationTypes, setEditingQualificationTypes] = useState(false);
+  const [selectedQualificationTypeId, setSelectedQualificationTypeId] = useState<number | null>(null);
+  const [originalQualificationTypes, setOriginalQualificationTypes] = useState<any[] | null>(null);
 
     useEffect(() => {
         (async () => {
@@ -122,7 +129,16 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       try {
         const list = await (window as any).api.getHolidaysForYear?.(Number(y || new Date().getFullYear()));
         setHolidays((list || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
-      } catch {}
+            } catch {}
+            
+            // Load qualification types
+            try {
+              const qualTypes = await (window as any).api.getQualificationTypes();
+              setQualificationTypes(qualTypes || []);
+            } catch (e) {
+              console.error('Failed to load qualification types:', e);
+            }
+            
             setShiftTypesLoading(false);
             setLoading(false);
             try {
@@ -133,9 +149,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               }
             } catch {}
         })();
-    }, []);
-
-    // Fahrzeug-UI entfernt
+    }, []);    // Fahrzeug-UI entfernt
 
     const handleSave = async () => {
         setSaving(true);
@@ -271,6 +285,43 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     setShiftTypes(await (window as any).api.getShiftTypes());
   };
 
+  const saveQualificationTypes = async () => {
+    try {
+      setLoading(true);
+      
+      // Lösche entfernte Qualifikationen
+      const currentIds = qualificationTypes.map(qt => qt.id);
+      const originalIds = originalQualificationTypes?.map(qt => qt.id) || [];
+      for (const id of originalIds) {
+        if (!currentIds.includes(id)) {
+          await (window as any).api.deleteQualificationType(id);
+        }
+      }
+      
+      // Speichere/aktualisiere bestehende Qualifikationen
+      for (const qt of qualificationTypes) {
+        const original = originalQualificationTypes?.find(o => o.id === qt.id);
+        if (original) {
+          // Update bestehende Qualifikation
+          await (window as any).api.updateQualificationType(qt.id, qt);
+        } else {
+          // Neue Qualifikation hinzufügen
+          await (window as any).api.addQualificationType(qt);
+        }
+      }
+      
+      console.log('Qualifikationen gespeichert!');
+      alert('Qualifikationen gespeichert!');
+      setEditingQualificationTypes(false);
+      setSelectedQualificationTypeId(null);
+    } catch (err) {
+      console.error('Fehler beim Speichern:', err);
+      alert('Fehler beim Speichern: ' + (err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSettingsImportComplete = (result: any) => {
     console.log('Settings-Import abgeschlossen:', result);
     // Daten neu laden nach Import durch Seiten-Reload
@@ -282,6 +333,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       // Reload der Seite um alle Daten neu zu laden
       window.location.reload();
     }
+  };
+
+  const handleExcelImportComplete = (result: any) => {
+    console.log('Excel-Import abgeschlossen:', result);
+    if (result.success) {
+      alert(`Import erfolgreich! ${result.imported} Personen importiert, ${result.skipped} übersprungen.`);
+    }
+    setShowExcelImport(false);
   };
 
     if (loading) return <div className="settings-menu"><p>Lade Einstellungen ...</p></div>;
@@ -516,6 +575,10 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                   }
                 }}
               >Backup wiederherstellen…</button>
+              <button
+                onClick={() => setShowExcelImport(true)}
+                style={{ backgroundColor: '#28a745', color: 'white' }}
+              >Excel Import/Export Personal</button>
             </div>
       {/* Buttons werden ans Seitenende verschoben */}
       {/* per-shift-type auswertung selector will be rendered as a column in the Dienstarten table below */}
@@ -707,6 +770,114 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
             <button onClick={() => { if (originalHolidays) setHolidays(originalHolidays); setOriginalHolidays(null); setEditingHolidays(false); setSelectedHolidayIndex(null); }}>Abbrechen</button>
           </div>
         )}
+      </div>
+
+      {/* Qualifikationen */}
+      <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
+        <h3>Qualifikationen</h3>
+        <table className={styles.table}>
+          <thead>
+            <tr className={styles.thead}>
+              <th>Name</th>
+              <th>Beschreibung</th>
+              <th>Kategorie</th>
+              <th style={{ width: 80 }}>Aktiv</th>
+              <th className={styles.center} style={{ width: 60 }}>#</th>
+            </tr>
+          </thead>
+          <tbody className={styles.tbody}>
+            {qualificationTypes.map(qt => (
+              <tr key={qt.id} className={[styles.row, selectedQualificationTypeId === qt.id ? styles.selected : ''].filter(Boolean).join(' ')} onClick={() => setSelectedQualificationTypeId(prev => prev === qt.id ? null : qt.id)}>
+                <td>
+                  {editingQualificationTypes ? (
+                    <input value={qt.name}
+                      onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, name: e.target.value } : x))} />
+                  ) : qt.name}
+                </td>
+                <td>
+                  {editingQualificationTypes ? (
+                    <input value={qt.description || ''}
+                      onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, description: e.target.value } : x))} />
+                  ) : (qt.description || '')}
+                </td>
+                <td>
+                  {editingQualificationTypes ? (
+                    <select value={qt.category}
+                      onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, category: e.target.value } : x))}>
+                      <option value="Fahrzeugführung">Fahrzeugführung</option>
+                      <option value="Notfall">Notfall</option>
+                      <option value="Transport">Transport</option>
+                      <option value="Ausbildung">Ausbildung</option>
+                      <option value="Sonstiges">Sonstiges</option>
+                    </select>
+                  ) : qt.category}
+                </td>
+                <td className={styles.center}>
+                  {editingQualificationTypes ? (
+                    <input type="checkbox" checked={qt.active}
+                      onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, active: e.target.checked } : x))} />
+                  ) : (qt.active ? '✓' : '✗')}
+                </td>
+                <td className={styles.center}>
+                  <button onClick={() => {
+                    if (confirm(`Qualifikation "${qt.name}" löschen?`)) {
+                      setQualificationTypes(prev => prev.filter(x => x.id !== qt.id));
+                    }
+                  }}
+                  disabled={!editingQualificationTypes}
+                  style={{ color: '#cc0000', background: 'none', border: 'none', cursor: editingQualificationTypes ? 'pointer' : 'default' }}>
+                    ✗
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <button onClick={() => {
+            if (editingQualificationTypes) {
+              // Speichern
+              saveQualificationTypes();
+            } else {
+              // Bearbeiten starten
+              setEditingQualificationTypes(true);
+              setOriginalQualificationTypes([...qualificationTypes]);
+            }
+          }}>
+            {editingQualificationTypes ? 'Speichern' : 'Bearbeiten'}
+          </button>
+          
+          {editingQualificationTypes && (
+            <>
+              <button onClick={() => {
+                // Abbrechen
+                setQualificationTypes(originalQualificationTypes ? [...originalQualificationTypes] : []);
+                setEditingQualificationTypes(false);
+                setSelectedQualificationTypeId(null);
+              }}>
+                Abbrechen
+              </button>
+              
+              <button onClick={() => {
+                // Neue Qualifikation hinzufügen
+                const newId = Math.max(0, ...qualificationTypes.map(qt => qt.id)) + 1;
+                const newSort = Math.max(0, ...qualificationTypes.map(qt => qt.sort)) + 1;
+                setQualificationTypes(prev => [...prev, {
+                  id: newId,
+                  name: 'Neue Qualifikation',
+                  description: '',
+                  category: 'Sonstiges',
+                  active: true,
+                  sort: newSort
+                }]);
+                setSelectedQualificationTypeId(newId);
+              }}>
+                Neue Qualifikation
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Dienstarten */}
@@ -1086,6 +1257,33 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
               <button onClick={() => setShowDiagnostics(false)}>Schließen</button>
             </div>
+          </div>
+        </div>
+      )}
+      {showExcelImport && (
+        <div style={{ 
+          position: 'fixed', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          bottom: 0, 
+          backgroundColor: 'rgba(0,0,0,0.5)', 
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            maxHeight: '90vh',
+            overflow: 'auto',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+          }}>
+            <ExcelImport 
+              onImportComplete={handleExcelImportComplete}
+              onClose={() => setShowExcelImport(false)}
+            />
           </div>
         </div>
       )}

@@ -2,7 +2,7 @@ import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { AsyncDB, initializeDatabase as initSQLiteDatabase } from './database';
+import { AsyncDB, initializeDatabase as initSQLiteDatabase, QualificationType } from './database';
 
 export type DatabaseMode = 'sqlite' | 'central-sqlite';
 
@@ -39,6 +39,25 @@ export interface DatabaseAdapter {
   addAzubiPeriod(period: any): Promise<void>;
   updateAzubiPeriod(period: any): Promise<void>;
   deleteAzubiPeriod(id: number): Promise<void>;
+  
+  // Qualification Periods
+  getQualificationPeriods(personId: number): Promise<any[]>;
+  getAllQualificationPeriods(): Promise<any[]>;
+  addQualificationPeriod(period: any): Promise<void>;
+  updateQualificationPeriod(period: any): Promise<void>;
+  deleteQualificationPeriod(id: number): Promise<void>;
+  hasQualificationInMonth(personId: number, qualType: string, yearMonth: string): Promise<boolean>;
+  getActiveQualifications(personId: number, yearMonth: string): Promise<any[]>;
+  validateQualificationForShift(personId: number, shiftValue: string, date: string): Promise<any>;
+  
+  // Qualification Types Management
+  getQualificationTypes(activeOnly?: boolean): Promise<any[]>;
+  addQualificationType(qualType: any): Promise<void>;
+  updateQualificationType(qualType: QualificationType): Promise<void>;
+    deleteQualificationType(id: number): Promise<void>;
+    getQualifiedPersonsForPosition(position: string, date: string, cellType?: string): Promise<{ id: number; name: string; vorname: string; qualifications: string[]; isAzubi?: boolean; lehrjahr?: number }[]>;
+  
+  // NEF vehicles
   
   getItwDoctors(): Promise<any[]>;
   addItwDoctor(doc: any): Promise<void>;
@@ -217,6 +236,75 @@ class SQLiteAdapter implements DatabaseAdapter {
   async deleteAzubiPeriod(id: number) {
     const { deleteAzubiPeriod } = await import('./database');
     return deleteAzubiPeriod(this.db, id);
+  }
+  
+  // Qualification Periods
+  async getQualificationPeriods(personId: number) {
+    console.log('[DatabaseManager] getQualificationPeriods called with personId:', personId);
+    const { getQualificationPeriods } = await import('./database');
+    const result = await getQualificationPeriods(this.db, personId);
+    console.log('[DatabaseManager] getQualificationPeriods result:', result);
+    return result;
+  }
+  
+  async getAllQualificationPeriods() {
+    const { getAllQualificationPeriods } = await import('./database');
+    return getAllQualificationPeriods(this.db);
+  }
+  
+  async addQualificationPeriod(period: any) {
+    const { addQualificationPeriod } = await import('./database');
+    return addQualificationPeriod(this.db, period);
+  }
+  
+  async updateQualificationPeriod(period: any) {
+    const { updateQualificationPeriod } = await import('./database');
+    return updateQualificationPeriod(this.db, period);
+  }
+  
+  async deleteQualificationPeriod(id: number) {
+    const { deleteQualificationPeriod } = await import('./database');
+    return deleteQualificationPeriod(this.db, id);
+  }
+
+  async validateQualificationForShift(personId: number, shiftValue: string, date: string) {
+    const { validateQualificationForShift } = await import('./database');
+    return validateQualificationForShift(this.db, personId, shiftValue, date);
+  }
+
+  async getQualificationTypes(activeOnly?: boolean) {
+    const { getQualificationTypes } = await import('./database');
+    return getQualificationTypes(this.db, activeOnly);
+  }
+
+  async addQualificationType(qualType: any) {
+    const { addQualificationType } = await import('./database');
+    return addQualificationType(this.db, qualType);
+  }
+
+  async updateQualificationType(qualType: any) {
+    const { updateQualificationType } = await import('./database');
+    return updateQualificationType(this.db, qualType);
+  }
+
+  async deleteQualificationType(id: number) {
+    const { deleteQualificationType } = await import('./database');
+    return deleteQualificationType(this.db, id);
+  }
+
+  async getQualifiedPersonsForPosition(position: string, date: string, cellType?: string) {
+    const { getQualifiedPersonsForPosition } = await import('./database');
+    return getQualifiedPersonsForPosition(this.db, position, date, cellType);
+  }
+  
+  async hasQualificationInMonth(personId: number, qualType: string, yearMonth: string) {
+    const { hasQualificationInMonth } = await import('./database');
+    return hasQualificationInMonth(this.db, personId, qualType, yearMonth);
+  }
+  
+  async getActiveQualifications(personId: number, yearMonth: string) {
+    const { getActiveQualifications } = await import('./database');
+    return getActiveQualifications(this.db, personId, yearMonth);
   }
   
   async getItwDoctors() {
@@ -651,7 +739,19 @@ export class DatabaseManager {
     // Initialize database schema (copied from existing database.ts)
     await this.initializeSQLiteSchema(db);
     
+    // Run migrations after schema initialization
+    await this.runMigrations(db);
+    
     return db;
+  }
+
+  private async runMigrations(db: AsyncDB) {
+    // Migration: add 'lehrjahr' column to azubi_periods if missing
+    const azubiPeriodsCols = await db.all("PRAGMA table_info('azubi_periods')");
+    if (!azubiPeriodsCols.some((c: any) => c.name === 'lehrjahr')) {
+        console.log('[DatabaseManager] Adding lehrjahr to azubi_periods');
+        await db.exec("ALTER TABLE azubi_periods ADD COLUMN lehrjahr INTEGER DEFAULT 1");
+    }
   }
   
   private async initializeSQLiteSchema(db: AsyncDB) {
@@ -729,6 +829,16 @@ export class DatabaseManager {
             end_date TEXT NOT NULL,
             description TEXT,
             FOREIGN KEY (azubi_id) REFERENCES azubis (id) ON DELETE CASCADE
+        );
+        
+        CREATE TABLE IF NOT EXISTS qualification_periods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            personId INTEGER NOT NULL,
+            qualType TEXT NOT NULL,
+            startYM TEXT NOT NULL,
+            endYM TEXT,
+            active INTEGER DEFAULT 1,
+            FOREIGN KEY (personId) REFERENCES personnel (id) ON DELETE CASCADE
         );
         
         CREATE TABLE IF NOT EXISTS itw_doctors (

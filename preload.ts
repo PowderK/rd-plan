@@ -81,6 +81,22 @@ contextBridge.exposeInMainWorld('api', {
     addAzubiPeriod: (period: any) => ipcRenderer.invoke('add-azubi-period', period),
     updateAzubiPeriod: (id: number, period: any) => ipcRenderer.invoke('update-azubi-period', id, period),
     deleteAzubiPeriod: (id: number) => ipcRenderer.invoke('delete-azubi-period', id),
+    // Qualification Periods
+    getQualificationPeriods: (personId: number) => ipcRenderer.invoke('get-qualification-periods', personId),
+    getAllQualificationPeriods: () => ipcRenderer.invoke('get-all-qualification-periods'),
+    addQualificationPeriod: (period: any) => ipcRenderer.invoke('add-qualification-period', period),
+    updateQualificationPeriod: (id: number, period: any) => ipcRenderer.invoke('update-qualification-period', id, period),
+    deleteQualificationPeriod: (id: number) => ipcRenderer.invoke('delete-qualification-period', id),
+    hasQualificationInMonth: (personId: number, qualType: string, yearMonth: string) => ipcRenderer.invoke('has-qualification-in-month', personId, qualType, yearMonth),
+    validateQualificationForShift: (personId: number, shiftValue: string, date: string) => ipcRenderer.invoke('validate-qualification-for-shift', personId, shiftValue, date),
+    getActiveQualifications: (personId: number, yearMonth: string) => ipcRenderer.invoke('get-active-qualifications', personId, yearMonth),
+    
+    // Qualification Types Management  
+    getQualificationTypes: (activeOnly?: boolean) => ipcRenderer.invoke('get-qualification-types', activeOnly),
+    addQualificationType: (qualType: any) => ipcRenderer.invoke('add-qualification-type', qualType),
+    updateQualificationType: (qualType: any) => ipcRenderer.invoke('update-qualification-type', qualType),
+    deleteQualificationType: (id: number) => ipcRenderer.invoke('delete-qualification-type', id),
+  getQualifiedPersonsForPosition: (position: string, date: string, cellType?: string) => ipcRenderer.invoke('get-qualified-persons-for-position', position, date, cellType),
     // Windows
     openAddAzubiWindow: () => ipcRenderer.send('open-add-azubi-window'),
     openEditAzubiWindow: (id: number) => ipcRenderer.send('open-edit-azubi-window', id),
@@ -137,6 +153,7 @@ contextBridge.exposeInMainWorld('api', {
     openVehiclesWindow: () => ipcRenderer.send('open-vehicles-window'),
     openValuesWindow: () => ipcRenderer.send('open-values-window'),
     openAddItwWindow: () => ipcRenderer.send('open-add-itw-window'),
+    openTestConsoleWindow: () => ipcRenderer.send('open-test-console-window'),
     openEditItwWindow: (id: number) => ipcRenderer.send('open-edit-itw-window', id),
     onItwUpdated: (callback: () => void) => ipcRenderer.on('itw-updated', callback),
     offItwUpdated: (callback: () => void) => ipcRenderer.removeListener('itw-updated', callback),
@@ -145,6 +162,7 @@ contextBridge.exposeInMainWorld('api', {
     assignSlot: (entry: { personId: number, personType: string, date: string, slotType: string }) => ipcRenderer.invoke('assign-slot', entry),
     // Diagnostics
     getDiagnostics: () => ipcRenderer.invoke('get-diagnostics'),
+    testQualificationPeriods: () => ipcRenderer.invoke('test-qualification-periods'),
     // DB config
     getDbConfig: () => ipcRenderer.invoke('get-db-config'),
     setDbDir: (dir: string) => ipcRenderer.invoke('set-db-dir', dir),

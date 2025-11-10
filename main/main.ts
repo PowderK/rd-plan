@@ -378,6 +378,88 @@ ipcMain.handle('delete-azubi-period', async (_event, id: number) => {
     return true;
 });
 
+// Qualification Period handlers
+ipcMain.handle('get-qualification-periods', async (_event, personId: number) => {
+    console.log('[IPC] get-qualification-periods called with personId:', personId);
+    const adapter = await ensureDatabaseAdapter();
+    const result = await adapter.getQualificationPeriods(personId);
+    console.log('[IPC] get-qualification-periods result:', result);
+    return result;
+});
+
+ipcMain.handle('get-all-qualification-periods', async () => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getAllQualificationPeriods();
+});
+
+ipcMain.handle('add-qualification-period', async (_event, period: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addQualificationPeriod(period);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('update-qualification-period', async (_event, id: number, period: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateQualificationPeriod({ ...period, id });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('delete-qualification-period', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteQualificationPeriod(id);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('validate-qualification-for-shift', async (_event, personId: number, shiftValue: string, date: string) => {
+    console.log('[IPC] validate-qualification-for-shift called:', { personId, shiftValue, date });
+    const adapter = await ensureDatabaseAdapter();
+    const result = await adapter.validateQualificationForShift(personId, shiftValue, date);
+    console.log('[IPC] validate-qualification-for-shift result:', result);
+    return result;
+});
+
+// Qualification Types handlers
+ipcMain.handle('get-qualification-types', async (_event, activeOnly?: boolean) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getQualificationTypes(activeOnly);
+});
+
+ipcMain.handle('add-qualification-type', async (_event, qualType: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addQualificationType(qualType);
+    return true;
+});
+
+ipcMain.handle('update-qualification-type', async (_event, qualType: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateQualificationType(qualType);
+    return true;
+});
+
+ipcMain.handle('delete-qualification-type', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteQualificationType(id);
+    return true;
+});
+
+ipcMain.handle('get-qualified-persons-for-position', async (_event, position: string, date: string, cellType?: string) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getQualifiedPersonsForPosition(position, date, cellType);
+});
+
+ipcMain.handle('has-qualification-in-month', async (_event, personId: number, qualType: string, yearMonth: string) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.hasQualificationInMonth(personId, qualType, yearMonth);
+});
+
+ipcMain.handle('get-active-qualifications', async (_event, personId: number, yearMonth: string) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getActiveQualifications(personId, yearMonth);
+});
+
 // ITW Doctor handlers
 ipcMain.handle('get-itw-doctors', async () => {
     const adapter = await ensureDatabaseAdapter();
@@ -858,6 +940,61 @@ ipcMain.handle('get-diagnostics', async () => {
     }
 });
 
+// Test qualification periods functionality
+ipcMain.handle('test-qualification-periods', async () => {
+    try {
+        const adapter = await ensureDatabaseAdapter();
+        const results = [];
+        
+        // Test 1: Create test person
+        await adapter.addPersonnel({
+            name: 'TestPerson',
+            vorname: 'Qualification',
+            teilzeit: 100
+        });
+        
+        // Find the test person ID by querying
+        const personnel = await adapter.getPersonnel();
+        const testPerson = personnel.find(p => p.name === 'TestPerson' && p.vorname === 'Qualification');
+        if (!testPerson) throw new Error('Test person not found after creation');
+        const testPersonId = testPerson.id;
+        results.push(`✓ Created test person with ID: ${testPersonId}`);
+        
+        // Test 2: Add qualification periods
+        const period1 = {
+            person_id: testPersonId,
+            qual_type: 'Fahrzeugführer',
+            start_ym: '2024-01',
+            end_ym: '2024-12',
+            active: true
+        };
+        
+        await adapter.addQualificationPeriod(period1);
+        results.push(`✓ Created qualification period`);
+        
+        // Test 3: Load periods
+        const periods = await adapter.getQualificationPeriods(testPersonId);
+        results.push(`✓ Found ${periods.length} qualification periods`);
+        
+        if (periods.length > 0) {
+            // Test 4: Test validation
+            const hasQual = await adapter.hasQualificationInMonth(testPersonId, 'Fahrzeugführer', '2024-06');
+            results.push(`✓ Has qualification in 2024-06: ${hasQual}`);
+            
+            // Cleanup - delete the qualification period
+            await adapter.deleteQualificationPeriod(periods[0].id);
+        }
+        
+        // Delete test personnel
+        await adapter.deletePersonnel(testPersonId);
+        results.push(`✓ Cleanup completed`);
+        
+        return { success: true, results };
+    } catch (e: any) {
+        return { success: false, message: e?.message || String(e), stack: e?.stack };
+    }
+});
+
 // Header background: set from file (store as data URL in settings)
 // (Entfernt) Header-Hintergrund-Auswahl – Header ist fest eingebettet
 
@@ -1101,6 +1238,10 @@ ipcMain.on('open-edit-azubi-window', (_ev, id: number) => {
 
 ipcMain.on('open-add-itw-window', () => {
     openWindow('addItw.html', 'addItwWindow', 600, 420);
+});
+
+ipcMain.on('open-test-console-window', () => {
+    openWindow('test-console.html', 'testConsoleWindow', 900, 600);
 });
 
 ipcMain.on('open-edit-itw-window', (_ev, id: number) => {

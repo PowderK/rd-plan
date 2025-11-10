@@ -108,6 +108,8 @@ const DutyRoster: React.FC = () => {
   const [roster, setRoster] = useState<Record<string, Record<string, { value: string, type: string, manualEdit?: boolean }>>>({});
   // Editierstatus: [personId: string][dayIdx] => true/false
   const [editing, setEditing] = useState<Record<string, Record<number, boolean>>>({});
+  // Force Update Counter für UI-Refresh
+  const [updateCounter, setUpdateCounter] = useState(0);
   // Monats-Import direkt für currentMonth
   const [showImportTable, setShowImportTable] = useState(false);
   const [importTableMonth, setImportTableMonth] = useState<number|null>(null);
@@ -635,7 +637,11 @@ const DutyRoster: React.FC = () => {
       }
     });
       console.log('[Renderer] reloadRoster constructed rosterObj keys=', Object.keys(rosterObj).slice(0,20), 'total=', Object.keys(rosterObj).length);
-    setRoster(rosterObj);
+    
+    // Force React re-render durch Erstellen eines neuen Objekts
+    setRoster({ ...rosterObj });
+    // Zusätzlicher Force-Update
+    setUpdateCounter(prev => prev + 1);
   };
 
   // Roster und Feiertage neu laden, wenn das lokale Jahr gewechselt wird
@@ -829,12 +835,40 @@ const DutyRoster: React.FC = () => {
     if (dayIdx === 0) {
       console.log('[DEBUG] 1.1. Eintrag:', { personId, origId, personType, date, value, type });
     }
+
+    // Qualifikations-Validierung für nicht-leere Werte und nur für Personen (nicht Azubis)
+    if (value && value.trim() !== '' && personType === 'person' && origId) {
+      try {
+        const validation = await (window as any).api.validateQualificationForShift(origId, value, date);
+        
+        if (!validation.isValid) {
+          const missingQuals = validation.missingQualifications.join(', ');
+          const message = `⚠️ Fehlende Qualifikationen für "${value}": ${missingQuals}\n\nTrotzdem zuordnen?`;
+          
+          if (!confirm(message)) {
+            return; // Abbruch der Zuordnung
+          }
+        }
+
+        // Zeige Warnungen an (abgelaufene Qualifikationen)
+        if (validation.warnings && validation.warnings.length > 0) {
+          const warnings = validation.warnings.join('\n');
+          alert(`⚠️ Warnungen:\n${warnings}`);
+        }
+      } catch (err) {
+        console.error('Fehler bei Qualifikations-Validierung:', err);
+        // Bei Validierungsfehlern trotzdem fortfahren
+      }
+    }
+
     const entry = { personId: origId, personType, date, value, type };
     console.log('[Renderer] setDutyRosterEntry SEND', entry);
     try {
       await (window as any).api.setDutyRosterEntry(entry);
       console.log('[Renderer] setDutyRosterEntry OK', entry);
+      console.log('[Renderer] handleCellChange triggering reloadRoster...');
       await reloadRoster();
+      console.log('[Renderer] handleCellChange reloadRoster completed');
     } catch (err) {
       console.error('[Renderer] setDutyRosterEntry ERROR', err, entry);
     }

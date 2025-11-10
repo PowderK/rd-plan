@@ -111,6 +111,16 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
             await db.exec("ALTER TABLE personnel ADD COLUMN active INTEGER DEFAULT 1");
             await db.exec("UPDATE personnel SET active = 1 WHERE active IS NULL");
         }
+        
+        // Migration: add contact fields if missing
+        const contactFields = ['street', 'postalCode', 'city', 'phone', 'mobile', 'email'];
+        for (const field of contactFields) {
+            if (!colsAfter.some((c: any) => c.name === field)) {
+                console.log(`[DB] Adding missing column "${field}" to personnel table`);
+                await db.exec(`ALTER TABLE personnel ADD COLUMN ${field} TEXT DEFAULT ''`);
+                await db.exec(`UPDATE personnel SET ${field} = '' WHERE ${field} IS NULL`);
+            }
+        }
     } catch (e) {
         console.warn('[DB] Warning while ensuring nef defaults:', e);
     }
@@ -276,6 +286,9 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         )
     `);
 
+    // Initialize qualification types table
+    await initializeQualificationTypesTable(db);
+
     await db.exec(`
         CREATE TABLE IF NOT EXISTS duty_roster (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -317,6 +330,24 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
             FOREIGN KEY (azubi_id) REFERENCES azubis (id) ON DELETE CASCADE
         )
     `);
+
+    // --- Qualification Periods Tabelle ---
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS qualification_periods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            personId INTEGER NOT NULL,
+            qualType TEXT NOT NULL,
+            startYM TEXT NOT NULL,
+            endYM TEXT,
+            active INTEGER DEFAULT 1,
+            FOREIGN KEY (personId) REFERENCES personnel (id) ON DELETE CASCADE
+        )
+    `);
+
+    // Indexe für bessere Performance bei Qualifikationsabfragen
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_qualification_periods_person ON qualification_periods (personId)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_qualification_periods_type ON qualification_periods (qualType)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_qualification_periods_period ON qualification_periods (startYM, endYM)`);
 
     // Migration: Falls Spalte personType fehlt, hinzufügen
     const columns = await db.all("PRAGMA table_info('duty_roster')");
@@ -456,10 +487,12 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         await db.exec("ALTER TABLE nef_vehicles ADD COLUMN occupancy_mode TEXT DEFAULT '24h'");
         try { await db.exec("UPDATE nef_vehicles SET occupancy_mode = '24h' WHERE occupancy_mode IS NULL"); } catch {}
     }
-    if (!nefCols.some((c: any) => c.name === 'occupancy_mode')) {
-        console.log('[DB] Adding occupancy_mode to nef_vehicles');
-        await db.exec("ALTER TABLE nef_vehicles ADD COLUMN occupancy_mode TEXT DEFAULT '24h'");
-        await db.exec("UPDATE nef_vehicles SET occupancy_mode = '24h' WHERE occupancy_mode IS NULL OR occupancy_mode = ''");
+
+    // Migration: add 'lehrjahr' column to azubi_periods if missing
+    const azubiPeriodsCols = await db.all("PRAGMA table_info('azubi_periods')");
+    if (!azubiPeriodsCols.some((c: any) => c.name === 'lehrjahr')) {
+        console.log('[DB] Adding lehrjahr to azubi_periods');
+        await db.exec("ALTER TABLE azubi_periods ADD COLUMN lehrjahr INTEGER DEFAULT 1");
     }
     // Aktivierungen pro Monat/Jahr (default: aktiv)
     await db.exec(`
@@ -781,11 +814,60 @@ export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { person
 };
 
 export const getAzubiList = async (db: AsyncDB) => {
-    return await db.all('SELECT * FROM azubis ORDER BY sort ASC, id ASC');
+    const azubis = await db.all('SELECT * FROM azubis ORDER BY sort ASC, id ASC');
+    const currentDate = new Date();
+    
+    // Für jeden Azubi das aktuelle Lehrjahr aus den Zeiträumen berechnen
+    for (const azubi of azubis) {
+        const periods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ? ORDER BY start_date ASC', [azubi.id]);
+        
+        // Finde den aktuellen Zeitraum
+        const currentPeriod = periods.find((period: any) => {
+            const startDate = new Date(period.start_date);
+            const endDate = new Date(period.end_date);
+            return currentDate >= startDate && currentDate <= endDate;
+        });
+        
+        if (currentPeriod && currentPeriod.lehrjahr) {
+            azubi.lehrjahr = currentPeriod.lehrjahr;
+        } else {
+            // Fallback: nimm das neueste/höchste Lehrjahr aus den Zeiträumen
+            const latestPeriod = periods.sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime())[0];
+            if (latestPeriod && latestPeriod.lehrjahr) {
+                azubi.lehrjahr = latestPeriod.lehrjahr;
+            }
+            // Ansonsten bleibt das Lehrjahr aus der azubis-Tabelle bestehen
+        }
+    }
+    
+    return azubis;
 };
 
 export const getAzubi = async (db: AsyncDB, id: number) => {
-    return await db.get('SELECT * FROM azubis WHERE id = ?', [id]);
+    const azubi = await db.get('SELECT * FROM azubis WHERE id = ?', [id]);
+    if (!azubi) return null;
+    
+    const currentDate = new Date();
+    const periods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ? ORDER BY start_date ASC', [id]);
+    
+    // Finde den aktuellen Zeitraum
+    const currentPeriod = periods.find((period: any) => {
+        const startDate = new Date(period.start_date);
+        const endDate = new Date(period.end_date);
+        return currentDate >= startDate && currentDate <= endDate;
+    });
+    
+    if (currentPeriod && currentPeriod.lehrjahr) {
+        azubi.lehrjahr = currentPeriod.lehrjahr;
+    } else {
+        // Fallback: nimm das neueste/höchste Lehrjahr aus den Zeiträumen
+        const latestPeriod = periods.sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime())[0];
+        if (latestPeriod && latestPeriod.lehrjahr) {
+            azubi.lehrjahr = latestPeriod.lehrjahr;
+        }
+    }
+    
+    return azubi;
 };
 
 export const addAzubi = async (db: AsyncDB, azubi: { name: string, vorname: string, lehrjahr: number }) => {
@@ -819,16 +901,16 @@ export const getAllAzubiPeriods = async (db: AsyncDB) => {
     return await db.all('SELECT * FROM azubi_periods ORDER BY azubi_id, start_date ASC');
 };
 
-export const addAzubiPeriod = async (db: AsyncDB, period: { azubi_id: number, start_date: string, end_date: string, description?: string }) => {
+export const addAzubiPeriod = async (db: AsyncDB, period: { azubi_id: number, start_date: string, end_date: string, description?: string, lehrjahr?: number }) => {
     console.log('[DB] addAzubiPeriod', period);
-    await db.run('INSERT INTO azubi_periods (azubi_id, start_date, end_date, description) VALUES (?, ?, ?, ?)', 
-        [period.azubi_id, period.start_date, period.end_date, period.description || '']);
+    await db.run('INSERT INTO azubi_periods (azubi_id, start_date, end_date, description, lehrjahr) VALUES (?, ?, ?, ?, ?)', 
+        [period.azubi_id, period.start_date, period.end_date, period.description || '', period.lehrjahr || 1]);
     console.log('[DB] addAzubiPeriod erfolgreich');
 };
 
-export const updateAzubiPeriod = async (db: AsyncDB, period: { id: number, azubi_id: number, start_date: string, end_date: string, description?: string }) => {
-    await db.run('UPDATE azubi_periods SET azubi_id = ?, start_date = ?, end_date = ?, description = ? WHERE id = ?', 
-        [period.azubi_id, period.start_date, period.end_date, period.description || '', period.id]);
+export const updateAzubiPeriod = async (db: AsyncDB, period: { id: number, azubi_id: number, start_date: string, end_date: string, description?: string, lehrjahr?: number }) => {
+    await db.run('UPDATE azubi_periods SET azubi_id = ?, start_date = ?, end_date = ?, description = ?, lehrjahr = ? WHERE id = ?', 
+        [period.azubi_id, period.start_date, period.end_date, period.description || '', period.lehrjahr || 1, period.id]);
 };
 
 export const deleteAzubiPeriod = async (db: AsyncDB, id: number) => {
@@ -839,6 +921,66 @@ export const updateAzubiOrder = async (db: AsyncDB, order: number[]) => {
     for (let i = 0; i < order.length; i++) {
         await db.run('UPDATE azubis SET sort = ? WHERE id = ?', [i, order[i]]);
     }
+};
+
+// --- Qualification Periods Functions ---
+export const getQualificationPeriods = async (db: AsyncDB, personId: number) => {
+    return await db.all('SELECT * FROM qualification_periods WHERE personId = ? ORDER BY qualType, startYM ASC', [personId]);
+};
+
+export const getAllQualificationPeriods = async (db: AsyncDB) => {
+    return await db.all('SELECT * FROM qualification_periods ORDER BY personId, qualType, startYM ASC');
+};
+
+export const addQualificationPeriod = async (db: AsyncDB, period: { 
+    personId: number, 
+    qualType: string, 
+    startYM: string, 
+    endYM?: string, 
+    active?: boolean 
+}) => {
+    console.log('[DB] addQualificationPeriod', period);
+    await db.run('INSERT INTO qualification_periods (personId, qualType, startYM, endYM, active) VALUES (?, ?, ?, ?, ?)', 
+        [period.personId, period.qualType, period.startYM, period.endYM || null, period.active ? 1 : 0]);
+    console.log('[DB] addQualificationPeriod erfolgreich');
+};
+
+export const updateQualificationPeriod = async (db: AsyncDB, period: { 
+    id: number, 
+    personId: number, 
+    qualType: string, 
+    startYM: string, 
+    endYM?: string, 
+    active?: boolean 
+}) => {
+    await db.run('UPDATE qualification_periods SET personId = ?, qualType = ?, startYM = ?, endYM = ?, active = ? WHERE id = ?', 
+        [period.personId, period.qualType, period.startYM, period.endYM || null, period.active ? 1 : 0, period.id]);
+};
+
+export const deleteQualificationPeriod = async (db: AsyncDB, id: number) => {
+    await db.run('DELETE FROM qualification_periods WHERE id = ?', [id]);
+};
+
+// Helper function to check if a person has a specific qualification in a given month
+export const hasQualificationInMonth = async (db: AsyncDB, personId: number, qualType: string, yearMonth: string): Promise<boolean> => {
+    const result = await db.get(
+        `SELECT COUNT(*) as count FROM qualification_periods 
+         WHERE personId = ? AND qualType = ? AND active = 1 
+         AND startYM <= ? AND (endYM IS NULL OR endYM >= ?)`,
+        [personId, qualType, yearMonth, yearMonth]
+    );
+    return result && result.count > 0;
+};
+
+// Get all active qualifications for a person in a specific month
+export const getActiveQualifications = async (db: AsyncDB, personId: number, yearMonth: string) => {
+    return await db.all(
+        `SELECT * FROM qualification_periods 
+         WHERE personId = ? AND active = 1 
+         AND startYM <= ? AND (endYM IS NULL OR endYM >= ?)
+         ORDER BY qualType`,
+        [personId, yearMonth, yearMonth]
+    );
 };
 
 // --- ITW Doctors CRUD ---
@@ -977,14 +1119,39 @@ export const clearSlotAssignments = async (db: AsyncDB) => {
 
 // --- Assign only the slot (type) without overwriting the duty code (value) ---
 export const assignSlot = async (db: AsyncDB, entry: { personId: number, personType: string, date: string, slotType: string }) => {
-    // Prüfe, ob Zeile existiert
-    const row = await db.get('SELECT id FROM duty_roster WHERE personId = ? AND personType = ? AND date = ?', [entry.personId, entry.personType, entry.date]);
-    if (row) {
-        await db.run('UPDATE duty_roster SET type = ? WHERE personId = ? AND personType = ? AND date = ?', [entry.slotType, entry.personId, entry.personType, entry.date]);
-    } else {
-        await db.run('INSERT INTO duty_roster (personId, personType, date, value, type) VALUES (?, ?, ?, ?, ?)', [entry.personId, entry.personType, entry.date, '', entry.slotType]);
+    console.log('[DB] assignSlot START:', entry);
+    
+    // Wenn slotType leer ist, lösche den Eintrag
+    if (!entry.slotType || entry.slotType === '') {
+        await db.run('DELETE FROM duty_roster WHERE personId = ? AND personType = ? AND date = ?', [entry.personId, entry.personType, entry.date]);
+        console.log('[DB] assignSlot cleared entry', entry);
+        return;
     }
-    console.log('[DB] assignSlot ok', entry);
+
+    // WICHTIG: Erst alle anderen Personen aus diesem Slot entfernen (verhindert Doppelbelegung)
+    await db.run(`UPDATE duty_roster SET type = CASE 
+        WHEN type = ? AND (personId != ? OR personType != ?) THEN ''
+        ELSE type 
+        END 
+        WHERE date = ? AND type = ?`, 
+        [entry.slotType, entry.personId, entry.personType, entry.date, entry.slotType]
+    );
+    console.log('[DB] assignSlot cleared conflicting assignments for slot', entry.slotType, 'on', entry.date);
+
+    // Prüfe, ob die Person bereits an diesem Tag irgendwo eingeteilt ist
+    const existingRow = await db.get('SELECT type FROM duty_roster WHERE personId = ? AND personType = ? AND date = ?', [entry.personId, entry.personType, entry.date]);
+    
+    if (existingRow) {
+        // Update existing entry
+        await db.run('UPDATE duty_roster SET type = ? WHERE personId = ? AND personType = ? AND date = ?', [entry.slotType, entry.personId, entry.personType, entry.date]);
+        console.log('[DB] assignSlot updated existing entry from', existingRow.type, 'to', entry.slotType, entry);
+    } else {
+        // Insert new entry
+        await db.run('INSERT INTO duty_roster (personId, personType, date, value, type) VALUES (?, ?, ?, ?, ?)', [entry.personId, entry.personType, entry.date, '', entry.slotType]);
+        console.log('[DB] assignSlot created new entry', entry);
+    }
+    
+    console.log('[DB] assignSlot COMPLETED:', entry);
 };
 
 // --- Clear duty_roster by period ---
@@ -1003,4 +1170,252 @@ export const clearDutyRosterForMonth = async (db: AsyncDB, year: number, month: 
     const start = `${year}-${mm}-01`;
     const end = `${year}-${mm}-${String(last).padStart(2, '0')}`;
     await db.run('DELETE FROM duty_roster WHERE date >= ? AND date <= ?', [start, end]);
+};
+
+// --- Qualification Validation for Duty Roster ---
+export interface QualificationValidationResult {
+    isValid: boolean;
+    missingQualifications: string[];
+    warnings: string[];
+}
+
+// Mapping von Positionen/Werten zu erforderlichen Qualifikationen
+const SHIFT_QUALIFICATION_REQUIREMENTS: Record<string, string[]> = {
+    // RTW-Positionen (Fahrzeugführer)
+    'FzF': ['Fahrzeugführer'], // Fahrzeugführer Position
+    'F': ['Fahrzeugführer'], // Fahrzeugführer (kurz)
+    
+    // NEF-Positionen
+    'NEF': ['NEF'], // NEF-Dienst
+    'NEF-F': ['NEF'], // NEF Fahrzeugführer
+    
+    // ITW-Positionen  
+    'ITW-M': ['ITW Maschinist'], // ITW Maschinist
+    'ITW-F': ['ITW Fahrzeugführer'], // ITW Fahrzeugführer
+    
+    // Weitere spezielle Positionen
+    'AS': ['Atemschutz'], // Atemschutz
+    'HR': ['Höhenrettung'], // Höhenrettung  
+    'TH': ['Technische Hilfeleistung'], // Technische Hilfeleistung
+    
+    // Hinweis: RTT/RTN sind Dienstarten, keine Positionen - benötigen keine Qualifikationsprüfung
+};
+
+// Mapping von Zelltypen zu erforderlichen Qualifikationen (für spezielle Fahrzeugzeilen)
+const CELL_TYPE_QUALIFICATION_REQUIREMENTS: Record<string, { 
+    qualifications: string[], 
+    azubiLehrjahr?: number // Mindest-Lehrjahr für Azubis 
+}> = {
+    // RTW Fahrzeugführer (nur qualifizierte Personen)
+    'rtw1_tag_1': { qualifications: ['Fahrzeugführer'] },
+    'rtw1_nacht_1': { qualifications: ['Fahrzeugführer'] },
+    
+    // RTW Maschinist (qualifizierte Personen + Azubis ab 2. Lehrjahr)
+    'rtw1_tag_2': { qualifications: ['Fahrzeugführer'], azubiLehrjahr: 2 },
+    'rtw1_nacht_2': { qualifications: ['Fahrzeugführer'], azubiLehrjahr: 2 },
+    
+    // NEF Positionen (nur qualifizierte Personen)
+    'nef1_tag_1': { qualifications: ['NEF'] },
+    'nef1_nacht_1': { qualifications: ['NEF'] },
+    
+    // ITW Positionen
+    'itw_row_1': { qualifications: ['ITW Fahrzeugführer'] },
+    'itw_row_2': { qualifications: ['ITW Maschinist'] },
+};
+
+export const validateQualificationForShift = async (
+    db: AsyncDB, 
+    personId: number, 
+    shiftValue: string, 
+    date: string
+): Promise<QualificationValidationResult> => {
+    const result: QualificationValidationResult = {
+        isValid: true,
+        missingQualifications: [],
+        warnings: []
+    };
+
+    // Extrahiere Jahr und Monat aus Datum für Periodenprüfung
+    const dateObj = new Date(date);
+    const yearMonth = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Ermittle erforderliche Qualifikationen basierend auf Schichttyp
+    const requiredQuals = SHIFT_QUALIFICATION_REQUIREMENTS[shiftValue];
+    if (!requiredQuals || requiredQuals.length === 0) {
+        // Keine speziellen Qualifikationen erforderlich
+        return result;
+    }
+
+    // Lade alle aktiven Qualifikationsperioden der Person für den Monat
+    const qualPeriods = await db.all(`
+        SELECT * FROM qualification_periods 
+        WHERE personId = ? AND active = 1
+        AND (startYM <= ? AND (endYM IS NULL OR endYM >= ?))
+    `, [personId, yearMonth, yearMonth]);
+
+    // Prüfe jede erforderliche Qualifikation
+    for (const requiredQual of requiredQuals) {
+        const hasQualification = qualPeriods.some(period => period.qualType === requiredQual);
+        
+        if (!hasQualification) {
+            result.isValid = false;
+            result.missingQualifications.push(requiredQual);
+        }
+    }
+
+    // Zusätzliche Warnungen für abgelaufene Qualifikationen
+    for (const period of qualPeriods) {
+        if (period.endYM && period.endYM < yearMonth) {
+            result.warnings.push(`${period.qualType} ist seit ${period.endYM} abgelaufen`);
+        }
+    }
+
+    return result;
+};
+
+// --- Qualification Types Management ---
+export interface QualificationType {
+    id: number;
+    name: string;
+    description?: string;
+    category?: string;
+    active: boolean;
+    sort: number;
+}
+
+// Tabelle für Qualifikationstypen (falls noch nicht existiert)
+export const initializeQualificationTypesTable = async (db: AsyncDB) => {
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS qualification_types (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT,
+            category TEXT,
+            active INTEGER DEFAULT 1,
+            sort INTEGER DEFAULT 0
+        )
+    `);
+
+    // Standard-Qualifikationstypen einfügen falls Tabelle leer
+    const count = await db.get('SELECT COUNT(*) as count FROM qualification_types');
+    if (count.count === 0) {
+        const defaultQualifications = [
+            { name: 'Fahrzeugführer', description: 'Grundausbildung Fahrzeugführer', category: 'Fahrzeugführung', sort: 1 },
+            { name: 'Fahrzeugführer HLF-B', description: 'Hilfeleistungslöschfahrzeug B', category: 'Fahrzeugführung', sort: 2 },
+            { name: 'NEF', description: 'Notarzteinsatzfahrzeug', category: 'Notfall', sort: 3 },
+            { name: 'ITW Maschinist', description: 'Intensivtransportwagen Maschinist', category: 'Transport', sort: 4 },
+            { name: 'ITW Fahrzeugführer', description: 'Intensivtransportwagen Fahrzeugführer', category: 'Transport', sort: 5 },
+            { name: 'Atemschutz', description: 'Atemschutzgeräteträger', category: 'Sicherheit', sort: 6 },
+            { name: 'Höhenrettung', description: 'Höhenrettung und Abseilmaßnahmen', category: 'Rettung', sort: 7 },
+            { name: 'Technische Hilfeleistung', description: 'Technische Hilfeleistung bei Unfällen', category: 'Technik', sort: 8 }
+        ];
+
+        for (const qual of defaultQualifications) {
+            await db.run(
+                'INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, 1, ?)',
+                [qual.name, qual.description, qual.category, qual.sort]
+            );
+        }
+    }
+};
+
+export const getQualificationTypes = async (db: AsyncDB, activeOnly: boolean = false): Promise<QualificationType[]> => {
+    const whereClause = activeOnly ? 'WHERE active = 1' : '';
+    return await db.all(`SELECT * FROM qualification_types ${whereClause} ORDER BY sort ASC, name ASC`);
+};
+
+export const addQualificationType = async (db: AsyncDB, qualType: Omit<QualificationType, 'id'>): Promise<void> => {
+    await db.run(
+        'INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, ?, ?)',
+        [qualType.name, qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort]
+    );
+};
+
+export const updateQualificationType = async (db: AsyncDB, qualType: QualificationType): Promise<void> => {
+    await db.run(
+        'UPDATE qualification_types SET name = ?, description = ?, category = ?, active = ?, sort = ? WHERE id = ?',
+        [qualType.name, qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort, qualType.id]
+    );
+};
+
+export const deleteQualificationType = async (db: AsyncDB, id: number): Promise<void> => {
+    // Prüfe ob Qualifikationstyp in Verwendung ist
+    const usageCount = await db.get('SELECT COUNT(*) as count FROM qualification_periods WHERE qualType = (SELECT name FROM qualification_types WHERE id = ?)', [id]);
+    
+    if (usageCount.count > 0) {
+        throw new Error(`Qualifikationstyp kann nicht gelöscht werden. Er wird in ${usageCount.count} Qualifikationsperioden verwendet.`);
+    }
+    
+    await db.run('DELETE FROM qualification_types WHERE id = ?', [id]);
+};
+
+export const getQualifiedPersonsForPosition = async (
+    db: AsyncDB,
+    position: string,
+    date: string,
+    cellType?: string
+): Promise<{ id: number; name: string; vorname: string; qualifications: string[]; isAzubi?: boolean; lehrjahr?: number }[]> => {
+    // Prüfe zuerst Zelltyp-basierte Anforderungen
+    const cellRequirements = cellType ? CELL_TYPE_QUALIFICATION_REQUIREMENTS[cellType] : null;
+    const requiredQuals = cellRequirements?.qualifications || SHIFT_QUALIFICATION_REQUIREMENTS[position] || [];
+    
+    if (requiredQuals.length === 0 && !cellRequirements) {
+        // Keine Qualifikation erforderlich - alle aktiven Personen zurückgeben
+        const allPersons = await db.all(`
+            SELECT id, name, vorname, 0 as isAzubi
+            FROM personnel 
+            WHERE active = 1
+            ORDER BY name, vorname
+        `);
+        return allPersons.map((p: any) => ({ ...p, qualifications: [] }));
+    }
+    
+    const yearMonth = date.substring(0, 7); // '2025-11-15' -> '2025-11'
+    const results: any[] = [];
+    
+    // Hole qualifizierte Personen
+    if (requiredQuals.length > 0) {
+        const personsWithQuals = await db.all(`
+            SELECT DISTINCT 
+                p.id, p.name, p.vorname,
+                GROUP_CONCAT(qp.qualType) as qualifications,
+                0 as isAzubi
+            FROM personnel p
+            LEFT JOIN qualification_periods qp ON p.id = qp.personId
+                AND qp.active = 1
+                AND qp.startYM <= ?
+                AND (qp.endYM IS NULL OR qp.endYM >= ?)
+            WHERE p.active = 1
+            GROUP BY p.id, p.name, p.vorname
+            ORDER BY p.name, p.vorname
+        `, [yearMonth, yearMonth]);
+        
+        // Filtere nur Personen, die mindestens eine der erforderlichen Qualifikationen haben
+        const qualified = personsWithQuals.filter((person: any) => {
+            const personQuals = person.qualifications ? person.qualifications.split(',') : [];
+            return requiredQuals.some(req => personQuals.includes(req));
+        }).map((person: any) => ({
+            ...person,
+            qualifications: person.qualifications ? person.qualifications.split(',') : []
+        }));
+        
+        results.push(...qualified);
+    }
+    
+    // Füge qualifizierte Azubis hinzu (falls erlaubt)
+    if (cellRequirements?.azubiLehrjahr) {
+        const qualifiedAzubis = await db.all(`
+            SELECT id, name, vorname, lehrjahr, 1 as isAzubi
+            FROM azubis
+            WHERE lehrjahr >= ?
+            ORDER BY name, vorname
+        `, [cellRequirements.azubiLehrjahr]);
+        
+        results.push(...qualifiedAzubis.map((azubi: any) => ({
+            ...azubi,
+            qualifications: [`Azubi ${azubi.lehrjahr}. Lj.`]
+        })));
+    }
+    
+    return results;
 };

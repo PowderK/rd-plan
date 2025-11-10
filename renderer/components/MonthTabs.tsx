@@ -35,6 +35,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     const [rtwActivations, setRtwActivations] = useState<Record<number, boolean[]>>({});
     const [nefActivations, setNefActivations] = useState<Record<number, boolean[]>>({});
     const [itwPatternSeqs, setItwPatternSeqs] = useState<{ startDate: string; pattern: string[] }[]>([]);
+    const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
+    const [isUpdating, setIsUpdating] = useState(false); // Verhindert Race-Conditions während Updates
     const [holidays, setHolidays] = useState<Set<string>>(new Set());
     // Zusätzliche ITW-Tage außerhalb der Schichtfolge (nur UI-state für aktuellen Monat)
     const [itwExtraDays, setItwExtraDays] = useState<Set<string>>(new Set());
@@ -160,31 +162,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
             } catch {}
         };
         (window as any).api?.onSettingsUpdated?.(onSettingsUpdated);
-        // Bei Dienstplan-Änderungen lokalen Roster aktualisieren (nur Delta ziehen wäre besser, hier einfacher Full Reload)
-        const onDutyRosterUpdated = async () => {
-            try {
-                const yearSetting = await (window as any).api.getSetting('year');
-                const useYear = Number(yearSetting || new Date().getFullYear());
-                const entries = await (window as any).api.getDutyRoster(useYear);
-                const rosterObj: Record<string, Record<string, { value: string; type: string }>> = {};
-                (entries || []).forEach((e: any) => {
-                    if (!e || !e.date) return;
-                    let key = '';
-                    if (e.personType === 'person') key = `p_${e.personId}`;
-                    else if (e.personType === 'azubi') key = `a_${e.personId}`;
-                    else if (e.personType === 'doctor') key = `d_${e.personId}`;
-                    if (!key) return;
-                    if (!rosterObj[key]) rosterObj[key] = {};
-                    rosterObj[key][String(e.date)] = { value: e.value, type: e.type };
-                });
-                setLocalRoster(rosterObj);
-            } catch (e) { console.warn('[MonthTabs] duty-roster-updated reload failed', e); }
-        };
-        (window as any).api?.onDutyRosterUpdated?.(onDutyRosterUpdated);
+        // Event-Handler entfernt - Parent (EinteilungPage) kümmert sich um Roster-Updates
         return () => { (window as any).api?.offSettingsUpdated?.(onSettingsUpdated); };
     }, []);
 
-    useEffect(() => setLocalRoster(roster || {}), [roster]);
+    // Intelligenter Sync: Nur updaten, wenn sich wirklich was geändert hat UND wir nicht gerade lokal updaten
+    useEffect(() => {
+        if (!roster || isUpdating) return; // Skip während lokaler Updates
+        
+        // Nur synchronisieren, wenn der Parent-State sich wirklich geändert hat
+        const currentKeys = Object.keys(localRoster);
+        const newKeys = Object.keys(roster);
+        const hasChanged = currentKeys.length !== newKeys.length || 
+                          newKeys.some(key => JSON.stringify(localRoster[key]) !== JSON.stringify(roster[key]));
+        
+        if (hasChanged) {
+            console.log('[MonthTabs] Syncing roster from parent - significant changes detected');
+            setLocalRoster({ ...roster });
+        }
+    }, [roster, localRoster, isUpdating]);
 
     // Übernehme RTW Namen aus Fahrzeugliste
     useEffect(() => {
@@ -328,16 +324,57 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
         const pid = Number(idStr);
         const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : 'person');
         try {
-            await (window as any).api.assignSlot({ personId: pid, personType: ptype, date, slotType: slotId || '' });
+            console.log('[MonthTabs] handleAssign START:', { date, value, slotId, pid, ptype });
+            
+            // 1. Blockiere Parent-Updates während unseres lokalen Updates
+            setIsUpdating(true);
+            
+            // 2. Sofortiges optimistisches UI-Update (verhindert Flackern)
             const key = ptype === 'person' ? `p_${pid}` : (ptype === 'azubi' ? `a_${pid}` : `d_${pid}`);
+            
             setLocalRoster(prev => {
-                const before = prev[key] || {} as any;
-                const dayEntry = { ...(before[date] || {}) } as any;
-                dayEntry.type = slotId || '';
-                return { ...prev, [key]: { ...before, [date]: dayEntry } } as any;
+                const newState = { ...prev };
+                
+                // Entferne alle anderen Personen aus dem Ziel-Slot (slotId) an diesem Tag
+                if (slotId) {
+                    Object.keys(newState).forEach(personKey => {
+                        if (personKey !== key && newState[personKey][date]?.type === slotId) {
+                            console.log('[MonthTabs] Optimistically removing', personKey, 'from slot', slotId);
+                            newState[personKey] = {
+                                ...newState[personKey],
+                                [date]: { ...(newState[personKey][date] || {}), type: '' }
+                            };
+                        }
+                    });
+                }
+                
+                // Aktualisiere die Ziel-Person
+                const currentPersonState = newState[key] || {};
+                const dayEntry = { ...(currentPersonState[date] || {}), type: slotId || '' };
+                newState[key] = { ...currentPersonState, [date]: dayEntry };
+                
+                return newState;
             });
+            
+            // Force UI update
+            setForceUpdateCounter(prev => prev + 1);
+            
+            // 3. Backend-Call (async)
+            await (window as any).api.assignSlot({ personId: pid, personType: ptype, date, slotType: slotId || '' });
+            console.log('[MonthTabs] handleAssign API call completed');
+            
+            // 4. Kurze Verzögerung, dann Parent-Updates wieder erlauben
+            setTimeout(() => {
+                setIsUpdating(false);
+            }, 100);
+            
             if (onEntryAssigned) onEntryAssigned(key, date, (localRoster[key]?.[date]?.value || ''), slotId || '');
-            if (onRosterChanged) onRosterChanged();
+            // onRosterChanged wird nur verzögert aufgerufen um excessive Reloads zu vermeiden
+            setTimeout(() => {
+                if (onRosterChanged) onRosterChanged();
+            }, 200);
+            
+            console.log('[MonthTabs] handleAssign COMPLETED');
         } catch (e) {
             console.warn('[MonthTabs] handleAssign failed', e);
         }
@@ -354,8 +391,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
             setLocalRoster(prev => {
                 const before = prev[key] || {} as any;
                 const dayEntry = { ...(before[date] || {}) } as any;
-                if (dayEntry && dayEntry.type) delete dayEntry.type;
-                return { ...prev, [key]: { ...before, [date]: dayEntry } } as any;
+                // Immutable removal of type property
+                const { type, ...cleanDayEntry } = dayEntry;
+                const newPersonState = { ...before, [date]: cleanDayEntry };
+                return { ...prev, [key]: newPersonState };
             });
             if (onEntryAssigned) onEntryAssigned(key, date, (localRoster[key]?.[date]?.value || ''), '');
             if (onRosterChanged) onRosterChanged();
@@ -365,7 +404,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     };
 
     return (
-        <div style={{ padding: 12 }}>
+        <div key={forceUpdateCounter} style={{ padding: 12 }}>
             {/* Sub‑Header: RTW/ITW Einteilung (Monat) - jetzt oberhalb der Tabs */}
             <div style={{ margin: '4px 0 10px 0' }}>
                 <span style={{ fontSize: 18, fontWeight: 700 }}>

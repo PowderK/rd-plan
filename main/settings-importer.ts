@@ -15,6 +15,7 @@ export interface SettingsExportData {
   deptPatterns: Array<{ start_date: string; pattern: string }>;
   rtwVehicles: Array<{ id: number; name: string; sort: number; archived_year?: number }>;
   nefVehicles: Array<{ id: number; name: string; sort: number; archived_year?: number; occupancy_mode: string }>;
+  qualificationTypes: Array<{ id: number; name: string; description?: string; category: string; active: boolean; sort: number }>;
 }
 
 export interface SettingsImportResult {
@@ -27,6 +28,7 @@ export interface SettingsImportResult {
     deptPatterns: number;
     rtwVehicles: number;
     nefVehicles: number;
+    qualificationTypes: number;
   };
   skipped: number;
   errors: string[];
@@ -48,7 +50,8 @@ export class SettingsImporter {
       const itwPatterns = await this.db.all('SELECT start_date, pattern FROM itw_patterns ORDER BY start_date');
       const deptPatterns = await this.db.all('SELECT start_date, pattern FROM dept_patterns ORDER BY start_date');
       const rtwVehicles = await this.db.all('SELECT id, name, sort, archived_year FROM rtw_vehicles ORDER BY sort');
-      const nefVehicles = await this.db.all('SELECT id, name, sort, archived_year, occupancy_mode FROM nef_vehicles ORDER BY sort');
+      const nefVehicles = await this.db.all('SELECT id, name, sort, archived_year, occupancy_mode FROM nef_vehicles ORDER by sort');
+      const qualificationTypes = await this.db.all('SELECT id, name, description, category, active, sort FROM qualification_types ORDER BY sort, name');
 
       const exportData: SettingsExportData = {
         metadata: {
@@ -62,7 +65,8 @@ export class SettingsImporter {
         itwPatterns: itwPatterns || [],
         deptPatterns: deptPatterns || [],
         rtwVehicles: rtwVehicles || [],
-        nefVehicles: nefVehicles || []
+        nefVehicles: nefVehicles || [],
+        qualificationTypes: qualificationTypes || []
       };
 
       // Als JSON speichern
@@ -87,6 +91,7 @@ export class SettingsImporter {
       const deptPatterns = await this.db.all('SELECT start_date, pattern FROM dept_patterns ORDER BY start_date');
       const rtwVehicles = await this.db.all('SELECT id, name, sort, archived_year FROM rtw_vehicles ORDER BY sort');
       const nefVehicles = await this.db.all('SELECT id, name, sort, archived_year, occupancy_mode FROM nef_vehicles ORDER BY sort');
+      const qualificationTypes = await this.db.all('SELECT id, name, description, category, active, sort FROM qualification_types ORDER BY sort, name');
 
       // Erstelle Workbook
       const wb = XLSX.utils.book_new();
@@ -170,6 +175,16 @@ export class SettingsImporter {
         XLSX.utils.book_append_sheet(wb, nefWs, 'NEF-Fahrzeuge');
       }
 
+      // QualificationTypes-Sheet
+      if (qualificationTypes && qualificationTypes.length > 0) {
+        const qualData = [
+          ['ID', 'Name', 'Beschreibung', 'Kategorie', 'Aktiv', 'Sortierung'],
+          ...qualificationTypes.map(qt => [qt.id, qt.name, qt.description || '', qt.category, qt.active ? 'Ja' : 'Nein', qt.sort])
+        ];
+        const qualWs = XLSX.utils.aoa_to_sheet(qualData);
+        XLSX.utils.book_append_sheet(wb, qualWs, 'Qualifikationstypen');
+      }
+
       // Speichere Excel-Datei
       XLSX.writeFile(wb, filePath);
       console.log('[SettingsImporter] Settings exported to Excel:', filePath);
@@ -192,7 +207,8 @@ export class SettingsImporter {
         itwPatterns: 0,
         deptPatterns: 0,
         rtwVehicles: 0,
-        nefVehicles: 0
+        nefVehicles: 0,
+        qualificationTypes: 0
       },
       skipped: 0,
       errors: []
@@ -365,6 +381,34 @@ export class SettingsImporter {
           }
         }
 
+        // Qualification Types importieren
+        if (data.qualificationTypes && Array.isArray(data.qualificationTypes)) {
+          if (replaceExisting) {
+            await this.db.run('DELETE FROM qualification_types');
+          }
+          
+          for (const qualType of data.qualificationTypes) {
+            if (qualType.name && qualType.category) {
+              if (replaceExisting) {
+                await this.db.run(`
+                  INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, ?, ?)
+                `, [qualType.name, qualType.description || '', qualType.category, qualType.active !== false, qualType.sort || 0]);
+                result.imported.qualificationTypes++;
+              } else {
+                const existing = await this.db.get('SELECT id FROM qualification_types WHERE name = ? AND category = ?', [qualType.name, qualType.category]);
+                if (!existing) {
+                  await this.db.run(`
+                    INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, ?, ?)
+                  `, [qualType.name, qualType.description || '', qualType.category, qualType.active !== false, qualType.sort || 0]);
+                  result.imported.qualificationTypes++;
+                } else {
+                  result.skipped++;
+                }
+              }
+            }
+          }
+        }
+
         await this.db.run('COMMIT');
         result.success = true;
         console.log('[SettingsImporter] Settings imported successfully:', result);
@@ -418,6 +462,12 @@ export class SettingsImporter {
         ],
         nefVehicles: [
           { id: 1, name: 'NEF 1', sort: 0, archived_year: undefined, occupancy_mode: '24h' }
+        ],
+        qualificationTypes: [
+          { id: 1, name: 'Rettungssanitäter', description: 'Rettungssanitäter Ausbildung', category: 'Medizin', active: true, sort: 1 },
+          { id: 2, name: 'Rettungsassistent', description: 'Rettungsassistent Ausbildung', category: 'Medizin', active: true, sort: 2 },
+          { id: 3, name: 'Notfallsanitäter', description: 'Notfallsanitäter Ausbildung', category: 'Medizin', active: true, sort: 3 },
+          { id: 4, name: 'Gruppenführer', description: 'Gruppenführer Ausbildung', category: 'Führung', active: true, sort: 1 }
         ]
       };
 
