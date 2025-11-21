@@ -289,6 +289,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     try {
       setLoading(true);
       
+      // Validierung: Alle Qualifikationen müssen einen Namen haben
+      const invalidQualifications = qualificationTypes.filter(qt => !qt.name || qt.name.trim() === '');
+      if (invalidQualifications.length > 0) {
+        alert('Alle Qualifikationen müssen einen Namen haben. Bitte füllen Sie alle leeren Namen aus.');
+        return;
+      }
+      
       // Lösche entfernte Qualifikationen
       const currentIds = qualificationTypes.map(qt => qt.id);
       const originalIds = originalQualificationTypes?.map(qt => qt.id) || [];
@@ -314,6 +321,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       alert('Qualifikationen gespeichert!');
       setEditingQualificationTypes(false);
       setSelectedQualificationTypeId(null);
+      setOriginalQualificationTypes(null);
     } catch (err) {
       console.error('Fehler beim Speichern:', err);
       alert('Fehler beim Speichern: ' + (err as Error).message);
@@ -790,8 +798,15 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               <tr key={qt.id} className={[styles.row, selectedQualificationTypeId === qt.id ? styles.selected : ''].filter(Boolean).join(' ')} onClick={() => setSelectedQualificationTypeId(prev => prev === qt.id ? null : qt.id)}>
                 <td>
                   {editingQualificationTypes ? (
-                    <input value={qt.name}
-                      onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, name: e.target.value } : x))} />
+                    <input 
+                      value={qt.name}
+                      onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, name: e.target.value } : x))}
+                      style={{ 
+                        borderColor: (!qt.name || qt.name.trim() === '') ? '#ff4444' : '#ddd',
+                        backgroundColor: (!qt.name || qt.name.trim() === '') ? '#fff5f5' : 'white'
+                      }}
+                      placeholder="Name erforderlich"
+                    />
                   ) : qt.name}
                 </td>
                 <td>
@@ -855,6 +870,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                 setQualificationTypes(originalQualificationTypes ? [...originalQualificationTypes] : []);
                 setEditingQualificationTypes(false);
                 setSelectedQualificationTypeId(null);
+                setOriginalQualificationTypes(null);
               }}>
                 Abbrechen
               </button>

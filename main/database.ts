@@ -1325,16 +1325,29 @@ export const getQualificationTypes = async (db: AsyncDB, activeOnly: boolean = f
 };
 
 export const addQualificationType = async (db: AsyncDB, qualType: Omit<QualificationType, 'id'>): Promise<void> => {
+    // Validierung: Name ist erforderlich
+    if (!qualType.name || qualType.name.trim() === '') {
+        throw new Error('Der Name der Qualifikation ist erforderlich');
+    }
+    
     await db.run(
         'INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, ?, ?)',
-        [qualType.name, qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort]
+        [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort]
     );
 };
 
 export const updateQualificationType = async (db: AsyncDB, qualType: QualificationType): Promise<void> => {
+    console.log('[DB] updateQualificationType received:', JSON.stringify(qualType, null, 2));
+    
+    // Validierung: Name ist erforderlich
+    if (!qualType.name || qualType.name.trim() === '') {
+        console.log('[DB] updateQualificationType: Name validation failed. name=', qualType.name);
+        throw new Error('Der Name der Qualifikation ist erforderlich');
+    }
+    
     await db.run(
         'UPDATE qualification_types SET name = ?, description = ?, category = ?, active = ?, sort = ? WHERE id = ?',
-        [qualType.name, qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort, qualType.id]
+        [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort, qualType.id]
     );
 };
 

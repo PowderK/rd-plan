@@ -3,6 +3,7 @@ import path from 'path';
 import url from 'url';
 import fs from 'fs';
 import { initializeDatabaseManager, DatabaseAdapter, createDatabaseBackup, listDatabaseBackups, getSummaryForBackup, restoreDatabaseFromBackup, previewDutyRosterImport, getDatabaseManager } from './database-manager';
+import { getUpdateManager, getCurrentVersion, performUpdate } from './update-manager';
 
 let databaseAdapter: DatabaseAdapter | null = null;
 let settingsWindow: BrowserWindow | null = null;
@@ -433,9 +434,12 @@ ipcMain.handle('add-qualification-type', async (_event, qualType: any) => {
     return true;
 });
 
-ipcMain.handle('update-qualification-type', async (_event, qualType: any) => {
+ipcMain.handle('update-qualification-type', async (_event, id: number, qualType: any) => {
+    console.log('[DEBUG] update-qualification-type called with id:', id, 'qualType:', qualType);
+    const mergedQualType = { ...qualType, id };
+    console.log('[DEBUG] merged qualType:', mergedQualType);
     const adapter = await ensureDatabaseAdapter();
-    await adapter.updateQualificationType(qualType);
+    await adapter.updateQualificationType(mergedQualType);
     return true;
 });
 
@@ -807,6 +811,58 @@ ipcMain.handle('restore-backup', async (_event, backupDir: string) => {
         return { success: false, message: e?.message || String(e) };
     }
 });
+
+// Update Management handlers
+ipcMain.handle('get-current-version', async () => {
+    try {
+        const versionInfo = await getCurrentVersion();
+        return { success: true, versionInfo };
+    } catch (e: any) {
+        console.error('[Main] get-current-version error', e);
+        return { success: false, message: e?.message || String(e) };
+    }
+});
+
+ipcMain.handle('create-manual-backup', async (_event, label: string) => {
+    try {
+        const updateMgr = getUpdateManager();
+        const backupPath = await updateMgr.createManualBackup(label);
+        return { success: true, backupPath };
+    } catch (e: any) {
+        console.error('[Main] create-manual-backup error', e);
+        return { success: false, message: e?.message || String(e) };
+    }
+});
+
+ipcMain.handle('check-for-updates', async () => {
+    try {
+        const updateMgr = getUpdateManager();
+        const needsUpdate = await updateMgr.needsUpdate();
+        const currentVersion = await getCurrentVersion();
+        const appVersion = await updateMgr.getAppVersion();
+        
+        return { 
+            success: true, 
+            needsUpdate,
+            currentVersion,
+            appVersion
+        };
+    } catch (e: any) {
+        console.error('[Main] check-for-updates error', e);
+        return { success: false, message: e?.message || String(e) };
+    }
+});
+
+ipcMain.handle('perform-manual-update', async () => {
+    try {
+        const result = await performUpdate();
+        return result;
+    } catch (e: any) {
+        console.error('[Main] perform-manual-update error', e);
+        return { success: false, message: e?.message || String(e) };
+    }
+});
+
 
 // Settings Import/Export handlers
 ipcMain.handle('import-settings-json', async (_event, filePath: string, replaceExisting: boolean = false) => {
@@ -1304,6 +1360,39 @@ app.whenReady().then(async () => {
             openSetupWizard();
             return;
         }
+    }
+
+    // WICHTIG: Datenbank ZUERST initialisieren, bevor Update-Prüfung
+    await ensureDatabaseAdapter();
+
+    // Update-Prüfung und automatisches Update mit Backup
+    try {
+        const updateMgr = getUpdateManager();
+        const needsUpdate = await updateMgr.needsUpdate();
+        
+        if (needsUpdate) {
+            console.log('[Main] Update erforderlich - starte Update-Prozess...');
+            const result = await performUpdate();
+            
+            if (result.success) {
+                console.log('[Main] Update erfolgreich:', result.message);
+                if (result.backupPath) {
+                    console.log('[Main] Backup erstellt unter:', result.backupPath);
+                }
+            } else {
+                console.error('[Main] Update fehlgeschlagen:', result.message);
+                // Bei kritischem Fehler: Warnung anzeigen
+                dialog.showErrorBox(
+                    'Update-Fehler',
+                    `Das Update konnte nicht durchgeführt werden:\n\n${result.message}\n\nDie Anwendung wird mit der vorherigen Version gestartet.`
+                );
+            }
+        } else {
+            console.log('[Main] Keine Updates erforderlich');
+        }
+    } catch (error: any) {
+        console.error('[Main] Fehler bei Update-Prüfung:', error);
+        // Bei Fehler: Weiter mit normaler Initialisierung
     }
 
     await createWindow();

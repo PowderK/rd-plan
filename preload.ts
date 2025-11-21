@@ -94,7 +94,7 @@ contextBridge.exposeInMainWorld('api', {
     // Qualification Types Management  
     getQualificationTypes: (activeOnly?: boolean) => ipcRenderer.invoke('get-qualification-types', activeOnly),
     addQualificationType: (qualType: any) => ipcRenderer.invoke('add-qualification-type', qualType),
-    updateQualificationType: (qualType: any) => ipcRenderer.invoke('update-qualification-type', qualType),
+    updateQualificationType: (id: number, qualType: any) => ipcRenderer.invoke('update-qualification-type', id, qualType),
     deleteQualificationType: (id: number) => ipcRenderer.invoke('delete-qualification-type', id),
   getQualifiedPersonsForPosition: (position: string, date: string, cellType?: string) => ipcRenderer.invoke('get-qualified-persons-for-position', position, date, cellType),
     // Windows
@@ -147,6 +147,12 @@ contextBridge.exposeInMainWorld('api', {
     listBackups: (limit?: number) => ipcRenderer.invoke('list-backups', limit),
     getBackupSummary: (backupDir: string, year?: number, month?: number) => ipcRenderer.invoke('get-backup-summary', backupDir, year, month),
     restoreBackup: (backupDir: string) => ipcRenderer.invoke('restore-backup', backupDir),
+    // Update Management
+    getCurrentVersion: () => ipcRenderer.invoke('get-current-version'),
+    createManualBackup: (label: string) => ipcRenderer.invoke('create-manual-backup', label),
+    checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+    performManualUpdate: () => ipcRenderer.invoke('perform-manual-update'),
+    // Roster Import
     importDutyRoster: (filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number> }) => ipcRenderer.invoke('import-duty-roster', filePath, year, month, options),
     previewDutyRoster: (filePath: string, year: number, month?: number) => ipcRenderer.invoke('preview-duty-roster-import', filePath, year, month),
     openItwWindow: () => ipcRenderer.send('open-itw-window'),
