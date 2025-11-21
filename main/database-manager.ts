@@ -3,13 +3,15 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { AsyncDB, initializeDatabase as initSQLiteDatabase, QualificationType } from './database';
+import { initializePostgreSQLDatabase, PostgresConfig } from './database-postgres';
 
-export type DatabaseMode = 'sqlite' | 'central-sqlite';
+export type DatabaseMode = 'sqlite' | 'central-sqlite' | 'postgresql';
 
 export interface DatabaseConfig {
   mode: DatabaseMode;
   multiUser?: boolean;
   centralPath?: string;
+  postgresConfig?: PostgresConfig;
 }
 
 export interface DatabaseAdapter {
@@ -563,7 +565,42 @@ export class DatabaseManager {
   
   async initialize(): Promise<DatabaseAdapter> {
     console.log('[DatabaseManager] Initializing database with mode:', this.config.mode);
+    
+    if (this.config.mode === 'postgresql') {
+      return this.initializePostgreSQL();
+    }
+    
     return this.initializeSQLite();
+  }
+  
+  private async initializePostgreSQL(): Promise<DatabaseAdapter> {
+    console.log('[DatabaseManager] Starting PostgreSQL database');
+    
+    if (!this.config.postgresConfig) {
+      throw new Error('PostgreSQL configuration is required for postgresql mode');
+    }
+    
+    const db = await initializePostgreSQLDatabase(this.config.postgresConfig);
+    
+    // Collect diagnostics
+    try {
+      this.lastDiagnostics = {
+        timestamp: new Date().toISOString(),
+        platform: process.platform,
+        node: process.versions?.node,
+        electron: process.versions?.electron,
+        mode: this.config.mode,
+        multiUser: !!this.config.multiUser,
+        postgresConfig: {
+          host: this.config.postgresConfig.host || 'from connection string',
+          database: this.config.postgresConfig.database || 'from connection string',
+          port: this.config.postgresConfig.port || 5432
+        }
+      };
+    } catch {}
+    
+    this.adapter = new SQLiteAdapter(db); // Same adapter works for both!
+    return this.adapter;
   }
   
   private async initializeSQLite(): Promise<DatabaseAdapter> {
@@ -1030,17 +1067,28 @@ export async function initializeDatabaseManager(config?: DatabaseConfig): Promis
     return globalDatabaseManager.getAdapter();
   }
   
+  // Check for PostgreSQL environment variable
+  const pgConnectionString = process.env.RD_PLAN_PG_CONNECTION;
+  
   // Default configuration
   const defaultConfig: DatabaseConfig = {
-    mode: process.env.RD_PLAN_DB_MODE === 'central-sqlite' ? 'central-sqlite' : 'sqlite',
+    mode: pgConnectionString 
+      ? 'postgresql' 
+      : (process.env.RD_PLAN_DB_MODE === 'central-sqlite' ? 'central-sqlite' : 'sqlite'),
     multiUser: process.env.RD_PLAN_MULTI_USER === 'true',
-    centralPath: process.env.RD_PLAN_CENTRAL_DB_PATH
+    centralPath: process.env.RD_PLAN_CENTRAL_DB_PATH,
+    postgresConfig: pgConnectionString ? { connectionString: pgConnectionString } : undefined
   };
   
   const finalConfig = { ...defaultConfig, ...config };
   
-  // Auto-detect multi-user scenario and central path
-  if (!finalConfig.centralPath) {
+  // PostgreSQL mode enables multi-user by default
+  if (finalConfig.mode === 'postgresql') {
+    finalConfig.multiUser = true;
+  }
+  
+  // Auto-detect multi-user scenario and central path for SQLite
+  if (finalConfig.mode !== 'postgresql' && !finalConfig.centralPath) {
     const userDataPath = app.getPath('userData');
     
     // Check if we're running in a network/shared environment
