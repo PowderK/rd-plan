@@ -88,7 +88,7 @@ contextBridge.exposeInMainWorld('api', {
     updateQualificationPeriod: (id: number, period: any) => ipcRenderer.invoke('update-qualification-period', id, period),
     deleteQualificationPeriod: (id: number) => ipcRenderer.invoke('delete-qualification-period', id),
     hasQualificationInMonth: (personId: number, qualType: string, yearMonth: string) => ipcRenderer.invoke('has-qualification-in-month', personId, qualType, yearMonth),
-    validateQualificationForShift: (personId: number, shiftValue: string, date: string) => ipcRenderer.invoke('validate-qualification-for-shift', personId, shiftValue, date),
+    validateQualificationForShift: (personId: number, shiftValue: string, date: string, cellType?: string) => ipcRenderer.invoke('validate-qualification-for-shift', personId, shiftValue, date, cellType),
     getActiveQualifications: (personId: number, yearMonth: string) => ipcRenderer.invoke('get-active-qualifications', personId, yearMonth),
     
     // Qualification Types Management  
@@ -108,6 +108,19 @@ contextBridge.exposeInMainWorld('api', {
     updateItwDoctor: (doc: any) => ipcRenderer.invoke('update-itw-doctor', doc),
     deleteItwDoctor: (id: number) => ipcRenderer.invoke('delete-itw-doctor', id),
     updateItwDoctorOrder: (order: number[]) => ipcRenderer.invoke('update-itw-doctor-order', order),
+    // ITW Vehicles
+    getItwVehicles: () => ipcRenderer.invoke('get-itw-vehicles'),
+    addItwVehicle: (v: any) => ipcRenderer.invoke('add-itw-vehicle', v),
+    updateItwVehicle: (v: any) => ipcRenderer.invoke('update-itw-vehicle', v),
+    deleteItwVehicle: (id: number) => ipcRenderer.invoke('delete-itw-vehicle', id),
+    updateItwVehicleOrder: (order: number[]) => ipcRenderer.invoke('update-itw-vehicle-order', order),
+    // ITW Vehicle Periods
+    getItwVehiclePeriods: (vehicleId: number) => ipcRenderer.invoke('get-itw-vehicle-periods', vehicleId),
+    getAllItwVehiclePeriods: () => ipcRenderer.invoke('get-all-itw-vehicle-periods'),
+    addItwVehiclePeriod: (period: any) => ipcRenderer.invoke('add-itw-vehicle-period', period),
+    updateItwVehiclePeriod: (period: any) => ipcRenderer.invoke('update-itw-vehicle-period', period),
+    deleteItwVehiclePeriod: (id: number) => ipcRenderer.invoke('delete-itw-vehicle-period', id),
+    openAddItwVehicleWindow: () => ipcRenderer.send('open-add-itw-vehicle-window'),
     // RTW/NEF vehicles
     getRtwVehicles: () => ipcRenderer.invoke('get-rtw-vehicles'),
     addRtwVehicle: (v: any) => ipcRenderer.invoke('add-rtw-vehicle', v),
@@ -122,11 +135,30 @@ contextBridge.exposeInMainWorld('api', {
     setNefOccupancy: (id: number, mode: '24h'|'tag') => ipcRenderer.invoke('set-nef-occupancy', id, mode),
     openAddRtwWindow: () => ipcRenderer.send('open-add-rtw-window'),
     openAddNefWindow: () => ipcRenderer.send('open-add-nef-window'),
-    // Vehicle monthly activation
+    // Vehicle Positions
+    getVehiclePositions: (vehicleType: string, vehicleId: number) => ipcRenderer.invoke('get-vehicle-positions', vehicleType, vehicleId),
+    getVehiclePositionsWithQualifications: (vehicleType: string, vehicleId: number) => ipcRenderer.invoke('get-vehicle-positions-with-qualifications', vehicleType, vehicleId),
+    addVehiclePosition: (position: any) => ipcRenderer.invoke('add-vehicle-position', position),
+    updateVehiclePosition: (position: any) => ipcRenderer.invoke('update-vehicle-position', position),
+    deleteVehiclePosition: (id: number) => ipcRenderer.invoke('delete-vehicle-position', id),
+    updateVehiclePositionOrder: (order: number[]) => ipcRenderer.invoke('update-vehicle-position-order', order),
+    // Vehicle monthly activation (deprecated - use vehicle periods)
     getRtwVehicleActivations: (year: number) => ipcRenderer.invoke('get-rtw-vehicle-activations', year),
     setRtwVehicleActivation: (vehicleId: number, year: number, month: number, enabled: boolean) => ipcRenderer.invoke('set-rtw-vehicle-activation', vehicleId, year, month, enabled),
     getNefVehicleActivations: (year: number) => ipcRenderer.invoke('get-nef-vehicle-activations', year),
     setNefVehicleActivation: (vehicleId: number, year: number, month: number, enabled: boolean) => ipcRenderer.invoke('set-nef-vehicle-activation', vehicleId, year, month, enabled),
+    // RTW Vehicle Periods
+    getRtwVehiclePeriods: (vehicleId: number) => ipcRenderer.invoke('get-rtw-vehicle-periods', vehicleId),
+    getAllRtwVehiclePeriods: () => ipcRenderer.invoke('get-all-rtw-vehicle-periods'),
+    addRtwVehiclePeriod: (period: any) => ipcRenderer.invoke('add-rtw-vehicle-period', period),
+    updateRtwVehiclePeriod: (period: any) => ipcRenderer.invoke('update-rtw-vehicle-period', period),
+    deleteRtwVehiclePeriod: (id: number) => ipcRenderer.invoke('delete-rtw-vehicle-period', id),
+    // NEF Vehicle Periods
+    getNefVehiclePeriods: (vehicleId: number) => ipcRenderer.invoke('get-nef-vehicle-periods', vehicleId),
+    getAllNefVehiclePeriods: () => ipcRenderer.invoke('get-all-nef-vehicle-periods'),
+    addNefVehiclePeriod: (period: any) => ipcRenderer.invoke('add-nef-vehicle-period', period),
+    updateNefVehiclePeriod: (period: any) => ipcRenderer.invoke('update-nef-vehicle-period', period),
+    deleteNefVehiclePeriod: (id: number) => ipcRenderer.invoke('delete-nef-vehicle-period', id),
     // Holidays
     getHolidaysForYear: (year: number) => ipcRenderer.invoke('get-holidays', year),
     setHolidaysForYear: (year: number, dates: { date: string, name?: string }[]) => ipcRenderer.invoke('set-holidays', year, dates),

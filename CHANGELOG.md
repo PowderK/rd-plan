@@ -1,3 +1,33 @@
+# Changelog
+
+## [0.2.0-beta.1] - 2025-12-07
+
+### Neue Features
+- ✅ **Fahrzeug-Zeiträume**: RTW, NEF und ITW nutzen jetzt zeitraumbasierte Aktivierung (analog zu Qualifikationen)
+- ✅ **Dynamische Fahrzeugpositionen**: Positionen können mit Qualifikationen verknüpft werden (konfigurierbar in Einstellungen → Fahrzeuge)
+- ✅ **ITW-Integration**: ITW-Fahrzeuge in Fahrzeugeinstellungen integriert
+- ✅ **Qualifikations-System**: Vollständige Integration in Dienstplan und Einteilung
+
+### Bug-Fixes
+- ✅ Fahrzeug-Qualifikationen werden nun aus qualification_periods geladen
+- ✅ Azubi-Vorplanung wird bei Jahresimporten korrekt importiert
+- ✅ Manuelle Einteilungen werden nicht mehr durch Synchronisation überschrieben
+- ✅ Fahrzeugführer-Filter nutzt jetzt numerischen Vergleich (=== 1) statt Boolean-Check
+- ✅ Dynamische Qualifikations-Validierung mit cellType-Parameter
+
+### Technische Änderungen
+- Migration 4: `vehicle_positions` Tabelle für flexible Position-Qualifikation-Zuordnung
+- Neue Komponenten: `VehiclePositionEditor.tsx`, `VehiclePeriodEditor.tsx`
+- Backend-Funktionen für Fahrzeugpositionen: CRUD-Operationen
+- IPC-Handler erweitert mit cellType-Parameter für Qualifikations-Validierung
+- EinteilungPage lädt Qualifikationen aus qualification_periods
+
+### Bekannte Einschränkungen
+- Bestehende Daten benötigen manuelle Qualifikations-Zuweisung in Einstellungen → Personal
+- Splash-Screen noch nicht implementiert
+
+---
+
 ## Build 409 - 2025-12-02
 
 - automated build

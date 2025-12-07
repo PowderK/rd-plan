@@ -87,9 +87,61 @@ export class UpdateManager {
       }
     });
     
+    // Migration 4: vehicle_positions Tabelle
+    this.migrations.push({
+      version: 4,
+      description: 'Create vehicle_positions table for flexible position-qualification mapping',
+      up: async (db: AsyncDB) => {
+        const tables = await db.all(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='vehicle_positions'"
+        );
+        if (tables.length === 0) {
+          console.log('[UpdateManager] Migration 4: Creating vehicle_positions table');
+          await db.exec(`
+            CREATE TABLE vehicle_positions (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              vehicleType TEXT NOT NULL,
+              vehicleId INTEGER NOT NULL,
+              positionName TEXT NOT NULL,
+              qualificationTypeId INTEGER,
+              sort INTEGER NOT NULL DEFAULT 0,
+              FOREIGN KEY (qualificationTypeId) REFERENCES qualification_types(id) ON DELETE SET NULL,
+              UNIQUE(vehicleType, vehicleId, positionName)
+            )
+          `);
+          await db.exec(`CREATE INDEX IF NOT EXISTS idx_vehicle_positions_vehicle ON vehicle_positions (vehicleType, vehicleId)`);
+          await db.exec(`CREATE INDEX IF NOT EXISTS idx_vehicle_positions_qual ON vehicle_positions (qualificationTypeId)`);
+          
+          // Initialisiere Standard-Positionen für bestehende Fahrzeuge
+          console.log('[UpdateManager] Migration 4: Initializing default positions for existing vehicles');
+          const { initializeDefaultVehiclePositions, getQualificationTypes } = await import('./database');
+          
+          // RTW Fahrzeuge
+          const rtwVehicles = await db.all('SELECT id FROM rtw_vehicles WHERE archived_year IS NULL');
+          for (const v of rtwVehicles) {
+            await initializeDefaultVehiclePositions(db, 'rtw', v.id);
+          }
+          
+          // NEF Fahrzeuge
+          const nefVehicles = await db.all('SELECT id FROM nef_vehicles WHERE archived_year IS NULL');
+          for (const v of nefVehicles) {
+            await initializeDefaultVehiclePositions(db, 'nef', v.id);
+          }
+          
+          // ITW Fahrzeuge
+          const itwVehicles = await db.all('SELECT id FROM itw_vehicles WHERE archived_year IS NULL');
+          for (const v of itwVehicles) {
+            await initializeDefaultVehiclePositions(db, 'itw', v.id);
+          }
+          
+          console.log('[UpdateManager] Migration 4: Default positions initialized');
+        }
+      }
+    });
+    
     // Zukünftige Migrationen hier hinzufügen
     // this.migrations.push({
-    //   version: 4,
+    //   version: 5,
     //   description: 'Add new feature X',
     //   up: async (db: AsyncDB) => { ... }
     // });

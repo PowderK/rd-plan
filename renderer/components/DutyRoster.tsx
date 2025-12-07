@@ -839,7 +839,9 @@ const DutyRoster: React.FC = () => {
     // Qualifikations-Validierung für nicht-leere Werte und nur für Personen (nicht Azubis)
     if (value && value.trim() !== '' && personType === 'person' && origId) {
       try {
-        const validation = await (window as any).api.validateQualificationForShift(origId, value, date);
+        // Hole cellType aus dem aktuellen roster-Eintrag (z.B. "rtw1_tag_1")
+        const cellType = roster[personId]?.[date]?.type || undefined;
+        const validation = await (window as any).api.validateQualificationForShift(origId, value, date, cellType);
         
         if (!validation.isValid) {
           const missingQuals = validation.missingQualifications.join(', ');

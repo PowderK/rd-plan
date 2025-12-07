@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import styles from './PersonnelOverview.module.css';
+import { VehiclePeriodList } from './VehiclePeriodEditor';
+import { VehiclePositionEditor } from './VehiclePositionEditor';
 
 const Vehicles: React.FC = () => {
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [rtwVehicles, setRtwVehicles] = useState<{ id: number; name: string }[]>([]);
   const [nefVehicles, setNefVehicles] = useState<{ id: number; name: string; occupancy_mode?: '24h' | 'tag' }[]>([]);
-  const [itwEnabled, setItwEnabled] = useState<boolean>(false);
-  const [rtwActivations, setRtwActivations] = useState<Record<number, boolean[]>>({});
-  const [nefActivations, setNefActivations] = useState<Record<number, boolean[]>>({});
+  const [itwVehicles, setItwVehicles] = useState<{ id: number; name: string }[]>([]);
   // Edit/Select/Drag State RTW
   const [editingRtw, setEditingRtw] = useState(false);
   const [selectedRtwId, setSelectedRtwId] = useState<number | null>(null);
@@ -18,10 +18,23 @@ const Vehicles: React.FC = () => {
   const [selectedNefId, setSelectedNefId] = useState<number | null>(null);
   const [originalNef, setOriginalNef] = useState<{ id:number; name:string }[] | null>(null);
   const [draggedNefId, setDraggedNefId] = useState<number | null>(null);
+  // Edit/Select/Drag State ITW
+  const [editingItw, setEditingItw] = useState(false);
+  const [selectedItwId, setSelectedItwId] = useState<number | null>(null);
+  const [originalItw, setOriginalItw] = useState<{ id:number; name:string }[] | null>(null);
+  const [draggedItwId, setDraggedItwId] = useState<number | null>(null);
   // Gemeinsame Drag-Over-Vorschau
   const [dragOverId, setDragOverId] = useState<number | null>(null);
   const [dragPosition, setDragPosition] = useState<'above'|'below'|null>(null);
-  const [dragContext, setDragContext] = useState<'rtw'|'nef'|null>(null);
+  const [dragContext, setDragContext] = useState<'rtw'|'nef'|'itw'|null>(null);
+  // Period Editor State
+  const [showRtwPeriodEditor, setShowRtwPeriodEditor] = useState<{ vehicleId: number; name: string } | null>(null);
+  const [showNefPeriodEditor, setShowNefPeriodEditor] = useState<{ vehicleId: number; name: string } | null>(null);
+  const [showItwPeriodEditor, setShowItwPeriodEditor] = useState<{ vehicleId: number; name: string } | null>(null);
+  // Position Editor State
+  const [showRtwPositionEditor, setShowRtwPositionEditor] = useState<{ vehicleId: number; name: string } | null>(null);
+  const [showNefPositionEditor, setShowNefPositionEditor] = useState<{ vehicleId: number; name: string } | null>(null);
+  const [showItwPositionEditor, setShowItwPositionEditor] = useState<{ vehicleId: number; name: string } | null>(null);
 
   // Jahr aus globalen Einstellungen übernehmen (beim Start und wenn Settings geändert werden)
   useEffect(() => {
@@ -30,53 +43,36 @@ const Vehicles: React.FC = () => {
         const y = await (window as any).api.getSetting('year');
         setYear(Number(y || new Date().getFullYear()));
       } catch {}
-      try {
-        const itwVal = await (window as any).api.getSetting('itw');
-        setItwEnabled(String(itwVal) === 'true');
-      } catch {}
       try { setRtwVehicles(await (window as any).api.getRtwVehicles()); } catch {}
       try { setNefVehicles(await (window as any).api.getNefVehicles()); } catch {}
+      try { setItwVehicles(await (window as any).api.getItwVehicles()); } catch {}
     })();
     const onSettingsUpdated = async () => {
       try {
         const y = await (window as any).api.getSetting('year');
         setYear(Number(y || new Date().getFullYear()));
       } catch {}
-      try {
-        const itwVal = await (window as any).api.getSetting('itw');
-        setItwEnabled(String(itwVal) === 'true');
-      } catch {}
       // Fahrzeuge ggf. neu laden (falls geändert)
       try { setRtwVehicles(await (window as any).api.getRtwVehicles()); } catch {}
       try { setNefVehicles(await (window as any).api.getNefVehicles()); } catch {}
+      try { setItwVehicles(await (window as any).api.getItwVehicles()); } catch {}
     };
     (window as any).api?.onSettingsUpdated?.(onSettingsUpdated);
     return () => (window as any).api?.offSettingsUpdated?.(onSettingsUpdated);
   }, []);
 
-  // Aktivierungen laden, wenn das Jahr gewechselt wurde
+  // Listen for messages from popups (e.g. add vehicle windows)
   useEffect(() => {
-    (async () => {
-      try {
-        const acts = await (window as any).api.getRtwVehicleActivations(year);
-        const map: Record<number, boolean[]> = {};
-        (acts || []).forEach((r: any) => {
-          map[r.vehicleId] = map[r.vehicleId] || Array(12).fill(true);
-          map[r.vehicleId][Number(r.month)-1] = !!r.enabled;
-        });
-        setRtwActivations(map);
-      } catch {}
-      try {
-        const acts = await (window as any).api.getNefVehicleActivations(year);
-        const map: Record<number, boolean[]> = {};
-        (acts || []).forEach((r: any) => {
-          map[r.vehicleId] = map[r.vehicleId] || Array(12).fill(true);
-          map[r.vehicleId][Number(r.month)-1] = !!r.enabled;
-        });
-        setNefActivations(map);
-      } catch {}
-    })();
-  }, [year]);
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.data === 'settings-updated') {
+        try { setRtwVehicles(await (window as any).api.getRtwVehicles()); } catch {}
+        try { setNefVehicles(await (window as any).api.getNefVehicles()); } catch {}
+        try { setItwVehicles(await (window as any).api.getItwVehicles()); } catch {}
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   // --- Utils ---
   const reloadRtw = useCallback(async () => {
@@ -84,6 +80,9 @@ const Vehicles: React.FC = () => {
   }, []);
   const reloadNef = useCallback(async () => {
     try { setNefVehicles(await (window as any).api.getNefVehicles()); } catch {}
+  }, []);
+  const reloadItw = useCallback(async () => {
+    try { setItwVehicles(await (window as any).api.getItwVehicles()); } catch {}
   }, []);
 
   // --- RTW Edit/Select/Save ---
@@ -140,8 +139,33 @@ const Vehicles: React.FC = () => {
     try { await (window as any).api.setNefOccupancy?.(id, mode); } catch {}
   };
 
+  // --- ITW Edit/Select/Save ---
+  const startEditingItw = () => { setOriginalItw(JSON.parse(JSON.stringify(itwVehicles))); setEditingItw(true); };
+  const cancelEditingItw = () => { if (originalItw) setItwVehicles(originalItw); setEditingItw(false); };
+  const saveEditingItw = async () => {
+    try {
+      for (const v of itwVehicles) {
+        const orig = originalItw?.find(o => o.id === v.id);
+        if (!orig || orig.name !== v.name) {
+          await (window as any).api.updateItwVehicle({ id: v.id, name: v.name });
+        }
+      }
+      setEditingItw(false);
+      setOriginalItw(null);
+      reloadItw();
+    } catch (e) { console.warn('[Vehicles] saveEditingItw', e); }
+  };
+  const onItwRowClick = (id:number) => setSelectedItwId(prev => prev === id ? null : id);
+  const handleDeleteSelectedItw = async () => {
+    if (selectedItwId == null) return;
+    await (window as any).api.deleteItwVehicle(selectedItwId);
+    setSelectedItwId(null);
+    reloadItw();
+  };
+  const updateItwName = (id:number, name:string) => setItwVehicles(prev => prev.map(v => v.id === id ? { ...v, name } : v));
+
   // --- Drag & Drop ---
-  const onDragOver = (e: React.DragEvent<HTMLTableRowElement>, overId: number, ctx:'rtw'|'nef') => {
+  const onDragOver = (e: React.DragEvent<HTMLTableRowElement>, overId: number, ctx:'rtw'|'nef'|'itw') => {
     e.preventDefault();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const pos = (e.clientY - rect.top) < rect.height / 2 ? 'above' : 'below';
@@ -178,30 +202,30 @@ const Vehicles: React.FC = () => {
     await (window as any).api.updateNefVehicleOrder(updated.map(v => v.id));
     reloadNef();
   };
+  const onItwDragStart = (id:number) => setDraggedItwId(id);
+  const onItwDrop = async (id:number) => {
+    if (draggedItwId == null || draggedItwId === id) return;
+    const oldIndex = itwVehicles.findIndex(v => v.id === draggedItwId);
+    let newIndex = itwVehicles.findIndex(v => v.id === id);
+    if (dragPosition === 'below') newIndex += 1;
+    const updated = [...itwVehicles];
+    const [removed] = updated.splice(oldIndex, 1);
+    if (oldIndex < newIndex) newIndex -= 1;
+    updated.splice(Math.max(0, Math.min(updated.length, newIndex)), 0, removed);
+    setItwVehicles(updated);
+    setDraggedItwId(null); setDragOverId(null); setDragPosition(null); setDragContext(null);
+    await (window as any).api.updateItwVehicleOrder(updated.map(v => v.id));
+    reloadItw();
+  };
 
   // --- Hinzufügen ---
   const addRtw = () => { (window as any).api.openAddRtwWindow(); };
   const addNef = () => { (window as any).api.openAddNefWindow(); };
+  const addItw = () => { (window as any).api.openAddItwVehicleWindow(); };
 
   return (
     <div style={{ padding: 16 }}>
       <h2>Fahrzeuge</h2>
-      {/* ITW-Option wandert in den Bereich Fahrzeugeinstellungen */}
-      <div style={{ marginTop: 8, display: 'flex', gap: 16, alignItems: 'center' }}>
-        <label>
-          ITW:
-          <input
-            type="checkbox"
-            checked={itwEnabled}
-            onChange={async (e) => {
-              const v = e.target.checked;
-              setItwEnabled(v);
-              try { await (window as any).api.setSetting('itw', String(v)); } catch {}
-            }}
-            style={{ marginLeft: 8 }}
-          />
-        </label>
-      </div>
 
       <div style={{ marginTop: 16 }}>
         <h3>RTW Fahrzeuge</h3>
@@ -209,8 +233,8 @@ const Vehicles: React.FC = () => {
           <thead>
             <tr className={styles.thead}>
               <th>Bezeichnung</th>
-              <th>Besetzung</th>
-              {Array.from({ length: 12 }).map((_, i) => <th key={i} className={styles.narrow}>{i+1}</th>)}
+              <th className={styles.center} style={{ width: 150 }}>Positionen</th>
+              <th className={styles.center} style={{ width: 150 }}>Einsatzzeiträume</th>
               <th className={styles.center} style={{ width: 60 }}>#</th>
             </tr>
           </thead>
@@ -229,16 +253,42 @@ const Vehicles: React.FC = () => {
                     className={rowClass}
                     style={{ cursor: editingRtw ? 'default' : 'move' }}>
                   <td>{editingRtw ? <input value={v.name} onChange={e => updateRtwName(v.id, e.target.value)} /> : v.name}</td>
-                  {Array.from({ length: 12 }).map((_, i) => (
-                    <td key={i} className={styles.center}>
-                      <input type="checkbox" disabled={!editingRtw} checked={(rtwActivations[v.id] ?? Array(12).fill(true))[i]}
-                        onChange={async e => {
-                          const enabled = e.target.checked;
-                          setRtwActivations(prev => ({ ...prev, [v.id]: (() => { const arr = (prev[v.id] || Array(12).fill(true)).slice(); arr[i] = enabled; return arr; })() }));
-                          await (window as any).api.setRtwVehicleActivation(v.id, year, i+1, enabled);
-                        }} />
-                    </td>
-                  ))}
+                  <td className={styles.center}>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowRtwPositionEditor({ vehicleId: v.id, name: v.name });
+                      }}
+                      style={{
+                        background: '#28a745',
+                        color: 'white',
+                        border: 'none',
+                        padding: '4px 12px',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Positionen
+                    </button>
+                  </td>
+                  <td className={styles.center}>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowRtwPeriodEditor({ vehicleId: v.id, name: v.name });
+                      }}
+                      style={{
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        padding: '4px 12px',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Zeiträume
+                    </button>
+                  </td>
                   <td className={styles.center}>{selectedRtwId === v.id ? '✓' : ''}</td>
                 </tr>
               );
@@ -249,7 +299,7 @@ const Vehicles: React.FC = () => {
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button onClick={addRtw}>Hinzufügen</button>
             <button onClick={startEditingRtw} disabled={rtwVehicles.length === 0}>Ändern</button>
-            <button onClick={handleDeleteSelectedRtw} disabled={selectedRtwId == null}>Löschen</button>
+            {/* Löschen entfernt - Deaktivierung über Zeiträume */}
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -265,7 +315,9 @@ const Vehicles: React.FC = () => {
           <thead>
             <tr className={styles.thead}>
               <th>Bezeichnung</th>
-              {Array.from({ length: 12 }).map((_, i) => <th key={i} className={styles.narrow}>{i+1}</th>)}
+              <th>Besetzung</th>
+              <th className={styles.center} style={{ width: 150 }}>Positionen</th>
+              <th className={styles.center} style={{ width: 150 }}>Einsatzzeiträume</th>
               <th className={styles.center} style={{ width: 60 }}>#</th>
             </tr>
           </thead>
@@ -290,16 +342,42 @@ const Vehicles: React.FC = () => {
                       <option value="tag">Tagsüber besetzt</option>
                     </select>
                   </td>
-                  {Array.from({ length: 12 }).map((_, i) => (
-                    <td key={i} className={styles.center}>
-                      <input type="checkbox" disabled={!editingNef} checked={(nefActivations[v.id] ?? Array(12).fill(true))[i]}
-                        onChange={async e => {
-                          const enabled = e.target.checked;
-                          setNefActivations(prev => ({ ...prev, [v.id]: (() => { const arr = (prev[v.id] || Array(12).fill(true)).slice(); arr[i] = enabled; return arr; })() }));
-                          await (window as any).api.setNefVehicleActivation(v.id, year, i+1, enabled);
-                        }} />
-                    </td>
-                  ))}
+                  <td className={styles.center}>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowNefPositionEditor({ vehicleId: v.id, name: v.name });
+                      }}
+                      style={{
+                        background: '#28a745',
+                        color: 'white',
+                        border: 'none',
+                        padding: '4px 12px',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Positionen
+                    </button>
+                  </td>
+                  <td className={styles.center}>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowNefPeriodEditor({ vehicleId: v.id, name: v.name });
+                      }}
+                      style={{
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        padding: '4px 12px',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Zeiträume
+                    </button>
+                  </td>
                   <td className={styles.center}>{selectedNefId === v.id ? '✓' : ''}</td>
                 </tr>
               );
@@ -310,7 +388,7 @@ const Vehicles: React.FC = () => {
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button onClick={addNef}>Hinzufügen</button>
             <button onClick={startEditingNef} disabled={nefVehicles.length === 0}>Ändern</button>
-            <button onClick={handleDeleteSelectedNef} disabled={selectedNefId == null}>Löschen</button>
+            {/* Löschen entfernt - Deaktivierung über Zeiträume */}
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -319,7 +397,150 @@ const Vehicles: React.FC = () => {
           </div>
         )}
       </div>
+
+      <div style={{ marginTop: 16 }}>
+        <h3>ITW Fahrzeuge</h3>
+        <table className={styles.table}>
+          <thead>
+            <tr className={styles.thead}>
+              <th>Bezeichnung</th>
+              <th className={styles.center} style={{ width: 150 }}>Positionen</th>
+              <th className={styles.center} style={{ width: 150 }}>Einsatzzeiträume</th>
+              <th className={styles.center} style={{ width: 60 }}>#</th>
+            </tr>
+          </thead>
+          <tbody className={styles.tbody}>
+            {itwVehicles.map(v => {
+              const isOver = dragContext === 'itw' && dragOverId === v.id;
+              const rowClass = [styles.row, selectedItwId === v.id ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
+              return (
+                <tr key={v.id}
+                    draggable={!editingItw}
+                    onDragStart={() => !editingItw && onItwDragStart(v.id)}
+                    onDragOver={(e) => !editingItw && onDragOver(e, v.id, 'itw')}
+                    onDragLeave={() => !editingItw && onDragLeave()}
+                    onDrop={() => !editingItw && onItwDrop(v.id)}
+                    onClick={() => onItwRowClick(v.id)}
+                    className={rowClass}
+                    style={{ cursor: editingItw ? 'default' : 'move' }}>
+                  <td>{editingItw ? <input value={v.name} onChange={e => updateItwName(v.id, e.target.value)} /> : v.name}</td>
+                  <td className={styles.center}>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowItwPositionEditor({ vehicleId: v.id, name: v.name });
+                      }}
+                      style={{
+                        background: '#28a745',
+                        color: 'white',
+                        border: 'none',
+                        padding: '4px 12px',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Positionen
+                    </button>
+                  </td>
+                  <td className={styles.center}>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowItwPeriodEditor({ vehicleId: v.id, name: v.name });
+                      }}
+                      style={{
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        padding: '4px 12px',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Zeiträume
+                    </button>
+                  </td>
+                  <td className={styles.center}>{selectedItwId === v.id ? '✓' : ''}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {!editingItw ? (
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button onClick={addItw}>Hinzufügen</button>
+            <button onClick={startEditingItw} disabled={itwVehicles.length === 0}>Ändern</button>
+            {/* Löschen entfernt - Deaktivierung über Zeiträume */}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button onClick={saveEditingItw}>Speichern</button>
+            <button onClick={cancelEditingItw}>Abbrechen</button>
+          </div>
+        )}
+      </div>
+
       {/* Schließen-Button entfernt: Seite läuft im Hauptfenster */}
+
+      {/* RTW Period Editor */}
+      {showRtwPeriodEditor && (
+        <VehiclePeriodList
+          vehicleId={showRtwPeriodEditor.vehicleId}
+          vehicleName={showRtwPeriodEditor.name}
+          vehicleType="rtw"
+          onClose={() => setShowRtwPeriodEditor(null)}
+        />
+      )}
+
+      {/* NEF Period Editor */}
+      {showNefPeriodEditor && (
+        <VehiclePeriodList
+          vehicleId={showNefPeriodEditor.vehicleId}
+          vehicleName={showNefPeriodEditor.name}
+          vehicleType="nef"
+          onClose={() => setShowNefPeriodEditor(null)}
+        />
+      )}
+
+      {/* ITW Period Editor */}
+      {showItwPeriodEditor && (
+        <VehiclePeriodList
+          vehicleId={showItwPeriodEditor.vehicleId}
+          vehicleName={showItwPeriodEditor.name}
+          vehicleType="itw"
+          onClose={() => setShowItwPeriodEditor(null)}
+        />
+      )}
+
+      {/* RTW Position Editor */}
+      {showRtwPositionEditor && (
+        <VehiclePositionEditor
+          vehicleId={showRtwPositionEditor.vehicleId}
+          vehicleName={showRtwPositionEditor.name}
+          vehicleType="rtw"
+          onClose={() => setShowRtwPositionEditor(null)}
+        />
+      )}
+
+      {/* NEF Position Editor */}
+      {showNefPositionEditor && (
+        <VehiclePositionEditor
+          vehicleId={showNefPositionEditor.vehicleId}
+          vehicleName={showNefPositionEditor.name}
+          vehicleType="nef"
+          onClose={() => setShowNefPositionEditor(null)}
+        />
+      )}
+
+      {/* ITW Position Editor */}
+      {showItwPositionEditor && (
+        <VehiclePositionEditor
+          vehicleId={showItwPositionEditor.vehicleId}
+          vehicleName={showItwPositionEditor.name}
+          vehicleType="itw"
+          onClose={() => setShowItwPositionEditor(null)}
+        />
+      )}
     </div>
   );
 };

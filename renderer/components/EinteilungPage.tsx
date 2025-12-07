@@ -16,7 +16,47 @@ const EinteilungPage: React.FC = () => {
       const y = await (window as any).api.getSetting('year');
       setYear(Number(y || new Date().getFullYear()));
     } catch {}
-    try { const list = await (window as any).api.getPersonnelList(); setPersonnel(list || []); } catch {}
+    try { 
+      const list = await (window as any).api.getPersonnelList();
+      
+      // Aktueller Monat im Format YYYY-MM
+      const now = new Date();
+      const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      
+      // Für jede Person die Qualifikationen aus qualification_periods laden
+      const enrichedList = await Promise.all((list || []).map(async (person: any) => {
+        try {
+          // Lade Qualifikationsperioden (altes System mit qualType als String)
+          const periods = await (window as any).api.getQualificationPeriods?.(person.id) || [];
+          
+          // Prüfe, ob Person Fahrzeugführer-Qualifikation hat
+          const hasFahrzeugfuehrer = periods.some((p: any) => 
+            p.active && 
+            (p.qualType === 'FzF RTW' || p.qualType === 'Fahrzeugführer') &&
+            p.startYM <= yearMonth &&
+            (!p.endYM || p.endYM >= yearMonth)
+          );
+          
+          // Prüfe, ob Person NEF-Qualifikation hat
+          const hasNef = periods.some((p: any) => 
+            p.active && 
+            (p.qualType === 'NEF' || p.qualType === 'NA') &&
+            p.startYM <= yearMonth &&
+            (!p.endYM || p.endYM >= yearMonth)
+          );
+          
+          return {
+            ...person,
+            fahrzeugfuehrer: hasFahrzeugfuehrer ? 1 : person.fahrzeugfuehrer,
+            nef: hasNef ? 1 : person.nef
+          };
+        } catch {
+          return person;
+        }
+      }));
+      
+      setPersonnel(enrichedList);
+    } catch {}
     try { const a = await (window as any).api.getAzubiList(); setAzubis(a || []); } catch {}
     try {
       const seqs = await (window as any).api.getDeptPatterns?.();

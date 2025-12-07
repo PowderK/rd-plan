@@ -195,6 +195,9 @@ export class RosterImporter {
             for (const sheetName of targetSheets) {
                 const worksheet = workbook.Sheets[sheetName];
                 if (!worksheet) continue;
+                // Namen in Spalte B (nameCol: 1), Dienstarten ab Spalte D (firstDateCol: 3)
+                // Personal: Zeilen 6-57 (Excel) = 5-56 (0-based)
+                // Azubis: Zeilen 70-87 (Excel) = 69-86 (0-based)
                 const fixed = { headerRow: 3, firstDateCol: 3, nameCol: 1, personnelStart: 5, personnelEnd: 56, azubiStart: 69, azubiEnd: 86 };
                 const baseAddr = XLSX.utils.encode_cell({ r: 1, c: 0 });
                 const baseCell = worksheet[baseAddr];
@@ -295,14 +298,15 @@ export class RosterImporter {
                 if (!worksheet) continue;
 
                 // Preferred fixed layout for your sheet
+                // Namen in Spalte B, Dienstarten ab Spalte D
                 const fixed = {
-                    headerRow: 3,           // Zeile 4 (0-based)
-                    firstDateCol: 3,        // Spalte D (0-based)
-                    nameCol: 1,             // Spalte B (0-based)
-                    personnelStart: 5,      // Zeile 6 (0-based)
-                    personnelEnd: 56,       // Zeile 57 (0-based)
-                    azubiStart: 69,         // Zeile 70 (0-based)
-                    azubiEnd: 86            // Zeile 87 (0-based)
+                    headerRow: 3,           // Zeile 4 (Excel) = Index 3 (0-based) - Datums-Header
+                    firstDateCol: 3,        // Spalte D (Excel) = Index 3 (0-based) - Erste Dienstart-Spalte
+                    nameCol: 1,             // Spalte B (Excel) = Index 1 (0-based) - Namen-Spalte
+                    personnelStart: 5,      // Zeile 6 (Excel) = Index 5 (0-based)
+                    personnelEnd: 56,       // Zeile 57 (Excel) = Index 56 (0-based)
+                    azubiStart: 69,         // Zeile 70 (Excel) = Index 69 (0-based) - B70 START
+                    azubiEnd: 86            // Zeile 87 (Excel) = Index 86 (0-based) - B87 END
                 };
 
                 // Determine base date from A2 for formula fallback
@@ -474,7 +478,9 @@ export class RosterImporter {
                     
                     processBlock(fixed.azubiStart, fixed.azubiEnd, 'Azubis');
                 } else {
-                    console.log('[RosterImporter] Jahresimport: Azubi-Block übersprungen');
+                    // FIX: Auch bei Jahresimporten Azubis verarbeiten
+                    console.log('[RosterImporter] Jahresimport: Verarbeite Azubi-Block');
+                    processBlock(fixed.azubiStart, fixed.azubiEnd, 'Azubis');
                 }
             }
 
@@ -506,18 +512,11 @@ export class RosterImporter {
 
                 console.log(`[RosterImporter] Schreibe ${entriesToImport.length} Einträge in duty_roster.`);
                 
-                // Bei Monatsimport (month definiert) respektiere manuelle Bearbeitungen
-                // Bei Jahresimport (month undefined) überschreibe alles
-                const respectManualEdits = month !== undefined;
-                
-                if (respectManualEdits) {
-                    const result = await this.dbAdapter.bulkImportDutyRosterEntries(entriesToImport, true);
-                    console.log(`[RosterImporter] Monatsimport: ${result.imported} importiert, ${result.skipped} übersprungen (manuell bearbeitet)`);
-                    return { success: true, message: `Dienstplan erfolgreich importiert. ${result.imported} Einträge verarbeitet, ${result.skipped} manuelle Änderungen geschützt.`, importedCount: result.imported };
-                } else {
-                    await this.dbAdapter.bulkSetDutyRosterEntries(entriesToImport);
-                    return { success: true, message: `Dienstplan erfolgreich importiert. ${entriesToImport.length} Einträge verarbeitet.`, importedCount: entriesToImport.length };
-                }
+                // IMMER manuelle Bearbeitungen respektieren (sowohl bei Monats- als auch bei Jahresimport)
+                // Nur Excel-Einträge überschreiben, die nicht manuell geändert wurden
+                const result = await this.dbAdapter.bulkImportDutyRosterEntries(entriesToImport, true);
+                console.log(`[RosterImporter] Import: ${result.imported} importiert, ${result.skipped} übersprungen (manuell bearbeitet)`);
+                return { success: true, message: `Dienstplan erfolgreich importiert. ${result.imported} Einträge verarbeitet, ${result.skipped} manuelle Änderungen geschützt.`, importedCount: result.imported };
             } else {
                 console.warn('[RosterImporter] Keine Einträge zum Import gefunden.');
             }

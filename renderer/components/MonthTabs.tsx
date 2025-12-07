@@ -285,15 +285,21 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     };
     const getAssignedValueFor = (date: string, slotId: string): string => {
         const mergedKeys = Array.from(new Set([...(Object.keys(localRoster || {})), ...(Object.keys(roster || {}))]));
+        let foundMatch = false;
         for (const key of mergedKeys) {
             const entry = ((localRoster as any)?.[key]?.[date]) || ((roster as any)?.[key]?.[date]);
             if (!entry) continue;
             const t = String(entry.type || '');
             if (t === slotId) {
+                foundMatch = true;
                 if (key.startsWith('p_')) return `p:${key.slice(2)}`;
                 if (key.startsWith('a_')) return `a:${key.slice(2)}`;
                 return `p:${key}`;
             }
+        }
+        // Debug: Log wenn nichts gefunden wurde für RTW Fahrzeugführer
+        if (!foundMatch && slotId.includes('_1') && (slotId.startsWith('rtw') || slotId.startsWith('nef'))) {
+            console.log('[MonthTabs] No assignment found for', { date, slotId, rosterKeys: mergedKeys.length });
         }
         return '';
     };
@@ -437,7 +443,23 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const getAssignedValue = (slotId: string) => getAssignedValueFor(d.date, slotId);
                         const clearAssignedForSlot = async (slotId: string) => clearAssignedForDate(slotId, d.date);
                         const isFirstDay = days.length > 0 && days[0].date === d.date;
-                                                return (
+                        
+                        // Debug: Log roster structure für ersten Tag
+                        if (isFirstDay) {
+                            console.log('[MonthTabs DEBUG] First day:', d.date);
+                            console.log('[MonthTabs DEBUG] Personnel count:', personnel.length);
+                            console.log('[MonthTabs DEBUG] Roster keys:', Object.keys(roster || {}).length);
+                            console.log('[MonthTabs DEBUG] Sample roster entry:', roster ? roster[Object.keys(roster)[0]] : 'none');
+                            console.log('[MonthTabs DEBUG] Personnel sample:', personnel.slice(0, 3).map(p => ({
+                                name: p.name,
+                                fahrzeugfuehrer: p.fahrzeugfuehrer,
+                                typeof_fzf: typeof p.fahrzeugfuehrer
+                            })));
+                            console.log('[MonthTabs DEBUG] Personnel with fahrzeugfuehrer:', personnel.filter(p => p.fahrzeugfuehrer).map(p => p.name));
+                            console.log('[MonthTabs DEBUG] auswertungByType:', auswertungByType);
+                        }
+                        
+                        return (
                             <div key={d.date} style={{ marginBottom: 12 }}>
                                                                                                 {(() => {
                                                                     const dt = new Date(d.date + 'T00:00:00');
@@ -469,7 +491,16 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                     const slotId = `rtw${rIdx + 1}_tag_1`;
                                                     const value = getAssignedValue(slotId);
                                                     const optionsP = personnel
-                                                        .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'tag') && !!p.fahrzeugfuehrer)
+                                                        .filter(p => {
+                                                            const hasQual = p.fahrzeugfuehrer === 1;
+                                                            const dutyCode = getDutyCodeFor(`p_${p.id}`);
+                                                            const allowed = allowedByAuswertung(dutyCode, 'tag');
+                                                            // Debug für ersten Tag im Monat
+                                                            if (isFirstDay && hasQual) {
+                                                                console.log(`[MonthTabs RTW FzF Tag] ${p.name}: qual=${hasQual}, duty=${dutyCode}, allowed=${allowed}, eval=${auswertungByType[dutyCode]}`);
+                                                            }
+                                                            return allowed && hasQual;
+                                                        })
                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                     const renderOptions = value && !optionsP.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
@@ -486,7 +517,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                     const slotId = `rtw${rIdx + 1}_nacht_1`;
                                                     const value = getAssignedValue(slotId);
                                                     const optionsP = personnel
-                                                        .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && !!p.fahrzeugfuehrer)
+                                                        .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && p.fahrzeugfuehrer === 1)
                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                     const renderOptions = value && !optionsP.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
@@ -606,7 +637,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                         return v;
                                                     })();
                                                     const optionsP = personnel
-                                                        .filter(p => !!p.nef && allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'any'))
+                                                        .filter(p => p.nef === 1 && allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'any'))
                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                     const renderOptions = value && !optionsP.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
@@ -1208,7 +1239,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                     .filter(p => {
                                         const key = `p_${p.id}`;
                                         // Qualifikation: Rolle 1 benötigt Fahrzeuführer, Rolle 2 allgemeines Personal
-                                        const qualified = (role === 1) ? !!p.fahrzeugfuehrer : true;
+                                        const qualified = (role === 1) ? (p.fahrzeugfuehrer === 1) : true;
                                         // Dienstplan: Nur mit ITW-Schichtcode am Tag zulassen
                                         const onItw = isOnItwDuty(key, date);
                                         return qualified && onItw;

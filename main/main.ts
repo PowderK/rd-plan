@@ -414,10 +414,10 @@ ipcMain.handle('delete-qualification-period', async (_event, id: number) => {
     return true;
 });
 
-ipcMain.handle('validate-qualification-for-shift', async (_event, personId: number, shiftValue: string, date: string) => {
-    console.log('[IPC] validate-qualification-for-shift called:', { personId, shiftValue, date });
+ipcMain.handle('validate-qualification-for-shift', async (_event, personId: number, shiftValue: string, date: string, cellType?: string) => {
+    console.log('[IPC] validate-qualification-for-shift called:', { personId, shiftValue, date, cellType });
     const adapter = await ensureDatabaseAdapter();
-    const result = await adapter.validateQualificationForShift(personId, shiftValue, date);
+    const result = await adapter.validateQualificationForShift(personId, shiftValue, date, cellType);
     console.log('[IPC] validate-qualification-for-shift result:', result);
     return result;
 });
@@ -507,12 +507,14 @@ ipcMain.handle('get-rtw-vehicles', async (_event, year?: number) => {
 ipcMain.handle('add-rtw-vehicle', async (_event, v: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.addRtwVehicle(v);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
     return true;
 });
 
 ipcMain.handle('update-rtw-vehicle', async (_event, v: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateRtwVehicle(v);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
     return true;
 });
 
@@ -521,12 +523,14 @@ ipcMain.handle('delete-rtw-vehicle', async (_event, id: number) => {
     let y: number | undefined;
     try { const ys = await adapter.getSetting('year'); if (ys) y = Number(ys); } catch {}
     await adapter.deleteRtwVehicle(id, y);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
     return true;
 });
 
 ipcMain.handle('update-rtw-vehicle-order', async (_event, order: number[]) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateRtwVehicleOrder(order);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
     return true;
 });
 
@@ -538,12 +542,14 @@ ipcMain.handle('get-nef-vehicles', async (_event, year?: number) => {
 ipcMain.handle('add-nef-vehicle', async (_event, v: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.addNefVehicle(v);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
     return true;
 });
 
 ipcMain.handle('update-nef-vehicle', async (_event, v: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateNefVehicle(v);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
     return true;
 });
 
@@ -552,12 +558,54 @@ ipcMain.handle('delete-nef-vehicle', async (_event, id: number) => {
     let y: number | undefined;
     try { const ys = await adapter.getSetting('year'); if (ys) y = Number(ys); } catch {}
     await adapter.deleteNefVehicle(id, y);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
     return true;
 });
 
 ipcMain.handle('update-nef-vehicle-order', async (_event, order: number[]) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateNefVehicleOrder(order);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
+    return true;
+});
+
+// ITW Vehicles handlers
+ipcMain.handle('get-itw-vehicles', async (_event, year?: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getItwVehicles(year);
+});
+
+ipcMain.handle('add-itw-vehicle', async (_event, v: { name: string }) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addItwVehicle(v);
+    // Auto-enable ITW if a vehicle is added
+    await adapter.setSetting('itw', 'true');
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('update-itw-vehicle', async (_event, v: { id: number, name: string }) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateItwVehicle(v);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('delete-itw-vehicle', async (_event, id: number, currentYear?: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteItwVehicle(id, currentYear);
+    // Check if any ITW vehicles remain active
+    const remaining = await adapter.getItwVehicles();
+    const isActive = remaining.length > 0;
+    await adapter.setSetting('itw', String(isActive));
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('update-itw-vehicle-order', async (_event, order: number[]) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateItwVehicleOrder(order);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
     return true;
 });
 
@@ -583,9 +631,138 @@ ipcMain.handle('set-nef-vehicle-activation', async (_event, vehicleId: number, y
     return true;
 });
 
+// --- RTW Vehicle Periods ---
+ipcMain.handle('get-rtw-vehicle-periods', async (_event, vehicleId: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getRtwVehiclePeriods(vehicleId);
+});
+
+ipcMain.handle('get-all-rtw-vehicle-periods', async () => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getAllRtwVehiclePeriods();
+});
+
+ipcMain.handle('add-rtw-vehicle-period', async (_event, period: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addRtwVehiclePeriod(period);
+    return true;
+});
+
+ipcMain.handle('update-rtw-vehicle-period', async (_event, period: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateRtwVehiclePeriod(period);
+    return true;
+});
+
+ipcMain.handle('delete-rtw-vehicle-period', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteRtwVehiclePeriod(id);
+    return true;
+});
+
+// --- NEF Vehicle Periods ---
+ipcMain.handle('get-nef-vehicle-periods', async (_event, vehicleId: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getNefVehiclePeriods(vehicleId);
+});
+
+ipcMain.handle('get-all-nef-vehicle-periods', async () => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getAllNefVehiclePeriods();
+});
+
+ipcMain.handle('add-nef-vehicle-period', async (_event, period: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addNefVehiclePeriod(period);
+    return true;
+});
+
+ipcMain.handle('update-nef-vehicle-period', async (_event, period: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateNefVehiclePeriod(period);
+    return true;
+});
+
+ipcMain.handle('delete-nef-vehicle-period', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteNefVehiclePeriod(id);
+    return true;
+});
+
+// ITW Vehicle Periods handlers
+ipcMain.handle('get-itw-vehicle-periods', async (_event, vehicleId: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getItwVehiclePeriods(vehicleId);
+});
+
+ipcMain.handle('get-all-itw-vehicle-periods', async () => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getAllItwVehiclePeriods();
+});
+
+ipcMain.handle('add-itw-vehicle-period', async (_event, period: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addItwVehiclePeriod(period);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('update-itw-vehicle-period', async (_event, period: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateItwVehiclePeriod(period);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('delete-itw-vehicle-period', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteItwVehiclePeriod(id);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    return true;
+});
+
 ipcMain.handle('set-nef-occupancy', async (_event, id: number, mode: '24h'|'tag') => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.setNefOccupancyMode(id, mode);
+    return true;
+});
+
+// --- Vehicle Position handlers ---
+ipcMain.handle('get-vehicle-positions', async (_event, vehicleType: string, vehicleId: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getVehiclePositions(vehicleType, vehicleId);
+});
+
+ipcMain.handle('get-vehicle-positions-with-qualifications', async (_event, vehicleType: string, vehicleId: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getVehiclePositionsWithQualifications(vehicleType, vehicleId);
+});
+
+ipcMain.handle('add-vehicle-position', async (_event, position: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addVehiclePosition(position);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('update-vehicle-position', async (_event, position: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateVehiclePosition(position);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('delete-vehicle-position', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteVehiclePosition(id);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('update-vehicle-position-order', async (_event, order: number[]) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateVehiclePositionOrder(order);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
     return true;
 });
 
@@ -1310,6 +1487,10 @@ ipcMain.on('open-add-rtw-window', () => {
 
 ipcMain.on('open-add-nef-window', () => {
     openWindow('addNef.html', 'addNefWindow', 560, 360);
+});
+
+ipcMain.on('open-add-itw-vehicle-window', () => {
+    openWindow('addItwVehicle.html', 'addItwVehicleWindow', 560, 360);
 });
 
 // App quit handler
