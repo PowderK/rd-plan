@@ -5,6 +5,7 @@ import { VehiclePositionEditor } from './VehiclePositionEditor';
 
 const Vehicles: React.FC = () => {
   const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [activeTab, setActiveTab] = useState<'rtw' | 'nef' | 'itw'>('rtw');
   const [rtwVehicles, setRtwVehicles] = useState<{ id: number; name: string }[]>([]);
   const [nefVehicles, setNefVehicles] = useState<{ id: number; name: string; occupancy_mode?: '24h' | 'tag' }[]>([]);
   const [itwVehicles, setItwVehicles] = useState<{ id: number; name: string }[]>([]);
@@ -227,6 +228,60 @@ const Vehicles: React.FC = () => {
     <div style={{ padding: 16 }}>
       <h2>Fahrzeuge</h2>
 
+      {/* Tab Navigation */}
+      <div style={{ 
+        display: 'flex', 
+        gap: 4, 
+        marginTop: 16, 
+        borderBottom: '2px solid #dee2e6',
+        marginBottom: 16
+      }}>
+        <button
+          onClick={() => setActiveTab('rtw')}
+          style={{
+            padding: '8px 16px',
+            border: 'none',
+            borderBottom: activeTab === 'rtw' ? '3px solid #dc3545' : '3px solid transparent',
+            background: activeTab === 'rtw' ? '#f8f9fa' : 'transparent',
+            fontWeight: activeTab === 'rtw' ? 600 : 400,
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+        >
+          RTW
+        </button>
+        <button
+          onClick={() => setActiveTab('nef')}
+          style={{
+            padding: '8px 16px',
+            border: 'none',
+            borderBottom: activeTab === 'nef' ? '3px solid #dc3545' : '3px solid transparent',
+            background: activeTab === 'nef' ? '#f8f9fa' : 'transparent',
+            fontWeight: activeTab === 'nef' ? 600 : 400,
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+        >
+          NEF
+        </button>
+        <button
+          onClick={() => setActiveTab('itw')}
+          style={{
+            padding: '8px 16px',
+            border: 'none',
+            borderBottom: activeTab === 'itw' ? '3px solid #ffc107' : '3px solid transparent',
+            background: activeTab === 'itw' ? '#f8f9fa' : 'transparent',
+            fontWeight: activeTab === 'itw' ? 600 : 400,
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+        >
+          ITW
+        </button>
+      </div>
+
+      {/* RTW Tab */}
+      {activeTab === 'rtw' && (
       <div style={{ marginTop: 16 }}>
         <h3>RTW Fahrzeuge</h3>
         <table className={styles.table}>
@@ -308,7 +363,10 @@ const Vehicles: React.FC = () => {
           </div>
         )}
       </div>
+      )}
 
+      {/* NEF Tab */}
+      {activeTab === 'nef' && (
       <div style={{ marginTop: 16 }}>
         <h3>NEF Fahrzeuge</h3>
         <table className={styles.table}>
@@ -397,7 +455,10 @@ const Vehicles: React.FC = () => {
           </div>
         )}
       </div>
+      )}
 
+      {/* ITW Tab */}
+      {activeTab === 'itw' && (
       <div style={{ marginTop: 16 }}>
         <h3>ITW Fahrzeuge</h3>
         <table className={styles.table}>
@@ -479,6 +540,7 @@ const Vehicles: React.FC = () => {
           </div>
         )}
       </div>
+      )}
 
       {/* Schließen-Button entfernt: Seite läuft im Hauptfenster */}
 

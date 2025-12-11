@@ -1,9 +1,19 @@
-import { app, BrowserWindow, ipcMain, dialog, session } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, session, nativeImage } from 'electron';
 import path from 'path';
 import url from 'url';
 import fs from 'fs';
 import { initializeDatabaseManager, DatabaseAdapter, createDatabaseBackup, listDatabaseBackups, getSummaryForBackup, restoreDatabaseFromBackup, previewDutyRosterImport, getDatabaseManager } from './database-manager';
 import { getUpdateManager, getCurrentVersion, performUpdate } from './update-manager';
+
+// Setze den App-Namen für die Taskleiste/Dock
+app.setName('RD-Plan');
+
+// Erstelle das App-Icon
+const iconPath = path.join(__dirname, '../media/Icon.icns');
+const appIcon = nativeImage.createFromPath(iconPath);
+if (!appIcon.isEmpty()) {
+    app.dock?.setIcon(appIcon);
+}
 
 let databaseAdapter: DatabaseAdapter | null = null;
 let splashWindow: BrowserWindow | null = null;
@@ -79,6 +89,7 @@ function openSetupWizard() {
         width: 720,
         height: 500,
         resizable: false,
+        icon: path.join(__dirname, '../media/Icon.icns'),
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
             nodeIntegration: false,
@@ -130,6 +141,7 @@ async function createWindow() {
         width: 1280,
         height: 800,
         show: false, // Nicht sofort anzeigen
+        icon: path.join(__dirname, '../media/Icon.icns'),
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
             nodeIntegration: false,
@@ -178,6 +190,7 @@ function createSplashScreen() {
         transparent: true,
         alwaysOnTop: true,
         resizable: false,
+        icon: path.join(__dirname, '../media/Icon.icns'),
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true
@@ -1378,6 +1391,7 @@ function openWindow(htmlFile: string, windowVar: string, width = 800, height = 6
     const win = new BrowserWindow({
         width,
         height,
+        icon: path.join(__dirname, '../media/Icon.icns'),
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
             nodeIntegration: false,
@@ -1399,6 +1413,7 @@ function openWindowWithQuery(htmlFile: string, windowVar: string, width = 800, h
     const win = new BrowserWindow({
         width,
         height,
+        icon: path.join(__dirname, '../media/Icon.icns'),
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
             nodeIntegration: false,

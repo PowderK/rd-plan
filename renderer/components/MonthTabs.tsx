@@ -434,21 +434,117 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 </span>
             </div>
             {/* Monats-Tabs */}
-            <div className={styles.tabs}>
-                {months.map((m, i) => (
-                    <button
-                        key={i}
-                        onClick={() => onMonthChange(i)}
-                        className={`${styles.tab} ${currentMonth === i ? styles.tabActive : ''}`}
-                    >
-                        {m}
-                    </button>
-                ))}
+            <div style={{ 
+                display: 'flex', 
+                gap: '4px', 
+                borderBottom: '1px solid #e5e7eb',
+                marginBottom: '16px',
+                flexWrap: 'wrap'
+            }}>
+                {months.map((m, i) => {
+                    // RTW/NEF = rot (#dc3545), ITW = gelb (#ffc107)
+                    const accentColor = viewMode === 'rtwnef' ? '#dc3545' : '#ffc107';
+                    const hoverColor = viewMode === 'rtwnef' ? '#b02a37' : '#e0a800';
+                    
+                    return (
+                        <button
+                            key={i}
+                            onClick={() => onMonthChange(i)}
+                            style={{
+                                padding: '8px 16px',
+                                background: currentMonth === i ? '#f8f9fa' : 'transparent',
+                                border: 'none',
+                                borderBottom: currentMonth === i ? `3px solid ${accentColor}` : '3px solid transparent',
+                                cursor: 'pointer',
+                                fontWeight: currentMonth === i ? 600 : 400,
+                                color: currentMonth === i ? accentColor : '#6b7280',
+                                transition: 'all 0.2s',
+                                fontSize: '14px'
+                            }}
+                            onMouseEnter={(e) => {
+                                if (currentMonth !== i) {
+                                    e.currentTarget.style.background = '#f3f4f6';
+                                    e.currentTarget.style.color = '#374151';
+                                }
+                            }}
+                            onMouseLeave={(e) => {
+                                if (currentMonth !== i) {
+                                    e.currentTarget.style.background = 'transparent';
+                                    e.currentTarget.style.color = '#6b7280';
+                                }
+                            }}
+                        >
+                            {m}
+                        </button>
+                    );
+                })}
             </div>
             {/* Ansichts-Umschalter */}
-            <div className={styles.toggleGroup}>
-                <button onClick={() => setViewMode('rtwnef')} className={styles.toggleBtn} style={{ background: viewMode === 'rtwnef' ? '#f3f4f6' : undefined }}>RTW/NEF</button>
-                <button onClick={() => setViewMode('itw')} disabled={!itwEnabled} className={styles.toggleBtn} style={{ background: viewMode === 'itw' ? '#f3f4f6' : undefined, opacity: itwEnabled ? 1 : 0.5 }}>ITW</button>
+            <div style={{ 
+                display: 'flex', 
+                gap: '4px', 
+                borderBottom: '1px solid #e5e7eb',
+                marginBottom: '16px',
+                marginTop: '8px'
+            }}>
+                <button 
+                    onClick={() => setViewMode('rtwnef')} 
+                    style={{
+                        padding: '8px 16px',
+                        background: viewMode === 'rtwnef' ? '#f8f9fa' : 'transparent',
+                        border: 'none',
+                        borderBottom: viewMode === 'rtwnef' ? '3px solid #dc3545' : '3px solid transparent',
+                        cursor: 'pointer',
+                        fontWeight: viewMode === 'rtwnef' ? 600 : 400,
+                        color: viewMode === 'rtwnef' ? '#dc3545' : '#6b7280',
+                        transition: 'all 0.2s',
+                        fontSize: '14px'
+                    }}
+                    onMouseEnter={(e) => {
+                        if (viewMode !== 'rtwnef') {
+                            e.currentTarget.style.background = '#f3f4f6';
+                            e.currentTarget.style.color = '#374151';
+                        }
+                    }}
+                    onMouseLeave={(e) => {
+                        if (viewMode !== 'rtwnef') {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.color = '#6b7280';
+                        }
+                    }}
+                >
+                    RTW/NEF
+                </button>
+                <button 
+                    onClick={() => setViewMode('itw')} 
+                    disabled={!itwEnabled}
+                    style={{
+                        padding: '8px 16px',
+                        background: viewMode === 'itw' ? '#f8f9fa' : 'transparent',
+                        border: 'none',
+                        borderBottom: viewMode === 'itw' ? '3px solid #ffc107' : '3px solid transparent',
+                        cursor: itwEnabled ? 'pointer' : 'not-allowed',
+                        fontWeight: viewMode === 'itw' ? 600 : 400,
+                        color: viewMode === 'itw' ? '#ffc107' : '#6b7280',
+                        transition: 'all 0.2s',
+                        fontSize: '14px',
+                        opacity: itwEnabled ? 1 : 0.5
+                    }}
+                    onMouseEnter={(e) => {
+                        if (viewMode !== 'itw' && itwEnabled) {
+                            e.currentTarget.style.background = '#f3f4f6';
+                            e.currentTarget.style.color = '#374151';
+                        }
+                    }}
+                    onMouseLeave={(e) => {
+                        if (viewMode !== 'itw' && itwEnabled) {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.color = '#6b7280';
+                        }
+                    }}
+                >
+                    ITW
+                </button>
             </div>
 
             {viewMode === 'rtwnef' && (

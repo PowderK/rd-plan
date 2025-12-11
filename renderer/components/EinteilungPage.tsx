@@ -173,8 +173,12 @@ const EinteilungPage: React.FC = () => {
 
   const loadRoster = useCallback(async (targetYear?: number) => {
     try {
-      const y = typeof targetYear === 'number' ? targetYear : Number((await (window as any).api.getSetting('year')) || new Date().getFullYear());
+      const settingsYear = await (window as any).api.getSetting('year');
+      console.log('[DEBUG EinteilungPage] loadRoster called, targetYear:', targetYear, 'settingsYear:', settingsYear, 'state year:', year);
+      const y = typeof targetYear === 'number' ? targetYear : Number(settingsYear || new Date().getFullYear());
+      console.log('[DEBUG EinteilungPage] Loading roster for year:', y);
       const entries = await (window as any).api.getDutyRoster(y);
+      console.log('[DEBUG EinteilungPage] Loaded', entries?.length, 'roster entries for year', y);
       const map: RosterState = {};
       (entries || []).forEach((e: any) => {
         if (!e || !e.date) return;

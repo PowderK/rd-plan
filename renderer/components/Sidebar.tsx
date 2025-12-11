@@ -42,8 +42,21 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 			title={collapsed ? label : undefined}
 			style={{
 				...itemStyle,
-				background: active === keyName ? 'var(--hover)' : 'transparent',
-				color: active === keyName ? 'var(--text)' : undefined
+				background: active === keyName ? '#f8f9fa' : 'transparent',
+				color: active === keyName ? '#0ea5e9' : 'var(--text)',
+				fontWeight: active === keyName ? 600 : 400,
+				borderLeft: active === keyName ? '3px solid #0ea5e9' : '3px solid transparent',
+				transition: 'all 0.2s'
+			}}
+			onMouseEnter={(e) => {
+				if (active !== keyName) {
+					e.currentTarget.style.background = '#f3f4f6';
+				}
+			}}
+			onMouseLeave={(e) => {
+				if (active !== keyName) {
+					e.currentTarget.style.background = 'transparent';
+				}
 			}}
 		>
 			{icon}

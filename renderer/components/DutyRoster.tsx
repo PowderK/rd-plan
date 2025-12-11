@@ -153,6 +153,11 @@ const DutyRoster: React.FC = () => {
         console.error('Failed to load year plannings:', e);
       }
       
+      // Lade das Jahr aus den Settings für initialen Daten-Load
+      const y = await (window as any).api.getSetting('year');
+      const yearToUse = Number(y) || year;
+      console.log('[DEBUG] Initial load, year from settings:', y, 'using:', yearToUse, 'state year:', year);
+      
   const types = await (window as any).api.getShiftTypes();
   setShiftTypes(types);
   // Lade Auswertung je Dienstart (off|tag|nacht|24h|itw)
@@ -202,7 +207,7 @@ const DutyRoster: React.FC = () => {
     } catch {}
     // Feiertage laden
     try {
-      const hlist = await (window as any).api.getHolidaysForYear(Number(y || new Date().getFullYear()));
+      const hlist = await (window as any).api.getHolidaysForYear(yearToUse);
       const set = new Set<string>((hlist || []).map((h: any) => String(h.date)));
       setHolidays(set);
     } catch {}
@@ -216,7 +221,7 @@ const DutyRoster: React.FC = () => {
       if (Array.isArray(n)) setNefVehicles(n);
     } catch {}
     try {
-      const acts = await (window as any).api.getRtwVehicleActivations?.(Number(y || new Date().getFullYear()));
+      const acts = await (window as any).api.getRtwVehicleActivations?.(yearToUse);
       const map: Record<number, boolean[]> = {};
       (acts || []).forEach((row: any) => {
         const vid = Number(row.vehicleId);
@@ -228,7 +233,7 @@ const DutyRoster: React.FC = () => {
       setRtwActs(map);
     } catch {}
     try {
-      const acts = await (window as any).api.getNefVehicleActivations?.(Number(y || new Date().getFullYear()));
+      const acts = await (window as any).api.getNefVehicleActivations?.(yearToUse);
       const map: Record<number, boolean[]> = {};
       (acts || []).forEach((row: any) => {
         const vid = Number(row.vehicleId);
@@ -240,8 +245,8 @@ const DutyRoster: React.FC = () => {
       setNefActs(map);
     } catch {}
       // Dienstplan-Einträge laden
-      const entries = await (window as any).api.getDutyRoster(y || new Date().getFullYear());
-      console.log('[Renderer] getDutyRoster fetched', Array.isArray(entries) ? entries.length : typeof entries, 'entries');
+      const entries = await (window as any).api.getDutyRoster(yearToUse);
+      console.log('[Renderer] getDutyRoster fetched', Array.isArray(entries) ? entries.length : typeof entries, 'entries for year', yearToUse);
       if (Array.isArray(entries) && entries.length > 0) {
         console.log('[Renderer] sample entry[0]=', entries[0]);
       }
@@ -294,6 +299,12 @@ const DutyRoster: React.FC = () => {
       });
       console.log('[Renderer] constructed rosterObj keys=', Object.keys(rosterObj).slice(0,20), 'total=', Object.keys(rosterObj).length);
       setRoster(rosterObj);
+      
+      // Aktualisiere Year-State falls das geladene Jahr vom initialen State abweicht
+      if (yearToUse !== year) {
+        console.log('[DEBUG] Updating year state from', year, 'to', yearToUse);
+        setYear(yearToUse);
+      }
     })();
     // Listener: wenn Main einen Update-Broadcast sendet, neu laden
     const onUpdated = () => { console.log('[Renderer] duty-roster-updated empfangen, reloadRoster aufrufen'); reloadRoster(); };
@@ -382,6 +393,16 @@ const DutyRoster: React.FC = () => {
     (window as any).rdPlanYear = year;
     window.dispatchEvent(new CustomEvent('rdplan-year-changed', { detail: { year } }));
     
+    // Persistiere Jahr in Settings
+    (async () => {
+      try {
+        await (window as any).api.setSetting('year', String(year));
+        console.log('[DEBUG] Year saved to settings:', year);
+      } catch (err) {
+        console.error('[DEBUG] Failed to save year to settings:', err);
+      }
+    })();
+    
     // Wenn aktuelles Jahr: springe zum aktuellen Monat, sonst Januar (nur wenn Jahr wirklich geändert wurde)
     const currentYear = new Date().getFullYear();
     if (year === currentYear) {
@@ -391,11 +412,32 @@ const DutyRoster: React.FC = () => {
     }
   }, [year]);
 
-  // Filter azubis based on active periods for current month
+  // Filter azubis based on active periods for current month OR having roster entries in the year
   useEffect(() => {
+    console.log('[DEBUG] filteredAzubis useEffect triggered, roster keys:', Object.keys(roster).length, 'azubis:', azubis.length, 'year:', year, 'month:', currentMonth);
     const filtered = filterActiveAzubisForMonth(azubis, azubiPeriods, year, currentMonth + 1);
-    setFilteredAzubis(filtered);
-  }, [azubis, azubiPeriods, year, currentMonth]);
+    
+    // Zusätzlich: Azubis hinzufügen, die Dienstplan-Einträge im aktuellen Jahr haben
+    const azubiIdsWithEntries = new Set<number>();
+    Object.keys(roster).forEach(key => {
+      if (key.startsWith('a_')) {
+        const azubiId = parseInt(key.substring(2));
+        if (!isNaN(azubiId)) {
+          azubiIdsWithEntries.add(azubiId);
+        }
+      }
+    });
+    
+    console.log('[DEBUG] azubiIdsWithEntries:', Array.from(azubiIdsWithEntries), 'filtered from periods:', filtered.length);
+    
+    // Füge Azubis hinzu, die nicht in filtered sind, aber Einträge haben
+    const additionalAzubis = azubis.filter(azubi => 
+      azubiIdsWithEntries.has(azubi.id) && !filtered.some(f => f.id === azubi.id)
+    );
+    
+    console.log('[DEBUG] additionalAzubis:', additionalAzubis.length, 'total filteredAzubis:', filtered.length + additionalAzubis.length);
+    setFilteredAzubis([...filtered, ...additionalAzubis]);
+  }, [azubis, azubiPeriods, year, currentMonth, roster]);
   const days = getDaysInMonthView(year, currentMonth);
   // Debug: Zeige die ersten 5 Tage im Jahr
   console.log('[DEBUG] days[0-4]:', days.slice(0,5));
@@ -735,6 +777,7 @@ const DutyRoster: React.FC = () => {
   }, [year]);
 
   // KPI-Hilfswerte für aktuellen Monat berechnen
+  console.log('[DEBUG] KPI calculation start, roster keys:', Object.keys(roster).length, 'personnel:', personnel.length, 'filteredAzubis:', filteredAzubis.length);
   const monthIndex = currentMonth;
   const deptShiftsInMonth = (() => {
     let cnt = 0;
@@ -804,6 +847,7 @@ const DutyRoster: React.FC = () => {
         sum += hasHLFB ? 0.75 : 1;
       }
     }
+    console.log('[DEBUG] activePersonnelInMonth:', sum, 'from', personnel.length, 'personnel');
     return sum;
   })();
 
@@ -957,18 +1001,39 @@ const DutyRoster: React.FC = () => {
         </label>
       </div>
       {/* Monats-Tabs */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+      <div style={{ 
+        display: 'flex', 
+        gap: '4px', 
+        borderBottom: '1px solid #e5e7eb',
+        marginBottom: '16px',
+        flexWrap: 'wrap'
+      }}>
         {months.map((m, i) => (
           <button
             key={i}
             onClick={() => setCurrentMonth(i)}
             style={{
-              padding: '6px 10px',
-              borderRadius: 6,
-              border: '1px solid #bbb',
-              background: currentMonth === i ? '#1976d2' : '#fff',
-              color: currentMonth === i ? '#fff' : '#333',
-              cursor: 'pointer'
+              padding: '8px 16px',
+              background: currentMonth === i ? '#f8f9fa' : 'transparent',
+              border: 'none',
+              borderBottom: currentMonth === i ? '3px solid #0ea5e9' : '3px solid transparent',
+              cursor: 'pointer',
+              fontWeight: currentMonth === i ? 600 : 400,
+              color: currentMonth === i ? '#0ea5e9' : '#6b7280',
+              transition: 'all 0.2s',
+              fontSize: '14px'
+            }}
+            onMouseEnter={(e) => {
+              if (currentMonth !== i) {
+                e.currentTarget.style.background = '#f3f4f6';
+                e.currentTarget.style.color = '#374151';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (currentMonth !== i) {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = '#6b7280';
+              }
             }}
           >
             {m}

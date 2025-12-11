@@ -41,6 +41,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [editingHolidays, setEditingHolidays] = useState(false);
   const [originalHolidays, setOriginalHolidays] = useState<{ date: string, name: string }[] | null>(null);
   const [selectedHolidayIndex, setSelectedHolidayIndex] = useState<number | null>(null);
+  const [holidaysYear, setHolidaysYear] = useState<number>(year);
   // Settings Import/Export UI State
   const [showSettingsImportExport, setShowSettingsImportExport] = useState(false);
   const [showExcelImport, setShowExcelImport] = useState(false);
@@ -477,6 +478,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     setShowExcelImport(false);
   };
 
+  // State für Kategorie-Tabs
+  const [activeCategory, setActiveCategory] = useState<'general' | 'roster' | 'qualifications'>('general');
+
     if (loading) return <div className="settings-menu"><p>Lade Einstellungen ...</p></div>;
 
   return (
@@ -487,6 +491,62 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                 Version {BUILD_INFO.version} (Build {BUILD_INFO.build}) — © Benjamin Kreitz
               </div>
             </div>
+
+            {/* Kategorie-Tabs */}
+            <div style={{ 
+              display: 'flex', 
+              gap: 4, 
+              marginTop: 16, 
+              borderBottom: '2px solid #dee2e6',
+              marginBottom: 16
+            }}>
+              <button
+                onClick={() => setActiveCategory('general')}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderBottom: activeCategory === 'general' ? '3px solid #0d6efd' : '3px solid transparent',
+                  background: activeCategory === 'general' ? '#f8f9fa' : 'transparent',
+                  fontWeight: activeCategory === 'general' ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Allgemein
+              </button>
+              <button
+                onClick={() => setActiveCategory('roster')}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderBottom: activeCategory === 'roster' ? '3px solid #0d6efd' : '3px solid transparent',
+                  background: activeCategory === 'roster' ? '#f8f9fa' : 'transparent',
+                  fontWeight: activeCategory === 'roster' ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Dienstplan
+              </button>
+              <button
+                onClick={() => setActiveCategory('qualifications')}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderBottom: activeCategory === 'qualifications' ? '3px solid #0d6efd' : '3px solid transparent',
+                  background: activeCategory === 'qualifications' ? '#f8f9fa' : 'transparent',
+                  fontWeight: activeCategory === 'qualifications' ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Qualifikationen
+              </button>
+            </div>
+
+            {/* KATEGORIE: ALLGEMEIN */}
+            {activeCategory === 'general' && (
+              <div>
             <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
               <button onClick={async () => {
                 try {
@@ -536,30 +596,141 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               </div>
             </div>
 
-            {/* Reihenfolge: Rettungswache / Abteilung */}
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
-              <label>
-                Feuer- und Rettungswache:
-                <select value={rescueStation} onChange={e => setRescueStation(e.target.value)} style={{ marginLeft: 8 }}>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                  <option value="5">5</option>
-                </select>
-              </label>
-              <label>
-                Abteilung:
-                <select value={department} onChange={e => setDepartment(Number(e.target.value))} style={{ marginLeft: 8 }}>
-                  <option value={1}>1</option>
-                  <option value={2}>2</option>
-                  <option value={3}>3</option>
-                </select>
-              </label>
+            {/* Einstellungen importieren/exportieren */}
+            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
+              <h3>Einstellungen importieren/exportieren</h3>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => setShowSettingsImportExport(true)}>
+                  Einstellungen verwalten…
+                </button>
+              </div>
             </div>
 
-            {/* Dienstplan-Import */}
+            {/* Backups */}
             <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
+              <h3>Backups</h3>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={async () => {
+                  try {
+                    const res = await (window as any).api.listBackups?.(100);
+                    if (res?.success) setBackups(res.list || []);
+                    else setBackups([]);
+                  } catch {
+                    setBackups([]);
+                  } finally {
+                    setShowRestore(true);
+                  }
+                }}>
+                  {showRestore ? 'Backups ausblenden' : 'Backups anzeigen…'}
+                </button>
+              </div>
+              {showRestore && (
+                <div style={{ marginTop: 16 }}>
+                  {backups.length === 0 ? (
+                    <p style={{ color: '#6b7280', fontSize: '14px' }}>Keine Backups gefunden.</p>
+                  ) : (
+                    <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid #e5e7eb', backgroundColor: '#f9fafb' }}>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>Zeitpunkt</th>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>Jahr</th>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>Monat</th>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>Pfad</th>
+                            <th style={{ padding: '8px', textAlign: 'right' }}>Aktionen</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {backups.map((backup, idx) => (
+                            <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                              <td style={{ padding: '8px' }}>{backup.timestamp}</td>
+                              <td style={{ padding: '8px' }}>{backup.year}</td>
+                              <td style={{ padding: '8px' }}>{backup.ym === 'ALL' ? 'Alle' : backup.ym}</td>
+                              <td style={{ padding: '8px', fontSize: '12px', color: '#6b7280' }}>{backup.path}</td>
+                              <td style={{ padding: '8px', textAlign: 'right' }}>
+                                <button
+                                  onClick={async () => {
+                                    if (confirm(`Backup vom ${backup.timestamp} wiederherstellen?\n\nAchtung: Die aktuellen Daten werden überschrieben!`)) {
+                                      try {
+                                        const res = await (window as any).api.restoreBackup?.(backup.path);
+                                        if (res?.success) {
+                                          alert(`Backup erfolgreich wiederhergestellt!\n\nPersonal: ${res.counts?.personnel || 0}\nAzubis: ${res.counts?.azubis || 0}\nDienstplan: ${res.counts?.dutyRoster || 0}`);
+                                          // Reload backups
+                                          const listRes = await (window as any).api.listBackups?.(100);
+                                          if (listRes?.success) setBackups(listRes.list || []);
+                                        } else {
+                                          alert('Fehler beim Wiederherstellen: ' + (res?.error || 'Unbekannter Fehler'));
+                                        }
+                                      } catch (err: any) {
+                                        alert('Fehler: ' + err.message);
+                                      }
+                                    }
+                                  }}
+                                  style={{
+                                    padding: '4px 12px',
+                                    fontSize: '13px',
+                                    backgroundColor: '#0ea5e9',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  Wiederherstellen
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Excel Import Personal */}
+            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
+              <h3>Excel Import Personal</h3>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => setShowExcelImport(true)} style={{ backgroundColor: '#28a745', color: 'white' }}>
+                  Personal aus Excel importieren…
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* KATEGORIE: DIENSTPLAN */}
+        {activeCategory === 'roster' && (
+          <div>
+            {/* Rettungswache und Abteilung */}
+            <div style={{ marginBottom: 24 }}>
+              <h3>Rettungswache und Abteilung</h3>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <label>
+                  Feuer- und Rettungswache:
+                  <select value={rescueStation} onChange={e => setRescueStation(e.target.value)} style={{ marginLeft: 8 }}>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                  </select>
+                </label>
+                <label>
+                  Abteilung:
+                  <select value={department} onChange={e => setDepartment(Number(e.target.value))} style={{ marginLeft: 8 }}>
+                    <option value={1}>1</option>
+                    <option value={2}>2</option>
+                    <option value={3}>3</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            {/* Jahresspezifische Vorplanungsdateien */}
+            <div style={{ marginBottom: 24 }}>
                 <h3>Jahresspezifische Vorplanungsdateien</h3>
                 <p style={{ fontSize: 14, color: '#666', marginBottom: 12 }}>
                   Hinterlegen Sie für jedes Jahr eine Excel-Datei mit der Vorausplanung.
@@ -1078,7 +1249,28 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
 
       {/* Feiertage (dieses Jahr) */}
       <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
-        <h3>Feiertage {year}</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+          <h3 style={{ margin: 0 }}>Feiertage</h3>
+          <select 
+            value={holidaysYear} 
+            onChange={async (e) => {
+              const newYear = Number(e.target.value);
+              setHolidaysYear(newYear);
+              try {
+                const fresh = await (window as any).api.getHolidaysForYear?.(newYear);
+                setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
+              } catch {}
+              setEditingHolidays(false);
+              setOriginalHolidays(null);
+              setSelectedHolidayIndex(null);
+            }}
+            style={{ padding: '4px 8px', fontSize: '1em', fontWeight: 600 }}
+          >
+            {yearPlannings.map(yp => (
+              <option key={yp.year} value={yp.year}>{yp.year}</option>
+            ))}
+          </select>
+        </div>
         <p style={{ marginTop: 0, color: '#666' }}>An diesen Tagen wird der ITW nicht besetzt (IW entfällt). Du kannst Datum und (optional) Name pflegen.</p>
         <table className={styles.table}>
           <thead>
@@ -1122,178 +1314,16 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         </table>
         {!editingHolidays ? (
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button onClick={() => { setEditingHolidays(true); setOriginalHolidays(JSON.parse(JSON.stringify(holidays))); setHolidays(prev => [...prev, { date: `${year}-01-01`, name: '' }]); setSelectedHolidayIndex((holidays?.length ?? 0)); }}>Hinzufügen</button>
+            <button onClick={() => { setEditingHolidays(true); setOriginalHolidays(JSON.parse(JSON.stringify(holidays))); setHolidays(prev => [...prev, { date: `${holidaysYear}-01-01`, name: '' }]); setSelectedHolidayIndex((holidays?.length ?? 0)); }}>Hinzufügen</button>
             <button onClick={() => setEditingHolidays(true)} disabled={holidays.length === 0}>Ändern</button>
             <button onClick={() => { if (selectedHolidayIndex != null) setHolidays(prev => prev.filter((_, i) => i !== selectedHolidayIndex)); setSelectedHolidayIndex(null); }} disabled={selectedHolidayIndex == null}>Löschen</button>
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button onClick={async () => { try { await (window as any).api.setHolidaysForYear?.(year, holidays.map(h => ({ date: h.date, name: h.name }))); const fresh = await (window as any).api.getHolidaysForYear?.(year); setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') }))); } catch {} finally { setEditingHolidays(false); setOriginalHolidays(null); setSelectedHolidayIndex(null); } }}>Speichern</button>
+            <button onClick={async () => { try { await (window as any).api.setHolidaysForYear?.(holidaysYear, holidays.map(h => ({ date: h.date, name: h.name }))); const fresh = await (window as any).api.getHolidaysForYear?.(holidaysYear); setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') }))); } catch {} finally { setEditingHolidays(false); setOriginalHolidays(null); setSelectedHolidayIndex(null); } }}>Speichern</button>
             <button onClick={() => { if (originalHolidays) setHolidays(originalHolidays); setOriginalHolidays(null); setEditingHolidays(false); setSelectedHolidayIndex(null); }}>Abbrechen</button>
           </div>
         )}
-      </div>
-
-      {/* Qualifikationen */}
-      <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
-        <h3>Qualifikationen</h3>
-        
-        {/* HLFB 75%-Regel Zuordnung */}
-        <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#f8f9fa', borderRadius: 6 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <strong style={{ minWidth: 200 }}>Qualifikation für FzF HLF B (75%-Regel):</strong>
-            <select 
-              value={hlfbQualificationType} 
-              onChange={e => setHlfbQualificationType(e.target.value)}
-              style={{ flex: 1, maxWidth: 400 }}
-            >
-              {qualificationTypes.filter(qt => qt.active).map(qt => (
-                <option key={qt.id} value={qt.name}>{qt.name}</option>
-              ))}
-            </select>
-          </label>
-          <p style={{ margin: '8px 0 0', fontSize: '0.9em', color: '#666' }}>
-            Personen mit dieser Qualifikation werden in der Anwesenheitsauswertung mit 75% gewichtet (statt 100%).
-          </p>
-        </div>
-        
-        {/* Ü50 Zuordnung (keine Soll/Ist-Berechnung) */}
-        <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#fff3cd', borderRadius: 6, border: '1px solid #ffc107' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <strong style={{ minWidth: 200 }}>Qualifikation für Ü50 (wie Azubi):</strong>
-            <select 
-              value={ue50QualificationType} 
-              onChange={e => setUe50QualificationType(e.target.value)}
-              style={{ flex: 1, maxWidth: 400 }}
-            >
-              {qualificationTypes.filter(qt => qt.active).map(qt => (
-                <option key={qt.id} value={qt.name}>{qt.name}</option>
-              ))}
-            </select>
-          </label>
-          <p style={{ margin: '8px 0 0', fontSize: '0.9em', color: '#856404' }}>
-            Personen mit dieser Qualifikation haben <strong>keine Soll/Ist-Berechnung</strong> (wie Azubis), werden aber <strong style={{color: '#dc3545'}}>rot</strong> im Kontrollfeld angezeigt. Alle anderen Qualifikationen bleiben gültig.
-          </p>
-        </div>
-        
-        <table className={styles.table}>
-          <thead>
-            <tr className={styles.thead}>
-              <th>Name</th>
-              <th>Beschreibung</th>
-              <th>Kategorie</th>
-              <th style={{ width: 80 }}>Aktiv</th>
-              <th style={{ width: 120 }}>Statistik ausschl.</th>
-              <th className={styles.center} style={{ width: 60 }}>#</th>
-            </tr>
-          </thead>
-          <tbody className={styles.tbody}>
-            {qualificationTypes.map(qt => (
-              <tr key={qt.id} className={[styles.row, selectedQualificationTypeId === qt.id ? styles.selected : ''].filter(Boolean).join(' ')} onClick={() => setSelectedQualificationTypeId(prev => prev === qt.id ? null : qt.id)}>
-                <td>
-                  {editingQualificationTypes ? (
-                    <input 
-                      value={qt.name}
-                      onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, name: e.target.value } : x))}
-                      style={{ 
-                        borderColor: (!qt.name || qt.name.trim() === '') ? '#ff4444' : '#ddd',
-                        backgroundColor: (!qt.name || qt.name.trim() === '') ? '#fff5f5' : 'white'
-                      }}
-                      placeholder="Name erforderlich"
-                    />
-                  ) : qt.name}
-                </td>
-                <td>
-                  {editingQualificationTypes ? (
-                    <input value={qt.description || ''}
-                      onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, description: e.target.value } : x))} />
-                  ) : (qt.description || '')}
-                </td>
-                <td>
-                  {editingQualificationTypes ? (
-                    <select value={qt.category}
-                      onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, category: e.target.value } : x))}>
-                      <option value="Fahrzeugführung">Fahrzeugführung</option>
-                      <option value="Notfall">Notfall</option>
-                      <option value="Transport">Transport</option>
-                      <option value="Ausbildung">Ausbildung</option>
-                      <option value="Sonstiges">Sonstiges</option>
-                    </select>
-                  ) : qt.category}
-                </td>
-                <td className={styles.center}>
-                  {editingQualificationTypes ? (
-                    <input type="checkbox" checked={qt.active}
-                      onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, active: e.target.checked } : x))} />
-                  ) : (qt.active ? '✓' : '✗')}
-                </td>
-                <td className={styles.center} title="Von Soll/Ist-Berechnung ausschließen (wie Azubis)">
-                  {editingQualificationTypes ? (
-                    <input type="checkbox" checked={qt.excludeFromStats || false}
-                      onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, excludeFromStats: e.target.checked } : x))} />
-                  ) : (qt.excludeFromStats ? '✓' : '✗')}
-                </td>
-                <td className={styles.center}>
-                  <button onClick={() => {
-                    if (confirm(`Qualifikation "${qt.name}" löschen?`)) {
-                      setQualificationTypes(prev => prev.filter(x => x.id !== qt.id));
-                    }
-                  }}
-                  disabled={!editingQualificationTypes}
-                  style={{ color: '#cc0000', background: 'none', border: 'none', cursor: editingQualificationTypes ? 'pointer' : 'default' }}>
-                    ✗
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button onClick={() => {
-            if (editingQualificationTypes) {
-              // Speichern
-              saveQualificationTypes();
-            } else {
-              // Bearbeiten starten
-              setEditingQualificationTypes(true);
-              setOriginalQualificationTypes([...qualificationTypes]);
-            }
-          }}>
-            {editingQualificationTypes ? 'Speichern' : 'Bearbeiten'}
-          </button>
-          
-          {editingQualificationTypes && (
-            <>
-              <button onClick={() => {
-                // Abbrechen
-                setQualificationTypes(originalQualificationTypes ? [...originalQualificationTypes] : []);
-                setEditingQualificationTypes(false);
-                setSelectedQualificationTypeId(null);
-                setOriginalQualificationTypes(null);
-              }}>
-                Abbrechen
-              </button>
-              
-              <button onClick={() => {
-                // Neue Qualifikation hinzufügen
-                const newId = Math.max(0, ...qualificationTypes.map(qt => qt.id)) + 1;
-                const newSort = Math.max(0, ...qualificationTypes.map(qt => qt.sort)) + 1;
-                setQualificationTypes(prev => [...prev, {
-                  id: newId,
-                  name: 'Neue Qualifikation',
-                  description: '',
-                  category: 'Sonstiges',
-                  active: true,
-                  sort: newSort
-                }]);
-                setSelectedQualificationTypeId(newId);
-              }}>
-                Neue Qualifikation
-              </button>
-            </>
-          )}
-        </div>
       </div>
 
       {/* Dienstarten */}
@@ -1396,6 +1426,176 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
           </>
         )}
       </div>
+          </div>
+        )}
+
+        {/* KATEGORIE: QUALIFIKATIONEN */}
+        {activeCategory === 'qualifications' && (
+          <div>
+            {/* HLFB 75%-Regel Zuordnung */}
+            <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#f8f9fa', borderRadius: 6 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <strong style={{ minWidth: 250 }}>Qualifikation für FzF HLF B (75%-Regel):</strong>
+                <select 
+                  value={hlfbQualificationType} 
+                  onChange={e => setHlfbQualificationType(e.target.value)}
+                  style={{ flex: 1, maxWidth: 400 }}
+                >
+                  {qualificationTypes.filter(qt => qt.active).map(qt => (
+                    <option key={qt.id} value={qt.name}>{qt.name}</option>
+                  ))}
+                </select>
+              </label>
+              <p style={{ margin: '8px 0 0', fontSize: '0.9em', color: '#666' }}>
+                Personen mit dieser Qualifikation werden in der Anwesenheitsauswertung mit 75% gewichtet (statt 100%).
+              </p>
+            </div>
+
+            {/* Ü50 Zuordnung (keine Soll/Ist-Berechnung) */}
+            <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#fff3cd', borderRadius: 6, border: '1px solid #ffc107' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <strong style={{ minWidth: 250 }}>Qualifikation für Ü50 (wie Azubi):</strong>
+                <select 
+                  value={ue50QualificationType} 
+                  onChange={e => setUe50QualificationType(e.target.value)}
+                  style={{ flex: 1, maxWidth: 400 }}
+                >
+                  {qualificationTypes.filter(qt => qt.active).map(qt => (
+                    <option key={qt.id} value={qt.name}>{qt.name}</option>
+                  ))}
+                </select>
+              </label>
+              <p style={{ margin: '8px 0 0', fontSize: '0.9em', color: '#856404' }}>
+                Personen mit dieser Qualifikation haben <strong>keine Soll/Ist-Berechnung</strong> (wie Azubis), werden aber <strong style={{color: '#dc3545'}}>rot</strong> im Kontrollfeld angezeigt. Alle anderen Qualifikationen bleiben gültig.
+              </p>
+            </div>
+
+            {/* Qualifikationsverwaltung */}
+            <div style={{ marginTop: 24, paddingTop: 12 }}>
+              <h3>Qualifikationsverwaltung</h3>
+        
+              <table className={styles.table}>
+                <thead>
+                  <tr className={styles.thead}>
+                    <th>Name</th>
+                    <th>Beschreibung</th>
+                    <th>Kategorie</th>
+                    <th style={{ width: 80 }}>Aktiv</th>
+                    <th style={{ width: 120 }}>Statistik ausschl.</th>
+                    <th className={styles.center} style={{ width: 60 }}>#</th>
+                  </tr>
+                </thead>
+                <tbody className={styles.tbody}>
+                  {qualificationTypes.map(qt => (
+                    <tr key={qt.id} className={[styles.row, selectedQualificationTypeId === qt.id ? styles.selected : ''].filter(Boolean).join(' ')} onClick={() => setSelectedQualificationTypeId(prev => prev === qt.id ? null : qt.id)}>
+                      <td>
+                        {editingQualificationTypes ? (
+                          <input 
+                            value={qt.name}
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, name: e.target.value } : x))}
+                            style={{ 
+                              borderColor: (!qt.name || qt.name.trim() === '') ? '#ff4444' : '#ddd',
+                              backgroundColor: (!qt.name || qt.name.trim() === '') ? '#fff5f5' : 'white'
+                            }}
+                            placeholder="Name erforderlich"
+                          />
+                        ) : qt.name}
+                      </td>
+                      <td>
+                        {editingQualificationTypes ? (
+                          <input value={qt.description || ''}
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, description: e.target.value } : x))} />
+                        ) : (qt.description || '')}
+                      </td>
+                      <td>
+                        {editingQualificationTypes ? (
+                          <select value={qt.category}
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, category: e.target.value } : x))}>
+                            <option value="Fahrzeugführung">Fahrzeugführung</option>
+                            <option value="Notfall">Notfall</option>
+                            <option value="Transport">Transport</option>
+                            <option value="Ausbildung">Ausbildung</option>
+                            <option value="Sonstiges">Sonstiges</option>
+                          </select>
+                        ) : qt.category}
+                      </td>
+                      <td className={styles.center}>
+                        {editingQualificationTypes ? (
+                          <input type="checkbox" checked={qt.active}
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, active: e.target.checked } : x))} />
+                        ) : (qt.active ? '✓' : '✗')}
+                      </td>
+                      <td className={styles.center} title="Von Soll/Ist-Berechnung ausschließen (wie Azubis)">
+                        {editingQualificationTypes ? (
+                          <input type="checkbox" checked={qt.excludeFromStats || false}
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, excludeFromStats: e.target.checked } : x))} />
+                        ) : (qt.excludeFromStats ? '✓' : '✗')}
+                      </td>
+                      <td className={styles.center}>
+                        <button onClick={() => {
+                          if (confirm(`Qualifikation "${qt.name}" löschen?`)) {
+                            setQualificationTypes(prev => prev.filter(x => x.id !== qt.id));
+                          }
+                        }}
+                        disabled={!editingQualificationTypes}
+                        style={{ color: '#cc0000', background: 'none', border: 'none', cursor: editingQualificationTypes ? 'pointer' : 'default' }}>
+                          ✗
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button onClick={() => {
+                  if (editingQualificationTypes) {
+                    // Speichern
+                    saveQualificationTypes();
+                  } else {
+                    // Bearbeiten starten
+                    setEditingQualificationTypes(true);
+                    setOriginalQualificationTypes([...qualificationTypes]);
+                  }
+                }}>
+                  {editingQualificationTypes ? 'Speichern' : 'Bearbeiten'}
+                </button>
+                
+                {editingQualificationTypes && (
+                  <>
+                    <button onClick={() => {
+                      // Abbrechen
+                      setQualificationTypes(originalQualificationTypes ? [...originalQualificationTypes] : []);
+                      setEditingQualificationTypes(false);
+                      setSelectedQualificationTypeId(null);
+                      setOriginalQualificationTypes(null);
+                    }}>
+                      Abbrechen
+                    </button>
+                    
+                    <button onClick={() => {
+                      // Neue Qualifikation hinzufügen
+                      const newId = Math.max(0, ...qualificationTypes.map(qt => qt.id)) + 1;
+                      const newSort = Math.max(0, ...qualificationTypes.map(qt => qt.sort)) + 1;
+                      setQualificationTypes(prev => [...prev, {
+                        id: newId,
+                        name: 'Neue Qualifikation',
+                        description: '',
+                        category: 'Sonstiges',
+                        active: true,
+                        sort: newSort
+                      }]);
+                      setSelectedQualificationTypeId(newId);
+                    }}>
+                      Neue Qualifikation
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+            
       {/* Speichern/Abbrechen unten platzieren */}
       <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
         <button onClick={onClose} style={{ marginRight: 8 }}>Abbrechen</button>
