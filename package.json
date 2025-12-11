@@ -57,18 +57,10 @@
     "linux": {
       "icon": "media/Icon.ico"
     },
-    "extraResources": [
-      {
-        "from": "media/Icon.icns",
-        "to": "Icon.icns"
-      }
-    ],
     "files": [
       "dist/**/*",
       "node_modules/**/*",
-      "package.json",
-      "media/Icon.icns",
-      "media/Icon.ico"
+      "package.json"
     ]
   },
   "homepage": "https://github.com/powderk/rd-plan#readme",
