@@ -275,10 +275,8 @@ class SQLiteAdapter implements DatabaseAdapter {
   
   // Qualification Periods
   async getQualificationPeriods(personId: number) {
-    console.log('[DatabaseManager] getQualificationPeriods called with personId:', personId);
     const { getQualificationPeriods } = await import('./database');
     const result = await getQualificationPeriods(this.db, personId);
-    console.log('[DatabaseManager] getQualificationPeriods result:', result);
     return result;
   }
   

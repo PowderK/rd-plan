@@ -748,7 +748,7 @@ const DutyRoster: React.FC = () => {
         }
       }
       if (presence > 0) {
-        const hasHLFB = !!(p as any).fahrzeugfuehrerHLFB;
+        const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
         sum += hasHLFB ? 0.75 : 1;
       }
     }
@@ -1041,7 +1041,7 @@ const DutyRoster: React.FC = () => {
                         }
                         // Qualifikation HLF-B Fahrzeugführer -> 75% wirken auf Präsenz
                         const base = personnel.find(p => p.id === person.origId);
-                        const hasHLFB = !!(base && (base as any).fahrzeugfuehrerHLFB);
+                        const hasHLFB = (base && (base as any).fahrzeugfuehrerHLFB === 1);
                         if (hasHLFB && presence > 0) {
                           presence = presence * 0.75;
                         }

@@ -6,6 +6,8 @@ import { initializeDatabaseManager, DatabaseAdapter, createDatabaseBackup, listD
 import { getUpdateManager, getCurrentVersion, performUpdate } from './update-manager';
 
 let databaseAdapter: DatabaseAdapter | null = null;
+let splashWindow: BrowserWindow | null = null;
+let splashStartTime: number = 0;
 let settingsWindow: BrowserWindow | null = null;
 let personnelWindow: BrowserWindow | null = null;
 let addPersonWindow: BrowserWindow | null = null;
@@ -127,6 +129,7 @@ async function createWindow() {
     const mainWindow = new BrowserWindow({
         width: 1280,
         height: 800,
+        show: false, // Nicht sofort anzeigen
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
             nodeIntegration: false,
@@ -143,8 +146,49 @@ async function createWindow() {
         mainWindow.loadFile(filePath);
     }
 
+    // Wenn Hauptfenster bereit ist: Splash schließen, Hauptfenster zeigen
+    mainWindow.once('ready-to-show', () => {
+        // Berechne wie lange der Splash bereits angezeigt wurde
+        const elapsed = Date.now() - splashStartTime;
+        const minDisplayTime = 6000; // Mindestens 6 Sekunden (Animation 5.29s + Fade 0.5s + Puffer)
+        const remainingTime = Math.max(0, minDisplayTime - elapsed);
+        
+        setTimeout(() => {
+            if (splashWindow && !splashWindow.isDestroyed()) {
+                splashWindow.close();
+                splashWindow = null;
+            }
+            mainWindow.show();
+            mainWindow.focus();
+        }, remainingTime);
+    });
+
     mainWindow.on('closed', () => {
         // Handled by app.on('window-all-closed')
+    });
+}
+
+function createSplashScreen() {
+    splashStartTime = Date.now(); // Zeitstempel merken
+    
+    splashWindow = new BrowserWindow({
+        width: 500,
+        height: 600,
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        resizable: false,
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true
+        }
+    });
+
+    splashWindow.loadFile(path.join(__dirname, '../splash.html'));
+    splashWindow.center();
+    
+    splashWindow.on('closed', () => {
+        splashWindow = null;
     });
 }
 
@@ -381,10 +425,8 @@ ipcMain.handle('delete-azubi-period', async (_event, id: number) => {
 
 // Qualification Period handlers
 ipcMain.handle('get-qualification-periods', async (_event, personId: number) => {
-    console.log('[IPC] get-qualification-periods called with personId:', personId);
     const adapter = await ensureDatabaseAdapter();
     const result = await adapter.getQualificationPeriods(personId);
-    console.log('[IPC] get-qualification-periods result:', result);
     return result;
 });
 
@@ -1545,6 +1587,9 @@ app.whenReady().then(async () => {
 
     // WICHTIG: Datenbank ZUERST initialisieren, bevor Update-Prüfung
     await ensureDatabaseAdapter();
+
+    // Splash Screen anzeigen
+    createSplashScreen();
 
     // Update-Prüfung und automatisches Update mit Backup
     try {

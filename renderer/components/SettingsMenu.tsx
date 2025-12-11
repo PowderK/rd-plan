@@ -68,6 +68,15 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [editingQualificationTypes, setEditingQualificationTypes] = useState(false);
   const [selectedQualificationTypeId, setSelectedQualificationTypeId] = useState<number | null>(null);
   const [originalQualificationTypes, setOriginalQualificationTypes] = useState<any[] | null>(null);
+  // HLFB 75%-Regel Qualifikationszuordnung
+  const [hlfbQualificationType, setHlfbQualificationType] = useState<string>('FzF HLF B');
+  // Year Import Dialog States
+  const [showYearImportShiftTypeDialog, setShowYearImportShiftTypeDialog] = useState(false);
+  const [yearImportUnknownShiftTypes, setYearImportUnknownShiftTypes] = useState<string[]>([]);
+  const [yearImportPendingYear, setYearImportPendingYear] = useState<number>(0);
+  
+  const [showYearImportAzubiDialog, setShowYearImportAzubiDialog] = useState(false);
+  const [yearImportUnknownAzubiNames, setYearImportUnknownAzubiNames] = useState<string[]>([]);
 
     useEffect(() => {
         (async () => {
@@ -139,6 +148,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               console.error('Failed to load qualification types:', e);
             }
             
+            // Load HLFB qualification type setting
+            try {
+              const hlfbQual = await (window as any).api.getSetting('hlfb_qualification_type');
+              if (hlfbQual) setHlfbQualificationType(String(hlfbQual));
+            } catch (e) {
+              console.error('Failed to load HLFB qualification type:', e);
+            }
+            
             setShiftTypesLoading(false);
             setLoading(false);
             try {
@@ -156,6 +173,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         await (window as any).api.setSetting('rescueStation', rescueStation);
         await (window as any).api.setSetting('year', String(year));
         await (window as any).api.setSetting('rosterImportPath', rosterImportPath);
+        await (window as any).api.setSetting('hlfb_qualification_type', hlfbQualificationType);
   // Anzahl RTW/NEF leitet sich aus den Einträgen ab – keine separaten Settings mehr
   // ITW wird im Fahrzeuge-Menü gesetzt
         await (window as any).api.setSetting('department', String(department));
@@ -343,6 +361,88 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     }
   };
 
+  // Year Import Shift Type Dialog Handlers
+  const handleYearImportShiftTypeConfirm = async (newShiftTypes: Array<{code: string, description: string, color: string, auswertung: string}>) => {
+    try {
+      setShowYearImportShiftTypeDialog(false);
+      
+      // Retry import with new shift types
+      const retryResult = await (window as any).api.importDutyRoster(rosterImportPath, yearImportPendingYear, undefined, { newShiftTypes });
+      
+      if (retryResult && retryResult.success) {
+        // Check if there are still unknown azubis
+        if (retryResult.unknownAzubis && retryResult.unknownAzubis.length > 0) {
+          const createNewAzubis = window.confirm(
+            `Folgende unbekannte Azubi-Namen wurden gefunden:\n${retryResult.unknownAzubis.join('\n')}\n\nMöchten Sie diese als neue Azubis anlegen?`
+          );
+          
+          if (createNewAzubis) {
+            setShowYearImportAzubiDialog(true);
+            setYearImportUnknownAzubiNames(retryResult.unknownAzubis);
+            // Keep yearImportPendingYear as it is
+          }
+          // Reload shift types
+          setShiftTypes(await (window as any).api.getShiftTypes());
+          return;
+        }
+        
+        alert(`Dienstplan für ${yearImportPendingYear} erfolgreich importiert. Einträge: ${retryResult.importedCount ?? 'n/v'}`);
+        try { (window as any).api.onDutyRosterUpdated?.(() => {}); } catch {}
+      } else {
+        alert(`Import fehlgeschlagen: ${retryResult?.message || 'Unbekannter Fehler'}`);
+      }
+      
+      // Reload shift types
+      setShiftTypes(await (window as any).api.getShiftTypes());
+      setYearImportUnknownShiftTypes([]);
+      setYearImportPendingYear(0);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Ein unbekannter Fehler ist aufgetreten.';
+      alert(`Fehler beim Import: ${message}`);
+    }
+  };
+
+  const handleYearImportShiftTypeCancel = () => {
+    setShowYearImportShiftTypeDialog(false);
+    setYearImportUnknownShiftTypes([]);
+    setYearImportPendingYear(0);
+  };
+
+  const handleYearImportAzubiConfirm = async (newAzubis: Array<{name: string, vorname: string, lehrjahr: number}>) => {
+    setShowYearImportAzubiDialog(false);
+    
+    const retryResult = await (window as any).api.importDutyRoster(rosterImportPath, yearImportPendingYear, undefined, { newAzubis });
+    
+    if (retryResult && retryResult.success) {
+      // Check if there are still unknown shift types
+      if (retryResult.unknownShiftTypes && retryResult.unknownShiftTypes.length > 0) {
+        const createNewShiftTypes = window.confirm(
+          `Folgende unbekannte Dienstarten wurden gefunden:\n${retryResult.unknownShiftTypes.join('\n')}\n\nMöchten Sie diese als neue Dienstarten anlegen?`
+        );
+        
+        if (createNewShiftTypes) {
+          setShowYearImportShiftTypeDialog(true);
+          setYearImportUnknownShiftTypes(retryResult.unknownShiftTypes);
+        }
+        return;
+      }
+      
+      alert(`Dienstplan für ${yearImportPendingYear} erfolgreich importiert. Einträge: ${retryResult.importedCount ?? 'n/v'}`);
+      try { (window as any).api.onDutyRosterUpdated?.(() => {}); } catch {}
+    } else {
+      alert(`Import fehlgeschlagen: ${retryResult?.message || 'Unbekannter Fehler'}`);
+    }
+    
+    setYearImportUnknownAzubiNames([]);
+    setYearImportPendingYear(0);
+  };
+
+  const handleYearImportAzubiCancel = () => {
+    setShowYearImportAzubiDialog(false);
+    setYearImportUnknownAzubiNames([]);
+    setYearImportPendingYear(0);
+  };
+
   const handleExcelImportComplete = (result: any) => {
     console.log('Excel-Import abgeschlossen:', result);
     if (result.success) {
@@ -527,6 +627,35 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
 
                     const res = await (window as any).api.importDutyRoster(rosterImportPath, Number(year));
                     if (res && res.success) {
+                      // Check if unknown shift types were found
+                      if (res.unknownShiftTypes && res.unknownShiftTypes.length > 0) {
+                        const createNewShiftTypes = window.confirm(
+                          `Folgende unbekannte Dienstarten wurden gefunden:\n${res.unknownShiftTypes.join('\n')}\n\nMöchten Sie diese als neue Dienstarten anlegen?`
+                        );
+                        
+                        if (createNewShiftTypes) {
+                          // Show new shift type dialog
+                          setShowYearImportShiftTypeDialog(true);
+                          setYearImportUnknownShiftTypes(res.unknownShiftTypes);
+                          setYearImportPendingYear(Number(year));
+                        }
+                        return;
+                      }
+                      
+                      // Check if unknown azubis were found  
+                      if (res.unknownAzubis && res.unknownAzubis.length > 0) {
+                        const createNewAzubis = window.confirm(
+                          `Folgende unbekannte Azubi-Namen wurden gefunden:\n${res.unknownAzubis.join('\n')}\n\nMöchten Sie diese als neue Azubis anlegen?`
+                        );
+                        
+                        if (createNewAzubis) {
+                          setShowYearImportAzubiDialog(true);
+                          setYearImportUnknownAzubiNames(res.unknownAzubis);
+                          setYearImportPendingYear(Number(year));
+                        }
+                        return;
+                      }
+                      
                       alert(`Dienstplan für ${year} erfolgreich importiert. Einträge: ${res.importedCount ?? 'n/v'}`);
                       try { (window as any).api.onDutyRosterUpdated?.(() => {}); } catch {}
                     } else {
@@ -783,6 +912,26 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       {/* Qualifikationen */}
       <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
         <h3>Qualifikationen</h3>
+        
+        {/* HLFB 75%-Regel Zuordnung */}
+        <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#f8f9fa', borderRadius: 6 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <strong style={{ minWidth: 200 }}>Qualifikation für FzF HLF B (75%-Regel):</strong>
+            <select 
+              value={hlfbQualificationType} 
+              onChange={e => setHlfbQualificationType(e.target.value)}
+              style={{ flex: 1, maxWidth: 400 }}
+            >
+              {qualificationTypes.filter(qt => qt.active).map(qt => (
+                <option key={qt.id} value={qt.name}>{qt.name}</option>
+              ))}
+            </select>
+          </label>
+          <p style={{ margin: '8px 0 0', fontSize: '0.9em', color: '#666' }}>
+            Personen mit dieser Qualifikation werden in der Anwesenheitsauswertung mit 75% gewichtet (statt 100%).
+          </p>
+        </div>
+        
         <table className={styles.table}>
           <thead>
             <tr className={styles.thead}>
@@ -1303,8 +1452,229 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
           </div>
         </div>
       )}
+
+      {/* Year Import Shift Type Dialog */}
+      {showYearImportShiftTypeDialog && (
+        <NewShiftTypeDialog
+          unknownShiftTypes={yearImportUnknownShiftTypes}
+          onConfirm={handleYearImportShiftTypeConfirm}
+          onCancel={handleYearImportShiftTypeCancel}
+        />
+      )}
+
+      {/* Year Import Azubi Dialog */}
+      {showYearImportAzubiDialog && (
+        <NewAzubiDialog
+          unknownNames={yearImportUnknownAzubiNames}
+          onConfirm={handleYearImportAzubiConfirm}
+          onCancel={handleYearImportAzubiCancel}
+        />
+      )}
           </div>
     );
+};
+
+// New ShiftType Dialog Component (shared with DutyRoster)
+interface NewShiftTypeDialogProps {
+  unknownShiftTypes: string[];
+  onConfirm: (shiftTypes: Array<{code: string, description: string, color: string, auswertung: string}>) => void;
+  onCancel: () => void;
+}
+
+const NewShiftTypeDialog: React.FC<NewShiftTypeDialogProps> = ({ unknownShiftTypes, onConfirm, onCancel }) => {
+  const [shiftTypeData, setShiftTypeData] = useState<Array<{code: string, description: string, color: string, auswertung: string}>>(() => {
+    return unknownShiftTypes.map(code => ({
+      code: code,
+      description: code, // Default description is the code itself
+      color: '#cccccc', // Default gray color
+      auswertung: 'off' // Default: no counting
+    }));
+  });
+
+  const handleDescriptionChange = (index: number, value: string) => {
+    const newData = [...shiftTypeData];
+    newData[index].description = value;
+    setShiftTypeData(newData);
+  };
+
+  const handleColorChange = (index: number, value: string) => {
+    const newData = [...shiftTypeData];
+    newData[index].color = value;
+    setShiftTypeData(newData);
+  };
+
+  const handleAuswertungChange = (index: number, value: string) => {
+    const newData = [...shiftTypeData];
+    newData[index].auswertung = value;
+    setShiftTypeData(newData);
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+      background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }}>
+      <div style={{
+        background: 'white', padding: '20px', borderRadius: '8px', minWidth: '600px', maxWidth: '800px', maxHeight: '80vh', overflow: 'auto'
+      }}>
+        <h3>Neue Dienstarten anlegen</h3>
+        <p>Folgende unbekannte Dienstarten wurden gefunden:</p>
+        
+        {shiftTypeData.map((shiftType, index) => (
+          <div key={index} style={{ marginBottom: '20px', border: '1px solid #ddd', padding: '15px', borderRadius: '4px' }}>
+            <div><strong>Code:</strong> {shiftType.code}</div>
+            
+            <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center' }}>
+              <div>
+                <label>Bezeichnung: </label>
+                <input 
+                  type="text" 
+                  value={shiftType.description} 
+                  onChange={(e) => handleDescriptionChange(index, e.target.value)}
+                  style={{ width: '150px', padding: '4px' }}
+                  placeholder="z.B. Tagdienst"
+                />
+              </div>
+              
+              <div>
+                <label>Farbe: </label>
+                <input 
+                  type="color" 
+                  value={shiftType.color} 
+                  onChange={(e) => handleColorChange(index, e.target.value)}
+                  style={{ width: '50px', height: '30px', padding: '2px' }}
+                />
+              </div>
+              
+              <div>
+                <label>Auswertung: </label>
+                <select 
+                  value={shiftType.auswertung} 
+                  onChange={(e) => handleAuswertungChange(index, e.target.value)}
+                  style={{ padding: '4px' }}
+                >
+                  <option value="off">Nicht zählen</option>
+                  <option value="tag">Tagdienst</option>
+                  <option value="nacht">Nachtdienst</option>
+                  <option value="24h">24h-Dienst</option>
+                  <option value="itw">ITW-Dienst</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        ))}
+        
+        <div style={{ marginTop: '20px', textAlign: 'right' }}>
+          <button 
+            onClick={onCancel}
+            style={{ marginRight: '10px', padding: '8px 16px' }}
+          >
+            Abbrechen
+          </button>
+          <button 
+            onClick={() => onConfirm(shiftTypeData)}
+            style={{ padding: '8px 16px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px' }}
+          >
+            Dienstarten anlegen und Import fortsetzen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// New Azubi Dialog Component (shared with DutyRoster)
+interface NewAzubiDialogProps {
+  unknownNames: string[];
+  onConfirm: (azubis: Array<{name: string, vorname: string, lehrjahr: number}>) => void;
+  onCancel: () => void;
+}
+
+const NewAzubiDialog: React.FC<NewAzubiDialogProps> = ({ unknownNames, onConfirm, onCancel }) => {
+  const [azubiData, setAzubiData] = useState<Array<{name: string, vorname: string, lehrjahr: number}>>(() => {
+    return unknownNames.map(fullName => {
+      const parts = fullName.split(',').map(p => p.trim());
+      return {
+        name: parts[0] || fullName,
+        vorname: parts[1] || '',
+        lehrjahr: 1
+      };
+    });
+  });
+
+  const handleLehrjahrChange = (index: number, value: string) => {
+    const newData = [...azubiData];
+    newData[index].lehrjahr = parseInt(value) || 1;
+    setAzubiData(newData);
+  };
+
+  const handleVornameChange = (index: number, value: string) => {
+    const newData = [...azubiData];
+    newData[index].vorname = value;
+    setAzubiData(newData);
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+      background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }}>
+      <div style={{
+        background: 'white', padding: '20px', borderRadius: '8px', minWidth: '400px', maxWidth: '600px', maxHeight: '80vh', overflow: 'auto'
+      }}>
+        <h3>Neue Azubis anlegen</h3>
+        <p>Folgende unbekannte Namen wurden gefunden:</p>
+        
+        {azubiData.map((azubi, index) => (
+          <div key={index} style={{ marginBottom: '15px', border: '1px solid #ddd', padding: '10px', borderRadius: '4px' }}>
+            <div><strong>Original:</strong> {unknownNames[index]}</div>
+            <div style={{ marginTop: '5px' }}>
+              <label>Nachname: </label>
+              <input 
+                type="text" 
+                value={azubi.name} 
+                readOnly 
+                style={{ marginRight: '10px', padding: '2px' }}
+              />
+              <label>Vorname: </label>
+              <input 
+                type="text" 
+                value={azubi.vorname} 
+                onChange={(e) => handleVornameChange(index, e.target.value)}
+                style={{ marginRight: '10px', padding: '2px' }}
+              />
+              <label>Lehrjahr: </label>
+              <select 
+                value={azubi.lehrjahr} 
+                onChange={(e) => handleLehrjahrChange(index, e.target.value)}
+                style={{ padding: '2px' }}
+              >
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+                <option value={3}>3</option>
+                <option value={4}>4</option>
+              </select>
+            </div>
+          </div>
+        ))}
+        
+        <div style={{ marginTop: '20px', textAlign: 'right' }}>
+          <button 
+            onClick={onCancel}
+            style={{ marginRight: '10px', padding: '8px 16px' }}
+          >
+            Abbrechen
+          </button>
+          <button 
+            onClick={() => onConfirm(azubiData)}
+            style={{ padding: '8px 16px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px' }}
+          >
+            Azubis anlegen und Import fortsetzen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default SettingsMenu;

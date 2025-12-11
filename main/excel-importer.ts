@@ -11,13 +11,15 @@ export interface PersonnelImportData {
   mobile?: string;
   email?: string;
   active?: boolean;
+  teilzeit?: number;
   // Alte Qualifikationen für Backward-Kompatibilität
-  teilzeit?: boolean;
   fahrzeugfuehrer?: boolean;
   fahrzeugfuehrerHLFB?: boolean;
   nef?: boolean;
   itwMaschinist?: boolean;
   itwFahrzeugfuehrer?: boolean;
+  // Neue Qualifikations-Zeiträume für Export-Format
+  qualifications?: Array<{ qualType: string; startYM: string; endYM: string }>;
 }
 
 export interface ImportResult {
@@ -37,17 +39,9 @@ export class ExcelPersonnelImporter {
 
   /**
    * Parst eine Excel-Datei und extrahiert Personal-Daten
-   * Erwartetes Format:
-   * Spalte A: Name (Nachname)
-   * Spalte B: Vorname
-   * Spalte C: Straße
-   * Spalte D: PLZ
-   * Spalte E: Stadt
-   * Spalte F: Telefon
-   * Spalte G: Mobil
-   * Spalte H: E-Mail
-   * Spalte I: Aktiv (0/1, ja/nein, true/false)
-   * Spalten J+: Legacy-Qualifikationen für Backward-Kompatibilität
+   * Unterstützt zwei Formate:
+   * 1. Neues Export-Format: Name, Vorname, Aktiv, [Qualifikation_Von, Qualifikation_Bis]+
+   * 2. Legacy-Format: Name, Vorname, Straße, PLZ, Stadt, Telefon, Mobil, E-Mail, Aktiv, [Qualifikationen]+
    */
   parseExcelFile(filePath: string): PersonnelImportData[] {
     try {
@@ -55,17 +49,99 @@ export class ExcelPersonnelImporter {
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
       
-      // Konvertiere zu JSON Array mit erweiterten Feldern
-      const data = XLSX.utils.sheet_to_json(sheet, { 
-        header: ['name', 'vorname', 'street', 'postalCode', 'city', 'phone', 'mobile', 'email', 'active', 'teilzeit', 'fahrzeugfuehrer', 'fahrzeugfuehrerHLFB', 'nef', 'itwMaschinist', 'itwFahrzeugfuehrer'],
-        range: 1 // Überspringt erste Zeile (Header)
-      });
-
-      return data.map((row: any) => this.parsePersonnelRow(row)).filter(p => p !== null) as PersonnelImportData[];
+      // Lese Header-Zeile, um Format zu erkennen
+      const headerRow = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, range: 0 })[0] as any[];
+      console.log('[ExcelImporter] Header gefunden:', headerRow);
+      
+      // Prüfe, ob es das neue Export-Format ist (enthält "_Von" oder "_Bis" Spalten)
+      const isNewFormat = headerRow.some((h: any) => 
+        typeof h === 'string' && (h.includes('_Von') || h.includes('_Bis'))
+      );
+      
+      console.log('[ExcelImporter] Format-Erkennung:', isNewFormat ? 'Neues Export-Format' : 'Legacy-Format');
+      
+      if (isNewFormat) {
+        // Neues Format: Lese mit Header-Namen und extrahiere Qualifikationen
+        // Wichtig: range: 1 bedeutet "starte ab Zeile 1 (0-basiert)", aber wir wollen die Header verwenden
+        // Daher kein range angeben, sondern direkt mit den Header-Namen arbeiten
+        const data = XLSX.utils.sheet_to_json(sheet);
+        console.log(`[ExcelImporter] Gelesene Zeilen (Neues Format):`, data.length);
+        console.log(`[ExcelImporter] Erste Zeile:`, data[0]);
+        const parsed = data.map((row: any) => this.parseNewFormatRow(row, headerRow)).filter(p => p !== null) as PersonnelImportData[];
+        console.log(`[ExcelImporter] Geparste Personen:`, parsed.length);
+        return parsed;
+      } else {
+        // Legacy-Format: Feste Spalten-Reihenfolge
+        const data = XLSX.utils.sheet_to_json(sheet, { 
+          header: ['name', 'vorname', 'street', 'postalCode', 'city', 'phone', 'mobile', 'email', 'active', 'teilzeit', 'fahrzeugfuehrer', 'fahrzeugfuehrerHLFB', 'nef', 'itwMaschinist', 'itwFahrzeugfuehrer'],
+          range: 1
+        });
+        return data.map((row: any) => this.parsePersonnelRow(row)).filter(p => p !== null) as PersonnelImportData[];
+      }
     } catch (error) {
       console.error('[ExcelImporter] Fehler beim Lesen der Excel-Datei:', error);
       throw new Error(`Excel-Datei konnte nicht gelesen werden: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  /**
+   * Parst eine Zeile im neuen Export-Format
+   * Format: Name, Vorname, Aktiv, [Qualifikation_Von, Qualifikation_Bis]+
+   */
+  private parseNewFormatRow(row: any, headerRow: any[]): PersonnelImportData | null {
+    // Validierung: Name ist erforderlich
+    if (!row['Name'] || typeof row['Name'] !== 'string' || row['Name'].trim() === '') {
+      console.log(`[ExcelImporter] Skipping row - no valid Name field. Row keys:`, Object.keys(row));
+      return null;
+    }
+
+    const name = String(row['Name']).trim();
+    const vorname = row['Vorname'] ? String(row['Vorname']).trim() : '';
+    const teilzeit = row['Teilzeit'] ? parseInt(String(row['Teilzeit']), 10) : 0;
+    
+    console.log(`[ExcelImporter] Person: "${name}" "${vorname}" | Raw Name=${row['Name']}, Vorname=${row['Vorname']}, Teilzeit=${teilzeit}`);
+    
+    // Extrahiere Qualifikationen aus den _Von/_Bis Spalten
+    const qualifications: Array<{ qualType: string; startYM: string; endYM: string }> = [];
+    
+    // Finde alle Qualifikations-Spalten
+    const qualTypes = new Set<string>();
+    for (const header of headerRow) {
+      if (typeof header === 'string' && header.includes('_Von')) {
+        const qualType = header.replace('_Von', '');
+        qualTypes.add(qualType);
+      }
+    }
+    
+    console.log(`[ExcelImporter] Found qualification types:`, Array.from(qualTypes));
+    
+    // Extrahiere Zeiträume für jede Qualifikation
+    for (const qualType of qualTypes) {
+      const startYM = row[`${qualType}_Von`];
+      const endYM = row[`${qualType}_Bis`];
+      
+      // Nur hinzufügen, wenn mindestens startYM vorhanden ist
+      if (startYM && startYM.toString().trim() !== '') {
+        const startYMStr = String(startYM).trim();
+        const endYMStr = endYM && endYM.toString().trim() !== '' ? String(endYM).trim() : '9999-12';
+        
+        qualifications.push({
+          qualType,
+          startYM: startYMStr,
+          endYM: endYMStr
+        });
+        
+        console.log(`[ExcelImporter] Added qualification: ${qualType}, ${startYMStr} - ${endYMStr}`);
+      }
+    }
+
+    return {
+      name,
+      vorname,
+      active: row['Aktiv'] !== undefined ? this.parseBooleanValue(row['Aktiv']) : true,
+      teilzeit,
+      qualifications: qualifications.length > 0 ? qualifications : undefined
+    };
   }
 
   /**
@@ -90,8 +166,8 @@ export class ExcelPersonnelImporter {
       mobile: row.mobile ? String(row.mobile).trim() : undefined,
       email: row.email ? String(row.email).trim() : undefined,
       active: row.active !== undefined ? this.parseBooleanValue(row.active) : true,
-      // Legacy-Qualifikationen für Backward-Kompatibilität
-      teilzeit: row.teilzeit !== undefined ? this.parseBooleanValue(row.teilzeit) : undefined,
+      // Legacy-Format: teilzeit als Zahl, falls vorhanden
+      teilzeit: row.teilzeit !== undefined ? (typeof row.teilzeit === 'number' ? row.teilzeit : 0) : undefined,
       fahrzeugfuehrer: row.fahrzeugfuehrer !== undefined ? this.parseBooleanValue(row.fahrzeugfuehrer) : undefined,
       fahrzeugfuehrerHLFB: row.fahrzeugfuehrerHLFB !== undefined ? this.parseBooleanValue(row.fahrzeugfuehrerHLFB) : undefined,
       nef: row.nef !== undefined ? this.parseBooleanValue(row.nef) : undefined,
@@ -159,8 +235,9 @@ export class ExcelPersonnelImporter {
 
       // Wenn replaceExisting = true, lösche alle bestehenden Personal-Daten
       if (replaceExisting) {
+        await this.db.run('DELETE FROM qualification_periods');
         await this.db.run('DELETE FROM personnel');
-        console.log('[ExcelImporter] Bestehende Personal-Daten gelöscht');
+        console.log('[ExcelImporter] Bestehende Personal-Daten und Qualifikationen gelöscht');
       }
 
       for (const person of personnelData) {
@@ -180,36 +257,91 @@ export class ExcelPersonnelImporter {
           const maxSortResult = await this.db.get('SELECT MAX(sort) as maxSort FROM personnel');
           const nextSort = (maxSortResult?.maxSort || 0) + 1;
 
-          // Füge Person mit erweiterten Feldern hinzu
-          const insertResult = await this.db.run(
-            'INSERT INTO personnel (name, vorname, street, postalCode, city, phone, mobile, email, active, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [
-              person.name,
-              person.vorname,
-              person.street || '',
-              person.postalCode || '',
-              person.city || '',
-              person.phone || '',
-              person.mobile || '',
-              person.email || '',
-              person.active !== false ? 1 : 0,
-              nextSort
-            ]
-          );
+          // Füge Person hinzu - verwende nur vorhandene Felder
+          let insertResult;
+          if (person.street || person.postalCode || person.city || person.phone || person.mobile || person.email) {
+            // Legacy-Format mit erweiterten Feldern
+            insertResult = await this.db.run(
+              'INSERT INTO personnel (name, vorname, street, postalCode, city, phone, mobile, email, active, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+              [
+                person.name,
+                person.vorname,
+                person.street || '',
+                person.postalCode || '',
+                person.city || '',
+                person.phone || '',
+                person.mobile || '',
+                person.email || '',
+                person.active !== false ? 1 : 0,
+                nextSort
+              ]
+            );
+          } else {
+            // Neues Export-Format - nur Basis-Felder (mit NOT NULL defaults)
+            insertResult = await this.db.run(
+              'INSERT INTO personnel (name, vorname, active, sort, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+              [
+                person.name,
+                person.vorname,
+                person.active !== false ? 1 : 0,
+                nextSort,
+                person.teilzeit || 0,
+                0, // fahrzeugfuehrer default
+                0, // fahrzeugfuehrerHLFB default
+                0, // nef default
+                0, // itwMaschinist default
+                0  // itwFahrzeugfuehrer default
+              ]
+            );
+          }
 
-          const personId = insertResult.lastID as number;
+          // Hole die ID der eingefügten Person
+          let personId: number;
+          if (insertResult.lastID) {
+            personId = insertResult.lastID as number;
+          } else {
+            // Fallback: Hole die ID über Name/Vorname
+            const inserted = await this.db.get(
+              'SELECT id FROM personnel WHERE name = ? AND vorname = ? ORDER BY id DESC LIMIT 1',
+              [person.name, person.vorname]
+            );
+            personId = inserted?.id;
+          }
+          
+          console.log(`[ExcelImporter] Inserted person ID ${personId}: ${person.name}, ${person.vorname}`);
+          console.log(`[ExcelImporter] Person has qualifications:`, person.qualifications);
 
-          // Migriere Legacy-Qualifikationen zu neuen Qualifikations-Zeiträumen (falls vorhanden)
-          await this.migrateLegacyQualifications(personId, person);
+          // Wenn Qualifikationen aus dem neuen Export-Format vorhanden sind, importiere diese
+          if (person.qualifications && person.qualifications.length > 0) {
+            console.log(`[ExcelImporter] Importing ${person.qualifications.length} qualifications for ${person.name}`);
+            for (const qual of person.qualifications) {
+              try {
+                await this.db.run(
+                  'INSERT INTO qualification_periods (personId, qualType, startYM, endYM, active) VALUES (?, ?, ?, ?, ?)',
+                  [personId, qual.qualType, qual.startYM, qual.endYM, 1]
+                );
+              } catch (error) {
+                console.error(`[ExcelImporter] ✗ Konnte Qualifikation ${qual.qualType} für Person ${personId} nicht importieren:`, error);
+              }
+            }
+          } else {
+            // Migriere Legacy-Qualifikationen zu neuen Qualifikations-Zeiträumen (falls vorhanden)
+            await this.migrateLegacyQualifications(personId, person);
+          }
 
           result.imported++;
         } catch (error) {
-          result.errors.push(`Fehler bei ${person.name}, ${person.vorname}: ${error instanceof Error ? error.message : String(error)}`);
+          const errorMsg = `Fehler bei ${person.name}, ${person.vorname}: ${error instanceof Error ? error.message : String(error)}`;
+          result.errors.push(errorMsg);
+          console.error(`[ExcelImporter] ${errorMsg}`);
         }
       }
 
       await this.db.run('COMMIT');
       console.log(`[ExcelImporter] Import abgeschlossen: ${result.imported} importiert, ${result.skipped} übersprungen, ${result.errors.length} Fehler`);
+      if (result.errors.length > 0) {
+        console.error('[ExcelImporter] Fehler-Details:', result.errors);
+      }
 
     } catch (error) {
       await this.db.run('ROLLBACK');
@@ -269,7 +401,7 @@ export class ExcelPersonnelImporter {
       console.log('[ExcelImporter] Available qualification types:', qualTypes.map(q => q.name));
       
       // Erstelle Header mit separaten Spalten für jede Qualifikation
-      const headers = ['Name', 'Vorname', 'Aktiv'];
+      const headers = ['Name', 'Vorname', 'Aktiv', 'Teilzeit'];
       const qualHeaders: string[] = [];
       
       for (const qualType of qualTypes) {
@@ -294,7 +426,8 @@ export class ExcelPersonnelImporter {
         const row = [
           person.name,
           person.vorname || '',
-          person.active ? 'ja' : 'nein'
+          person.active ? 'ja' : 'nein',
+          person.teilzeit || 0
         ];
         
         // Füge für jede Qualifikation die Zeiträume hinzu
@@ -318,7 +451,8 @@ export class ExcelPersonnelImporter {
       const colWidths = [
         { width: 20 }, // Name
         { width: 20 }, // Vorname
-        { width: 10 }  // Aktiv
+        { width: 10 }, // Aktiv
+        { width: 10 }  // Teilzeit
       ];
       
       // Füge Spaltenbreiten für jede Qualifikation hinzu (Von/Bis Spalten)

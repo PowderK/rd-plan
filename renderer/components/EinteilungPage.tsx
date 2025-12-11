@@ -23,16 +23,61 @@ const EinteilungPage: React.FC = () => {
       const now = new Date();
       const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       
+      // Lade HLFB Qualifikationstyp aus Settings
+      let hlfbQualName = 'FzF HLF B'; // Fallback
+      try {
+        const setting = await (window as any).api.getSetting('hlfb_qualification_type');
+        if (setting) hlfbQualName = String(setting);
+      } catch {}
+      
+      // Lade RTW und NEF Fahrzeuge um die konfigurierten Qualifikationen zu ermitteln
+      const rtwVehicles = await (window as any).api.getRtwVehicles?.() || [];
+      const nefVehicles = await (window as any).api.getNefVehicles?.() || [];
+      
+      // Ermittle Fahrzeugführer-Qualifikationen aus RTW-Positionen (Position 0 = FzF)
+      const rtwQualifications = new Set<string>();
+      for (const rtw of rtwVehicles.slice(0, 1)) { // Erstes Fahrzeug reicht als Referenz
+        try {
+          const positions = await (window as any).api.getVehiclePositionsWithQualifications?.('rtw', rtw.id) || [];
+          if (positions[0]?.qualificationName) {
+            rtwQualifications.add(positions[0].qualificationName);
+          }
+        } catch {}
+      }
+      
+      // Ermittle NEF-Qualifikationen aus NEF-Positionen
+      const nefQualifications = new Set<string>();
+      for (const nef of nefVehicles.slice(0, 1)) { // Erstes Fahrzeug reicht als Referenz
+        try {
+          const positions = await (window as any).api.getVehiclePositionsWithQualifications?.('nef', nef.id) || [];
+          if (positions[0]?.qualificationName) {
+            nefQualifications.add(positions[0].qualificationName);
+          }
+        } catch {}
+      }
+      
+      // Fallbacks für alte hard-coded Qualifikationen
+      rtwQualifications.add('FzF RTW');
+      rtwQualifications.add('Fahrzeugführer');
+      nefQualifications.add('NEF');
+      nefQualifications.add('NA');
+      
+      console.log('[EinteilungPage] Erkannte RTW-Qualifikationen:', Array.from(rtwQualifications));
+      console.log('[EinteilungPage] Erkannte NEF-Qualifikationen:', Array.from(nefQualifications));
+      console.log('[EinteilungPage] HLFB-Qualifikation:', hlfbQualName);
+      
       // Für jede Person die Qualifikationen aus qualification_periods laden
       const enrichedList = await Promise.all((list || []).map(async (person: any) => {
         try {
           // Lade Qualifikationsperioden (altes System mit qualType als String)
           const periods = await (window as any).api.getQualificationPeriods?.(person.id) || [];
           
+          console.log(`[EinteilungPage] Person ${person.name}: Perioden=`, periods.map((p: any) => `${p.qualType} (${p.startYM}-${p.endYM||'∞'}, active=${p.active})`));
+          
           // Prüfe, ob Person Fahrzeugführer-Qualifikation hat
           const hasFahrzeugfuehrer = periods.some((p: any) => 
             p.active && 
-            (p.qualType === 'FzF RTW' || p.qualType === 'Fahrzeugführer') &&
+            rtwQualifications.has(p.qualType) &&
             p.startYM <= yearMonth &&
             (!p.endYM || p.endYM >= yearMonth)
           );
@@ -40,15 +85,28 @@ const EinteilungPage: React.FC = () => {
           // Prüfe, ob Person NEF-Qualifikation hat
           const hasNef = periods.some((p: any) => 
             p.active && 
-            (p.qualType === 'NEF' || p.qualType === 'NA') &&
+            nefQualifications.has(p.qualType) &&
             p.startYM <= yearMonth &&
             (!p.endYM || p.endYM >= yearMonth)
           );
           
+          // Prüfe, ob Person HLFB-Qualifikation hat (für 75%-Regel) - verwendet konfigurierbare Qualifikation
+          const hasHLFB = periods.some((p: any) => 
+            p.active && 
+            p.qualType === hlfbQualName &&
+            p.startYM <= yearMonth &&
+            (!p.endYM || p.endYM >= yearMonth)
+          );
+          
+          if (hasFahrzeugfuehrer || hasNef || hasHLFB) {
+            console.log(`[EinteilungPage] ${person.name}: FzF=${hasFahrzeugfuehrer}, NEF=${hasNef}, HLFB=${hasHLFB}`);
+          }
+          
           return {
             ...person,
             fahrzeugfuehrer: hasFahrzeugfuehrer ? 1 : person.fahrzeugfuehrer,
-            nef: hasNef ? 1 : person.nef
+            nef: hasNef ? 1 : person.nef,
+            fahrzeugfuehrerHLFB: hasHLFB ? 1 : person.fahrzeugfuehrerHLFB
           };
         } catch {
           return person;

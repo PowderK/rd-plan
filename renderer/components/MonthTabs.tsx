@@ -93,12 +93,17 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 const types = await (window as any).api.getShiftTypes();
                 setShiftTypes(types || []);
                 const map: Record<string, 'off'|'tag'|'nacht'|'24h'|'itw'> = {};
+                console.log('[MonthTabs] Loading shift types:', types);
                 for (const t of (types || [])) {
                     const v = await (window as any).api.getSetting(`auswertung_${t.code}`);
+                    console.log(`[MonthTabs] Loaded auswertung for ${t.code}:`, v);
                     map[t.code] = (v || 'off') as any;
                 }
+                console.log('[MonthTabs] Final auswertungByType:', map);
                 setAuswertungByType(map);
-            } catch {}
+            } catch (e) {
+                console.error('[MonthTabs] Error loading shift types:', e);
+            }
             try {
                 const docs = await (window as any).api.getItwDoctors?.();
                 if (Array.isArray(docs)) setItwDoctors(docs);
@@ -276,8 +281,19 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
         } catch { return ''; }
     };
     const allowedByAuswertung = (code: string, desired: 'tag'|'nacht'|'24h'|'any'): boolean => {
+        // Wenn kein Dienstcode vorhanden ist, ist die Person nicht verfügbar
+        if (!code || code.trim() === '') {
+            return false;
+        }
+        
         if (desired === 'any') return true;
         const evalMode = auswertungByType[code] || 'off';
+        
+        // Wenn der Auswertungsmodus 'off' ist, ist die Person nicht verfügbar
+        if (evalMode === 'off') {
+            return false;
+        }
+        
         if (desired === 'tag') return (evalMode === 'tag' || evalMode === '24h');
         if (desired === 'nacht') return (evalMode === 'nacht' || evalMode === '24h');
         if (desired === '24h') return evalMode === '24h';
@@ -490,15 +506,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                 {(() => {
                                                     const slotId = `rtw${rIdx + 1}_tag_1`;
                                                     const value = getAssignedValue(slotId);
+                                                    
+                                                    // Debug: Zeige alle relevanten Daten für ERSTEN Tag
+                                                    if (d.dayOfMonth === 1) {
+                                                        console.log(`[MonthTabs Debug ${d.date}] Filtering personnel for RTW${rIdx + 1} Tag FzF slot`);
+                                                        console.log(`  - Total personnel: ${personnel.length}`);
+                                                        console.log(`  - auswertungByType:`, auswertungByType);
+                                                    }
+                                                    
                                                     const optionsP = personnel
                                                         .filter(p => {
                                                             const hasQual = p.fahrzeugfuehrer === 1;
                                                             const dutyCode = getDutyCodeFor(`p_${p.id}`);
                                                             const allowed = allowedByAuswertung(dutyCode, 'tag');
-                                                            // Debug für ersten Tag im Monat
-                                                            if (isFirstDay && hasQual) {
-                                                                console.log(`[MonthTabs RTW FzF Tag] ${p.name}: qual=${hasQual}, duty=${dutyCode}, allowed=${allowed}, eval=${auswertungByType[dutyCode]}`);
+                                                            
+                                                            // Debug für ersten Tag
+                                                            if (d.dayOfMonth === 1 && hasQual) {
+                                                                console.log(`  - ${p.name}: dutyCode="${dutyCode}", evalMode="${auswertungByType[dutyCode] || 'undefined'}", allowed=${allowed}`);
                                                             }
+                                                            
                                                             return allowed && hasQual;
                                                         })
                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
@@ -775,7 +801,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             for (const p of personnel || []) {
                                 const key = `p_${p.id}`;
                                 const raw = perPersonPresenceInMonth[key] || 0;
-                                const hasHLFB = !!(p as any).fahrzeugfuehrerHLFB;
+                                const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
                                 map[key] = hasHLFB ? Math.round(raw * 0.75) : raw;
                             }
                             return map;
@@ -907,7 +933,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 for (const p of personnel || []) {
                                     const key = `p_${p.id}`;
                                     const raw = perPersonPresenceInMonthCalc[key] || 0;
-                                    const hasHLFB = !!(p as any).fahrzeugfuehrerHLFB;
+                                    const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
                                     map[key] = hasHLFB ? Math.round(raw * 0.75) : raw;
                                 }
                                 return map;
@@ -1004,7 +1030,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 return ty - dy;
                             })();
                             const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
-                            const hlfb = !!(p as any).fahrzeugfuehrerHLFB;
+                            const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                             return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, teilzeit, hlfb } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, teilzeit: number, hlfb: boolean };
                         });
                         // Farbliche Hervorhebung: nur Personen mit Monats-Soll > 0 berücksichtigen, Rest (Jahr) auf 100%-Äquivalent normalisieren
@@ -1530,7 +1556,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 for (const p of personnel || []) {
                                     const key = `p_${p.id}`;
                                     const raw = perPersonPresenceInMonthCalc[key] || 0;
-                                    const hasHLFB = !!(p as any).fahrzeugfuehrerHLFB;
+                                    const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
                                     map[key] = hasHLFB ? Math.round(raw * 0.75) : raw;
                                 }
                                 return map;
@@ -1580,7 +1606,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             for (const p of personnel || []) {
                                 const key = `p_${p.id}`;
                                 const raw = perPersonPresenceInMonth[key] || 0;
-                                const hasHLFB = !!(p as any).fahrzeugfuehrerHLFB;
+                                const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
                                 map[key] = hasHLFB ? Math.round(raw * 0.75) : raw;
                             }
                             return map;
@@ -1636,7 +1662,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 return ty - dy;
                             })();
                             const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
-                            const hlfb = !!(p as any).fahrzeugfuehrerHLFB;
+                            const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                             return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, teilzeit, hlfb } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, teilzeit: number, hlfb: boolean };
                         });
                         const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
