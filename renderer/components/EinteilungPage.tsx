@@ -30,6 +30,13 @@ const EinteilungPage: React.FC = () => {
         if (setting) hlfbQualName = String(setting);
       } catch {}
       
+      // Lade Ü50 Qualifikationstyp aus Settings
+      let ue50QualName = 'Ü50'; // Fallback
+      try {
+        const setting = await (window as any).api.getSetting('ue50_qualification_type');
+        if (setting) ue50QualName = String(setting);
+      } catch {}
+      
       // Lade RTW und NEF Fahrzeuge um die konfigurierten Qualifikationen zu ermitteln
       const rtwVehicles = await (window as any).api.getRtwVehicles?.() || [];
       const nefVehicles = await (window as any).api.getNefVehicles?.() || [];
@@ -65,6 +72,7 @@ const EinteilungPage: React.FC = () => {
       console.log('[EinteilungPage] Erkannte RTW-Qualifikationen:', Array.from(rtwQualifications));
       console.log('[EinteilungPage] Erkannte NEF-Qualifikationen:', Array.from(nefQualifications));
       console.log('[EinteilungPage] HLFB-Qualifikation:', hlfbQualName);
+      console.log('[EinteilungPage] Ü50-Qualifikation:', ue50QualName);
       
       // Für jede Person die Qualifikationen aus qualification_periods laden
       const enrichedList = await Promise.all((list || []).map(async (person: any) => {
@@ -98,15 +106,24 @@ const EinteilungPage: React.FC = () => {
             (!p.endYM || p.endYM >= yearMonth)
           );
           
-          if (hasFahrzeugfuehrer || hasNef || hasHLFB) {
-            console.log(`[EinteilungPage] ${person.name}: FzF=${hasFahrzeugfuehrer}, NEF=${hasNef}, HLFB=${hasHLFB}`);
+          // Prüfe, ob Person Ü50-Qualifikation hat (keine Soll/Ist-Berechnung, wie Azubi)
+          const hasUe50 = periods.some((p: any) => 
+            p.active && 
+            p.qualType === ue50QualName &&
+            p.startYM <= yearMonth &&
+            (!p.endYM || p.endYM >= yearMonth)
+          );
+          
+          if (hasFahrzeugfuehrer || hasNef || hasHLFB || hasUe50) {
+            console.log(`[EinteilungPage] ${person.name}: FzF=${hasFahrzeugfuehrer}, NEF=${hasNef}, HLFB=${hasHLFB}, Ü50=${hasUe50}`);
           }
           
           return {
             ...person,
             fahrzeugfuehrer: hasFahrzeugfuehrer ? 1 : person.fahrzeugfuehrer,
             nef: hasNef ? 1 : person.nef,
-            fahrzeugfuehrerHLFB: hasHLFB ? 1 : person.fahrzeugfuehrerHLFB
+            fahrzeugfuehrerHLFB: hasHLFB ? 1 : person.fahrzeugfuehrerHLFB,
+            ue50: hasUe50 ? 1 : 0  // Neues Feld für Ü50-Status
           };
         } catch {
           return person;
