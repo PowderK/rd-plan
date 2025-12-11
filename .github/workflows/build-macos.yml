@@ -88,9 +88,23 @@ jobs:
       - name: Build (Vite renderer)
         run: npm run build:renderer
 
+      - name: Copy assets
+        run: npm run copy:assets
+
       - name: Package macOS app (unsigned)
         # Default mac target ist dmg/zip; baue anhand der Matrix-Architektur
         run: npx electron-builder --mac --${{ matrix.arch }} --publish never
+        
+      - name: Ad-hoc sign app bundle to prevent "damaged" error
+        shell: bash
+        run: |
+          if [ -d "dist/mac-arm64/RD-Plan.app" ]; then
+            echo "Ad-hoc signing RD-Plan.app..."
+            codesign --force --deep --sign - "dist/mac-arm64/RD-Plan.app"
+          elif [ -d "dist/mac/RD-Plan.app" ]; then
+            echo "Ad-hoc signing RD-Plan.app..."
+            codesign --force --deep --sign - "dist/mac/RD-Plan.app"
+          fi
 
       - name: Upload artifacts (tags oder manuell)
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
