@@ -1,5 +1,9 @@
 # RD-Plan
 
+<div align="center">
+  <img src="media/RD-Plan Logo.gif" alt="RD-Plan Logo" width="400"/>
+</div>
+
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Funktionen
@@ -20,9 +24,13 @@ RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die 
 
 ### Erweiterte Import-Funktionen
 - **Schutz manueller Bearbeitungen**: Bereits geänderte Einträge werden durch blaue Markierung geschützt
-- **Automatische Erkennung**: Neue Azubis und Dienstarten werden automatisch erkannt und können per Dialog erstellt werden
+- **Automatische Erkennung**: Neue Azubis und Dienstarten werden automatisch erkannt
+- **Dialog-basierte Erstellung**: Unbekannte Azubis und Dienstarten können per Dialog direkt während des Imports angelegt werden
+  - **Azubi-Dialog**: Konfiguration von Name, Vorname und Lehrjahr
+  - **Dienstarten-Dialog**: Festlegung von Beschreibung, Farbe und Auswertungstyp
 - **Intelligente Namensauflösung**: Flexible Zuordnung von Excel-Namen zu bestehenden Personen/Azubis
-- **Jahres- vs. Monatsimport**: Unterschiedliche Import-Modi für verschiedene Datenquellen
+- **Jahres- vs. Monatsimport**: Beide Modi unterstützen vollständige Dialog-Workflows für unbekannte Entitäten
+- **Automatischer Retry**: Nach Erstellung neuer Entitäten wird der Import automatisch fortgesetzt
 
 ### Kontrollkasten & Statistiken
 - **Konsistente Kennzahlen** je Ansicht (RTW/NEF und ITW):
@@ -85,17 +93,20 @@ Hinweis für Administratoren: Wenn du die Anwendung paketieren oder für andere 
 
 ## Entwicklungsstatus
 
-**Version 2.0.0** - Stabile Beta-Version
+**Version 2.0.0 (Build 441)** - Aktive Entwicklung
 
 Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangreichen Feature-Set. Die aktuelle Version 2.0.0 führt das **Azubi-Zeiträume-Management-System** ein und bietet erweiterte Import-Funktionen mit Datenschutz.
 
 **Produktionstauglichkeit**: Die Anwendung wird bereits in mehreren Rettungswachen erfolgreich eingesetzt. Für kritische Umgebungen wird empfohlen, die Funktionen vorab zu testen und regelmäßige Datensicherungen durchzuführen.
 
-**Neue Features in v2.0.0**:
-- Vollständiges Azubi-Zeiträume-Management
-- Schutz manueller Bearbeitungen beim Import
-- Automatische Erkennung neuer Azubis und Dienstarten
-- Erweiterte Benutzeroberfläche im Personal-Tab
+**Neue Features in v2.0.0 (Build 441)**:
+- ✅ Vollständiges Azubi-Zeiträume-Management
+- ✅ Schutz manueller Bearbeitungen beim Import
+- ✅ Automatische Erkennung neuer Azubis und Dienstarten mit Dialog-Unterstützung
+- ✅ Dialog-basierte Anlage unbekannter Entitäten (Azubis & Dienstarten) während Import
+- ✅ Erweiterte Benutzeroberfläche im Personal-Tab
+- ✅ Jahresimport mit vollständiger Azubi- und Dienstarten-Erkennung
+- ✅ Intelligente Namensauflösung mit Konfliktbehandlung
 
 ## Verwendung
 
@@ -146,22 +157,29 @@ Das **Zeiträume-System** ermöglicht es, Azubis nur in bestimmten Zeitperioden 
 
 ## Excel Import mit Datenschutz
 
-Das **erweiterte Import-System** bietet umfassenden Schutz vor Datenverlust:
+Das **erweiterte Import-System** bietet umfassenden Schutz vor Datenverlust und nahtlose Integration neuer Daten:
 
 ### Schutz manueller Bearbeitungen
 - **Blaue Markierungen**: Manuell geänderte Dienstplan-Einträge werden visuell gekennzeichnet
 - **Import-Schutz**: Geschützte Einträge werden beim Import automatisch übersprungen
 - **Selektiver Import**: Nur unveränderte Felder werden überschrieben
 
-### Intelligente Erkennung
-- **Neue Azubis**: Unbekannte Namen werden erkannt und können per Dialog als neue Azubis angelegt werden
-- **Neue Dienstarten**: Automatische Erkennung und Erstellung unbekannter Shift-Typen
+### Intelligente Erkennung & Dialog-Workflows
+- **Neue Azubis**: Unbekannte Namen werden erkannt und können per interaktivem Dialog als neue Azubis angelegt werden
+  - Automatische Aufteilung von "Nachname, Vorname"
+  - Konfiguration von Lehrjahr (1-4)
+  - Sofortiges Retry nach Erstellung
+- **Neue Dienstarten**: Automatische Erkennung und Dialog-basierte Erstellung unbekannter Shift-Typen
+  - Festlegung von Beschreibung, Farbe und Auswertung
+  - Unterstützt: Tagdienst, Nachtdienst, 24h-Dienst, ITW-Dienst, oder "Nicht zählen"
 - **Flexible Namensauflösung**: Tolerante Zuordnung von Excel-Namen zu bestehenden Personen
+- **Batch-Erstellung**: Mehrere neue Entitäten können in einem Durchgang konfiguriert werden
 
 ### Import-Modi
-- **Jahresimport**: Vollständiger Import ohne Azubi-Daten (für Stammpersonal)
+- **Jahresimport**: Vollständiger Import mit Dialog-Unterstützung für Azubis und Dienstarten
 - **Monatsimport**: Inklusive Azubi-Synchronisation mit Zeiträume-Berücksichtigung
 - **Konfliktlösung**: Interaktive Dialoge bei Unklarheiten oder neuen Entitäten
+- **Intelligenter Retry**: Import wird automatisch mit neu erstellten Entitäten fortgesetzt
 
 ## Einteilung & Kontrollkasten
 
@@ -190,11 +208,19 @@ Das **erweiterte Import-System** bietet umfassenden Schutz vor Datenverlust:
 
 ## Roadmap & Changelog
 
-### Version 2.0.0 (Aktuell)
+### Version 2.0.0 Build 441 (11. Dezember 2025) - Aktuell
+- ✅ **Azubi-Dialog für Jahresimport**: Unbekannte Azubis können nun auch beim Jahresimport per Dialog angelegt werden
+- ✅ **Dienstarten-Dialog für Jahresimport**: Automatische Erkennung und Erstellung neuer Shift-Typen
+- ✅ **Verbesserte Import-Engine**: `collectUnknownAzubiNames` unterstützt optionale Monatsfilterung
+- ✅ **UI-Verbesserungen**: Konsistente Dialog-Workflows für Monats- und Jahresimport
+- ✅ **Code-Konsolidierung**: Vereinheitlichte Verarbeitung des Azubi-Blocks
+
+### Version 2.0.0 Build 435-439 (November 2025)
 - ✅ **Azubi-Zeiträume-Management**: Vollständiges System zur Verwaltung von Azubi-Aktivitätszeiträumen
 - ✅ **Erweiterte Import-Funktionen**: Schutz manueller Bearbeitungen, automatische Erkennung neuer Entitäten
 - ✅ **Verbesserte UI**: Integrierte Zeiträume-Verwaltung im Personal-Tab
 - ✅ **Datenschutz**: Blaue Markierungen für manuell bearbeitete Dienstplan-Einträge
+- ✅ **Teilzeit-Support**: Excel-Export/-Import mit Teilzeit-Prozentangaben
 
 ### Geplante Features
 - 🔄 **Multi-User Support**: Zentrale Datenbankunterstützung für Teamarbeit
