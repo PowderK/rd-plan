@@ -91,7 +91,8 @@ const filterActiveAzubisForMonth = (azubis: any[], allPeriods: any[], year: numb
 
 const DutyRoster: React.FC = () => {
   const [personnel, setPersonnel] = useState<Person[]>([]);
-  const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [year, setYear] = useState<number>((window as any).rdPlanYear || new Date().getFullYear());
+  const [yearPlannings, setYearPlannings] = useState<{ year: number; filePath: string }[]>([]);
   const [shiftTypes, setShiftTypes] = useState<{ id: number, code: string, description: string }[]>([]);
   const [customDropdownValues, setCustomDropdownValues] = useState<string[]>([]);
   const [department, setDepartment] = useState<number>(1);
@@ -141,8 +142,17 @@ const DutyRoster: React.FC = () => {
       setPersonnel(list);
       setAzubis(azubiList);
       setAzubiPeriods(allPeriods);
-      const y = await (window as any).api.getSetting('year');
-      if (y) setYear(Number(y));
+      
+      // Lade jahresspezifische Vorplanungen
+      try {
+        const plannings = await (window as any).api.getYearPlannings?.();
+        if (plannings && Array.isArray(plannings)) {
+          setYearPlannings(plannings.map((p: any) => ({ year: Number(p.year), filePath: String(p.filePath) })));
+        }
+      } catch (e) {
+        console.error('Failed to load year plannings:', e);
+      }
+      
   const types = await (window as any).api.getShiftTypes();
   setShiftTypes(types);
   // Lade Auswertung je Dienstart (off|tag|nacht|24h|itw)
@@ -352,7 +362,34 @@ const DutyRoster: React.FC = () => {
   }, []);
 
   // Monatsweise Ansicht: ausgewählter Monat und Tage
-  const [currentMonth, setCurrentMonth] = useState<number>(new Date().getMonth());
+  const [currentMonth, setCurrentMonth] = useState<number>(() => {
+    // Restore from window if available, otherwise use current month or January based on year
+    if ((window as any).rdPlanMonth !== undefined) {
+      return (window as any).rdPlanMonth;
+    }
+    const currentYear = new Date().getFullYear();
+    return year === currentYear ? new Date().getMonth() : 0;
+  });
+  
+  // Speichere currentMonth im window-Objekt
+  useEffect(() => {
+    (window as any).rdPlanMonth = currentMonth;
+  }, [currentMonth]);
+  
+  // Synchronisiere Jahr mit window-Objekt für Header und springe zum passenden Monat NUR bei Jahr-Änderung
+  useEffect(() => {
+    // Teile Jahr mit anderen Komponenten
+    (window as any).rdPlanYear = year;
+    window.dispatchEvent(new CustomEvent('rdplan-year-changed', { detail: { year } }));
+    
+    // Wenn aktuelles Jahr: springe zum aktuellen Monat, sonst Januar (nur wenn Jahr wirklich geändert wurde)
+    const currentYear = new Date().getFullYear();
+    if (year === currentYear) {
+      setCurrentMonth(new Date().getMonth());
+    } else {
+      setCurrentMonth(0); // Januar
+    }
+  }, [year]);
 
   // Filter azubis based on active periods for current month
   useEffect(() => {
@@ -475,9 +512,24 @@ const DutyRoster: React.FC = () => {
 
   // Import-Handler
   const handleImport = async () => {
-    const rosterImportPath = await (window as any).api.getSetting('rosterImportPath');
+    // Versuche jahresspezifische Vorplanungsdatei zu laden
+    let rosterImportPath = null;
+    try {
+      const yearPlanning = await (window as any).api.getYearPlanningForYear?.(year);
+      if (yearPlanning?.filePath) {
+        rosterImportPath = yearPlanning.filePath;
+      }
+    } catch (e) {
+      console.warn('Fehler beim Laden der jahresspezifischen Vorplanung:', e);
+    }
+    
+    // Fallback: alte rosterImportPath Einstellung
     if (!rosterImportPath) {
-        alert('Bitte hinterlegen Sie zuerst den Pfad zur Excel-Datei in den Einstellungen.');
+      rosterImportPath = await (window as any).api.getSetting('rosterImportPath');
+    }
+    
+    if (!rosterImportPath) {
+        alert('Bitte hinterlegen Sie zuerst eine Vorplanungsdatei für das Jahr ' + year + ' in den Einstellungen.');
         return;
     }
     const ok = window.confirm(`Möchten Sie den Dienstplan für ${months[currentMonth]} ${year} aus der Excel-Datei importieren? Bestehende Daten für diesen Monat werden überschrieben.`);
@@ -878,12 +930,31 @@ const DutyRoster: React.FC = () => {
 
   return (
     <div style={{ overflowX: 'auto', padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <h2 style={{ margin: 0, marginRight: 'auto' }}>Dienstplan {year}</h2>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button onClick={() => setYear(prev => prev - 1)} style={{ padding: '4px 10px' }}>« Jahr</button>
-          <button onClick={() => setYear(prev => prev + 1)} style={{ padding: '4px 10px' }}>Jahr »</button>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <h2 style={{ margin: 0, marginRight: 'auto' }}>Dienstplan</h2>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          Jahr:
+          <select
+            value={year}
+            onChange={e => setYear(Number(e.target.value))}
+            style={{ 
+              padding: '6px 10px',
+              fontSize: 14,
+              borderRadius: 6,
+              border: '1px solid #bbb',
+              background: '#fff',
+              cursor: 'pointer'
+            }}
+          >
+            {yearPlannings.length > 0 ? (
+              yearPlannings.map(yp => (
+                <option key={yp.year} value={yp.year}>{yp.year}</option>
+              ))
+            ) : (
+              <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>
+            )}
+          </select>
+        </label>
       </div>
       {/* Monats-Tabs */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>

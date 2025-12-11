@@ -45,6 +45,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [showSettingsImportExport, setShowSettingsImportExport] = useState(false);
   const [showExcelImport, setShowExcelImport] = useState(false);
   const [rosterImportPath, setRosterImportPath] = useState('');
+  // Jahresspezifische Vorplanungsdateien
+  const [yearPlannings, setYearPlannings] = useState<{ year: number; filePath: string }[]>([]);
+  const [editingYearPlannings, setEditingYearPlannings] = useState(false);
+  const [originalYearPlannings, setOriginalYearPlannings] = useState<{ year: number; filePath: string }[] | null>(null);
+  const [selectedYearPlanningIndex, setSelectedYearPlanningIndex] = useState<number | null>(null);
+  const [yearImportSelectedYear, setYearImportSelectedYear] = useState<number>(year); // Jahr für Excel-Import
   const [doBackup, setDoBackup] = useState<boolean>(true);
   const [showRestore, setShowRestore] = useState<boolean>(false);
   const [backups, setBackups] = useState<Array<{ path: string; year: string; ym: string; timestamp: string; label: string }>>([]);
@@ -87,10 +93,20 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               const v = String(value);
               setRescueStation(['1','2','3','4','5'].includes(v) ? v : '1');
             }
-            const y = await (window as any).api.getSetting('year');
-            if (y) setYear(Number(y));
+            // year bleibt auf aktuellem Jahr (für Feiertage-Anzeige)
             const rosterPath = await (window as any).api.getSetting('rosterImportPath');
             if (rosterPath) setRosterImportPath(rosterPath);
+            
+            // Lade jahresspezifische Vorplanungen
+            try {
+              const plannings = await (window as any).api.getYearPlannings?.();
+              if (plannings && Array.isArray(plannings)) {
+                setYearPlannings(plannings.map((p: any) => ({ year: Number(p.year), filePath: String(p.filePath) })));
+              }
+            } catch (e) {
+              console.error('Failed to load year plannings:', e);
+            }
+            
             const types = await (window as any).api.getShiftTypes();
             setShiftTypes(types);
             // Fahrzeug-UI entfernt
@@ -181,8 +197,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     const handleSave = async () => {
         setSaving(true);
         await (window as any).api.setSetting('rescueStation', rescueStation);
-        await (window as any).api.setSetting('year', String(year));
-        await (window as any).api.setSetting('rosterImportPath', rosterImportPath);
+        // year wird nicht mehr als Setting gespeichert - direkt im Dienstplan/Werte gewählt
         await (window as any).api.setSetting('hlfb_qualification_type', hlfbQualificationType);
         await (window as any).api.setSetting('ue50_qualification_type', ue50QualificationType);
   // Anzahl RTW/NEF leitet sich aus den Einträgen ab – keine separaten Settings mehr
@@ -521,19 +536,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               </div>
             </div>
 
-            {/* Reihenfolge: Jahr / Rettungswache / Abteilung */}
+            {/* Reihenfolge: Rettungswache / Abteilung */}
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
-              <label>
-                Jahr:
-                <input
-                  type="number"
-                  value={year}
-                  min={2020}
-                  max={2100}
-                  onChange={e => setYear(Number(e.target.value))}
-                  style={{ marginLeft: 8, width: 80 }}
-                />
-              </label>
               <label>
                 Feuer- und Rettungswache:
                 <select value={rescueStation} onChange={e => setRescueStation(e.target.value)} style={{ marginLeft: 8 }}>
@@ -556,31 +560,203 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
 
             {/* Dienstplan-Import */}
             <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
-                <h3>Dienstplan-Vorausplanung</h3>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input
-                        type="text"
-                        value={rosterImportPath}
-                        readOnly
-                        placeholder="Pfad zur Excel-Datei für die Vorausplanung"
-                        style={{ flex: 1 }}
-                    />
-          <button onClick={async () => {
-            const result = await (window as any).api.showOpenDialog({
-              properties: ['openFile'],
-              filters: [{ name: 'Excel-Dateien', extensions: ['xlsx', 'xls', 'xlsm'] }]
-            });
-            if (!result.canceled && result.filePaths.length > 0) {
-              const p = result.filePaths[0];
-              setRosterImportPath(p);
-              try { await (window as any).api.setSetting('rosterImportPath', p); } catch {}
-            }
-          }}>Datei auswählen</button>
-                </div>
+                <h3>Jahresspezifische Vorplanungsdateien</h3>
+                <p style={{ fontSize: 14, color: '#666', marginBottom: 12 }}>
+                  Hinterlegen Sie für jedes Jahr eine Excel-Datei mit der Vorausplanung.
+                </p>
+                
+                {!editingYearPlannings && (
+                  <div>
+                    {yearPlannings.length === 0 && (
+                      <p style={{ fontStyle: 'italic', color: '#999' }}>Keine Vorplanungen hinterlegt.</p>
+                    )}
+                    {yearPlannings.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        {yearPlannings.map((yp, idx) => (
+                          <div key={idx} style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center',
+                            padding: '8px 12px',
+                            marginBottom: 4,
+                            background: '#f8f9fa',
+                            borderRadius: 4,
+                            border: '1px solid #dee2e6'
+                          }}>
+                            <div style={{ flex: 1 }}>
+                              <strong>Jahr {yp.year}:</strong> <span style={{ fontSize: 13, color: '#555' }}>{yp.filePath}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <button 
+                      onClick={() => {
+                        setEditingYearPlannings(true);
+                        setOriginalYearPlannings(JSON.parse(JSON.stringify(yearPlannings)));
+                        setSelectedYearPlanningIndex(null);
+                      }}
+                      style={{ padding: '6px 12px' }}
+                    >
+                      Bearbeiten / Jahr hinzufügen
+                    </button>
+                  </div>
+                )}
+                
+                {editingYearPlannings && (
+                  <div style={{ border: '1px solid #ddd', padding: 12, borderRadius: 4, background: '#f9f9f9' }}>
+                    <h4 style={{ marginTop: 0 }}>Vorplanungen bearbeiten</h4>
+                    
+                    <div style={{ marginBottom: 12 }}>
+                      {yearPlannings.map((yp, idx) => (
+                        <div key={idx} style={{ 
+                          display: 'flex', 
+                          gap: 8, 
+                          alignItems: 'center', 
+                          marginBottom: 8,
+                          padding: 8,
+                          background: selectedYearPlanningIndex === idx ? '#e3f2fd' : 'white',
+                          borderRadius: 4,
+                          border: '1px solid #ccc',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => setSelectedYearPlanningIndex(idx)}
+                        >
+                          <input
+                            type="number"
+                            value={yp.year}
+                            onChange={e => {
+                              const updated = [...yearPlannings];
+                              updated[idx].year = Number(e.target.value) || new Date().getFullYear();
+                              setYearPlannings(updated);
+                            }}
+                            onClick={e => e.stopPropagation()}
+                            style={{ width: 80 }}
+                          />
+                          <input
+                            type="text"
+                            value={yp.filePath}
+                            readOnly
+                            placeholder="Pfad zur Excel-Datei"
+                            style={{ flex: 1 }}
+                            onClick={e => e.stopPropagation()}
+                          />
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const result = await (window as any).api.showOpenDialog({
+                                properties: ['openFile'],
+                                filters: [{ name: 'Excel-Dateien', extensions: ['xlsx', 'xls', 'xlsm'] }]
+                              });
+                              if (!result.canceled && result.filePaths.length > 0) {
+                                const updated = [...yearPlannings];
+                                updated[idx].filePath = result.filePaths[0];
+                                setYearPlannings(updated);
+                              }
+                            }}
+                            style={{ padding: '4px 8px', fontSize: 12 }}
+                          >
+                            Datei wählen
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Jahr ${yp.year} wirklich löschen?`)) {
+                                setYearPlannings(yearPlannings.filter((_, i) => i !== idx));
+                                if (selectedYearPlanningIndex === idx) setSelectedYearPlanningIndex(null);
+                              }
+                            }}
+                            style={{ padding: '4px 8px', fontSize: 12, background: '#dc3545', color: 'white', border: 'none', borderRadius: 4 }}
+                          >
+                            Löschen
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <button
+                      onClick={() => {
+                        // Finde das nächste freie Jahr
+                        const currentYear = new Date().getFullYear();
+                        const existingYears = yearPlannings.map(yp => yp.year).sort((a, b) => b - a);
+                        
+                        let newYear = currentYear;
+                        
+                        // Wenn es bereits Jahre gibt, nimm das höchste Jahr + 1
+                        if (existingYears.length > 0) {
+                          const maxYear = Math.max(...existingYears);
+                          // Wenn das aktuelle Jahr oder höher schon existiert, nimm das Maximum + 1
+                          if (maxYear >= currentYear) {
+                            newYear = maxYear + 1;
+                          }
+                        }
+                        
+                        // Sicherheitsprüfung: Falls das Jahr trotzdem existiert, suche das nächste freie
+                        while (yearPlannings.some(yp => yp.year === newYear)) {
+                          newYear++;
+                        }
+                        
+                        setYearPlannings([...yearPlannings, { year: newYear, filePath: '' }]);
+                      }}
+                      style={{ padding: '6px 12px', marginRight: 8 }}
+                    >
+                      + Jahr hinzufügen
+                    </button>
+                    
+                    <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #ddd', display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={async () => {
+                          // Speichern in Datenbank
+                          try {
+                            await (window as any).api.saveYearPlannings?.(yearPlannings);
+                            setEditingYearPlannings(false);
+                            setOriginalYearPlannings(null);
+                            setSelectedYearPlanningIndex(null);
+                            alert('Vorplanungen gespeichert!');
+                          } catch (e) {
+                            alert(`Fehler beim Speichern: ${e instanceof Error ? e.message : String(e)}`);
+                          }
+                        }}
+                        style={{ padding: '6px 12px', background: '#28a745', color: 'white', border: 'none', borderRadius: 4 }}
+                      >
+                        Speichern
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (originalYearPlannings) {
+                            setYearPlannings(originalYearPlannings);
+                          }
+                          setEditingYearPlannings(false);
+                          setOriginalYearPlannings(null);
+                          setSelectedYearPlanningIndex(null);
+                        }}
+                        style={{ padding: '6px 12px' }}
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
+                  </div>
+                )}
             </div>
 
             {/* Import Dienstplan (Excel) - Monatsimport aus Settings entfernt */}
             <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                Jahr für Import:
+                <select
+                  value={yearImportSelectedYear}
+                  onChange={e => setYearImportSelectedYear(Number(e.target.value))}
+                  style={{ marginLeft: 6, padding: '4px 8px' }}
+                >
+                  {yearPlannings.map(yp => (
+                    <option key={yp.year} value={yp.year}>{yp.year}</option>
+                  ))}
+                  {/* Fallback falls keine Jahr-Planungen definiert */}
+                  {yearPlannings.length === 0 && <option value={year}>{year}</option>}
+                </select>
+              </label>
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <input type="checkbox" checked={doBackup} onChange={e => setDoBackup(e.target.checked)} />
                 Backup vor Import erstellen
@@ -590,26 +766,44 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               <button
                 onClick={async () => {
                   try {
-                    if (!rosterImportPath) {
-                      alert('Bitte zuerst die Excel-Datei auswählen.');
+                    // Versuche jahresspezifische Vorplanungsdatei zu laden
+                    let importPath = null;
+                    try {
+                      console.log('[Import] Lade Vorplanung für Jahr:', yearImportSelectedYear);
+                      const yearPlanning = await (window as any).api.getYearPlanningForYear?.(yearImportSelectedYear);
+                      console.log('[Import] Geladene Vorplanung:', yearPlanning);
+                      if (yearPlanning?.filePath) {
+                        importPath = yearPlanning.filePath;
+                        console.log('[Import] Verwende jahresspezifische Datei:', importPath);
+                      }
+                    } catch (e) {
+                      console.warn('Fehler beim Laden der jahresspezifischen Vorplanung:', e);
+                    }
+                    
+                    // Fallback: alte rosterImportPath Einstellung
+                    if (!importPath) {
+                      importPath = rosterImportPath;
+                      console.log('[Import] Fallback auf rosterImportPath:', importPath);
+                    }
+                    
+                    if (!importPath) {
+                      alert('Bitte zuerst eine Vorplanungsdatei für das Jahr ' + yearImportSelectedYear + ' hinterlegen.');
                       return;
                     }
-                    // Pfad sicherheitshalber direkt persistieren, falls der Nutzer nicht speichert
-                    try { await (window as any).api.setSetting('rosterImportPath', rosterImportPath); } catch {}
                     // Warnung anzeigen: Überschreiben bestätigen
                     let proceed = true;
                     try {
-                      const prev = await (window as any).api.getDatabaseSummary?.(Number(year));
+                      const prev = await (window as any).api.getDatabaseSummary?.(yearImportSelectedYear);
                       const prevCount = prev?.success ? prev.counts?.dutyRoster : undefined;
-                      const detail = `Vorhandene Einträge für ${year}: ${prevCount ?? 'n/v'}\n`+
-                        `Backup wird unter backups/${year}/${year}-ALL/... erstellt.`;
+                      const detail = `Vorhandene Einträge für ${yearImportSelectedYear}: ${prevCount ?? 'n/v'}\n`+
+                        `Backup wird unter backups/${yearImportSelectedYear}/${yearImportSelectedYear}-ALL/... erstellt.`;
                       const box = await (window as any).api.showMessageBox?.({
                         type: 'warning',
                         buttons: ['Import starten', 'Abbrechen'],
                         defaultId: 0,
                         cancelId: 1,
                         title: 'Dienstplan überschreiben',
-                        message: `Achtung: Der Dienstplan für ${year} wird vollständig überschrieben. Fortfahren?`,
+                        message: `Achtung: Der Dienstplan für ${yearImportSelectedYear} wird vollständig überschrieben. Fortfahren?`,
                         detail
                       });
                       proceed = !box || typeof box.response !== 'number' ? true : (box.response === 0);
@@ -619,7 +813,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                     // Optionales Backup
                     if (doBackup) {
                       try {
-                        const r = await (window as any).api.createDatabaseBackup?.({ year: Number(year) });
+                        const r = await (window as any).api.createDatabaseBackup?.({ year: yearImportSelectedYear });
                         if (!r?.success) console.warn('[SettingsMenu] Backup fehlgeschlagen:', r?.message);
                         else console.log('[SettingsMenu] Backup erstellt unter:', r.dir);
                       } catch (e) {
@@ -631,12 +825,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
 
                     // Altdaten für das Jahr löschen
                     try {
-                      await (window as any).api.clearDutyRosterYear?.(Number(year));
+                      await (window as any).api.clearDutyRosterYear?.(yearImportSelectedYear);
                     } catch (e) {
                       console.warn('[SettingsMenu] clearDutyRosterYear Fehler', e);
                     }
 
-                    const res = await (window as any).api.importDutyRoster(rosterImportPath, Number(year));
+                    const res = await (window as any).api.importDutyRoster(importPath, yearImportSelectedYear);
                     if (res && res.success) {
                       // Check if unknown shift types were found
                       if (res.unknownShiftTypes && res.unknownShiftTypes.length > 0) {
@@ -648,7 +842,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                           // Show new shift type dialog
                           setShowYearImportShiftTypeDialog(true);
                           setYearImportUnknownShiftTypes(res.unknownShiftTypes);
-                          setYearImportPendingYear(Number(year));
+                          setYearImportPendingYear(yearImportSelectedYear);
                         }
                         return;
                       }
@@ -662,12 +856,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                         if (createNewAzubis) {
                           setShowYearImportAzubiDialog(true);
                           setYearImportUnknownAzubiNames(res.unknownAzubis);
-                          setYearImportPendingYear(Number(year));
+                          setYearImportPendingYear(yearImportSelectedYear);
                         }
                         return;
                       }
                       
-                      alert(`Dienstplan für ${year} erfolgreich importiert. Einträge: ${res.importedCount ?? 'n/v'}`);
+                      alert(`Dienstplan für ${yearImportSelectedYear} erfolgreich importiert. Einträge: ${res.importedCount ?? 'n/v'}`);
                       try { (window as any).api.onDutyRosterUpdated?.(() => {}); } catch {}
                     } else {
                       alert(`Import fehlgeschlagen: ${res?.message || 'Unbekannter Fehler'}`);
@@ -683,12 +877,32 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               <button
                 onClick={async () => {
                   try {
-                    if (!rosterImportPath) {
-                      alert('Bitte zuerst die Excel-Datei auswählen.');
+                    // Versuche jahresspezifische Vorplanungsdatei zu laden
+                    let importPath = null;
+                    try {
+                      console.log('[Vorschau] Lade Vorplanung für Jahr:', yearImportSelectedYear);
+                      const yearPlanning = await (window as any).api.getYearPlanningForYear?.(yearImportSelectedYear);
+                      console.log('[Vorschau] Geladene Vorplanung:', yearPlanning);
+                      if (yearPlanning?.filePath) {
+                        importPath = yearPlanning.filePath;
+                        console.log('[Vorschau] Verwende jahresspezifische Datei:', importPath);
+                      }
+                    } catch (e) {
+                      console.warn('Fehler beim Laden der jahresspezifischen Vorplanung:', e);
+                    }
+                    
+                    // Fallback: alte rosterImportPath Einstellung
+                    if (!importPath) {
+                      importPath = rosterImportPath;
+                      console.log('[Vorschau] Fallback auf rosterImportPath:', importPath);
+                    }
+                    
+                    if (!importPath) {
+                      alert('Bitte zuerst eine Vorplanungsdatei für das Jahr ' + yearImportSelectedYear + ' hinterlegen.');
                       return;
                     }
                     // Lade Vorschau
-                    const prev = await (window as any).api.previewDutyRoster?.(rosterImportPath, Number(year));
+                    const prev = await (window as any).api.previewDutyRoster?.(importPath, yearImportSelectedYear);
                     if (!prev?.success) {
                       alert('Vorschau fehlgeschlagen: ' + (prev?.message || 'Unbekannt'));
                       return;

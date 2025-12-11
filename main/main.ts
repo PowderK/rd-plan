@@ -506,6 +506,29 @@ ipcMain.handle('get-active-qualifications', async (_event, personId: number, yea
     return await adapter.getActiveQualifications(personId, yearMonth);
 });
 
+// Year Plannings handlers
+ipcMain.handle('get-year-plannings', async () => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getYearPlannings();
+});
+
+ipcMain.handle('get-year-planning-for-year', async (_event, year: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getYearPlanningForYear(year);
+});
+
+ipcMain.handle('save-year-plannings', async (_event, plannings: { year: number; filePath: string }[]) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.saveYearPlannings(plannings);
+    return true;
+});
+
+ipcMain.handle('delete-year-planning', async (_event, year: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteYearPlanning(year);
+    return true;
+});
+
 // ITW Doctor handlers
 ipcMain.handle('get-itw-doctors', async () => {
     const adapter = await ensureDatabaseAdapter();

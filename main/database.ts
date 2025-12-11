@@ -612,6 +612,20 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         await db.exec(`CREATE INDEX idx_itw_vehicle_periods_vehicle ON itw_vehicle_periods (vehicleId)`);
     }
 
+    // --- Jahresspezifische Vorplanungsdateien ---
+    const yearPlanningsExists = await db.get(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='year_plannings'"
+    );
+    if (!yearPlanningsExists) {
+        console.log('[DB] Creating year_plannings table');
+        await db.exec(`
+            CREATE TABLE year_plannings (
+                year INTEGER PRIMARY KEY,
+                filePath TEXT NOT NULL
+            )
+        `);
+    }
+
     return db;
 };
 
@@ -1774,10 +1788,22 @@ export const addQualificationType = async (db: AsyncDB, qualType: Omit<Qualifica
         throw new Error('Der Name der Qualifikation ist erforderlich');
     }
     
-    await db.run(
-        'INSERT INTO qualification_types (name, description, category, active, sort, excludeFromStats) VALUES (?, ?, ?, ?, ?, ?)',
-        [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort, qualType.excludeFromStats ? 1 : 0]
-    );
+    // Prüfe ob excludeFromStats Spalte existiert
+    const cols = await db.all("PRAGMA table_info('qualification_types')");
+    const hasExcludeFromStats = cols.some((c: any) => c.name === 'excludeFromStats');
+    
+    if (hasExcludeFromStats) {
+        await db.run(
+            'INSERT INTO qualification_types (name, description, category, active, sort, excludeFromStats) VALUES (?, ?, ?, ?, ?, ?)',
+            [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort, qualType.excludeFromStats ? 1 : 0]
+        );
+    } else {
+        // Fallback ohne excludeFromStats (für alte Datenbanken)
+        await db.run(
+            'INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, ?, ?)',
+            [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort]
+        );
+    }
 };
 
 export const updateQualificationType = async (db: AsyncDB, qualType: QualificationType): Promise<void> => {
@@ -1789,10 +1815,22 @@ export const updateQualificationType = async (db: AsyncDB, qualType: Qualificati
         throw new Error('Der Name der Qualifikation ist erforderlich');
     }
     
-    await db.run(
-        'UPDATE qualification_types SET name = ?, description = ?, category = ?, active = ?, sort = ?, excludeFromStats = ? WHERE id = ?',
-        [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort, qualType.excludeFromStats ? 1 : 0, qualType.id]
-    );
+    // Prüfe ob excludeFromStats Spalte existiert
+    const cols = await db.all("PRAGMA table_info('qualification_types')");
+    const hasExcludeFromStats = cols.some((c: any) => c.name === 'excludeFromStats');
+    
+    if (hasExcludeFromStats) {
+        await db.run(
+            'UPDATE qualification_types SET name = ?, description = ?, category = ?, active = ?, sort = ?, excludeFromStats = ? WHERE id = ?',
+            [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort, qualType.excludeFromStats ? 1 : 0, qualType.id]
+        );
+    } else {
+        // Fallback ohne excludeFromStats (für alte Datenbanken)
+        await db.run(
+            'UPDATE qualification_types SET name = ?, description = ?, category = ?, active = ?, sort = ? WHERE id = ?',
+            [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort, qualType.id]
+        );
+    }
 };
 
 export const deleteQualificationType = async (db: AsyncDB, id: number): Promise<void> => {
@@ -2003,5 +2041,58 @@ export const initializeDefaultVehiclePositions = async (
              VALUES (?, ?, ?, ?, ?)`,
             [vehicleType, vehicleId, pos.positionName, pos.qualificationTypeId, pos.sort]
         );
+    }
+};
+
+// --- Jahresspezifische Vorplanungsdateien ---
+export const getYearPlannings = async (db: AsyncDB) => {
+    // Defensive: Stelle sicher, dass die Tabelle existiert
+    await ensureYearPlanningsTable(db);
+    return await db.all('SELECT year, filePath FROM year_plannings ORDER BY year ASC');
+};
+
+export const getYearPlanningForYear = async (db: AsyncDB, year: number) => {
+    // Defensive: Stelle sicher, dass die Tabelle existiert
+    await ensureYearPlanningsTable(db);
+    return await db.get('SELECT year, filePath FROM year_plannings WHERE year = ?', [year]);
+};
+
+export const saveYearPlannings = async (db: AsyncDB, plannings: { year: number; filePath: string }[]) => {
+    // Defensive: Stelle sicher, dass die Tabelle existiert
+    await ensureYearPlanningsTable(db);
+    
+    // Lösche alle bestehenden Einträge
+    await db.run('DELETE FROM year_plannings');
+    
+    // Füge neue Einträge hinzu
+    for (const planning of plannings) {
+        if (planning.year && planning.filePath) {
+            await db.run(
+                'INSERT INTO year_plannings (year, filePath) VALUES (?, ?)',
+                [planning.year, planning.filePath]
+            );
+        }
+    }
+};
+
+export const deleteYearPlanning = async (db: AsyncDB, year: number) => {
+    // Defensive: Stelle sicher, dass die Tabelle existiert
+    await ensureYearPlanningsTable(db);
+    await db.run('DELETE FROM year_plannings WHERE year = ?', [year]);
+};
+
+// Hilfsfunktion: Stelle sicher, dass year_plannings Tabelle existiert
+const ensureYearPlanningsTable = async (db: AsyncDB) => {
+    const exists = await db.get(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='year_plannings'"
+    );
+    if (!exists) {
+        console.log('[DB] Creating missing year_plannings table');
+        await db.exec(`
+            CREATE TABLE year_plannings (
+                year INTEGER PRIMARY KEY,
+                filePath TEXT NOT NULL
+            )
+        `);
     }
 };

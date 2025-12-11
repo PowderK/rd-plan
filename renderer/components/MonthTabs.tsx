@@ -762,11 +762,26 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             }
                             return sum;
                         })();
-                        const positionsAdjInMonth = Math.max(0, deptShiftsInMonth * (activeRtwCount * 4 + activeNefCount * 2) + itwShiftsInMonth - azubiMaschinistShiftsInMonth);
+                        // Ü50-Personen-Schichten (alle Positionen)
+                        const ue50ShiftsInMonth = (() => {
+                            let sum = 0;
+                            for (const p of personnel || []) {
+                                if ((p as any).ue50 !== 1) continue;
+                                const key = `p_${p.id}`;
+                                for (const iso of allMonthDays) {
+                                    const t = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.type || '');
+                                    if (t) sum++;
+                                }
+                            }
+                            return sum;
+                        })();
+                        const positionsAdjInMonth = Math.max(0, deptShiftsInMonth * (activeRtwCount * 4 + activeNefCount * 2) + itwShiftsInMonth - azubiMaschinistShiftsInMonth - ue50ShiftsInMonth);
                         // Aktives Stammpersonal im Monat (mind. ein Präsenz-Tag) – ungewichtet
                         const activePersonnelInMonth = (() => {
                             let sum = 0;
                             for (const p of personnel || []) {
+                                // Ü50-Personen ausschließen (wie Azubis: keine Soll/Ist-Berechnung)
+                                if ((p as any).ue50 === 1) continue;
                                 const key = `p_${p.id}`;
                                 let presence = 0;
                                 for (const iso of allMonthDays) {
@@ -785,6 +800,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const perPersonPresenceInMonth: Record<string, number> = (() => {
                             const map: Record<string, number> = {};
                             for (const p of personnel || []) {
+                                // Ü50-Personen ausschließen
+                                if ((p as any).ue50 === 1) continue;
                                 const key = `p_${p.id}`;
                                 let presence = 0;
                                 for (const iso of allMonthDays) {
@@ -799,6 +816,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const perPersonPresenceWeightedInMonth: Record<string, number> = (() => {
                             const map: Record<string, number> = {};
                             for (const p of personnel || []) {
+                                // Ü50-Personen ausschließen
+                                if ((p as any).ue50 === 1) continue;
                                 const key = `p_${p.id}`;
                                 const raw = perPersonPresenceInMonth[key] || 0;
                                 const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
@@ -822,6 +841,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const perPersonNefInMonth: Record<string, number> = {};
                         const perPersonItwInMonth: Record<string, number> = {};
                         for (const p of (personnel || [])) {
+                            // Ü50-Personen ausschließen
+                            if ((p as any).ue50 === 1) continue;
                             const key = `p_${p.id}`;
                             let cnt = 0;
                             let tagCnt = 0;
@@ -913,10 +934,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 }
                                 return sum;
                             })();
-                            const positionsAdjInMonthCalc = Math.max(0, deptShiftsInMonthCalc * (activeRtwCountM * 4 + activeNefCountM * 2) + itwShiftsInMonthCalc - azubiMaschinistShiftsInMonthCalc);
+                            // Ü50-Personen-Schichten (alle Positionen)
+                            const ue50ShiftsInMonthCalc = (() => {
+                                let sum = 0;
+                                const reSlot = /^(rtw\d+_(tag|nacht)_[12]|nef(\d+)?_(arzt|assist|azubi)|itw_row_[123])$/;
+                                for (const p of personnel || []) {
+                                    if ((p as any).ue50 !== 1) continue;
+                                    const key = `p_${p.id}`;
+                                    for (const iso of allMonthDays) {
+                                        const t = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.type || '');
+                                        if (reSlot.test(t)) sum++;
+                                    }
+                                }
+                                return sum;
+                            })();
+                            const positionsAdjInMonthCalc = Math.max(0, deptShiftsInMonthCalc * (activeRtwCountM * 4 + activeNefCountM * 2) + itwShiftsInMonthCalc - azubiMaschinistShiftsInMonthCalc - ue50ShiftsInMonthCalc);
                             const perPersonPresenceInMonthCalc: Record<string, number> = (() => {
                                 const map: Record<string, number> = {};
                                 for (const p of personnel || []) {
+                                    if ((p as any).ue50 === 1) continue;
                                     const key = `p_${p.id}`;
                                     let presence = 0;
                                     for (const iso of allMonthDays) {
@@ -931,6 +967,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             const perPersonPresenceWeightedInMonthCalc: Record<string, number> = (() => {
                                 const map: Record<string, number> = {};
                                 for (const p of personnel || []) {
+                                    if ((p as any).ue50 === 1) continue;
                                     const key = `p_${p.id}`;
                                     const raw = perPersonPresenceInMonthCalc[key] || 0;
                                     const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
@@ -1031,7 +1068,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             })();
                             const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
                             const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
-                            return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, teilzeit, hlfb } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, teilzeit: number, hlfb: boolean };
+                            const ue50 = (p as any).ue50 === 1;
+                            return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, teilzeit, hlfb, ue50 } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, teilzeit: number, hlfb: boolean, ue50: boolean };
                         });
                         // Farbliche Hervorhebung: nur Personen mit Monats-Soll > 0 berücksichtigen, Rest (Jahr) auf 100%-Äquivalent normalisieren
                         const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
@@ -1125,13 +1163,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         }
                                         return (
                                             <div key={idx} className={styles.sidebarItem} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto auto', alignItems: 'center', gap: 8 }}>
-                                            <span className={styles.sidebarName} style={{ color: it.hlfb ? '#1565c0' : undefined }}>{it.name}</span>
+                                            <span className={styles.sidebarName} style={{ color: it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : undefined }}>{it.name}</span>
                                             <span className={styles.sidebarVal}>{(it.target === '' ? '–' : it.target) + ' | ' + it.count}</span>
                                             <span className={styles.sidebarVal}>{it.nef}</span>
                                             <span className={styles.sidebarVal}>{it.itw}</span>
-                                                <span className={styles.sidebarVal} style={restStyle}>{Number.isFinite(it.rest) ? it.rest : '–'}</span>
-                                            {/* Zweiteilige Balkenanzeige: links Nacht (blau), rechts Tag (orange) */}
-                                                <div style={{ gridColumn: '1 / span 6', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                                {!it.ue50 && <span className={styles.sidebarVal} style={restStyle}>{Number.isFinite(it.rest) ? it.rest : '–'}</span>}
+                                                {it.ue50 && <span className={styles.sidebarVal}>–</span>}
+                                            {/* Zweiteilige Balkenanzeige: links Nacht (blau), rechts Tag (orange) - nur wenn nicht Ü50 */}
+                                                {!it.ue50 && <div style={{ gridColumn: '1 / span 6', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                                                 <div style={{ position: 'relative', width: 100, height: 8, background: '#eef2f7', borderRadius: 4 }}>
                                                     <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1' }} />
                                                     {(() => {
@@ -1183,7 +1222,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                         </div>
                                                     );
                                                 })()}
-                                                </div>
+                                                </div>}
                                             </div>
                                         );
                                     })}
@@ -1387,10 +1426,26 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             }
                             return sum;
                         })();
-                        const positionsAdjInMonth = Math.max(0, deptShiftsInMonth * (activeRtwCount * 4 + activeNefCount * 2) + itwShiftsInMonth - azubiMaschinistShiftsInMonth);
+                        // Ü50-Personen-Schichten (alle Positionen)
+                        const ue50ShiftsInMonth = (() => {
+                            let sum = 0;
+                            const reSlot = /^(rtw\d+_(tag|nacht)_[12]|nef(\d+)?_(arzt|assist|azubi)|itw_row_[123])$/;
+                            for (const p of personnel || []) {
+                                if ((p as any).ue50 !== 1) continue;
+                                const key = `p_${p.id}`;
+                                for (const iso of allMonthDays) {
+                                    const t = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.type || '');
+                                    if (reSlot.test(t)) sum++;
+                                }
+                            }
+                            return sum;
+                        })();
+                        const positionsAdjInMonth = Math.max(0, deptShiftsInMonth * (activeRtwCount * 4 + activeNefCount * 2) + itwShiftsInMonth - azubiMaschinistShiftsInMonth - ue50ShiftsInMonth);
                         const activePersonnelInMonth = (() => {
                             let sum = 0;
                             for (const p of personnel || []) {
+                                // Ü50-Personen ausschließen (ITW View)
+                                if ((p as any).ue50 === 1) continue;
                                 const key = `p_${p.id}`;
                                 let presence = 0;
                                 for (const iso of allMonthDays) {
@@ -1408,6 +1463,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const perPersonPresenceInMonth: Record<string, number> = (() => {
                             const map: Record<string, number> = {};
                             for (const p of personnel || []) {
+                                if ((p as any).ue50 === 1) continue;
                                 const key = `p_${p.id}`;
                                 let presence = 0;
                                 for (const iso of allMonthDays) {
@@ -1430,6 +1486,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const perPersonNefInMonth: Record<string, number> = {};
                         const perPersonItwInMonth: Record<string, number> = {};
                         for (const p of (personnel || [])) {
+                            // Ü50-Personen ausschließen
+                            if ((p as any).ue50 === 1) continue;
                             const key = `p_${p.id}`;
                             let cnt = 0;
                             let tagCnt = 0;
@@ -1519,10 +1577,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 }
                                 return sum;
                             })();
-                            const positionsAdjInMonthCalc = Math.max(0, deptShiftsInMonthCalc * (activeRtwCountM * 4 + activeNefCountM * 2) + itwShiftsInMonthCalc - azubiMaschinistShiftsInMonthCalc);
+                            // Ü50-Personen-Schichten (alle Positionen)
+                            const ue50ShiftsInMonthCalc = (() => {
+                                let sum = 0;
+                                const reSlot = /^(rtw\d+_(tag|nacht)_[12]|nef(\d+)?_(arzt|assist|azubi)|itw_row_[123])$/;
+                                for (const p of personnel || []) {
+                                    if ((p as any).ue50 !== 1) continue;
+                                    const key = `p_${p.id}`;
+                                    for (const iso of allMonthDays) {
+                                        const t = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.type || '');
+                                        if (reSlot.test(t)) sum++;
+                                    }
+                                }
+                                return sum;
+                            })();
+                            const positionsAdjInMonthCalc = Math.max(0, deptShiftsInMonthCalc * (activeRtwCountM * 4 + activeNefCountM * 2) + itwShiftsInMonthCalc - azubiMaschinistShiftsInMonthCalc - ue50ShiftsInMonthCalc);
                             const activePersonnelInMonthCalc = (() => {
                                 let sum = 0;
                                 for (const p of personnel || []) {
+                                    if ((p as any).ue50 === 1) continue;
                                     const key = `p_${p.id}`;
                                     let presence = 0;
                                     for (const iso of allMonthDays) {
@@ -1540,6 +1613,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             const perPersonPresenceInMonthCalc: Record<string, number> = (() => {
                                 const map: Record<string, number> = {};
                                 for (const p of personnel || []) {
+                                    if ((p as any).ue50 === 1) continue;
                                     const key = `p_${p.id}`;
                                     let presence = 0;
                                     for (const iso of allMonthDays) {
@@ -1554,6 +1628,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             const perPersonPresenceWeightedInMonthCalc: Record<string, number> = (() => {
                                 const map: Record<string, number> = {};
                                 for (const p of personnel || []) {
+                                    if ((p as any).ue50 === 1) continue;
                                     const key = `p_${p.id}`;
                                     const raw = perPersonPresenceInMonthCalc[key] || 0;
                                     const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
@@ -1604,6 +1679,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const perPersonPresenceWeightedInMonth_CUR: Record<string, number> = (() => {
                             const map: Record<string, number> = {};
                             for (const p of personnel || []) {
+                                if ((p as any).ue50 === 1) continue;
                                 const key = `p_${p.id}`;
                                 const raw = perPersonPresenceInMonth[key] || 0;
                                 const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
@@ -1663,7 +1739,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             })();
                             const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
                             const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
-                            return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, teilzeit, hlfb } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, teilzeit: number, hlfb: boolean };
+                            const ue50 = (p as any).ue50 === 1;
+                            return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, teilzeit, hlfb, ue50 } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, teilzeit: number, hlfb: boolean, ue50: boolean };
                         });
                         const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
                         const eligible = itemsWithIndex.filter(it => typeof it.target === 'number' && (it.target as number) > 0);
@@ -1750,12 +1827,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         }
                                         return (
                                             <div key={idx} className={styles.sidebarItem} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto auto', alignItems: 'center', gap: 8 }}>
-                                                <span className={styles.sidebarName} style={{ color: it.hlfb ? '#1565c0' : undefined }}>{it.name}</span>
+                                                <span className={styles.sidebarName} style={{ color: it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : undefined }}>{it.name}</span>
                                                 <span className={styles.sidebarVal}>{(it.target === '' ? '–' : it.target) + ' | ' + it.count}</span>
                                                 <span className={styles.sidebarVal}>{it.nef}</span>
                                                 <span className={styles.sidebarVal}>{it.itw}</span>
-                                                <span className={styles.sidebarVal} style={restStyle}>{Number.isFinite(it.rest) ? it.rest : '–'}</span>
-                                                <div style={{ gridColumn: '1 / span 6', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                                {!it.ue50 && <span className={styles.sidebarVal} style={restStyle}>{Number.isFinite(it.rest) ? it.rest : '–'}</span>}
+                                                {it.ue50 && <span className={styles.sidebarVal}>–</span>}
+                                                {!it.ue50 && <div style={{ gridColumn: '1 / span 6', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                                                 
                                                     <div style={{ position: 'relative', width: 100, height: 8, background: '#eef2f7', borderRadius: 4 }}>
                                                         <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1' }} />
@@ -1804,7 +1882,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                             </div>
                                                         );
                                                     })()}
-                                                </div>
+                                                </div>}
                                             </div>
                                         );
                                     })}

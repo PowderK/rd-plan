@@ -187,6 +187,11 @@ contextBridge.exposeInMainWorld('api', {
     // Roster Import
     importDutyRoster: (filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number> }) => ipcRenderer.invoke('import-duty-roster', filePath, year, month, options),
     previewDutyRoster: (filePath: string, year: number, month?: number) => ipcRenderer.invoke('preview-duty-roster-import', filePath, year, month),
+    // Year Plannings
+    getYearPlannings: () => ipcRenderer.invoke('get-year-plannings'),
+    getYearPlanningForYear: (year: number) => ipcRenderer.invoke('get-year-planning-for-year', year),
+    saveYearPlannings: (plannings: { year: number; filePath: string }[]) => ipcRenderer.invoke('save-year-plannings', plannings),
+    deleteYearPlanning: (year: number) => ipcRenderer.invoke('delete-year-planning', year),
     openItwWindow: () => ipcRenderer.send('open-itw-window'),
     openVehiclesWindow: () => ipcRenderer.send('open-vehicles-window'),
     openValuesWindow: () => ipcRenderer.send('open-values-window'),

@@ -3,17 +3,9 @@ import { createRoot } from 'react-dom/client';
 
 const monthNames = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
 
-function useYear(): number {
-  const [year, setYear] = useState<number>(new Date().getFullYear());
-  useEffect(() => {
-    (async () => {
-      try {
-        const y = await (window as any).api.getSetting('year');
-        setYear(Number(y || new Date().getFullYear()));
-      } catch {}
-    })();
-  }, []);
-  return year;
+function useYear(): [number, React.Dispatch<React.SetStateAction<number>>] {
+  const [year, setYear] = useState<number>((window as any).rdPlanYear || new Date().getFullYear());
+  return [year, setYear];
 }
 
 function useRoster(year: number) {
@@ -249,7 +241,7 @@ function computeShiftsPerPerson(row1: number[], row2: number[]) {
 }
 
 const ValuesPage: React.FC = () => {
-  const year = useYear();
+  const [year, setYear] = useYear();
   const roster = useRoster(year);
   const personnel = usePersonnel();
   const azubis = useAzubis();
@@ -258,6 +250,17 @@ const ValuesPage: React.FC = () => {
   const { rtwActs, nefActs } = useActivations(year);
   const department = useDepartment();
   const deptPatternSeqs = useDeptPatterns();
+  
+  // Reagiere auf Jahr-Änderungen von DutyRoster
+  useEffect(() => {
+    const handleYearChange = (e: any) => {
+      if (e.detail?.year) {
+        setYear(e.detail.year);
+      }
+    };
+    window.addEventListener('rdplan-year-changed', handleYearChange);
+    return () => window.removeEventListener('rdplan-year-changed', handleYearChange);
+  }, [setYear]);
 
   // KPI: Summe ITW-Schichten pro Monat (früh berechnen, da für Positionen benötigt)
   const rowItw = useMemo(() => {

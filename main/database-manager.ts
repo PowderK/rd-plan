@@ -153,6 +153,12 @@ export interface DatabaseAdapter {
   getDeptPatterns(): Promise<any[]>;
   setDeptPatterns(patterns: any[]): Promise<void>;
   
+  // Year Plannings
+  getYearPlannings(): Promise<{ year: number; filePath: string }[]>;
+  getYearPlanningForYear(year: number): Promise<{ year: number; filePath: string } | undefined>;
+  saveYearPlannings(plannings: { year: number; filePath: string }[]): Promise<void>;
+  deleteYearPlanning(year: number): Promise<void>;
+  
   // Excel Import/Export
   importPersonnelFromExcel(filePath: string, replaceExisting?: boolean): Promise<any>;
   exportPersonnelToExcel(filePath: string): Promise<void>;
@@ -711,6 +717,26 @@ class SQLiteAdapter implements DatabaseAdapter {
     const { SettingsImporter } = await import('./settings-importer');
     const importer = new SettingsImporter(this.db);
     return await importer.createSettingsTemplate(filePath);
+  }
+  
+  async getYearPlannings() {
+    const { getYearPlannings } = await import('./database');
+    return getYearPlannings(this.db);
+  }
+  
+  async getYearPlanningForYear(year: number) {
+    const { getYearPlanningForYear } = await import('./database');
+    return getYearPlanningForYear(this.db, year);
+  }
+  
+  async saveYearPlannings(plannings: { year: number; filePath: string }[]) {
+    const { saveYearPlannings } = await import('./database');
+    return saveYearPlannings(this.db, plannings);
+  }
+  
+  async deleteYearPlanning(year: number) {
+    const { deleteYearPlanning } = await import('./database');
+    return deleteYearPlanning(this.db, year);
   }
   
   async close() {

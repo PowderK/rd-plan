@@ -4,18 +4,46 @@ import MonthTabs from './MonthTabs';
 type RosterState = Record<string, Record<string, { value: string; type: string }>>;
 
 const EinteilungPage: React.FC = () => {
-  const [currentMonth, setCurrentMonth] = useState<number>(new Date().getMonth());
-  const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [currentMonth, setCurrentMonth] = useState<number>(() => {
+    // Restore from window if available
+    if ((window as any).rdPlanMonth !== undefined) {
+      return (window as any).rdPlanMonth;
+    }
+    const currentYear = new Date().getFullYear();
+    const storedYear = (window as any).rdPlanYear || currentYear;
+    return storedYear === currentYear ? new Date().getMonth() : 0;
+  });
+  const [year, setYear] = useState<number>((window as any).rdPlanYear || new Date().getFullYear());
   const [personnel, setPersonnel] = useState<any[]>([]);
   const [azubis, setAzubis] = useState<any[]>([]);
   const [roster, setRoster] = useState<RosterState>({});
   const [deptPatternSeqs, setDeptPatternSeqs] = useState<{ startDate: string; pattern: string[] }[]>([]);
+  
+  // Reagiere auf Jahr-Änderungen von DutyRoster
+  useEffect(() => {
+    const handleYearChange = (e: any) => {
+      if (e.detail?.year && e.detail.year !== year) {
+        const newYear = e.detail.year;
+        setYear(newYear);
+        // Springe zum aktuellen Monat wenn aktuelles Jahr, sonst Januar
+        const currentYear = new Date().getFullYear();
+        if (newYear === currentYear) {
+          setCurrentMonth(new Date().getMonth());
+        } else {
+          setCurrentMonth(0);
+        }
+      }
+    };
+    window.addEventListener('rdplan-year-changed', handleYearChange);
+    return () => window.removeEventListener('rdplan-year-changed', handleYearChange);
+  }, [year]);
 
   const loadBasics = useCallback(async () => {
-    try {
-      const y = await (window as any).api.getSetting('year');
-      setYear(Number(y || new Date().getFullYear()));
-    } catch {}
+    // Jahr wird nicht mehr aus Settings geladen - kommt von DutyRoster
+    // Initial auf window.rdPlanYear setzen falls vorhanden
+    if ((window as any).rdPlanYear && year !== (window as any).rdPlanYear) {
+      setYear((window as any).rdPlanYear);
+    }
     try { 
       const list = await (window as any).api.getPersonnelList();
       
@@ -80,8 +108,6 @@ const EinteilungPage: React.FC = () => {
           // Lade Qualifikationsperioden (altes System mit qualType als String)
           const periods = await (window as any).api.getQualificationPeriods?.(person.id) || [];
           
-          console.log(`[EinteilungPage] Person ${person.name}: Perioden=`, periods.map((p: any) => `${p.qualType} (${p.startYM}-${p.endYM||'∞'}, active=${p.active})`));
-          
           // Prüfe, ob Person Fahrzeugführer-Qualifikation hat
           const hasFahrzeugfuehrer = periods.some((p: any) => 
             p.active && 
@@ -113,10 +139,6 @@ const EinteilungPage: React.FC = () => {
             p.startYM <= yearMonth &&
             (!p.endYM || p.endYM >= yearMonth)
           );
-          
-          if (hasFahrzeugfuehrer || hasNef || hasHLFB || hasUe50) {
-            console.log(`[EinteilungPage] ${person.name}: FzF=${hasFahrzeugfuehrer}, NEF=${hasNef}, HLFB=${hasHLFB}, Ü50=${hasUe50}`);
-          }
           
           return {
             ...person,

@@ -32,14 +32,25 @@ const App: React.FC = () => {
             const dep = await (window as any).api.getSetting('department');
             if (dep != null) setDepartment(Number(dep));
         } catch {}
-        try {
-            const y = await (window as any).api.getSetting('year');
-            if (y != null) setYear(Number(y));
-        } catch {}
+        // Jahr wird nicht mehr aus Settings geladen - wird von DutyRoster/Values gesteuert
+        // Setze initial auf aktuelles Jahr oder bereits gesetztes window.rdPlanYear
+        if ((window as any).rdPlanYear) {
+            setYear((window as any).rdPlanYear);
+        }
     }
 
     useEffect(() => {
         loadHeaderInfo();
+        
+        // Reagiere auf Jahr-Änderungen von DutyRoster/Values
+        const handleYearChange = (e: any) => {
+            if (e.detail?.year) {
+                setYear(e.detail.year);
+            }
+        };
+        window.addEventListener('rdplan-year-changed', handleYearChange);
+        
+        return () => window.removeEventListener('rdplan-year-changed', handleYearChange);
     }, []);
 
     // Navigation via CustomEvent 'navigate' und via API (falls Main etwas triggert)
