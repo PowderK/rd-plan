@@ -51,15 +51,24 @@
       "icon": "media/Icon.ico"
     },
     "mac": {
-      "icon": "media/Icon.icns"
+      "icon": "media/Icon.icns",
+      "category": "public.app-category.healthcare-fitness"
     },
     "linux": {
       "icon": "media/Icon.ico"
     },
+    "extraResources": [
+      {
+        "from": "media/Icon.icns",
+        "to": "Icon.icns"
+      }
+    ],
     "files": [
       "dist/**/*",
       "node_modules/**/*",
-      "package.json"
+      "package.json",
+      "media/Icon.icns",
+      "media/Icon.ico"
     ]
   },
   "homepage": "https://github.com/powderk/rd-plan#readme",
