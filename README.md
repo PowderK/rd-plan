@@ -1,7 +1,7 @@
 # RD-Plan
 
 <div align="center">
-  <img src="media/RD-Plan Logo.gif" alt="RD-Plan Logo" width="400"/>
+  <img src="media/Timeline 1_01_00_05_29.png" alt="RD-Plan Logo" width="400"/>
 </div>
 
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
