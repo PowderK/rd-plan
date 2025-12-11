@@ -7,7 +7,7 @@
     "build:main": "tsc --project tsconfig.main.json",
     "build:renderer": "vite build",
     "bump-build": "node ./scripts/bump-build.js",
-    "copy:assets": "cp splash.html dist/ && mkdir -p dist/media && cp \"media/RD-Plan Logo.gif\" dist/media/ && cp \"media/Timeline 1_01_00_05_29.png\" dist/media/",
+    "copy:assets": "cp splash.html dist/ && mkdir -p dist/media && cp \"media/RD-Plan Logo.gif\" dist/media/ && cp \"media/Timeline 1_01_00_05_29.png\" dist/media/ && cp \"media/Icon.icns\" dist/media/ && cp \"media/Icon.ico\" dist/media/",
     "build": "rm -rf dist && npm run bump-build && npm run build:main && npm run build:renderer && npm run copy:assets",
     "start": "electron .",
     "dev": "electron . --dev",
@@ -41,8 +41,20 @@
     "appId": "com.example.rdplan",
     "productName": "RD-Plan",
     "npmRebuild": false,
+    "publish": {
+      "provider": "github",
+      "owner": "PowderK",
+      "repo": "rd-plan"
+    },
     "win": {
-      "target": "portable"
+      "target": "portable",
+      "icon": "media/Icon.ico"
+    },
+    "mac": {
+      "icon": "media/Icon.icns"
+    },
+    "linux": {
+      "icon": "media/Icon.ico"
     },
     "files": [
       "dist/**/*",
