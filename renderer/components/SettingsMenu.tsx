@@ -64,12 +64,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [dbConfig, setDbConfig] = useState<{ currentPath: string|null, configuredDir: string|null, defaults?: { appDir: string, userDataDir: string } } | null>(null);
   const [dbDirInput, setDbDirInput] = useState<string>('');
   // Qualification Types Management UI
-  const [qualificationTypes, setQualificationTypes] = useState<{ id: number; name: string; description?: string; category?: string; active: boolean; sort: number }[]>([]);
+  const [qualificationTypes, setQualificationTypes] = useState<{ id: number; name: string; description?: string; category?: string; active: boolean; sort: number; excludeFromStats?: boolean }[]>([]);
   const [editingQualificationTypes, setEditingQualificationTypes] = useState(false);
   const [selectedQualificationTypeId, setSelectedQualificationTypeId] = useState<number | null>(null);
   const [originalQualificationTypes, setOriginalQualificationTypes] = useState<any[] | null>(null);
   // HLFB 75%-Regel Qualifikationszuordnung
   const [hlfbQualificationType, setHlfbQualificationType] = useState<string>('FzF HLF B');
+  // Ü50 Qualifikationszuordnung (keine Soll/Ist-Berechnung, rot im Kontrollfeld)
+  const [ue50QualificationType, setUe50QualificationType] = useState<string>('Ü50');
   // Year Import Dialog States
   const [showYearImportShiftTypeDialog, setShowYearImportShiftTypeDialog] = useState(false);
   const [yearImportUnknownShiftTypes, setYearImportUnknownShiftTypes] = useState<string[]>([]);
@@ -156,6 +158,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               console.error('Failed to load HLFB qualification type:', e);
             }
             
+            // Load Ü50 qualification type setting
+            try {
+              const ue50Qual = await (window as any).api.getSetting('ue50_qualification_type');
+              if (ue50Qual) setUe50QualificationType(String(ue50Qual));
+            } catch (e) {
+              console.error('Failed to load Ü50 qualification type:', e);
+            }
+            
             setShiftTypesLoading(false);
             setLoading(false);
             try {
@@ -174,6 +184,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         await (window as any).api.setSetting('year', String(year));
         await (window as any).api.setSetting('rosterImportPath', rosterImportPath);
         await (window as any).api.setSetting('hlfb_qualification_type', hlfbQualificationType);
+        await (window as any).api.setSetting('ue50_qualification_type', ue50QualificationType);
   // Anzahl RTW/NEF leitet sich aus den Einträgen ab – keine separaten Settings mehr
   // ITW wird im Fahrzeuge-Menü gesetzt
         await (window as any).api.setSetting('department', String(department));
@@ -932,6 +943,25 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
           </p>
         </div>
         
+        {/* Ü50 Zuordnung (keine Soll/Ist-Berechnung) */}
+        <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#fff3cd', borderRadius: 6, border: '1px solid #ffc107' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <strong style={{ minWidth: 200 }}>Qualifikation für Ü50 (wie Azubi):</strong>
+            <select 
+              value={ue50QualificationType} 
+              onChange={e => setUe50QualificationType(e.target.value)}
+              style={{ flex: 1, maxWidth: 400 }}
+            >
+              {qualificationTypes.filter(qt => qt.active).map(qt => (
+                <option key={qt.id} value={qt.name}>{qt.name}</option>
+              ))}
+            </select>
+          </label>
+          <p style={{ margin: '8px 0 0', fontSize: '0.9em', color: '#856404' }}>
+            Personen mit dieser Qualifikation haben <strong>keine Soll/Ist-Berechnung</strong> (wie Azubis), werden aber <strong style={{color: '#dc3545'}}>rot</strong> im Kontrollfeld angezeigt. Alle anderen Qualifikationen bleiben gültig.
+          </p>
+        </div>
+        
         <table className={styles.table}>
           <thead>
             <tr className={styles.thead}>
@@ -939,6 +969,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               <th>Beschreibung</th>
               <th>Kategorie</th>
               <th style={{ width: 80 }}>Aktiv</th>
+              <th style={{ width: 120 }}>Statistik ausschl.</th>
               <th className={styles.center} style={{ width: 60 }}>#</th>
             </tr>
           </thead>
@@ -981,6 +1012,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                     <input type="checkbox" checked={qt.active}
                       onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, active: e.target.checked } : x))} />
                   ) : (qt.active ? '✓' : '✗')}
+                </td>
+                <td className={styles.center} title="Von Soll/Ist-Berechnung ausschließen (wie Azubis)">
+                  {editingQualificationTypes ? (
+                    <input type="checkbox" checked={qt.excludeFromStats || false}
+                      onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, excludeFromStats: e.target.checked } : x))} />
+                  ) : (qt.excludeFromStats ? '✓' : '✗')}
                 </td>
                 <td className={styles.center}>
                   <button onClick={() => {

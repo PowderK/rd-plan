@@ -526,6 +526,14 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         console.log('[DB] Adding lehrjahr to azubi_periods');
         await db.exec("ALTER TABLE azubi_periods ADD COLUMN lehrjahr INTEGER DEFAULT 1");
     }
+    
+    // Migration: add 'excludeFromStats' column to qualification_types if missing
+    const qualTypeCols = await db.all("PRAGMA table_info('qualification_types')");
+    if (!qualTypeCols.some((c: any) => c.name === 'excludeFromStats')) {
+        console.log('[DB] Adding excludeFromStats to qualification_types');
+        await db.exec("ALTER TABLE qualification_types ADD COLUMN excludeFromStats INTEGER DEFAULT 0");
+    }
+    
     // Aktivierungen pro Monat/Jahr (default: aktiv) - DEPRECATED, wird durch vehicle_periods ersetzt
     await db.exec(`
         CREATE TABLE IF NOT EXISTS rtw_vehicle_months (
@@ -1715,6 +1723,7 @@ export interface QualificationType {
     category?: string;
     active: boolean;
     sort: number;
+    excludeFromStats?: boolean; // Wenn true: Keine Soll/Ist-Berechnung, nur Positions-Besetzung (wie Azubis)
 }
 
 // Tabelle für Qualifikationstypen (falls noch nicht existiert)
@@ -1726,7 +1735,8 @@ export const initializeQualificationTypesTable = async (db: AsyncDB) => {
             description TEXT,
             category TEXT,
             active INTEGER DEFAULT 1,
-            sort INTEGER DEFAULT 0
+            sort INTEGER DEFAULT 0,
+            excludeFromStats INTEGER DEFAULT 0
         )
     `);
 
@@ -1765,8 +1775,8 @@ export const addQualificationType = async (db: AsyncDB, qualType: Omit<Qualifica
     }
     
     await db.run(
-        'INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, ?, ?)',
-        [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort]
+        'INSERT INTO qualification_types (name, description, category, active, sort, excludeFromStats) VALUES (?, ?, ?, ?, ?, ?)',
+        [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort, qualType.excludeFromStats ? 1 : 0]
     );
 };
 
@@ -1780,8 +1790,8 @@ export const updateQualificationType = async (db: AsyncDB, qualType: Qualificati
     }
     
     await db.run(
-        'UPDATE qualification_types SET name = ?, description = ?, category = ?, active = ?, sort = ? WHERE id = ?',
-        [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort, qualType.id]
+        'UPDATE qualification_types SET name = ?, description = ?, category = ?, active = ?, sort = ?, excludeFromStats = ? WHERE id = ?',
+        [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort, qualType.excludeFromStats ? 1 : 0, qualType.id]
     );
 };
 
