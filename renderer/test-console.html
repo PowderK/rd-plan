@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Qualification Periods Console Test</title>
+    <style>
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            margin: 0;
+        }
+        .console {
+            background: #000;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            min-height: 400px;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        button {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px 0 0;
+            font-family: inherit;
+        }
+        button:hover { background: #005a9e; }
+        .success { color: #4fc3f7; }
+        .error { color: #f44336; }
+        .info { color: #ffb74d; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Qualification Periods API Console Test</h1>
+    
+    <button onclick="runBasicTest()">🔄 Run Basic Test</button>
+    <button onclick="runFullTest()">🚀 Run Full Test Suite</button>
+    <button onclick="clearConsole()">🧹 Clear Console</button>
+    
+    <div id="console" class="console"></div>
+
+    <script>
+        let consoleDiv = document.getElementById('console');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'success' ? 'success' : type === 'error' ? 'error' : 'info';
+            consoleDiv.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
+        
+        function clearConsole() {
+            consoleDiv.innerHTML = '';
+        }
+        
+        async function runBasicTest() {
+            try {
+                log('🧪 Starting Basic API Test...', 'info');
+                
+                // Test the built-in test handler
+                log('📞 Calling built-in test handler...', 'info');
+                const result = await window.api.testQualificationPeriods();
+                
+                if (result.success) {
+                    log('✅ Built-in test PASSED!', 'success');
+                    result.results.forEach(r => log(`   ${r}`, 'success'));
+                } else {
+                    log('❌ Built-in test FAILED!', 'error');
+                    log(`Error: ${result.message}`, 'error');
+                    if (result.stack) {
+                        log(`Stack: ${result.stack}`, 'error');
+                    }
+                }
+                
+            } catch (error) {
+                log(`❌ Test exception: ${error.message}`, 'error');
+                log(`Stack: ${error.stack}`, 'error');
+            }
+        }
+        
+        async function runFullTest() {
+            try {
+                log('🚀 Starting Full API Test Suite...', 'info');
+                
+                // First run the basic test
+                await runBasicTest();
+                
+                log('', 'info'); // Empty line
+                log('📋 Testing individual API methods...', 'info');
+                
+                // Test getting personnel first
+                const personnel = await window.api.getPersonnel();
+                log(`✅ Found ${personnel.length} personnel entries`, 'success');
+                
+                if (personnel.length === 0) {
+                    log('⚠️ No personnel found - cannot test qualification periods', 'error');
+                    return;
+                }
+                
+                const testPersonId = personnel[0].id;
+                log(`🧪 Testing with person: ${personnel[0].name} ${personnel[0].vorname} (ID: ${testPersonId})`, 'info');
+                
+                // Test getting qualification periods for this person
+                const periods = await window.api.getQualificationPeriods(testPersonId);
+                log(`📋 Found ${periods.length} existing qualification periods`, 'success');
+                
+                periods.forEach((period, i) => {
+                    log(`   ${i+1}. ${period.qualType}: ${period.startYM} - ${period.endYM || 'unbegrenzt'} (${period.active ? 'aktiv' : 'inaktiv'})`, 'info');
+                });
+                
+                // Test validation functions if we have periods
+                if (periods.length > 0) {
+                    const testQualType = periods[0].qualType;
+                    const testMonth = '2024-06';
+                    
+                    log('', 'info');
+                    log('🔍 Testing validation functions...', 'info');
+                    
+                    const hasQual = await window.api.hasQualificationInMonth(testPersonId, testQualType, testMonth);
+                    log(`✅ hasQualificationInMonth(${testPersonId}, '${testQualType}', '${testMonth}'): ${hasQual}`, 'success');
+                    
+                    const activeQuals = await window.api.getActiveQualifications(testPersonId, testMonth);
+                    log(`✅ getActiveQualifications(${testPersonId}, '${testMonth}'): [${activeQuals.join(', ')}]`, 'success');
+                }
+                
+                log('', 'info');
+                log('🎉 Full test suite completed!', 'success');
+                
+            } catch (error) {
+                log(`❌ Full test exception: ${error.message}`, 'error');
+                log(`Stack: ${error.stack}`, 'error');
+            }
+        }
+        
+        // Auto-run basic test on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            log('🔌 Console ready - API available!', 'success');
+            log('Click "Run Basic Test" to verify qualification periods API', 'info');
+        });
+    </script>
+</body>
+</html>

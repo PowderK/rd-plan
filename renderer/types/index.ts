@@ -28,3 +28,20 @@ export type VersionInfo = {
     version: string;
     lastUpdated: Date;
 };
+
+export interface QualificationPeriod {
+    id: number;
+    personId: number;
+    qualType: string;
+    startYM: string;
+    endYM: string;
+    active: boolean;
+}
+
+export interface AzubiPeriod {
+    id: number;
+    azubi_id: number;
+    start_date: string;
+    end_date: string;
+    description?: string;
+}

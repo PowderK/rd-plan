@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const buildInfoPath = path.join(__dirname, '..', 'src', 'renderer', 'buildInfo.ts');
+const buildInfoPath = path.join(__dirname, 'renderer', 'buildInfo.ts');
 if (!fs.existsSync(buildInfoPath)) {
   console.error('buildInfo.ts not found at', buildInfoPath);
   process.exit(1);

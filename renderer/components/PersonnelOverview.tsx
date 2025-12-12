@@ -1,6 +1,286 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import styles from './PersonnelOverview.module.css';
-import ExcelImport from './ExcelImport';
+
+// Person Edit Modal Komponente
+// PersonEditModal entfernt - direkte Verwendung von openEditPersonWindow
+const removedPersonEditModal = () => {
+  const [formData, setFormData] = useState({
+    name: person.name || '',
+    vorname: person.vorname || '',
+    street: person.street || '',
+    postalCode: person.postalCode || '',
+    city: person.city || '',
+    phone: person.phone || '',
+    mobile: person.mobile || '',
+    email: person.email || '',
+    active: person.active ?? true
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await (window as any).api.updatePerson(person.id, formData);
+      onSave();
+      onClose();
+    } catch (error) {
+      console.error('Fehler beim Speichern der Person:', error);
+      alert('Fehler beim Speichern!');
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        padding: '24px',
+        borderRadius: '8px',
+        minWidth: '400px',
+        maxHeight: '80vh',
+        overflow: 'auto'
+      }}>
+        <h3>Person bearbeiten: {person.name}, {person.vorname}</h3>
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: '12px' }}>
+            <label>Nachname:
+              <input 
+                type="text" 
+                value={formData.name}
+                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
+                required
+              />
+            </label>
+          </div>
+          <div style={{ marginBottom: '12px' }}>
+            <label>Vorname:
+              <input 
+                type="text" 
+                value={formData.vorname}
+                onChange={(e) => setFormData(prev => ({ ...prev, vorname: e.target.value }))}
+                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
+                required
+              />
+            </label>
+          </div>
+          <div style={{ marginBottom: '12px' }}>
+            <label>Straße:
+              <input 
+                type="text" 
+                value={formData.street}
+                onChange={(e) => setFormData(prev => ({ ...prev, street: e.target.value }))}
+                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
+              />
+            </label>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+            <label style={{ flex: '1' }}>PLZ:
+              <input 
+                type="text" 
+                value={formData.postalCode}
+                onChange={(e) => setFormData(prev => ({ ...prev, postalCode: e.target.value }))}
+                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
+              />
+            </label>
+            <label style={{ flex: '2' }}>Stadt:
+              <input 
+                type="text" 
+                value={formData.city}
+                onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
+                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
+              />
+            </label>
+          </div>
+          <div style={{ marginBottom: '12px' }}>
+            <label>Telefon:
+              <input 
+                type="tel" 
+                value={formData.phone}
+                onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
+              />
+            </label>
+          </div>
+          <div style={{ marginBottom: '12px' }}>
+            <label>Mobil:
+              <input 
+                type="tel" 
+                value={formData.mobile}
+                onChange={(e) => setFormData(prev => ({ ...prev, mobile: e.target.value }))}
+                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
+              />
+            </label>
+          </div>
+          <div style={{ marginBottom: '12px' }}>
+            <label>E-Mail:
+              <input 
+                type="email" 
+                value={formData.email}
+                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
+              />
+            </label>
+          </div>
+          <div style={{ marginBottom: '24px' }}>
+            <label>
+              <input 
+                type="checkbox" 
+                checked={Boolean(formData.active)}
+                onChange={(e) => setFormData(prev => ({ ...prev, active: e.target.checked }))}
+              />
+              {' '}Aktiv
+            </label>
+          </div>
+          
+          {/* Qualifikations-Management */}
+          <div style={{ marginBottom: '24px' }}>
+            <h4 style={{ marginBottom: '12px' }}>Qualifikationen</h4>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+              <button 
+                type="button"
+                onClick={() => {
+                  // Öffne Qualifikations-Management für diese Person
+                  (window as any).api.openEditPersonWindow(person.id);
+                  onClose(); // Schließe das aktuelle Modal
+                }}
+                style={{
+                  backgroundColor: '#28a745',
+                  color: 'white',
+                  border: 'none',
+                  padding: '8px 12px',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Qualifikationen verwalten
+              </button>
+            </div>
+            
+            {/* Zeige aktuelle Qualifikationen */}
+            <div style={{ 
+              background: '#f8f9fa', 
+              padding: '8px', 
+              borderRadius: '4px',
+              fontSize: '12px'
+            }}>
+              <strong>Aktuelle Qualifikationen:</strong><br/>
+              {qualificationPeriods && qualificationPeriods.length > 0 ? (
+                qualificationPeriods
+                  .filter((q: QualificationPeriod) => q.active)
+                  .map((q: QualificationPeriod) => `${q.qualType} (${q.startYM || 'offen'} - ${q.endYM || 'unbegrenzt'})`)
+                  .join(', ')
+              ) : (
+                'Keine Qualifikationen vorhanden'
+              )}
+            </div>
+          </div>
+          
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+            <button type="button" onClick={onClose}>Abbrechen</button>
+            <button type="submit" style={{ backgroundColor: '#007bff', color: 'white' }}>Speichern</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// Azubi Edit Modal Komponente  
+// AzubiEditModal entfernt - nutzt direkt openEditPersonWindow über Qualifikationssystem
+const removedAzubiEditModal = () => {
+  const [formData, setFormData] = useState({
+    name: azubi.name || '',
+    vorname: azubi.vorname || '',
+    lehrjahr: azubi.lehrjahr || 1
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await (window as any).api.updateAzubi(azubi.id, formData);
+      onSave();
+      onClose();
+    } catch (error) {
+      console.error('Fehler beim Speichern des Azubis:', error);
+      alert('Fehler beim Speichern!');
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        padding: '24px',
+        borderRadius: '8px',
+        minWidth: '400px'
+      }}>
+        <h3>Azubi bearbeiten: {azubi.name}, {azubi.vorname}</h3>
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: '12px' }}>
+            <label>Nachname:
+              <input 
+                type="text" 
+                value={formData.name}
+                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
+                required
+              />
+            </label>
+          </div>
+          <div style={{ marginBottom: '12px' }}>
+            <label>Vorname:
+              <input 
+                type="text" 
+                value={formData.vorname}
+                onChange={(e) => setFormData(prev => ({ ...prev, vorname: e.target.value }))}
+                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
+                required
+              />
+            </label>
+          </div>
+          <div style={{ marginBottom: '24px' }}>
+            <label>Lehrjahr:
+              <select 
+                value={formData.lehrjahr}
+                onChange={(e) => setFormData(prev => ({ ...prev, lehrjahr: Number(e.target.value) }))}
+                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
+              >
+                <option value={1}>1. Lehrjahr</option>
+                <option value={2}>2. Lehrjahr</option>
+                <option value={3}>3. Lehrjahr</option>
+              </select>
+            </label>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+            <button type="button" onClick={onClose}>Abbrechen</button>
+            <button type="submit" style={{ backgroundColor: '#007bff', color: 'white' }}>Speichern</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 
 // Zeiträume Manager Komponente
 const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ azubi, onClose }) => {
@@ -220,6 +500,12 @@ interface Person {
   itwFahrzeugfuehrer?: boolean;
   sort?: number;
   active?: number | boolean;
+  street?: string;
+  postalCode?: string;
+  city?: string;
+  phone?: string;
+  mobile?: string;
+  email?: string;
 }
 
 interface Azubi { id: number; name: string; vorname: string; lehrjahr: number }
@@ -232,12 +518,23 @@ interface AzubiPeriod {
   description?: string;
 }
 
+interface QualificationPeriod {
+  id: number;
+  personId: number;
+  qualType: string;
+  startYM: string;
+  endYM: string;
+  active: boolean;
+}
+
 const PersonnelOverview: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'stammpersonal' | 'azubis' | 'ärzte'>('stammpersonal');
   const [personnel, setPersonnel] = useState<Person[]>([]);
   const [azubis, setAzubis] = useState<Azubi[]>([]);
   const [azubiPeriods, setAzubiPeriods] = useState<Record<number, AzubiPeriod[]>>({});
   const [showPeriodManager, setShowPeriodManager] = useState(false);
   const [selectedAzubiForPeriods, setSelectedAzubiForPeriods] = useState<Azubi | null>(null);
+  const [qualificationPeriods, setQualificationPeriods] = useState<Record<number, QualificationPeriod[]>>({});
   const [itws, setItws] = useState<ItwDoctor[]>([]);
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [draggedAzubiId, setDraggedAzubiId] = useState<number | null>(null);
@@ -246,9 +543,7 @@ const PersonnelOverview: React.FC = () => {
   const [dragOverId, setDragOverId] = useState<number | null>(null);
   const [dragPosition, setDragPosition] = useState<'above' | 'below' | null>(null);
   const [dragContext, setDragContext] = useState<'person'|'azubi'|'itw'|null>(null);
-  const [editing, setEditing] = useState(false);
   const [selectedPersonId, setSelectedPersonId] = useState<number | null>(null);
-  const [originalPersonnel, setOriginalPersonnel] = useState<Person[] | null>(null);
   // Azubi/ITW: gleiche Optik/Verhalten/Bearbeitung
   const [editingAzubis, setEditingAzubis] = useState(false);
   const [selectedAzubiId, setSelectedAzubiId] = useState<number | null>(null);
@@ -256,8 +551,10 @@ const PersonnelOverview: React.FC = () => {
   const [editingItw, setEditingItw] = useState(false);
   const [selectedItwId, setSelectedItwId] = useState<number | null>(null);
   const [originalItws, setOriginalItws] = useState<ItwDoctor[] | null>(null);
-  const [showExcelImport, setShowExcelImport] = useState(false);
+
   const [showInactive, setShowInactive] = useState(false);
+  
+  // Modal States entfernt - nutzt direkt openEditPersonWindow für alle
 
   const loadPersonnel = useCallback(async () => {
     setLoading(true);
@@ -281,6 +578,22 @@ const PersonnelOverview: React.FC = () => {
     setAzubiPeriods(periodsByAzubi);
   }, []);
 
+  const loadQualificationPeriods = useCallback(async () => {
+    try {
+      const allPeriods = await (window as any).api.getAllQualificationPeriods();
+      const periodsByPerson: Record<number, QualificationPeriod[]> = {};
+      allPeriods.forEach((period: QualificationPeriod) => {
+        if (!periodsByPerson[period.personId]) {
+          periodsByPerson[period.personId] = [];
+        }
+        periodsByPerson[period.personId].push(period);
+      });
+      setQualificationPeriods(periodsByPerson);
+    } catch (error) {
+      console.error('Fehler beim Laden der Qualifikationsperioden:', error);
+    }
+  }, []);
+
   const loadItws = useCallback(async () => {
     const list = await (window as any).api.getItwDoctors();
     setItws(list);
@@ -290,17 +603,20 @@ const PersonnelOverview: React.FC = () => {
     loadPersonnel();
     loadAzubis();
     loadItws();
+    loadQualificationPeriods();
     const handler = (_event: any) => {
       console.log('[Renderer] personnel-updated Event empfangen');
       loadPersonnel();
       loadAzubis();
       loadItws();
+      loadQualificationPeriods();
     };
     (window as any).api.onPersonnelUpdated?.(handler);
     // subscribe to azubi broadcasts from main
     const azubiHandler = (_event: any) => {
       console.log('[Renderer] azubis-updated Event empfangen');
       loadAzubis();
+      loadQualificationPeriods();
     };
     (window as any).api.onAzubisUpdated?.(azubiHandler);
     const itwHandler = (_event: any) => {
@@ -363,57 +679,9 @@ const PersonnelOverview: React.FC = () => {
     loadPersonnel();
   };
 
-  // --- Inline Edit Handling (nur Personal) ---
-  const startEditing = () => {
-    setOriginalPersonnel(JSON.parse(JSON.stringify(personnel)));
-    setEditing(true);
-  };
-  const cancelEditing = () => {
-    if (originalPersonnel) setPersonnel(originalPersonnel);
-    setEditing(false);
-  };
-  const saveEditing = async () => {
-    try {
-      for (const p of personnel) {
-        const orig = originalPersonnel?.find(o => o.id === p.id);
-        if (!orig || JSON.stringify(orig) !== JSON.stringify(p)) {
-          // Nur speichern, wenn geändert
-          await (window as any).api.updatePerson({
-            id: p.id,
-            name: p.name,
-            vorname: p.vorname,
-            teilzeit: p.teilzeit,
-            fahrzeugfuehrer: p.fahrzeugfuehrer,
-            fahrzeugfuehrerHLFB: p.fahrzeugfuehrerHLFB,
-            nef: p.nef || false,
-            itwMaschinist: p.itwMaschinist || false,
-            itwFahrzeugfuehrer: p.itwFahrzeugfuehrer || false,
-            sort: p.sort ?? 0,
-          });
-          // Aktiv-Status separat behandeln, sofern geändert
-          const prevActive = (orig?.active ?? 1) ? true : false;
-          const nextActive = (p.active ?? 1) ? true : false;
-          if (prevActive !== nextActive) {
-            await (window as any).api.setPersonActive(p.id, nextActive);
-          }
-        }
-      }
-      setEditing(false);
-      setOriginalPersonnel(null);
-      loadPersonnel();
-    } catch (e) {
-      console.warn('[PersonnelOverview] saveEditing Fehler', e);
-    }
-  };
-  const updateField = (id: number, field: keyof Person, value: any) => {
-    setPersonnel(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
-  };
+  // --- Personal Actions ---
   const handleRowClick = (id: number) => {
     setSelectedPersonId(id === selectedPersonId ? null : id);
-  };
-  const handleDeleteSelected = () => {
-    if (selectedPersonId == null) return;
-    (window as any).api.openConfirmDeleteWindow(selectedPersonId);
   };
 
   const onAzubiDragStart = (id: number) => setDraggedAzubiId(id);
@@ -498,46 +766,69 @@ const PersonnelOverview: React.FC = () => {
   const handleItwRowClick = (id: number) => setSelectedItwId(id === selectedItwId ? null : id);
   const handleDeleteSelectedItw = () => { if (selectedItwId == null) return; (window as any).api.openConfirmDeleteWindow(selectedItwId, 'itw'); };
 
-  const handleExcelImportComplete = (result: any) => {
-    console.log('Excel-Import abgeschlossen:', result);
-    loadPersonnel(); // Daten neu laden nach Import
-    if (result.success) {
-      alert(`Import erfolgreich! ${result.imported} Personen importiert, ${result.skipped} übersprungen.`);
-    }
-  };
+
 
   return (
     <div style={{ padding: 24 }}>
-      {showExcelImport && (
-        <div style={{ 
-          position: 'fixed', 
-          top: 0, 
-          left: 0, 
-          right: 0, 
-          bottom: 0, 
-          backgroundColor: 'rgba(0,0,0,0.5)', 
-          zIndex: 1000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            maxHeight: '90vh',
-            overflow: 'auto',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
-          }}>
-            <ExcelImport 
-              onImportComplete={handleExcelImportComplete}
-              onClose={() => setShowExcelImport(false)}
-            />
-          </div>
-        </div>
-      )}
+
   {/* Überschrift entfernt */}
       {loading ? <div>Lade Daten...</div> : (
       <>
+      
+      {/* Tab Navigation */}
+      <div style={{ 
+        display: 'flex', 
+        gap: 4, 
+        marginBottom: 16,
+        borderBottom: '2px solid #dee2e6'
+      }}>
+        <button
+          onClick={() => setActiveTab('stammpersonal')}
+          style={{
+            padding: '8px 16px',
+            border: 'none',
+            borderBottom: activeTab === 'stammpersonal' ? '3px solid #0ea5e9' : '3px solid transparent',
+            background: activeTab === 'stammpersonal' ? '#f8f9fa' : 'transparent',
+            fontWeight: activeTab === 'stammpersonal' ? 600 : 400,
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+        >
+          Stammpersonal
+        </button>
+        <button
+          onClick={() => setActiveTab('azubis')}
+          style={{
+            padding: '8px 16px',
+            border: 'none',
+            borderBottom: activeTab === 'azubis' ? '3px solid #0ea5e9' : '3px solid transparent',
+            background: activeTab === 'azubis' ? '#f8f9fa' : 'transparent',
+            fontWeight: activeTab === 'azubis' ? 600 : 400,
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+        >
+          Azubis
+        </button>
+        <button
+          onClick={() => setActiveTab('ärzte')}
+          style={{
+            padding: '8px 16px',
+            border: 'none',
+            borderBottom: activeTab === 'ärzte' ? '3px solid #0ea5e9' : '3px solid transparent',
+            background: activeTab === 'ärzte' ? '#f8f9fa' : 'transparent',
+            fontWeight: activeTab === 'ärzte' ? 600 : 400,
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+        >
+          Ärzte
+        </button>
+      </div>
+      
+      {/* Stammpersonal Tab */}
+      {activeTab === 'stammpersonal' && (
+      <div>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Inaktive anzeigen
@@ -549,14 +840,9 @@ const PersonnelOverview: React.FC = () => {
           <tr className={styles.thead}>
             <th>Name</th>
             <th>Vorname</th>
-            <th className={styles.narrow}>Teilzeit (%)</th>
-            <th className={styles.checkboxCell}>FzF</th>
-            <th className={styles.checkboxCell}>FzF HLF-B</th>
-            <th className={styles.checkboxCell}>NEF</th>
-            <th className={styles.checkboxCell}>ITW Ma.</th>
-            <th className={styles.checkboxCell}>ITW FzF</th>
             <th className={styles.checkboxCell}>Aktiv</th>
-            <th style={{ width: 60 }} className={styles.center}>#</th>
+            <th style={{ width: 120 }} className={styles.center}>Qualifikationen</th>
+            <th style={{ width: 100 }} className={styles.center}>Aktionen</th>
           </tr>
         </thead>
         <tbody className={styles.tbody}>
@@ -568,47 +854,107 @@ const PersonnelOverview: React.FC = () => {
             return (
               <tr
                 key={person.id}
-                draggable={!editing}
-                onDragStart={() => !editing && onDragStart(person.id)}
-                onDragOver={(e) => !editing && onDragOver(e, person.id, 'person')}
-                onDragLeave={() => !editing && onDragLeave()}
-                onDrop={() => !editing && onDrop(person.id)}
+                draggable={true}
+                onDragStart={() => onDragStart(person.id)}
+                onDragOver={(e) => onDragOver(e, person.id, 'person')}
+                onDragLeave={() => onDragLeave()}
+                onDrop={() => onDrop(person.id)}
                 onClick={() => handleRowClick(person.id)}
                 className={rowClass}
-                style={{ cursor: editing ? 'default' : 'move', opacity: inactive ? 0.6 : 1 }}
+                style={{ cursor: 'move', opacity: inactive ? 0.6 : 1 }}
               >
-                <td>{editing ? <input value={person.name} onChange={e => updateField(person.id, 'name', e.target.value)} /> : person.name}</td>
-                <td>{editing ? <input value={person.vorname} onChange={e => updateField(person.id, 'vorname', e.target.value)} /> : person.vorname}</td>
-                <td>{editing ? <input type="number" className={styles.narrow} value={person.teilzeit} onChange={e => updateField(person.id, 'teilzeit', Number(e.target.value))} /> : person.teilzeit}</td>
-                <td className={styles.checkboxCell}><input type="checkbox" disabled={!editing} checked={!!person.fahrzeugfuehrer} onChange={e => editing && updateField(person.id, 'fahrzeugfuehrer', e.target.checked)} /></td>
-                <td className={styles.checkboxCell}><input type="checkbox" disabled={!editing} checked={!!person.fahrzeugfuehrerHLFB} onChange={e => editing && updateField(person.id, 'fahrzeugfuehrerHLFB', e.target.checked)} /></td>
-                <td className={styles.checkboxCell}><input type="checkbox" disabled={!editing} checked={!!person.nef} onChange={e => editing && updateField(person.id, 'nef', e.target.checked)} /></td>
-                <td className={styles.checkboxCell}><input type="checkbox" disabled={!editing} checked={!!person.itwMaschinist} onChange={e => editing && updateField(person.id, 'itwMaschinist', e.target.checked)} /></td>
-                <td className={styles.checkboxCell}><input type="checkbox" disabled={!editing} checked={!!person.itwFahrzeugfuehrer} onChange={e => editing && updateField(person.id, 'itwFahrzeugfuehrer', e.target.checked)} /></td>
-                <td className={styles.checkboxCell}><input type="checkbox" disabled={!editing} checked={(person.active ?? 1) ? true : false} onChange={e => editing && updateField(person.id, 'active', e.target.checked)} /></td>
-                <td className={styles.center}>{selected ? '✓' : ''}</td>
+                <td>
+                  {person.name}
+                  {person.teilzeit && person.teilzeit < 100 && (
+                    <span style={{ fontSize: '11px', color: '#666', marginLeft: '8px' }}>
+                      ({person.teilzeit}%)
+                    </span>
+                  )}
+                </td>
+                <td>{person.vorname}</td>
+                <td className={styles.checkboxCell}>
+                  <span style={{ 
+                    color: (person.active ?? 1) ? '#28a745' : '#dc3545',
+                    fontSize: '16px'
+                  }}>
+                    {(person.active ?? 1) ? '✓' : '✗'}
+                  </span>
+                </td>
+                <td className={styles.center} style={{ fontSize: '11px', padding: '4px' }}>
+                  {qualificationPeriods[person.id] && qualificationPeriods[person.id].length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                      {qualificationPeriods[person.id]
+                        .filter(q => q.active)
+                        .slice(0, 3)
+                        .map((qual, idx) => (
+                          <span
+                            key={idx}
+                            style={{
+                              background: '#007bff',
+                              color: 'white',
+                              padding: '2px 6px',
+                              borderRadius: '3px',
+                              fontSize: '10px',
+                              whiteSpace: 'nowrap'
+                            }}
+                            title={`${qual.qualType}: ${qual.startYM} - ${qual.endYM || 'unbegrenzt'}`}
+                          >
+                            {qual.qualType === 'Fahrzeugführer' ? 'FzF' :
+                             qual.qualType === 'Fahrzeugführer HLF-B' ? 'HLF' :
+                             qual.qualType === 'ITW Maschinist' ? 'ITW-Ma' :
+                             qual.qualType === 'ITW Fahrzeugführer' ? 'ITW-FzF' :
+                             qual.qualType.substring(0, 4)}
+                          </span>
+                        ))}
+                      {qualificationPeriods[person.id].filter(q => q.active).length > 3 && (
+                        <span style={{ fontSize: '10px', color: '#666' }}>
+                          +{qualificationPeriods[person.id].filter(q => q.active).length - 3}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span style={{ color: '#ccc', fontSize: '10px' }}>Keine</span>
+                  )}
+                </td>
+                <td className={styles.center}>
+                  <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        (window as any).api.openEditPersonWindow(person.id);
+                      }}
+                      style={{
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        padding: '4px 8px',
+                        borderRadius: '3px',
+                        cursor: 'pointer',
+                        fontSize: '11px'
+                      }}
+                      title="Person bearbeiten"
+                    >
+                      ✏️
+                    </button>
+                  </div>
+                </td>
               </tr>
             );
           })}
         </tbody>
   </table>
   {/* Aktionen unter der Stammpersonal-Tabelle */}
-  {!editing ? (
-    <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-      <button onClick={() => (window as any).api.openAddPersonWindow()}>Hinzufügen</button>
-      <button onClick={startEditing} disabled={personnel.length === 0}>Ändern</button>
-      <button onClick={handleDeleteSelected} disabled={selectedPersonId == null}>Löschen</button>
-      <button onClick={() => setShowExcelImport(true)} style={{ marginLeft: 16, backgroundColor: '#28a745', color: 'white' }}>Excel Import/Export</button>
-    </div>
-  ) : (
-    <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-      <button onClick={saveEditing}>Speichern</button>
-      <button onClick={cancelEditing}>Abbrechen</button>
-    </div>
-  )}
-  </>
+  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+    <button onClick={() => (window as any).api.openAddPersonWindow()}>
+      Hinzufügen
+    </button>
+  </div>
+  </div>
       )}
-      <div style={{ marginTop: 32 }}>
+      
+      {/* Azubis Tab */}
+      {activeTab === 'azubis' && (
+      <div>
         <h3>Azubis</h3>
         {/* Azubis: Buttons unter der Tabelle */}
         <table className={styles.table}>
@@ -618,6 +964,7 @@ const PersonnelOverview: React.FC = () => {
               <th>Vorname</th>
               <th className={styles.narrow}>Lehrjahr</th>
               <th>Zeiträume</th>
+              <th className={styles.center}>Aktionen</th>
               <th className={styles.center} style={{ width: 60 }}>#</th>
             </tr>
           </thead>
@@ -646,6 +993,29 @@ const PersonnelOverview: React.FC = () => {
                   <td style={{ fontSize: '0.9em', color: periods.length > 0 ? '#333' : '#999', maxWidth: '200px', wordWrap: 'break-word' }}>
                     {periodsText}
                   </td>
+                  <td className={styles.center}>
+                    <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          (window as any).api.openEditAzubiWindow(a.id);
+                        }}
+                        style={{
+                          background: '#007bff',
+                          color: 'white',
+                          border: 'none',
+                          padding: '4px 8px',
+                          borderRadius: '3px',
+                          cursor: 'pointer',
+                          fontSize: '11px'
+                        }}
+                        title="Azubi bearbeiten"
+                      >
+                        ✏️
+                      </button>
+                      {/* Zeiträume-Button entfernt - jetzt über Qualifikationssystem */}
+                    </div>
+                  </td>
                   <td className={styles.center}>{selectedAzubiId === a.id ? '✓' : ''}</td>
                 </tr>
               );
@@ -655,21 +1025,6 @@ const PersonnelOverview: React.FC = () => {
         {!editingAzubis ? (
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button onClick={() => (window as any).api.openAddAzubiWindow()}>Hinzufügen</button>
-            <button onClick={startEditingAzubis} disabled={azubis.length === 0}>Ändern</button>
-            <button onClick={handleDeleteSelectedAzubi} disabled={selectedAzubiId == null}>Löschen</button>
-            <button 
-              onClick={() => {
-                const selectedAzubi = azubis.find(a => a.id === selectedAzubiId);
-                if (selectedAzubi) {
-                  setSelectedAzubiForPeriods(selectedAzubi);
-                  setShowPeriodManager(true);
-                }
-              }} 
-              disabled={selectedAzubiId == null}
-              style={{ marginLeft: 16, backgroundColor: '#007acc', color: 'white' }}
-            >
-              Zeiträume verwalten
-            </button>
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -678,7 +1033,11 @@ const PersonnelOverview: React.FC = () => {
           </div>
         )}
       </div>
-      <div style={{ marginTop: 32 }}>
+      )}
+      
+      {/* Ärzte Tab */}
+      {activeTab === 'ärzte' && (
+      <div>
         <h3>ITW Ärzte</h3>
         {/* ITW Ärzte: Buttons unter der Tabelle */}
         <table className={styles.table}>
@@ -724,18 +1083,17 @@ const PersonnelOverview: React.FC = () => {
           </div>
         )}
       </div>
-      
-      {/* Zeiträume Manager Dialog */}
-      {showPeriodManager && selectedAzubiForPeriods && (
-        <AzubiPeriodsManager 
-          azubi={selectedAzubiForPeriods}
-          onClose={() => {
-            setShowPeriodManager(false);
-            setSelectedAzubiForPeriods(null);
-            loadAzubis(); // Daten neu laden nach Änderungen
-          }}
-        />
       )}
+      
+      </>
+      )}
+      
+      {/* PersonEditModal entfernt - nutzt direkt openEditPersonWindow */}
+
+      {/* AzubiEditModal entfernt - nutzt direkt openEditPersonWindow */}
+
+      {/* Zeiträume Manager Dialog */}
+      {/* AzubiPeriodsManager entfernt - jetzt über Qualifikationssystem */}
       
       {/* Globale Bottom-Buttons entfernt, da Aktionen nun unter jeder Tabelle stehen */}
     </div>

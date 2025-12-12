@@ -111,6 +111,16 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
             await db.exec("ALTER TABLE personnel ADD COLUMN active INTEGER DEFAULT 1");
             await db.exec("UPDATE personnel SET active = 1 WHERE active IS NULL");
         }
+        
+        // Migration: add contact fields if missing
+        const contactFields = ['street', 'postalCode', 'city', 'phone', 'mobile', 'email'];
+        for (const field of contactFields) {
+            if (!colsAfter.some((c: any) => c.name === field)) {
+                console.log(`[DB] Adding missing column "${field}" to personnel table`);
+                await db.exec(`ALTER TABLE personnel ADD COLUMN ${field} TEXT DEFAULT ''`);
+                await db.exec(`UPDATE personnel SET ${field} = '' WHERE ${field} IS NULL`);
+            }
+        }
     } catch (e) {
         console.warn('[DB] Warning while ensuring nef defaults:', e);
     }
@@ -276,6 +286,9 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         )
     `);
 
+    // Initialize qualification types table
+    await initializeQualificationTypesTable(db);
+
     await db.exec(`
         CREATE TABLE IF NOT EXISTS duty_roster (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -317,6 +330,24 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
             FOREIGN KEY (azubi_id) REFERENCES azubis (id) ON DELETE CASCADE
         )
     `);
+
+    // --- Qualification Periods Tabelle ---
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS qualification_periods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            personId INTEGER NOT NULL,
+            qualType TEXT NOT NULL,
+            startYM TEXT NOT NULL,
+            endYM TEXT,
+            active INTEGER DEFAULT 1,
+            FOREIGN KEY (personId) REFERENCES personnel (id) ON DELETE CASCADE
+        )
+    `);
+
+    // Indexe für bessere Performance bei Qualifikationsabfragen
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_qualification_periods_person ON qualification_periods (personId)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_qualification_periods_type ON qualification_periods (qualType)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_qualification_periods_period ON qualification_periods (startYM, endYM)`);
 
     // Migration: Falls Spalte personType fehlt, hinzufügen
     const columns = await db.all("PRAGMA table_info('duty_roster')");
@@ -422,7 +453,7 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         await db.exec("UPDATE itw_doctors SET sort = 0 WHERE sort IS NULL");
     }
 
-    // --- RTW / NEF Fahrzeuge Tabellen ---
+    // --- RTW / NEF / ITW Fahrzeuge Tabellen ---
     await db.exec(`
         CREATE TABLE IF NOT EXISTS rtw_vehicles (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -440,12 +471,38 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
             occupancy_mode TEXT NOT NULL DEFAULT '24h'
         )
     `);
-    // Migration: add archived_year columns if missing
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS itw_vehicles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            sort INTEGER NOT NULL DEFAULT 0,
+            archived_year INTEGER
+        )
+    `);
+
+    // --- Fahrzeug-Positionen Tabellen (Verknüpfung Fahrzeug -> Position -> Qualifikation) ---
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS vehicle_positions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vehicleType TEXT NOT NULL,
+            vehicleId INTEGER NOT NULL,
+            positionName TEXT NOT NULL,
+            qualificationTypeId INTEGER,
+            sort INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (qualificationTypeId) REFERENCES qualification_types(id) ON DELETE SET NULL,
+            UNIQUE(vehicleType, vehicleId, positionName)
+        )
+    `);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_vehicle_positions_vehicle ON vehicle_positions (vehicleType, vehicleId)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_vehicle_positions_qual ON vehicle_positions (qualificationTypeId)`);
+
+    // Migration: Check for missing columns in vehicle tables
     const rtwCols = await db.all("PRAGMA table_info('rtw_vehicles')");
     if (!rtwCols.some((c: any) => c.name === 'archived_year')) {
         console.log('[DB] Adding archived_year to rtw_vehicles');
         await db.exec("ALTER TABLE rtw_vehicles ADD COLUMN archived_year INTEGER");
     }
+
     const nefCols = await db.all("PRAGMA table_info('nef_vehicles')");
     if (!nefCols.some((c: any) => c.name === 'archived_year')) {
         console.log('[DB] Adding archived_year to nef_vehicles');
@@ -456,12 +513,28 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         await db.exec("ALTER TABLE nef_vehicles ADD COLUMN occupancy_mode TEXT DEFAULT '24h'");
         try { await db.exec("UPDATE nef_vehicles SET occupancy_mode = '24h' WHERE occupancy_mode IS NULL"); } catch {}
     }
-    if (!nefCols.some((c: any) => c.name === 'occupancy_mode')) {
-        console.log('[DB] Adding occupancy_mode to nef_vehicles');
-        await db.exec("ALTER TABLE nef_vehicles ADD COLUMN occupancy_mode TEXT DEFAULT '24h'");
-        await db.exec("UPDATE nef_vehicles SET occupancy_mode = '24h' WHERE occupancy_mode IS NULL OR occupancy_mode = ''");
+
+    const itwVehCols = await db.all("PRAGMA table_info('itw_vehicles')");
+    if (!itwVehCols.some((c: any) => c.name === 'archived_year')) {
+        console.log('[DB] Adding archived_year to itw_vehicles');
+        await db.exec("ALTER TABLE itw_vehicles ADD COLUMN archived_year INTEGER");
     }
-    // Aktivierungen pro Monat/Jahr (default: aktiv)
+
+    // Migration: add 'lehrjahr' column to azubi_periods if missing
+    const azubiPeriodsCols = await db.all("PRAGMA table_info('azubi_periods')");
+    if (!azubiPeriodsCols.some((c: any) => c.name === 'lehrjahr')) {
+        console.log('[DB] Adding lehrjahr to azubi_periods');
+        await db.exec("ALTER TABLE azubi_periods ADD COLUMN lehrjahr INTEGER DEFAULT 1");
+    }
+    
+    // Migration: add 'excludeFromStats' column to qualification_types if missing
+    const qualTypeCols = await db.all("PRAGMA table_info('qualification_types')");
+    if (!qualTypeCols.some((c: any) => c.name === 'excludeFromStats')) {
+        console.log('[DB] Adding excludeFromStats to qualification_types');
+        await db.exec("ALTER TABLE qualification_types ADD COLUMN excludeFromStats INTEGER DEFAULT 0");
+    }
+    
+    // Aktivierungen pro Monat/Jahr (default: aktiv) - DEPRECATED, wird durch vehicle_periods ersetzt
     await db.exec(`
         CREATE TABLE IF NOT EXISTS rtw_vehicle_months (
             vehicleId INTEGER NOT NULL,
@@ -480,6 +553,78 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
             PRIMARY KEY(vehicleId, year, month)
         )
     `);
+
+    // --- Migration: Fahrzeug-Zeiträume Tabellen (analog zu qualification_periods) ---
+    // Prüfe ob rtw_vehicle_periods existiert
+    const rtwPeriodsExists = await db.get(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='rtw_vehicle_periods'"
+    );
+    if (!rtwPeriodsExists) {
+        console.log('[DB] Creating rtw_vehicle_periods table');
+        await db.exec(`
+            CREATE TABLE rtw_vehicle_periods (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vehicleId INTEGER NOT NULL,
+                startYM TEXT NOT NULL,
+                endYM TEXT,
+                active INTEGER DEFAULT 1,
+                FOREIGN KEY (vehicleId) REFERENCES rtw_vehicles (id) ON DELETE CASCADE
+            )
+        `);
+        await db.exec(`CREATE INDEX idx_rtw_vehicle_periods_vehicle ON rtw_vehicle_periods (vehicleId)`);
+    }
+    
+    // Prüfe ob nef_vehicle_periods existiert
+    const nefPeriodsExists = await db.get(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='nef_vehicle_periods'"
+    );
+    if (!nefPeriodsExists) {
+        console.log('[DB] Creating nef_vehicle_periods table');
+        await db.exec(`
+            CREATE TABLE nef_vehicle_periods (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vehicleId INTEGER NOT NULL,
+                startYM TEXT NOT NULL,
+                endYM TEXT,
+                active INTEGER DEFAULT 1,
+                FOREIGN KEY (vehicleId) REFERENCES nef_vehicles (id) ON DELETE CASCADE
+            )
+        `);
+        await db.exec(`CREATE INDEX idx_nef_vehicle_periods_vehicle ON nef_vehicle_periods (vehicleId)`);
+    }
+
+    // Prüfe ob itw_vehicle_periods existiert
+    const itwPeriodsExists = await db.get(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='itw_vehicle_periods'"
+    );
+    if (!itwPeriodsExists) {
+        console.log('[DB] Creating itw_vehicle_periods table');
+        await db.exec(`
+            CREATE TABLE itw_vehicle_periods (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vehicleId INTEGER NOT NULL,
+                startYM TEXT NOT NULL,
+                endYM TEXT,
+                active INTEGER DEFAULT 1,
+                FOREIGN KEY (vehicleId) REFERENCES itw_vehicles (id) ON DELETE CASCADE
+            )
+        `);
+        await db.exec(`CREATE INDEX idx_itw_vehicle_periods_vehicle ON itw_vehicle_periods (vehicleId)`);
+    }
+
+    // --- Jahresspezifische Vorplanungsdateien ---
+    const yearPlanningsExists = await db.get(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='year_plannings'"
+    );
+    if (!yearPlanningsExists) {
+        console.log('[DB] Creating year_plannings table');
+        await db.exec(`
+            CREATE TABLE year_plannings (
+                year INTEGER PRIMARY KEY,
+                filePath TEXT NOT NULL
+            )
+        `);
+    }
 
     return db;
 };
@@ -761,10 +906,10 @@ export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { person
                 await db.run(`
                     INSERT INTO duty_roster (personId, personType, date, value, type, manual_edit) VALUES (?, ?, ?, ?, ?, 0)
                     ON CONFLICT(personId, personType, date) DO UPDATE SET 
-                        value = excluded.value, 
-                        type = excluded.type,
-                        manual_edit = CASE WHEN duty_roster.manual_edit = 1 AND ? THEN 1 ELSE 0 END
-                `, [e.personId, e.personType || 'person', e.date, e.value ?? '', e.type ?? 'text', respectManualEdits ? 1 : 0]);
+                        value = CASE WHEN duty_roster.manual_edit = 1 THEN duty_roster.value ELSE excluded.value END,
+                        type = CASE WHEN duty_roster.manual_edit = 1 THEN duty_roster.type ELSE excluded.type END,
+                        manual_edit = CASE WHEN duty_roster.manual_edit = 1 THEN 1 ELSE 0 END
+                `, [e.personId, e.personType || 'person', e.date, e.value ?? '', e.type ?? 'text']);
                 imported++;
             } catch (ie) {
                 console.warn('[DB] bulkImportDutyRosterEntries skip entry error', ie);
@@ -781,11 +926,60 @@ export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { person
 };
 
 export const getAzubiList = async (db: AsyncDB) => {
-    return await db.all('SELECT * FROM azubis ORDER BY sort ASC, id ASC');
+    const azubis = await db.all('SELECT * FROM azubis ORDER BY sort ASC, id ASC');
+    const currentDate = new Date();
+    
+    // Für jeden Azubi das aktuelle Lehrjahr aus den Zeiträumen berechnen
+    for (const azubi of azubis) {
+        const periods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ? ORDER BY start_date ASC', [azubi.id]);
+        
+        // Finde den aktuellen Zeitraum
+        const currentPeriod = periods.find((period: any) => {
+            const startDate = new Date(period.start_date);
+            const endDate = new Date(period.end_date);
+            return currentDate >= startDate && currentDate <= endDate;
+        });
+        
+        if (currentPeriod && currentPeriod.lehrjahr) {
+            azubi.lehrjahr = currentPeriod.lehrjahr;
+        } else {
+            // Fallback: nimm das neueste/höchste Lehrjahr aus den Zeiträumen
+            const latestPeriod = periods.sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime())[0];
+            if (latestPeriod && latestPeriod.lehrjahr) {
+                azubi.lehrjahr = latestPeriod.lehrjahr;
+            }
+            // Ansonsten bleibt das Lehrjahr aus der azubis-Tabelle bestehen
+        }
+    }
+    
+    return azubis;
 };
 
 export const getAzubi = async (db: AsyncDB, id: number) => {
-    return await db.get('SELECT * FROM azubis WHERE id = ?', [id]);
+    const azubi = await db.get('SELECT * FROM azubis WHERE id = ?', [id]);
+    if (!azubi) return null;
+    
+    const currentDate = new Date();
+    const periods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ? ORDER BY start_date ASC', [id]);
+    
+    // Finde den aktuellen Zeitraum
+    const currentPeriod = periods.find((period: any) => {
+        const startDate = new Date(period.start_date);
+        const endDate = new Date(period.end_date);
+        return currentDate >= startDate && currentDate <= endDate;
+    });
+    
+    if (currentPeriod && currentPeriod.lehrjahr) {
+        azubi.lehrjahr = currentPeriod.lehrjahr;
+    } else {
+        // Fallback: nimm das neueste/höchste Lehrjahr aus den Zeiträumen
+        const latestPeriod = periods.sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime())[0];
+        if (latestPeriod && latestPeriod.lehrjahr) {
+            azubi.lehrjahr = latestPeriod.lehrjahr;
+        }
+    }
+    
+    return azubi;
 };
 
 export const addAzubi = async (db: AsyncDB, azubi: { name: string, vorname: string, lehrjahr: number }) => {
@@ -819,16 +1013,16 @@ export const getAllAzubiPeriods = async (db: AsyncDB) => {
     return await db.all('SELECT * FROM azubi_periods ORDER BY azubi_id, start_date ASC');
 };
 
-export const addAzubiPeriod = async (db: AsyncDB, period: { azubi_id: number, start_date: string, end_date: string, description?: string }) => {
+export const addAzubiPeriod = async (db: AsyncDB, period: { azubi_id: number, start_date: string, end_date: string, description?: string, lehrjahr?: number }) => {
     console.log('[DB] addAzubiPeriod', period);
-    await db.run('INSERT INTO azubi_periods (azubi_id, start_date, end_date, description) VALUES (?, ?, ?, ?)', 
-        [period.azubi_id, period.start_date, period.end_date, period.description || '']);
+    await db.run('INSERT INTO azubi_periods (azubi_id, start_date, end_date, description, lehrjahr) VALUES (?, ?, ?, ?, ?)', 
+        [period.azubi_id, period.start_date, period.end_date, period.description || '', period.lehrjahr || 1]);
     console.log('[DB] addAzubiPeriod erfolgreich');
 };
 
-export const updateAzubiPeriod = async (db: AsyncDB, period: { id: number, azubi_id: number, start_date: string, end_date: string, description?: string }) => {
-    await db.run('UPDATE azubi_periods SET azubi_id = ?, start_date = ?, end_date = ?, description = ? WHERE id = ?', 
-        [period.azubi_id, period.start_date, period.end_date, period.description || '', period.id]);
+export const updateAzubiPeriod = async (db: AsyncDB, period: { id: number, azubi_id: number, start_date: string, end_date: string, description?: string, lehrjahr?: number }) => {
+    await db.run('UPDATE azubi_periods SET azubi_id = ?, start_date = ?, end_date = ?, description = ?, lehrjahr = ? WHERE id = ?', 
+        [period.azubi_id, period.start_date, period.end_date, period.description || '', period.lehrjahr || 1, period.id]);
 };
 
 export const deleteAzubiPeriod = async (db: AsyncDB, id: number) => {
@@ -839,6 +1033,66 @@ export const updateAzubiOrder = async (db: AsyncDB, order: number[]) => {
     for (let i = 0; i < order.length; i++) {
         await db.run('UPDATE azubis SET sort = ? WHERE id = ?', [i, order[i]]);
     }
+};
+
+// --- Qualification Periods Functions ---
+export const getQualificationPeriods = async (db: AsyncDB, personId: number) => {
+    return await db.all('SELECT * FROM qualification_periods WHERE personId = ? ORDER BY qualType, startYM ASC', [personId]);
+};
+
+export const getAllQualificationPeriods = async (db: AsyncDB) => {
+    return await db.all('SELECT * FROM qualification_periods ORDER BY personId, qualType, startYM ASC');
+};
+
+export const addQualificationPeriod = async (db: AsyncDB, period: { 
+    personId: number, 
+    qualType: string, 
+    startYM: string, 
+    endYM?: string, 
+    active?: boolean 
+}) => {
+    console.log('[DB] addQualificationPeriod', period);
+    await db.run('INSERT INTO qualification_periods (personId, qualType, startYM, endYM, active) VALUES (?, ?, ?, ?, ?)', 
+        [period.personId, period.qualType, period.startYM, period.endYM || null, period.active ? 1 : 0]);
+    console.log('[DB] addQualificationPeriod erfolgreich');
+};
+
+export const updateQualificationPeriod = async (db: AsyncDB, period: { 
+    id: number, 
+    personId: number, 
+    qualType: string, 
+    startYM: string, 
+    endYM?: string, 
+    active?: boolean 
+}) => {
+    await db.run('UPDATE qualification_periods SET personId = ?, qualType = ?, startYM = ?, endYM = ?, active = ? WHERE id = ?', 
+        [period.personId, period.qualType, period.startYM, period.endYM || null, period.active ? 1 : 0, period.id]);
+};
+
+export const deleteQualificationPeriod = async (db: AsyncDB, id: number) => {
+    await db.run('DELETE FROM qualification_periods WHERE id = ?', [id]);
+};
+
+// Helper function to check if a person has a specific qualification in a given month
+export const hasQualificationInMonth = async (db: AsyncDB, personId: number, qualType: string, yearMonth: string): Promise<boolean> => {
+    const result = await db.get(
+        `SELECT COUNT(*) as count FROM qualification_periods 
+         WHERE personId = ? AND qualType = ? AND active = 1 
+         AND startYM <= ? AND (endYM IS NULL OR endYM >= ?)`,
+        [personId, qualType, yearMonth, yearMonth]
+    );
+    return result && result.count > 0;
+};
+
+// Get all active qualifications for a person in a specific month
+export const getActiveQualifications = async (db: AsyncDB, personId: number, yearMonth: string) => {
+    return await db.all(
+        `SELECT * FROM qualification_periods 
+         WHERE personId = ? AND active = 1 
+         AND startYM <= ? AND (endYM IS NULL OR endYM >= ?)
+         ORDER BY qualType`,
+        [personId, yearMonth, yearMonth]
+    );
 };
 
 // --- ITW Doctors CRUD ---
@@ -878,13 +1132,18 @@ export const getRtwVehicles = async (db: AsyncDB, year?: number) => {
     return await db.all('SELECT * FROM rtw_vehicles WHERE archived_year IS NULL ORDER BY sort ASC, id ASC');
 };
 export const addRtwVehicle = async (db: AsyncDB, v: { name: string }) => {
+    let vehicleId: number;
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM rtw_vehicles');
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
-        await db.run('INSERT INTO rtw_vehicles (name, sort) VALUES (?, ?)', [v.name, next]);
+        const result = await db.run('INSERT INTO rtw_vehicles (name, sort) VALUES (?, ?)', [v.name, next]);
+        vehicleId = result.lastID;
     } catch (e) {
-        await db.run('INSERT INTO rtw_vehicles (name) VALUES (?)', [v.name]);
+        const result = await db.run('INSERT INTO rtw_vehicles (name) VALUES (?)', [v.name]);
+        vehicleId = result.lastID;
     }
+    // Initialisiere Standard-Positionen
+    await initializeDefaultVehiclePositions(db, 'rtw', vehicleId);
 };
 export const updateRtwVehicle = async (db: AsyncDB, v: { id: number, name: string }) => {
     await db.run('UPDATE rtw_vehicles SET name = ? WHERE id = ?', [v.name, v.id]);
@@ -907,14 +1166,56 @@ export const getNefVehicles = async (db: AsyncDB, year?: number) => {
     }
     return await db.all('SELECT id, name, sort, archived_year, COALESCE(occupancy_mode, \'24h\') as occupancy_mode FROM nef_vehicles WHERE archived_year IS NULL ORDER BY sort ASC, id ASC');
 };
+
+// --- ITW Vehicles CRUD ---
+export const getItwVehicles = async (db: AsyncDB, year?: number) => {
+    if (typeof year === 'number') {
+        return await db.all('SELECT * FROM itw_vehicles WHERE archived_year IS NULL OR archived_year > ? ORDER BY sort ASC, id ASC', [year]);
+    }
+    return await db.all('SELECT * FROM itw_vehicles WHERE archived_year IS NULL ORDER BY sort ASC, id ASC');
+};
+export const addItwVehicle = async (db: AsyncDB, v: { name: string }) => {
+    let vehicleId: number;
+    try {
+        const row: any = await db.get('SELECT MAX(sort) as m FROM itw_vehicles');
+        const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
+        const result = await db.run('INSERT INTO itw_vehicles (name, sort) VALUES (?, ?)', [v.name, next]);
+        vehicleId = result.lastID;
+    } catch (e) {
+        const result = await db.run('INSERT INTO itw_vehicles (name) VALUES (?)', [v.name]);
+        vehicleId = result.lastID;
+    }
+    // Initialisiere Standard-Positionen
+    await initializeDefaultVehiclePositions(db, 'itw', vehicleId);
+};
+export const updateItwVehicle = async (db: AsyncDB, v: { id: number, name: string }) => {
+    await db.run('UPDATE itw_vehicles SET name = ? WHERE id = ?', [v.name, v.id]);
+};
+export const deleteItwVehicle = async (db: AsyncDB, id: number, currentYear?: number) => {
+    const y = currentYear || new Date().getFullYear();
+    await db.run('UPDATE itw_vehicles SET archived_year = ? WHERE id = ?', [y, id]);
+};
+export const updateItwVehicleOrder = async (db: AsyncDB, order: number[]) => {
+    for (let i = 0; i < order.length; i++) {
+        await db.run('UPDATE itw_vehicles SET sort = ? WHERE id = ?', [i, order[i]]);
+    }
+};
+
 export const addNefVehicle = async (db: AsyncDB, v: { name: string, occupancyMode?: '24h' | 'tag' }) => {
+    let vehicleId: number;
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM nef_vehicles');
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
-        await db.run('INSERT INTO nef_vehicles (name, sort, occupancy_mode) VALUES (?, ?, ?)', [v.name, next, v.occupancyMode === 'tag' ? 'tag' : '24h']);
+        const result = await db.run('INSERT INTO nef_vehicles (name, sort, occupancy_mode) VALUES (?, ?, ?)', 
+            [v.name, next, v.occupancyMode === 'tag' ? 'tag' : '24h']);
+        vehicleId = result.lastID;
     } catch (e) {
-        await db.run('INSERT INTO nef_vehicles (name, occupancy_mode) VALUES (?, ?)', [v.name, v.occupancyMode === 'tag' ? 'tag' : '24h']);
+        const result = await db.run('INSERT INTO nef_vehicles (name, occupancy_mode) VALUES (?, ?)', 
+            [v.name, v.occupancyMode === 'tag' ? 'tag' : '24h']);
+        vehicleId = result.lastID;
     }
+    // Initialisiere Standard-Positionen
+    await initializeDefaultVehiclePositions(db, 'nef', vehicleId);
 };
 export const updateNefVehicle = async (db: AsyncDB, v: { id: number, name: string, occupancyMode?: '24h' | 'tag' }) => {
     if (v.occupancyMode) {
@@ -937,26 +1238,229 @@ export const updateNefVehicleOrder = async (db: AsyncDB, order: number[]) => {
     }
 };
 
-// --- Vehicle monthly activation helpers ---
+// --- Vehicle monthly activation helpers (DEPRECATED - use vehicle periods instead) ---
 export const getRtwVehicleActivations = async (db: AsyncDB, year: number) => {
-    const rows = await db.all('SELECT vehicleId, month, enabled FROM rtw_vehicle_months WHERE year = ?', [year]);
-    return rows;
+    // Compatibility: Generate activation list from periods
+    // We need to fetch vehicles to know which ones exist, but we can also just fetch all periods
+    // and group by vehicle. However, to handle "no periods = active", we need the list of vehicles.
+    const vehicles = await getRtwVehicles(db, year);
+    const results: { vehicleId: number, month: number, enabled: number }[] = [];
+    
+    for (const v of vehicles) {
+        const periods = await db.all('SELECT * FROM rtw_vehicle_periods WHERE vehicleId = ?', [v.id]);
+        if (periods.length === 0) continue; // No periods = always active (default)
+
+        for (let m = 1; m <= 12; m++) {
+            const ym = `${year}-${String(m).padStart(2, '0')}`;
+            const isActive = periods.some((p: any) => 
+                (p.active === 1 || p.active === true) && 
+                p.startYM <= ym && 
+                (p.endYM === null || p.endYM === '' || p.endYM >= ym)
+            );
+            results.push({ vehicleId: v.id, month: m, enabled: isActive ? 1 : 0 });
+        }
+    }
+    return results;
 };
+
 export const setRtwVehicleActivation = async (db: AsyncDB, vehicleId: number, year: number, month: number, enabled: boolean) => {
-    await db.run(`
-        INSERT INTO rtw_vehicle_months (vehicleId, year, month, enabled) VALUES (?, ?, ?, ?)
-        ON CONFLICT(vehicleId, year, month) DO UPDATE SET enabled = excluded.enabled
-    `, [vehicleId, year, month, enabled ? 1 : 0]);
+    // Deprecated: No-op or log warning. The new system uses periods.
+    console.warn('[DB] setRtwVehicleActivation is deprecated. Use addRtwVehiclePeriod instead.');
 };
+
 export const getNefVehicleActivations = async (db: AsyncDB, year: number) => {
-    const rows = await db.all('SELECT vehicleId, month, enabled FROM nef_vehicle_months WHERE year = ?', [year]);
-    return rows;
+    // Compatibility: Generate activation list from periods
+    const vehicles = await getNefVehicles(db, year);
+    const results: { vehicleId: number, month: number, enabled: number }[] = [];
+    
+    for (const v of vehicles) {
+        const periods = await db.all('SELECT * FROM nef_vehicle_periods WHERE vehicleId = ?', [v.id]);
+        if (periods.length === 0) continue; // No periods = always active (default)
+
+        for (let m = 1; m <= 12; m++) {
+            const ym = `${year}-${String(m).padStart(2, '0')}`;
+            const isActive = periods.some((p: any) => 
+                (p.active === 1 || p.active === true) && 
+                p.startYM <= ym && 
+                (p.endYM === null || p.endYM === '' || p.endYM >= ym)
+            );
+            results.push({ vehicleId: v.id, month: m, enabled: isActive ? 1 : 0 });
+        }
+    }
+    return results;
 };
+
 export const setNefVehicleActivation = async (db: AsyncDB, vehicleId: number, year: number, month: number, enabled: boolean) => {
-    await db.run(`
-        INSERT INTO nef_vehicle_months (vehicleId, year, month, enabled) VALUES (?, ?, ?, ?)
-        ON CONFLICT(vehicleId, year, month) DO UPDATE SET enabled = excluded.enabled
-    `, [vehicleId, year, month, enabled ? 1 : 0]);
+    // Deprecated: No-op or log warning. The new system uses periods.
+    console.warn('[DB] setNefVehicleActivation is deprecated. Use addNefVehiclePeriod instead.');
+};
+
+// --- RTW Vehicle Periods Functions ---
+export const getRtwVehiclePeriods = async (db: AsyncDB, vehicleId: number) => {
+    return await db.all('SELECT * FROM rtw_vehicle_periods WHERE vehicleId = ? ORDER BY startYM ASC', [vehicleId]);
+};
+
+export const getAllRtwVehiclePeriods = async (db: AsyncDB) => {
+    return await db.all('SELECT * FROM rtw_vehicle_periods ORDER BY vehicleId, startYM ASC');
+};
+
+export const addRtwVehiclePeriod = async (db: AsyncDB, period: { 
+    vehicleId: number, 
+    startYM: string, 
+    endYM?: string, 
+    active?: boolean 
+}) => {
+    console.log('[DB] addRtwVehiclePeriod', period);
+    const endYM = period.endYM && period.endYM.trim() !== '' ? period.endYM : null;
+    const active = period.active === false ? 0 : 1;
+    await db.run('INSERT INTO rtw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, ?, ?)', 
+        [period.vehicleId, period.startYM, endYM, active]);
+    console.log('[DB] addRtwVehiclePeriod erfolgreich');
+};
+
+// --- ITW Vehicle Periods Functions ---
+export const getItwVehiclePeriods = async (db: AsyncDB, vehicleId: number) => {
+    return await db.all('SELECT * FROM itw_vehicle_periods WHERE vehicleId = ? ORDER BY startYM ASC', [vehicleId]);
+};
+
+export const getAllItwVehiclePeriods = async (db: AsyncDB) => {
+    return await db.all('SELECT * FROM itw_vehicle_periods ORDER BY vehicleId, startYM ASC');
+};
+
+export const addItwVehiclePeriod = async (db: AsyncDB, period: { 
+    vehicleId: number, 
+    startYM: string, 
+    endYM?: string, 
+    active?: boolean 
+}) => {
+    console.log('[DB] addItwVehiclePeriod', period);
+    const endYM = period.endYM && period.endYM.trim() !== '' ? period.endYM : null;
+    const active = period.active === false ? 0 : 1;
+    await db.run('INSERT INTO itw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, ?, ?)', 
+        [period.vehicleId, period.startYM, endYM, active]);
+    console.log('[DB] addItwVehiclePeriod erfolgreich');
+};
+
+export const updateItwVehiclePeriod = async (db: AsyncDB, period: { 
+    id: number, 
+    vehicleId: number, 
+    startYM: string, 
+    endYM?: string, 
+    active?: boolean 
+}) => {
+    const endYM = period.endYM && period.endYM.trim() !== '' ? period.endYM : null;
+    const active = period.active === false ? 0 : 1;
+    await db.run('UPDATE itw_vehicle_periods SET vehicleId = ?, startYM = ?, endYM = ?, active = ? WHERE id = ?', 
+        [period.vehicleId, period.startYM, endYM, active, period.id]);
+};
+
+export const deleteItwVehiclePeriod = async (db: AsyncDB, id: number) => {
+    await db.run('DELETE FROM itw_vehicle_periods WHERE id = ?', [id]);
+};
+
+export const updateRtwVehiclePeriod = async (db: AsyncDB, period: { 
+    id: number, 
+    vehicleId: number, 
+    startYM: string, 
+    endYM?: string, 
+    active?: boolean 
+}) => {
+    const endYM = period.endYM && period.endYM.trim() !== '' ? period.endYM : null;
+    const active = period.active === false ? 0 : 1;
+    await db.run('UPDATE rtw_vehicle_periods SET vehicleId = ?, startYM = ?, endYM = ?, active = ? WHERE id = ?', 
+        [period.vehicleId, period.startYM, endYM, active, period.id]);
+};
+
+export const deleteRtwVehiclePeriod = async (db: AsyncDB, id: number) => {
+    await db.run('DELETE FROM rtw_vehicle_periods WHERE id = ?', [id]);
+};
+
+// --- NEF Vehicle Periods Functions ---
+export const getNefVehiclePeriods = async (db: AsyncDB, vehicleId: number) => {
+    return await db.all('SELECT * FROM nef_vehicle_periods WHERE vehicleId = ? ORDER BY startYM ASC', [vehicleId]);
+};
+
+export const getAllNefVehiclePeriods = async (db: AsyncDB) => {
+    return await db.all('SELECT * FROM nef_vehicle_periods ORDER BY vehicleId, startYM ASC');
+};
+
+export const addNefVehiclePeriod = async (db: AsyncDB, period: { 
+    vehicleId: number, 
+    startYM: string, 
+    endYM?: string, 
+    active?: boolean 
+}) => {
+    console.log('[DB] addNefVehiclePeriod', period);
+    const endYM = period.endYM && period.endYM.trim() !== '' ? period.endYM : null;
+    const active = period.active === false ? 0 : 1;
+    await db.run('INSERT INTO nef_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, ?, ?)', 
+        [period.vehicleId, period.startYM, endYM, active]);
+    console.log('[DB] addNefVehiclePeriod erfolgreich');
+};
+
+export const updateNefVehiclePeriod = async (db: AsyncDB, period: { 
+    id: number, 
+    vehicleId: number, 
+    startYM: string, 
+    endYM?: string, 
+    active?: boolean 
+}) => {
+    const endYM = period.endYM && period.endYM.trim() !== '' ? period.endYM : null;
+    const active = period.active === false ? 0 : 1;
+    await db.run('UPDATE nef_vehicle_periods SET vehicleId = ?, startYM = ?, endYM = ?, active = ? WHERE id = ?', 
+        [period.vehicleId, period.startYM, endYM, active, period.id]);
+};
+
+export const deleteNefVehiclePeriod = async (db: AsyncDB, id: number) => {
+    await db.run('DELETE FROM nef_vehicle_periods WHERE id = ?', [id]);
+};
+
+// Helper: Check if RTW vehicle is active in a given month
+export const isRtwVehicleActiveInMonth = async (db: AsyncDB, vehicleId: number, yearMonth: string): Promise<boolean> => {
+    const result = await db.get(
+        `SELECT COUNT(*) as count FROM rtw_vehicle_periods 
+         WHERE vehicleId = ? AND active = 1 
+         AND startYM <= ? AND (endYM IS NULL OR endYM >= ?)`,
+        [vehicleId, yearMonth, yearMonth]
+    );
+    return result && result.count > 0;
+};
+
+// Helper: Check if NEF vehicle is active in a given month
+export const isNefVehicleActiveInMonth = async (db: AsyncDB, vehicleId: number, yearMonth: string): Promise<boolean> => {
+    const result = await db.get(
+        `SELECT COUNT(*) as count FROM nef_vehicle_periods 
+         WHERE vehicleId = ? AND active = 1 
+         AND startYM <= ? AND (endYM IS NULL OR endYM >= ?)`,
+        [vehicleId, yearMonth, yearMonth]
+    );
+    return result && result.count > 0;
+};
+
+// Get all active RTW vehicle periods for a specific month
+export const getActiveRtwVehiclesInMonth = async (db: AsyncDB, yearMonth: string) => {
+    return await db.all(
+        `SELECT rvp.*, rv.name 
+         FROM rtw_vehicle_periods rvp
+         JOIN rtw_vehicles rv ON rvp.vehicleId = rv.id
+         WHERE rvp.active = 1 
+         AND rvp.startYM <= ? AND (rvp.endYM IS NULL OR rvp.endYM >= ?)
+         ORDER BY rv.sort`,
+        [yearMonth, yearMonth]
+    );
+};
+
+// Get all active NEF vehicle periods for a specific month
+export const getActiveNefVehiclesInMonth = async (db: AsyncDB, yearMonth: string) => {
+    return await db.all(
+        `SELECT nvp.*, nv.name, nv.occupancy_mode 
+         FROM nef_vehicle_periods nvp
+         JOIN nef_vehicles nv ON nvp.vehicleId = nv.id
+         WHERE nvp.active = 1 
+         AND nvp.startYM <= ? AND (nvp.endYM IS NULL OR nvp.endYM >= ?)
+         ORDER BY nv.sort`,
+        [yearMonth, yearMonth]
+    );
 };
 
 // --- Utility: Clear previous slot assignments while keeping duty codes ---
@@ -977,14 +1481,39 @@ export const clearSlotAssignments = async (db: AsyncDB) => {
 
 // --- Assign only the slot (type) without overwriting the duty code (value) ---
 export const assignSlot = async (db: AsyncDB, entry: { personId: number, personType: string, date: string, slotType: string }) => {
-    // Prüfe, ob Zeile existiert
-    const row = await db.get('SELECT id FROM duty_roster WHERE personId = ? AND personType = ? AND date = ?', [entry.personId, entry.personType, entry.date]);
-    if (row) {
-        await db.run('UPDATE duty_roster SET type = ? WHERE personId = ? AND personType = ? AND date = ?', [entry.slotType, entry.personId, entry.personType, entry.date]);
-    } else {
-        await db.run('INSERT INTO duty_roster (personId, personType, date, value, type) VALUES (?, ?, ?, ?, ?)', [entry.personId, entry.personType, entry.date, '', entry.slotType]);
+    console.log('[DB] assignSlot START:', entry);
+    
+    // Wenn slotType leer ist, lösche den Eintrag
+    if (!entry.slotType || entry.slotType === '') {
+        await db.run('DELETE FROM duty_roster WHERE personId = ? AND personType = ? AND date = ?', [entry.personId, entry.personType, entry.date]);
+        console.log('[DB] assignSlot cleared entry', entry);
+        return;
     }
-    console.log('[DB] assignSlot ok', entry);
+
+    // WICHTIG: Erst alle anderen Personen aus diesem Slot entfernen (verhindert Doppelbelegung)
+    await db.run(`UPDATE duty_roster SET type = CASE 
+        WHEN type = ? AND (personId != ? OR personType != ?) THEN ''
+        ELSE type 
+        END 
+        WHERE date = ? AND type = ?`, 
+        [entry.slotType, entry.personId, entry.personType, entry.date, entry.slotType]
+    );
+    console.log('[DB] assignSlot cleared conflicting assignments for slot', entry.slotType, 'on', entry.date);
+
+    // Prüfe, ob die Person bereits an diesem Tag irgendwo eingeteilt ist
+    const existingRow = await db.get('SELECT type FROM duty_roster WHERE personId = ? AND personType = ? AND date = ?', [entry.personId, entry.personType, entry.date]);
+    
+    if (existingRow) {
+        // Update existing entry, setze manual_edit auf 1 um manuelle Bearbeitung zu markieren
+        await db.run('UPDATE duty_roster SET type = ?, manual_edit = 1 WHERE personId = ? AND personType = ? AND date = ?', [entry.slotType, entry.personId, entry.personType, entry.date]);
+        console.log('[DB] assignSlot updated existing entry from', existingRow.type, 'to', entry.slotType, entry);
+    } else {
+        // Insert new entry mit manual_edit = 1 (manuelle Zuweisung in Einteilung)
+        await db.run('INSERT INTO duty_roster (personId, personType, date, value, type, manual_edit) VALUES (?, ?, ?, ?, ?, 1)', [entry.personId, entry.personType, entry.date, '', entry.slotType]);
+        console.log('[DB] assignSlot created new entry', entry);
+    }
+    
+    console.log('[DB] assignSlot COMPLETED:', entry);
 };
 
 // --- Clear duty_roster by period ---
@@ -1003,4 +1532,567 @@ export const clearDutyRosterForMonth = async (db: AsyncDB, year: number, month: 
     const start = `${year}-${mm}-01`;
     const end = `${year}-${mm}-${String(last).padStart(2, '0')}`;
     await db.run('DELETE FROM duty_roster WHERE date >= ? AND date <= ?', [start, end]);
+};
+
+// --- Qualification Validation for Duty Roster ---
+export interface QualificationValidationResult {
+    isValid: boolean;
+    missingQualifications: string[];
+    warnings: string[];
+}
+
+// Helper: Get required qualifications for a vehicle position dynamically
+export const getRequiredQualificationsForVehiclePosition = async (
+    db: AsyncDB,
+    vehicleType: string,
+    vehicleId: number,
+    positionIndex: number
+): Promise<string[]> => {
+    const positions = await db.all(
+        `SELECT vp.*, qt.name as qualificationName
+         FROM vehicle_positions vp
+         LEFT JOIN qualification_types qt ON vp.qualificationTypeId = qt.id
+         WHERE vp.vehicleType = ? AND vp.vehicleId = ?
+         ORDER BY vp.sort ASC`,
+        [vehicleType, vehicleId]
+    );
+    
+    if (positionIndex >= 0 && positionIndex < positions.length) {
+        const position = positions[positionIndex];
+        if (position.qualificationName) {
+            return [position.qualificationName];
+        }
+    }
+    
+    return [];
+};
+
+// Helper: Get required qualifications based on cell type (for vehicle-based duty roster)
+export const getRequiredQualificationsForCellType = async (
+    db: AsyncDB,
+    cellType: string
+): Promise<{ qualifications: string[], azubiLehrjahr?: number }> => {
+    // Parse cellType format: "rtw1_tag_1" or "nef1_nacht_1" or "itw_row_1"
+    // Format: <vehicleType><vehicleNumber>_<shift>_<position> or itw_row_<position>
+    
+    let vehicleType: string;
+    let vehicleNumber: number;
+    let positionIndex: number;
+    
+    if (cellType.startsWith('itw_row_')) {
+        // ITW format: "itw_row_1"
+        vehicleType = 'itw';
+        positionIndex = parseInt(cellType.split('_')[2]) - 1;
+        
+        // Get first ITW vehicle (in future, we might support multiple ITW vehicles)
+        const itwVehicles = await db.all('SELECT id FROM itw_vehicles WHERE archived_year IS NULL ORDER BY sort ASC LIMIT 1');
+        if (itwVehicles.length === 0) {
+            return { qualifications: [] };
+        }
+        vehicleNumber = itwVehicles[0].id;
+    } else {
+        // RTW/NEF format: "rtw1_tag_1" or "nef1_nacht_1"
+        const match = cellType.match(/^(rtw|nef)(\d+)_(?:tag|nacht)_(\d+)$/);
+        if (!match) {
+            return { qualifications: [] };
+        }
+        
+        vehicleType = match[1];
+        const vehicleIndex = parseInt(match[2]) - 1;
+        positionIndex = parseInt(match[3]) - 1;
+        
+        // Get the vehicle ID by index
+        const tableName = vehicleType === 'rtw' ? 'rtw_vehicles' : 'nef_vehicles';
+        const vehicles = await db.all(`SELECT id FROM ${tableName} WHERE archived_year IS NULL ORDER BY sort ASC`);
+        if (vehicleIndex >= vehicles.length) {
+            return { qualifications: [] };
+        }
+        vehicleNumber = vehicles[vehicleIndex].id;
+    }
+    
+    // Get required qualifications from vehicle positions
+    const qualifications = await getRequiredQualificationsForVehiclePosition(db, vehicleType, vehicleNumber, positionIndex);
+    
+    // Check if Azubis are allowed (Maschinist positions typically allow Azubis from 2nd year)
+    // This can be extended in the future to be configurable per position
+    const azubiLehrjahr = positionIndex === 1 ? 2 : undefined; // Second position (Maschinist) allows Azubis
+    
+    return { qualifications, azubiLehrjahr };
+};
+
+// Mapping von Positionen/Werten zu erforderlichen Qualifikationen
+const SHIFT_QUALIFICATION_REQUIREMENTS: Record<string, string[]> = {
+    // RTW-Positionen (Fahrzeugführer)
+    'FzF': ['Fahrzeugführer'], // Fahrzeugführer Position
+    'F': ['Fahrzeugführer'], // Fahrzeugführer (kurz)
+    
+    // NEF-Positionen
+    'NEF': ['NEF'], // NEF-Dienst
+    'NEF-F': ['NEF'], // NEF Fahrzeugführer
+    
+    // ITW-Positionen  
+    'ITW-M': ['ITW Maschinist'], // ITW Maschinist
+    'ITW-F': ['ITW Fahrzeugführer'], // ITW Fahrzeugführer
+    
+    // Weitere spezielle Positionen
+    'AS': ['Atemschutz'], // Atemschutz
+    'HR': ['Höhenrettung'], // Höhenrettung  
+    'TH': ['Technische Hilfeleistung'], // Technische Hilfeleistung
+    
+    // Hinweis: RTT/RTN sind Dienstarten, keine Positionen - benötigen keine Qualifikationsprüfung
+};
+
+// Mapping von Zelltypen zu erforderlichen Qualifikationen (für spezielle Fahrzeugzeilen)
+const CELL_TYPE_QUALIFICATION_REQUIREMENTS: Record<string, { 
+    qualifications: string[], 
+    azubiLehrjahr?: number // Mindest-Lehrjahr für Azubis 
+}> = {
+    // RTW Fahrzeugführer (nur qualifizierte Personen)
+    'rtw1_tag_1': { qualifications: ['Fahrzeugführer'] },
+    'rtw1_nacht_1': { qualifications: ['Fahrzeugführer'] },
+    
+    // RTW Maschinist (qualifizierte Personen + Azubis ab 2. Lehrjahr)
+    'rtw1_tag_2': { qualifications: ['Fahrzeugführer'], azubiLehrjahr: 2 },
+    'rtw1_nacht_2': { qualifications: ['Fahrzeugführer'], azubiLehrjahr: 2 },
+    
+    // NEF Positionen (nur qualifizierte Personen)
+    'nef1_tag_1': { qualifications: ['NEF'] },
+    'nef1_nacht_1': { qualifications: ['NEF'] },
+    
+    // ITW Positionen
+    'itw_row_1': { qualifications: ['ITW Fahrzeugführer'] },
+    'itw_row_2': { qualifications: ['ITW Maschinist'] },
+};
+
+export const validateQualificationForShift = async (
+    db: AsyncDB, 
+    personId: number, 
+    shiftValue: string, 
+    date: string,
+    cellType?: string
+): Promise<QualificationValidationResult> => {
+    const result: QualificationValidationResult = {
+        isValid: true,
+        missingQualifications: [],
+        warnings: []
+    };
+
+    // Extrahiere Jahr und Monat aus Datum für Periodenprüfung
+    const dateObj = new Date(date);
+    const yearMonth = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Ermittle erforderliche Qualifikationen - dynamisch aus vehicle_positions wenn cellType vorhanden
+    let requiredQuals: string[] = [];
+    
+    if (cellType) {
+        // Dynamische Anforderungen aus vehicle_positions
+        const cellReqs = await getRequiredQualificationsForCellType(db, cellType);
+        requiredQuals = cellReqs.qualifications;
+        
+        // Fallback zu hart codierten Anforderungen wenn keine Positionen konfiguriert
+        if (requiredQuals.length === 0 && CELL_TYPE_QUALIFICATION_REQUIREMENTS[cellType]) {
+            requiredQuals = CELL_TYPE_QUALIFICATION_REQUIREMENTS[cellType].qualifications;
+        }
+    } else {
+        // Fallback zu alten hart codierten Anforderungen basierend auf shiftValue
+        requiredQuals = SHIFT_QUALIFICATION_REQUIREMENTS[shiftValue] || [];
+    }
+    if (!requiredQuals || requiredQuals.length === 0) {
+        // Keine speziellen Qualifikationen erforderlich
+        return result;
+    }
+
+    // Lade alle aktiven Qualifikationsperioden der Person für den Monat
+    const qualPeriods = await db.all(`
+        SELECT * FROM qualification_periods 
+        WHERE personId = ? AND active = 1
+        AND (startYM <= ? AND (endYM IS NULL OR endYM >= ?))
+    `, [personId, yearMonth, yearMonth]);
+
+    // Prüfe jede erforderliche Qualifikation
+    for (const requiredQual of requiredQuals) {
+        const hasQualification = qualPeriods.some(period => period.qualType === requiredQual);
+        
+        if (!hasQualification) {
+            result.isValid = false;
+            result.missingQualifications.push(requiredQual);
+        }
+    }
+
+    // Zusätzliche Warnungen für abgelaufene Qualifikationen
+    for (const period of qualPeriods) {
+        if (period.endYM && period.endYM < yearMonth) {
+            result.warnings.push(`${period.qualType} ist seit ${period.endYM} abgelaufen`);
+        }
+    }
+
+    return result;
+};
+
+// --- Qualification Types Management ---
+export interface QualificationType {
+    id: number;
+    name: string;
+    description?: string;
+    category?: string;
+    active: boolean;
+    sort: number;
+    excludeFromStats?: boolean; // Wenn true: Keine Soll/Ist-Berechnung, nur Positions-Besetzung (wie Azubis)
+}
+
+// Tabelle für Qualifikationstypen (falls noch nicht existiert)
+export const initializeQualificationTypesTable = async (db: AsyncDB) => {
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS qualification_types (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT,
+            category TEXT,
+            active INTEGER DEFAULT 1,
+            sort INTEGER DEFAULT 0,
+            excludeFromStats INTEGER DEFAULT 0
+        )
+    `);
+
+    // Standard-Qualifikationstypen einfügen falls Tabelle leer
+    const count = await db.get('SELECT COUNT(*) as count FROM qualification_types');
+    if (count.count === 0) {
+        const defaultQualifications = [
+            { name: 'Fahrzeugführer', description: 'Grundausbildung Fahrzeugführer', category: 'Fahrzeugführung', sort: 1 },
+            { name: 'Fahrzeugführer HLF-B', description: 'Hilfeleistungslöschfahrzeug B', category: 'Fahrzeugführung', sort: 2 },
+            { name: 'NEF', description: 'Notarzteinsatzfahrzeug', category: 'Notfall', sort: 3 },
+            { name: 'ITW Maschinist', description: 'Intensivtransportwagen Maschinist', category: 'Transport', sort: 4 },
+            { name: 'ITW Fahrzeugführer', description: 'Intensivtransportwagen Fahrzeugführer', category: 'Transport', sort: 5 },
+            { name: 'Atemschutz', description: 'Atemschutzgeräteträger', category: 'Sicherheit', sort: 6 },
+            { name: 'Höhenrettung', description: 'Höhenrettung und Abseilmaßnahmen', category: 'Rettung', sort: 7 },
+            { name: 'Technische Hilfeleistung', description: 'Technische Hilfeleistung bei Unfällen', category: 'Technik', sort: 8 }
+        ];
+
+        for (const qual of defaultQualifications) {
+            await db.run(
+                'INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, 1, ?)',
+                [qual.name, qual.description, qual.category, qual.sort]
+            );
+        }
+    }
+};
+
+export const getQualificationTypes = async (db: AsyncDB, activeOnly: boolean = false): Promise<QualificationType[]> => {
+    const whereClause = activeOnly ? 'WHERE active = 1' : '';
+    return await db.all(`SELECT * FROM qualification_types ${whereClause} ORDER BY sort ASC, name ASC`);
+};
+
+export const addQualificationType = async (db: AsyncDB, qualType: Omit<QualificationType, 'id'>): Promise<void> => {
+    // Validierung: Name ist erforderlich
+    if (!qualType.name || qualType.name.trim() === '') {
+        throw new Error('Der Name der Qualifikation ist erforderlich');
+    }
+    
+    // Prüfe ob excludeFromStats Spalte existiert
+    const cols = await db.all("PRAGMA table_info('qualification_types')");
+    const hasExcludeFromStats = cols.some((c: any) => c.name === 'excludeFromStats');
+    
+    if (hasExcludeFromStats) {
+        await db.run(
+            'INSERT INTO qualification_types (name, description, category, active, sort, excludeFromStats) VALUES (?, ?, ?, ?, ?, ?)',
+            [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort, qualType.excludeFromStats ? 1 : 0]
+        );
+    } else {
+        // Fallback ohne excludeFromStats (für alte Datenbanken)
+        await db.run(
+            'INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, ?, ?)',
+            [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort]
+        );
+    }
+};
+
+export const updateQualificationType = async (db: AsyncDB, qualType: QualificationType): Promise<void> => {
+    console.log('[DB] updateQualificationType received:', JSON.stringify(qualType, null, 2));
+    
+    // Validierung: Name ist erforderlich
+    if (!qualType.name || qualType.name.trim() === '') {
+        console.log('[DB] updateQualificationType: Name validation failed. name=', qualType.name);
+        throw new Error('Der Name der Qualifikation ist erforderlich');
+    }
+    
+    // Prüfe ob excludeFromStats Spalte existiert
+    const cols = await db.all("PRAGMA table_info('qualification_types')");
+    const hasExcludeFromStats = cols.some((c: any) => c.name === 'excludeFromStats');
+    
+    if (hasExcludeFromStats) {
+        await db.run(
+            'UPDATE qualification_types SET name = ?, description = ?, category = ?, active = ?, sort = ?, excludeFromStats = ? WHERE id = ?',
+            [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort, qualType.excludeFromStats ? 1 : 0, qualType.id]
+        );
+    } else {
+        // Fallback ohne excludeFromStats (für alte Datenbanken)
+        await db.run(
+            'UPDATE qualification_types SET name = ?, description = ?, category = ?, active = ?, sort = ? WHERE id = ?',
+            [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort, qualType.id]
+        );
+    }
+};
+
+export const deleteQualificationType = async (db: AsyncDB, id: number): Promise<void> => {
+    // Prüfe ob Qualifikationstyp in Verwendung ist
+    const usageCount = await db.get('SELECT COUNT(*) as count FROM qualification_periods WHERE qualType = (SELECT name FROM qualification_types WHERE id = ?)', [id]);
+    
+    if (usageCount.count > 0) {
+        throw new Error(`Qualifikationstyp kann nicht gelöscht werden. Er wird in ${usageCount.count} Qualifikationsperioden verwendet.`);
+    }
+    
+    await db.run('DELETE FROM qualification_types WHERE id = ?', [id]);
+};
+
+export const getQualifiedPersonsForPosition = async (
+    db: AsyncDB,
+    position: string,
+    date: string,
+    cellType?: string
+): Promise<{ id: number; name: string; vorname: string; qualifications: string[]; isAzubi?: boolean; lehrjahr?: number }[]> => {
+    // Prüfe zuerst Zelltyp-basierte Anforderungen (dynamisch aus vehicle_positions)
+    let cellRequirements: { qualifications: string[], azubiLehrjahr?: number } | null = null;
+    
+    if (cellType) {
+        // Try to get requirements dynamically from vehicle positions
+        cellRequirements = await getRequiredQualificationsForCellType(db, cellType);
+        
+        // Fallback to hardcoded requirements if no dynamic requirements found
+        if (cellRequirements.qualifications.length === 0) {
+            cellRequirements = CELL_TYPE_QUALIFICATION_REQUIREMENTS[cellType] || null;
+        }
+    }
+    
+    const requiredQuals = cellRequirements?.qualifications || SHIFT_QUALIFICATION_REQUIREMENTS[position] || [];
+    
+    if (requiredQuals.length === 0 && !cellRequirements) {
+        // Keine Qualifikation erforderlich - alle aktiven Personen zurückgeben
+        const allPersons = await db.all(`
+            SELECT id, name, vorname, 0 as isAzubi
+            FROM personnel 
+            WHERE active = 1
+            ORDER BY name, vorname
+        `);
+        return allPersons.map((p: any) => ({ ...p, qualifications: [] }));
+    }
+    
+    const yearMonth = date.substring(0, 7); // '2025-11-15' -> '2025-11'
+    const results: any[] = [];
+    
+    // Hole qualifizierte Personen
+    if (requiredQuals.length > 0) {
+        const personsWithQuals = await db.all(`
+            SELECT DISTINCT 
+                p.id, p.name, p.vorname,
+                GROUP_CONCAT(qp.qualType) as qualifications,
+                0 as isAzubi
+            FROM personnel p
+            LEFT JOIN qualification_periods qp ON p.id = qp.personId
+                AND qp.active = 1
+                AND qp.startYM <= ?
+                AND (qp.endYM IS NULL OR qp.endYM >= ?)
+            WHERE p.active = 1
+            GROUP BY p.id, p.name, p.vorname
+            ORDER BY p.name, p.vorname
+        `, [yearMonth, yearMonth]);
+        
+        // Filtere nur Personen, die mindestens eine der erforderlichen Qualifikationen haben
+        const qualified = personsWithQuals.filter((person: any) => {
+            const personQuals = person.qualifications ? person.qualifications.split(',') : [];
+            return requiredQuals.some(req => personQuals.includes(req));
+        }).map((person: any) => ({
+            ...person,
+            qualifications: person.qualifications ? person.qualifications.split(',') : []
+        }));
+        
+        results.push(...qualified);
+    }
+    
+    // Füge qualifizierte Azubis hinzu (falls erlaubt)
+    if (cellRequirements?.azubiLehrjahr) {
+        const qualifiedAzubis = await db.all(`
+            SELECT id, name, vorname, lehrjahr, 1 as isAzubi
+            FROM azubis
+            WHERE lehrjahr >= ?
+            ORDER BY name, vorname
+        `, [cellRequirements.azubiLehrjahr]);
+        
+        results.push(...qualifiedAzubis.map((azubi: any) => ({
+            ...azubi,
+            qualifications: [`Azubi ${azubi.lehrjahr}. Lj.`]
+        })));
+    }
+    
+    return results;
+};
+
+// --- Vehicle Position Management ---
+export interface VehiclePosition {
+    id: number;
+    vehicleType: 'rtw' | 'nef' | 'itw';
+    vehicleId: number;
+    positionName: string;
+    qualificationTypeId: number | null;
+    sort: number;
+}
+
+// Holt alle Positionen für ein bestimmtes Fahrzeug
+export const getVehiclePositions = async (db: AsyncDB, vehicleType: string, vehicleId: number): Promise<VehiclePosition[]> => {
+    return await db.all(
+        'SELECT * FROM vehicle_positions WHERE vehicleType = ? AND vehicleId = ? ORDER BY sort ASC, id ASC',
+        [vehicleType, vehicleId]
+    );
+};
+
+// Holt alle Positionen mit Qualifikations-Details
+export const getVehiclePositionsWithQualifications = async (db: AsyncDB, vehicleType: string, vehicleId: number) => {
+    return await db.all(`
+        SELECT 
+            vp.*,
+            qt.name as qualificationName,
+            qt.description as qualificationDescription,
+            qt.category as qualificationCategory
+        FROM vehicle_positions vp
+        LEFT JOIN qualification_types qt ON vp.qualificationTypeId = qt.id
+        WHERE vp.vehicleType = ? AND vp.vehicleId = ?
+        ORDER BY vp.sort ASC, vp.id ASC
+    `, [vehicleType, vehicleId]);
+};
+
+// Fügt eine neue Position zu einem Fahrzeug hinzu
+export const addVehiclePosition = async (db: AsyncDB, position: Omit<VehiclePosition, 'id'>): Promise<void> => {
+    await db.run(
+        `INSERT INTO vehicle_positions (vehicleType, vehicleId, positionName, qualificationTypeId, sort) 
+         VALUES (?, ?, ?, ?, ?)`,
+        [position.vehicleType, position.vehicleId, position.positionName, position.qualificationTypeId, position.sort]
+    );
+};
+
+// Aktualisiert eine Fahrzeugposition
+export const updateVehiclePosition = async (db: AsyncDB, position: VehiclePosition): Promise<void> => {
+    await db.run(
+        `UPDATE vehicle_positions 
+         SET positionName = ?, qualificationTypeId = ?, sort = ? 
+         WHERE id = ?`,
+        [position.positionName, position.qualificationTypeId, position.sort, position.id]
+    );
+};
+
+// Löscht eine Fahrzeugposition
+export const deleteVehiclePosition = async (db: AsyncDB, id: number): Promise<void> => {
+    await db.run('DELETE FROM vehicle_positions WHERE id = ?', [id]);
+};
+
+// Aktualisiert die Sortierung mehrerer Positionen
+export const updateVehiclePositionOrder = async (db: AsyncDB, order: number[]): Promise<void> => {
+    for (let i = 0; i < order.length; i++) {
+        await db.run('UPDATE vehicle_positions SET sort = ? WHERE id = ?', [i, order[i]]);
+    }
+};
+
+// Initialisiert Standard-Positionen für ein neu erstelltes Fahrzeug
+export const initializeDefaultVehiclePositions = async (
+    db: AsyncDB, 
+    vehicleType: 'rtw' | 'nef' | 'itw', 
+    vehicleId: number
+): Promise<void> => {
+    // Prüfe ob bereits Positionen existieren
+    const existing = await db.get(
+        'SELECT COUNT(*) as count FROM vehicle_positions WHERE vehicleType = ? AND vehicleId = ?',
+        [vehicleType, vehicleId]
+    );
+    
+    if (existing.count > 0) {
+        return; // Bereits Positionen vorhanden
+    }
+
+    // Hole die Qualifikationstypen aus der Datenbank
+    const qualTypes = await getQualificationTypes(db, true);
+    const findQualId = (name: string) => {
+        const found = qualTypes.find(q => q.name === name);
+        return found ? found.id : null;
+    };
+
+    let positions: Array<{ positionName: string; qualificationTypeId: number | null; sort: number }> = [];
+
+    switch (vehicleType) {
+        case 'rtw':
+            positions = [
+                { positionName: 'Fahrzeugführer', qualificationTypeId: findQualId('Fahrzeugführer'), sort: 0 },
+                { positionName: 'Maschinist', qualificationTypeId: null, sort: 1 }
+            ];
+            break;
+        case 'nef':
+            positions = [
+                { positionName: 'Assistent', qualificationTypeId: findQualId('NEF'), sort: 0 }
+            ];
+            break;
+        case 'itw':
+            positions = [
+                { positionName: 'Fahrzeugführer', qualificationTypeId: findQualId('ITW Fahrzeugführer'), sort: 0 },
+                { positionName: 'Maschinist', qualificationTypeId: findQualId('ITW Maschinist'), sort: 1 }
+            ];
+            break;
+    }
+
+    for (const pos of positions) {
+        await db.run(
+            `INSERT INTO vehicle_positions (vehicleType, vehicleId, positionName, qualificationTypeId, sort) 
+             VALUES (?, ?, ?, ?, ?)`,
+            [vehicleType, vehicleId, pos.positionName, pos.qualificationTypeId, pos.sort]
+        );
+    }
+};
+
+// --- Jahresspezifische Vorplanungsdateien ---
+export const getYearPlannings = async (db: AsyncDB) => {
+    // Defensive: Stelle sicher, dass die Tabelle existiert
+    await ensureYearPlanningsTable(db);
+    return await db.all('SELECT year, filePath FROM year_plannings ORDER BY year ASC');
+};
+
+export const getYearPlanningForYear = async (db: AsyncDB, year: number) => {
+    // Defensive: Stelle sicher, dass die Tabelle existiert
+    await ensureYearPlanningsTable(db);
+    return await db.get('SELECT year, filePath FROM year_plannings WHERE year = ?', [year]);
+};
+
+export const saveYearPlannings = async (db: AsyncDB, plannings: { year: number; filePath: string }[]) => {
+    // Defensive: Stelle sicher, dass die Tabelle existiert
+    await ensureYearPlanningsTable(db);
+    
+    // Lösche alle bestehenden Einträge
+    await db.run('DELETE FROM year_plannings');
+    
+    // Füge neue Einträge hinzu
+    for (const planning of plannings) {
+        if (planning.year && planning.filePath) {
+            await db.run(
+                'INSERT INTO year_plannings (year, filePath) VALUES (?, ?)',
+                [planning.year, planning.filePath]
+            );
+        }
+    }
+};
+
+export const deleteYearPlanning = async (db: AsyncDB, year: number) => {
+    // Defensive: Stelle sicher, dass die Tabelle existiert
+    await ensureYearPlanningsTable(db);
+    await db.run('DELETE FROM year_plannings WHERE year = ?', [year]);
+};
+
+// Hilfsfunktion: Stelle sicher, dass year_plannings Tabelle existiert
+const ensureYearPlanningsTable = async (db: AsyncDB) => {
+    const exists = await db.get(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='year_plannings'"
+    );
+    if (!exists) {
+        console.log('[DB] Creating missing year_plannings table');
+        await db.exec(`
+            CREATE TABLE year_plannings (
+                year INTEGER PRIMARY KEY,
+                filePath TEXT NOT NULL
+            )
+        `);
+    }
 };

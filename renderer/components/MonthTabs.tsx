@@ -35,6 +35,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     const [rtwActivations, setRtwActivations] = useState<Record<number, boolean[]>>({});
     const [nefActivations, setNefActivations] = useState<Record<number, boolean[]>>({});
     const [itwPatternSeqs, setItwPatternSeqs] = useState<{ startDate: string; pattern: string[] }[]>([]);
+    const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
+    const [isUpdating, setIsUpdating] = useState(false); // Verhindert Race-Conditions während Updates
     const [holidays, setHolidays] = useState<Set<string>>(new Set());
     // Zusätzliche ITW-Tage außerhalb der Schichtfolge (nur UI-state für aktuellen Monat)
     const [itwExtraDays, setItwExtraDays] = useState<Set<string>>(new Set());
@@ -91,12 +93,17 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 const types = await (window as any).api.getShiftTypes();
                 setShiftTypes(types || []);
                 const map: Record<string, 'off'|'tag'|'nacht'|'24h'|'itw'> = {};
+                console.log('[MonthTabs] Loading shift types:', types);
                 for (const t of (types || [])) {
                     const v = await (window as any).api.getSetting(`auswertung_${t.code}`);
+                    console.log(`[MonthTabs] Loaded auswertung for ${t.code}:`, v);
                     map[t.code] = (v || 'off') as any;
                 }
+                console.log('[MonthTabs] Final auswertungByType:', map);
                 setAuswertungByType(map);
-            } catch {}
+            } catch (e) {
+                console.error('[MonthTabs] Error loading shift types:', e);
+            }
             try {
                 const docs = await (window as any).api.getItwDoctors?.();
                 if (Array.isArray(docs)) setItwDoctors(docs);
@@ -160,31 +167,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
             } catch {}
         };
         (window as any).api?.onSettingsUpdated?.(onSettingsUpdated);
-        // Bei Dienstplan-Änderungen lokalen Roster aktualisieren (nur Delta ziehen wäre besser, hier einfacher Full Reload)
-        const onDutyRosterUpdated = async () => {
-            try {
-                const yearSetting = await (window as any).api.getSetting('year');
-                const useYear = Number(yearSetting || new Date().getFullYear());
-                const entries = await (window as any).api.getDutyRoster(useYear);
-                const rosterObj: Record<string, Record<string, { value: string; type: string }>> = {};
-                (entries || []).forEach((e: any) => {
-                    if (!e || !e.date) return;
-                    let key = '';
-                    if (e.personType === 'person') key = `p_${e.personId}`;
-                    else if (e.personType === 'azubi') key = `a_${e.personId}`;
-                    else if (e.personType === 'doctor') key = `d_${e.personId}`;
-                    if (!key) return;
-                    if (!rosterObj[key]) rosterObj[key] = {};
-                    rosterObj[key][String(e.date)] = { value: e.value, type: e.type };
-                });
-                setLocalRoster(rosterObj);
-            } catch (e) { console.warn('[MonthTabs] duty-roster-updated reload failed', e); }
-        };
-        (window as any).api?.onDutyRosterUpdated?.(onDutyRosterUpdated);
+        // Event-Handler entfernt - Parent (EinteilungPage) kümmert sich um Roster-Updates
         return () => { (window as any).api?.offSettingsUpdated?.(onSettingsUpdated); };
     }, []);
 
-    useEffect(() => setLocalRoster(roster || {}), [roster]);
+    // Intelligenter Sync: Nur updaten, wenn sich wirklich was geändert hat UND wir nicht gerade lokal updaten
+    useEffect(() => {
+        if (!roster || isUpdating) return; // Skip während lokaler Updates
+        
+        // Nur synchronisieren, wenn der Parent-State sich wirklich geändert hat
+        const currentKeys = Object.keys(localRoster);
+        const newKeys = Object.keys(roster);
+        const hasChanged = currentKeys.length !== newKeys.length || 
+                          newKeys.some(key => JSON.stringify(localRoster[key]) !== JSON.stringify(roster[key]));
+        
+        if (hasChanged) {
+            console.log('[MonthTabs] Syncing roster from parent - significant changes detected');
+            setLocalRoster({ ...roster });
+        }
+    }, [roster, localRoster, isUpdating]);
 
     // Übernehme RTW Namen aus Fahrzeugliste
     useEffect(() => {
@@ -280,8 +281,19 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
         } catch { return ''; }
     };
     const allowedByAuswertung = (code: string, desired: 'tag'|'nacht'|'24h'|'any'): boolean => {
+        // Wenn kein Dienstcode vorhanden ist, ist die Person nicht verfügbar
+        if (!code || code.trim() === '') {
+            return false;
+        }
+        
         if (desired === 'any') return true;
         const evalMode = auswertungByType[code] || 'off';
+        
+        // Wenn der Auswertungsmodus 'off' ist, ist die Person nicht verfügbar
+        if (evalMode === 'off') {
+            return false;
+        }
+        
         if (desired === 'tag') return (evalMode === 'tag' || evalMode === '24h');
         if (desired === 'nacht') return (evalMode === 'nacht' || evalMode === '24h');
         if (desired === '24h') return evalMode === '24h';
@@ -289,15 +301,21 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     };
     const getAssignedValueFor = (date: string, slotId: string): string => {
         const mergedKeys = Array.from(new Set([...(Object.keys(localRoster || {})), ...(Object.keys(roster || {}))]));
+        let foundMatch = false;
         for (const key of mergedKeys) {
             const entry = ((localRoster as any)?.[key]?.[date]) || ((roster as any)?.[key]?.[date]);
             if (!entry) continue;
             const t = String(entry.type || '');
             if (t === slotId) {
+                foundMatch = true;
                 if (key.startsWith('p_')) return `p:${key.slice(2)}`;
                 if (key.startsWith('a_')) return `a:${key.slice(2)}`;
                 return `p:${key}`;
             }
+        }
+        // Debug: Log wenn nichts gefunden wurde für RTW Fahrzeugführer
+        if (!foundMatch && slotId.includes('_1') && (slotId.startsWith('rtw') || slotId.startsWith('nef'))) {
+            console.log('[MonthTabs] No assignment found for', { date, slotId, rosterKeys: mergedKeys.length });
         }
         return '';
     };
@@ -328,16 +346,57 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
         const pid = Number(idStr);
         const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : 'person');
         try {
-            await (window as any).api.assignSlot({ personId: pid, personType: ptype, date, slotType: slotId || '' });
+            console.log('[MonthTabs] handleAssign START:', { date, value, slotId, pid, ptype });
+            
+            // 1. Blockiere Parent-Updates während unseres lokalen Updates
+            setIsUpdating(true);
+            
+            // 2. Sofortiges optimistisches UI-Update (verhindert Flackern)
             const key = ptype === 'person' ? `p_${pid}` : (ptype === 'azubi' ? `a_${pid}` : `d_${pid}`);
+            
             setLocalRoster(prev => {
-                const before = prev[key] || {} as any;
-                const dayEntry = { ...(before[date] || {}) } as any;
-                dayEntry.type = slotId || '';
-                return { ...prev, [key]: { ...before, [date]: dayEntry } } as any;
+                const newState = { ...prev };
+                
+                // Entferne alle anderen Personen aus dem Ziel-Slot (slotId) an diesem Tag
+                if (slotId) {
+                    Object.keys(newState).forEach(personKey => {
+                        if (personKey !== key && newState[personKey][date]?.type === slotId) {
+                            console.log('[MonthTabs] Optimistically removing', personKey, 'from slot', slotId);
+                            newState[personKey] = {
+                                ...newState[personKey],
+                                [date]: { ...(newState[personKey][date] || {}), type: '' }
+                            };
+                        }
+                    });
+                }
+                
+                // Aktualisiere die Ziel-Person
+                const currentPersonState = newState[key] || {};
+                const dayEntry = { ...(currentPersonState[date] || {}), type: slotId || '' };
+                newState[key] = { ...currentPersonState, [date]: dayEntry };
+                
+                return newState;
             });
+            
+            // Force UI update
+            setForceUpdateCounter(prev => prev + 1);
+            
+            // 3. Backend-Call (async)
+            await (window as any).api.assignSlot({ personId: pid, personType: ptype, date, slotType: slotId || '' });
+            console.log('[MonthTabs] handleAssign API call completed');
+            
+            // 4. Kurze Verzögerung, dann Parent-Updates wieder erlauben
+            setTimeout(() => {
+                setIsUpdating(false);
+            }, 100);
+            
             if (onEntryAssigned) onEntryAssigned(key, date, (localRoster[key]?.[date]?.value || ''), slotId || '');
-            if (onRosterChanged) onRosterChanged();
+            // onRosterChanged wird nur verzögert aufgerufen um excessive Reloads zu vermeiden
+            setTimeout(() => {
+                if (onRosterChanged) onRosterChanged();
+            }, 200);
+            
+            console.log('[MonthTabs] handleAssign COMPLETED');
         } catch (e) {
             console.warn('[MonthTabs] handleAssign failed', e);
         }
@@ -354,8 +413,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
             setLocalRoster(prev => {
                 const before = prev[key] || {} as any;
                 const dayEntry = { ...(before[date] || {}) } as any;
-                if (dayEntry && dayEntry.type) delete dayEntry.type;
-                return { ...prev, [key]: { ...before, [date]: dayEntry } } as any;
+                // Immutable removal of type property
+                const { type, ...cleanDayEntry } = dayEntry;
+                const newPersonState = { ...before, [date]: cleanDayEntry };
+                return { ...prev, [key]: newPersonState };
             });
             if (onEntryAssigned) onEntryAssigned(key, date, (localRoster[key]?.[date]?.value || ''), '');
             if (onRosterChanged) onRosterChanged();
@@ -365,7 +426,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     };
 
     return (
-        <div style={{ padding: 12 }}>
+        <div key={forceUpdateCounter} style={{ padding: 12 }}>
             {/* Sub‑Header: RTW/ITW Einteilung (Monat) - jetzt oberhalb der Tabs */}
             <div style={{ margin: '4px 0 10px 0' }}>
                 <span style={{ fontSize: 18, fontWeight: 700 }}>
@@ -373,21 +434,117 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 </span>
             </div>
             {/* Monats-Tabs */}
-            <div className={styles.tabs}>
-                {months.map((m, i) => (
-                    <button
-                        key={i}
-                        onClick={() => onMonthChange(i)}
-                        className={`${styles.tab} ${currentMonth === i ? styles.tabActive : ''}`}
-                    >
-                        {m}
-                    </button>
-                ))}
+            <div style={{ 
+                display: 'flex', 
+                gap: '4px', 
+                borderBottom: '1px solid #e5e7eb',
+                marginBottom: '16px',
+                flexWrap: 'wrap'
+            }}>
+                {months.map((m, i) => {
+                    // RTW/NEF = rot (#dc3545), ITW = gelb (#ffc107)
+                    const accentColor = viewMode === 'rtwnef' ? '#dc3545' : '#ffc107';
+                    const hoverColor = viewMode === 'rtwnef' ? '#b02a37' : '#e0a800';
+                    
+                    return (
+                        <button
+                            key={i}
+                            onClick={() => onMonthChange(i)}
+                            style={{
+                                padding: '8px 16px',
+                                background: currentMonth === i ? '#f8f9fa' : 'transparent',
+                                border: 'none',
+                                borderBottom: currentMonth === i ? `3px solid ${accentColor}` : '3px solid transparent',
+                                cursor: 'pointer',
+                                fontWeight: currentMonth === i ? 600 : 400,
+                                color: currentMonth === i ? accentColor : '#6b7280',
+                                transition: 'all 0.2s',
+                                fontSize: '14px'
+                            }}
+                            onMouseEnter={(e) => {
+                                if (currentMonth !== i) {
+                                    e.currentTarget.style.background = '#f3f4f6';
+                                    e.currentTarget.style.color = '#374151';
+                                }
+                            }}
+                            onMouseLeave={(e) => {
+                                if (currentMonth !== i) {
+                                    e.currentTarget.style.background = 'transparent';
+                                    e.currentTarget.style.color = '#6b7280';
+                                }
+                            }}
+                        >
+                            {m}
+                        </button>
+                    );
+                })}
             </div>
             {/* Ansichts-Umschalter */}
-            <div className={styles.toggleGroup}>
-                <button onClick={() => setViewMode('rtwnef')} className={styles.toggleBtn} style={{ background: viewMode === 'rtwnef' ? '#f3f4f6' : undefined }}>RTW/NEF</button>
-                <button onClick={() => setViewMode('itw')} disabled={!itwEnabled} className={styles.toggleBtn} style={{ background: viewMode === 'itw' ? '#f3f4f6' : undefined, opacity: itwEnabled ? 1 : 0.5 }}>ITW</button>
+            <div style={{ 
+                display: 'flex', 
+                gap: '4px', 
+                borderBottom: '1px solid #e5e7eb',
+                marginBottom: '16px',
+                marginTop: '8px'
+            }}>
+                <button 
+                    onClick={() => setViewMode('rtwnef')} 
+                    style={{
+                        padding: '8px 16px',
+                        background: viewMode === 'rtwnef' ? '#f8f9fa' : 'transparent',
+                        border: 'none',
+                        borderBottom: viewMode === 'rtwnef' ? '3px solid #dc3545' : '3px solid transparent',
+                        cursor: 'pointer',
+                        fontWeight: viewMode === 'rtwnef' ? 600 : 400,
+                        color: viewMode === 'rtwnef' ? '#dc3545' : '#6b7280',
+                        transition: 'all 0.2s',
+                        fontSize: '14px'
+                    }}
+                    onMouseEnter={(e) => {
+                        if (viewMode !== 'rtwnef') {
+                            e.currentTarget.style.background = '#f3f4f6';
+                            e.currentTarget.style.color = '#374151';
+                        }
+                    }}
+                    onMouseLeave={(e) => {
+                        if (viewMode !== 'rtwnef') {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.color = '#6b7280';
+                        }
+                    }}
+                >
+                    RTW/NEF
+                </button>
+                <button 
+                    onClick={() => setViewMode('itw')} 
+                    disabled={!itwEnabled}
+                    style={{
+                        padding: '8px 16px',
+                        background: viewMode === 'itw' ? '#f8f9fa' : 'transparent',
+                        border: 'none',
+                        borderBottom: viewMode === 'itw' ? '3px solid #ffc107' : '3px solid transparent',
+                        cursor: itwEnabled ? 'pointer' : 'not-allowed',
+                        fontWeight: viewMode === 'itw' ? 600 : 400,
+                        color: viewMode === 'itw' ? '#ffc107' : '#6b7280',
+                        transition: 'all 0.2s',
+                        fontSize: '14px',
+                        opacity: itwEnabled ? 1 : 0.5
+                    }}
+                    onMouseEnter={(e) => {
+                        if (viewMode !== 'itw' && itwEnabled) {
+                            e.currentTarget.style.background = '#f3f4f6';
+                            e.currentTarget.style.color = '#374151';
+                        }
+                    }}
+                    onMouseLeave={(e) => {
+                        if (viewMode !== 'itw' && itwEnabled) {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.color = '#6b7280';
+                        }
+                    }}
+                >
+                    ITW
+                </button>
             </div>
 
             {viewMode === 'rtwnef' && (
@@ -398,7 +555,23 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const getAssignedValue = (slotId: string) => getAssignedValueFor(d.date, slotId);
                         const clearAssignedForSlot = async (slotId: string) => clearAssignedForDate(slotId, d.date);
                         const isFirstDay = days.length > 0 && days[0].date === d.date;
-                                                return (
+                        
+                        // Debug: Log roster structure für ersten Tag
+                        if (isFirstDay) {
+                            console.log('[MonthTabs DEBUG] First day:', d.date);
+                            console.log('[MonthTabs DEBUG] Personnel count:', personnel.length);
+                            console.log('[MonthTabs DEBUG] Roster keys:', Object.keys(roster || {}).length);
+                            console.log('[MonthTabs DEBUG] Sample roster entry:', roster ? roster[Object.keys(roster)[0]] : 'none');
+                            console.log('[MonthTabs DEBUG] Personnel sample:', personnel.slice(0, 3).map(p => ({
+                                name: p.name,
+                                fahrzeugfuehrer: p.fahrzeugfuehrer,
+                                typeof_fzf: typeof p.fahrzeugfuehrer
+                            })));
+                            console.log('[MonthTabs DEBUG] Personnel with fahrzeugfuehrer:', personnel.filter(p => p.fahrzeugfuehrer).map(p => p.name));
+                            console.log('[MonthTabs DEBUG] auswertungByType:', auswertungByType);
+                        }
+                        
+                        return (
                             <div key={d.date} style={{ marginBottom: 12 }}>
                                                                                                 {(() => {
                                                                     const dt = new Date(d.date + 'T00:00:00');
@@ -429,8 +602,27 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                 {(() => {
                                                     const slotId = `rtw${rIdx + 1}_tag_1`;
                                                     const value = getAssignedValue(slotId);
+                                                    
+                                                    // Debug: Zeige alle relevanten Daten für ERSTEN Tag
+                                                    if (d.dayOfMonth === 1) {
+                                                        console.log(`[MonthTabs Debug ${d.date}] Filtering personnel for RTW${rIdx + 1} Tag FzF slot`);
+                                                        console.log(`  - Total personnel: ${personnel.length}`);
+                                                        console.log(`  - auswertungByType:`, auswertungByType);
+                                                    }
+                                                    
                                                     const optionsP = personnel
-                                                        .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'tag') && !!p.fahrzeugfuehrer)
+                                                        .filter(p => {
+                                                            const hasQual = p.fahrzeugfuehrer === 1;
+                                                            const dutyCode = getDutyCodeFor(`p_${p.id}`);
+                                                            const allowed = allowedByAuswertung(dutyCode, 'tag');
+                                                            
+                                                            // Debug für ersten Tag
+                                                            if (d.dayOfMonth === 1 && hasQual) {
+                                                                console.log(`  - ${p.name}: dutyCode="${dutyCode}", evalMode="${auswertungByType[dutyCode] || 'undefined'}", allowed=${allowed}`);
+                                                            }
+                                                            
+                                                            return allowed && hasQual;
+                                                        })
                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                     const renderOptions = value && !optionsP.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
@@ -447,7 +639,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                     const slotId = `rtw${rIdx + 1}_nacht_1`;
                                                     const value = getAssignedValue(slotId);
                                                     const optionsP = personnel
-                                                        .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && !!p.fahrzeugfuehrer)
+                                                        .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && p.fahrzeugfuehrer === 1)
                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                     const renderOptions = value && !optionsP.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
@@ -567,7 +759,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                         return v;
                                                     })();
                                                     const optionsP = personnel
-                                                        .filter(p => !!p.nef && allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'any'))
+                                                        .filter(p => p.nef === 1 && allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'any'))
                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                     const renderOptions = value && !optionsP.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
@@ -666,11 +858,26 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             }
                             return sum;
                         })();
-                        const positionsAdjInMonth = Math.max(0, deptShiftsInMonth * (activeRtwCount * 4 + activeNefCount * 2) + itwShiftsInMonth - azubiMaschinistShiftsInMonth);
+                        // Ü50-Personen-Schichten (alle Positionen)
+                        const ue50ShiftsInMonth = (() => {
+                            let sum = 0;
+                            for (const p of personnel || []) {
+                                if ((p as any).ue50 !== 1) continue;
+                                const key = `p_${p.id}`;
+                                for (const iso of allMonthDays) {
+                                    const t = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.type || '');
+                                    if (t) sum++;
+                                }
+                            }
+                            return sum;
+                        })();
+                        const positionsAdjInMonth = Math.max(0, deptShiftsInMonth * (activeRtwCount * 4 + activeNefCount * 2) + itwShiftsInMonth - azubiMaschinistShiftsInMonth - ue50ShiftsInMonth);
                         // Aktives Stammpersonal im Monat (mind. ein Präsenz-Tag) – ungewichtet
                         const activePersonnelInMonth = (() => {
                             let sum = 0;
                             for (const p of personnel || []) {
+                                // Ü50-Personen ausschließen (wie Azubis: keine Soll/Ist-Berechnung)
+                                if ((p as any).ue50 === 1) continue;
                                 const key = `p_${p.id}`;
                                 let presence = 0;
                                 for (const iso of allMonthDays) {
@@ -689,6 +896,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const perPersonPresenceInMonth: Record<string, number> = (() => {
                             const map: Record<string, number> = {};
                             for (const p of personnel || []) {
+                                // Ü50-Personen ausschließen
+                                if ((p as any).ue50 === 1) continue;
                                 const key = `p_${p.id}`;
                                 let presence = 0;
                                 for (const iso of allMonthDays) {
@@ -703,9 +912,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const perPersonPresenceWeightedInMonth: Record<string, number> = (() => {
                             const map: Record<string, number> = {};
                             for (const p of personnel || []) {
+                                // Ü50-Personen ausschließen
+                                if ((p as any).ue50 === 1) continue;
                                 const key = `p_${p.id}`;
                                 const raw = perPersonPresenceInMonth[key] || 0;
-                                const hasHLFB = !!(p as any).fahrzeugfuehrerHLFB;
+                                const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
                                 map[key] = hasHLFB ? Math.round(raw * 0.75) : raw;
                             }
                             return map;
@@ -726,6 +937,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const perPersonNefInMonth: Record<string, number> = {};
                         const perPersonItwInMonth: Record<string, number> = {};
                         for (const p of (personnel || [])) {
+                            // Ü50-Personen ausschließen
+                            if ((p as any).ue50 === 1) continue;
                             const key = `p_${p.id}`;
                             let cnt = 0;
                             let tagCnt = 0;
@@ -817,10 +1030,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 }
                                 return sum;
                             })();
-                            const positionsAdjInMonthCalc = Math.max(0, deptShiftsInMonthCalc * (activeRtwCountM * 4 + activeNefCountM * 2) + itwShiftsInMonthCalc - azubiMaschinistShiftsInMonthCalc);
+                            // Ü50-Personen-Schichten (alle Positionen)
+                            const ue50ShiftsInMonthCalc = (() => {
+                                let sum = 0;
+                                const reSlot = /^(rtw\d+_(tag|nacht)_[12]|nef(\d+)?_(arzt|assist|azubi)|itw_row_[123])$/;
+                                for (const p of personnel || []) {
+                                    if ((p as any).ue50 !== 1) continue;
+                                    const key = `p_${p.id}`;
+                                    for (const iso of allMonthDays) {
+                                        const t = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.type || '');
+                                        if (reSlot.test(t)) sum++;
+                                    }
+                                }
+                                return sum;
+                            })();
+                            const positionsAdjInMonthCalc = Math.max(0, deptShiftsInMonthCalc * (activeRtwCountM * 4 + activeNefCountM * 2) + itwShiftsInMonthCalc - azubiMaschinistShiftsInMonthCalc - ue50ShiftsInMonthCalc);
                             const perPersonPresenceInMonthCalc: Record<string, number> = (() => {
                                 const map: Record<string, number> = {};
                                 for (const p of personnel || []) {
+                                    if ((p as any).ue50 === 1) continue;
                                     const key = `p_${p.id}`;
                                     let presence = 0;
                                     for (const iso of allMonthDays) {
@@ -835,9 +1063,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             const perPersonPresenceWeightedInMonthCalc: Record<string, number> = (() => {
                                 const map: Record<string, number> = {};
                                 for (const p of personnel || []) {
+                                    if ((p as any).ue50 === 1) continue;
                                     const key = `p_${p.id}`;
                                     const raw = perPersonPresenceInMonthCalc[key] || 0;
-                                    const hasHLFB = !!(p as any).fahrzeugfuehrerHLFB;
+                                    const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
                                     map[key] = hasHLFB ? Math.round(raw * 0.75) : raw;
                                 }
                                 return map;
@@ -934,8 +1163,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 return ty - dy;
                             })();
                             const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
-                            const hlfb = !!(p as any).fahrzeugfuehrerHLFB;
-                            return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, teilzeit, hlfb } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, teilzeit: number, hlfb: boolean };
+                            const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
+                            const ue50 = (p as any).ue50 === 1;
+                            return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, teilzeit, hlfb, ue50 } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, teilzeit: number, hlfb: boolean, ue50: boolean };
                         });
                         // Farbliche Hervorhebung: nur Personen mit Monats-Soll > 0 berücksichtigen, Rest (Jahr) auf 100%-Äquivalent normalisieren
                         const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
@@ -1029,13 +1259,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         }
                                         return (
                                             <div key={idx} className={styles.sidebarItem} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto auto', alignItems: 'center', gap: 8 }}>
-                                            <span className={styles.sidebarName} style={{ color: it.hlfb ? '#1565c0' : undefined }}>{it.name}</span>
+                                            <span className={styles.sidebarName} style={{ color: it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : undefined }}>{it.name}</span>
                                             <span className={styles.sidebarVal}>{(it.target === '' ? '–' : it.target) + ' | ' + it.count}</span>
                                             <span className={styles.sidebarVal}>{it.nef}</span>
                                             <span className={styles.sidebarVal}>{it.itw}</span>
-                                                <span className={styles.sidebarVal} style={restStyle}>{Number.isFinite(it.rest) ? it.rest : '–'}</span>
-                                            {/* Zweiteilige Balkenanzeige: links Nacht (blau), rechts Tag (orange) */}
-                                                <div style={{ gridColumn: '1 / span 6', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                                {!it.ue50 && <span className={styles.sidebarVal} style={restStyle}>{Number.isFinite(it.rest) ? it.rest : '–'}</span>}
+                                                {it.ue50 && <span className={styles.sidebarVal}>–</span>}
+                                            {/* Zweiteilige Balkenanzeige: links Nacht (blau), rechts Tag (orange) - nur wenn nicht Ü50 */}
+                                                {!it.ue50 && <div style={{ gridColumn: '1 / span 6', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                                                 <div style={{ position: 'relative', width: 100, height: 8, background: '#eef2f7', borderRadius: 4 }}>
                                                     <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1' }} />
                                                     {(() => {
@@ -1087,7 +1318,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                         </div>
                                                     );
                                                 })()}
-                                                </div>
+                                                </div>}
                                             </div>
                                         );
                                     })}
@@ -1169,7 +1400,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                     .filter(p => {
                                         const key = `p_${p.id}`;
                                         // Qualifikation: Rolle 1 benötigt Fahrzeuführer, Rolle 2 allgemeines Personal
-                                        const qualified = (role === 1) ? !!p.fahrzeugfuehrer : true;
+                                        const qualified = (role === 1) ? (p.fahrzeugfuehrer === 1) : true;
                                         // Dienstplan: Nur mit ITW-Schichtcode am Tag zulassen
                                         const onItw = isOnItwDuty(key, date);
                                         return qualified && onItw;
@@ -1291,10 +1522,26 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             }
                             return sum;
                         })();
-                        const positionsAdjInMonth = Math.max(0, deptShiftsInMonth * (activeRtwCount * 4 + activeNefCount * 2) + itwShiftsInMonth - azubiMaschinistShiftsInMonth);
+                        // Ü50-Personen-Schichten (alle Positionen)
+                        const ue50ShiftsInMonth = (() => {
+                            let sum = 0;
+                            const reSlot = /^(rtw\d+_(tag|nacht)_[12]|nef(\d+)?_(arzt|assist|azubi)|itw_row_[123])$/;
+                            for (const p of personnel || []) {
+                                if ((p as any).ue50 !== 1) continue;
+                                const key = `p_${p.id}`;
+                                for (const iso of allMonthDays) {
+                                    const t = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.type || '');
+                                    if (reSlot.test(t)) sum++;
+                                }
+                            }
+                            return sum;
+                        })();
+                        const positionsAdjInMonth = Math.max(0, deptShiftsInMonth * (activeRtwCount * 4 + activeNefCount * 2) + itwShiftsInMonth - azubiMaschinistShiftsInMonth - ue50ShiftsInMonth);
                         const activePersonnelInMonth = (() => {
                             let sum = 0;
                             for (const p of personnel || []) {
+                                // Ü50-Personen ausschließen (ITW View)
+                                if ((p as any).ue50 === 1) continue;
                                 const key = `p_${p.id}`;
                                 let presence = 0;
                                 for (const iso of allMonthDays) {
@@ -1312,6 +1559,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const perPersonPresenceInMonth: Record<string, number> = (() => {
                             const map: Record<string, number> = {};
                             for (const p of personnel || []) {
+                                if ((p as any).ue50 === 1) continue;
                                 const key = `p_${p.id}`;
                                 let presence = 0;
                                 for (const iso of allMonthDays) {
@@ -1334,6 +1582,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const perPersonNefInMonth: Record<string, number> = {};
                         const perPersonItwInMonth: Record<string, number> = {};
                         for (const p of (personnel || [])) {
+                            // Ü50-Personen ausschließen
+                            if ((p as any).ue50 === 1) continue;
                             const key = `p_${p.id}`;
                             let cnt = 0;
                             let tagCnt = 0;
@@ -1423,10 +1673,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 }
                                 return sum;
                             })();
-                            const positionsAdjInMonthCalc = Math.max(0, deptShiftsInMonthCalc * (activeRtwCountM * 4 + activeNefCountM * 2) + itwShiftsInMonthCalc - azubiMaschinistShiftsInMonthCalc);
+                            // Ü50-Personen-Schichten (alle Positionen)
+                            const ue50ShiftsInMonthCalc = (() => {
+                                let sum = 0;
+                                const reSlot = /^(rtw\d+_(tag|nacht)_[12]|nef(\d+)?_(arzt|assist|azubi)|itw_row_[123])$/;
+                                for (const p of personnel || []) {
+                                    if ((p as any).ue50 !== 1) continue;
+                                    const key = `p_${p.id}`;
+                                    for (const iso of allMonthDays) {
+                                        const t = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.type || '');
+                                        if (reSlot.test(t)) sum++;
+                                    }
+                                }
+                                return sum;
+                            })();
+                            const positionsAdjInMonthCalc = Math.max(0, deptShiftsInMonthCalc * (activeRtwCountM * 4 + activeNefCountM * 2) + itwShiftsInMonthCalc - azubiMaschinistShiftsInMonthCalc - ue50ShiftsInMonthCalc);
                             const activePersonnelInMonthCalc = (() => {
                                 let sum = 0;
                                 for (const p of personnel || []) {
+                                    if ((p as any).ue50 === 1) continue;
                                     const key = `p_${p.id}`;
                                     let presence = 0;
                                     for (const iso of allMonthDays) {
@@ -1444,6 +1709,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             const perPersonPresenceInMonthCalc: Record<string, number> = (() => {
                                 const map: Record<string, number> = {};
                                 for (const p of personnel || []) {
+                                    if ((p as any).ue50 === 1) continue;
                                     const key = `p_${p.id}`;
                                     let presence = 0;
                                     for (const iso of allMonthDays) {
@@ -1458,9 +1724,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             const perPersonPresenceWeightedInMonthCalc: Record<string, number> = (() => {
                                 const map: Record<string, number> = {};
                                 for (const p of personnel || []) {
+                                    if ((p as any).ue50 === 1) continue;
                                     const key = `p_${p.id}`;
                                     const raw = perPersonPresenceInMonthCalc[key] || 0;
-                                    const hasHLFB = !!(p as any).fahrzeugfuehrerHLFB;
+                                    const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
                                     map[key] = hasHLFB ? Math.round(raw * 0.75) : raw;
                                 }
                                 return map;
@@ -1508,9 +1775,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const perPersonPresenceWeightedInMonth_CUR: Record<string, number> = (() => {
                             const map: Record<string, number> = {};
                             for (const p of personnel || []) {
+                                if ((p as any).ue50 === 1) continue;
                                 const key = `p_${p.id}`;
                                 const raw = perPersonPresenceInMonth[key] || 0;
-                                const hasHLFB = !!(p as any).fahrzeugfuehrerHLFB;
+                                const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
                                 map[key] = hasHLFB ? Math.round(raw * 0.75) : raw;
                             }
                             return map;
@@ -1566,8 +1834,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 return ty - dy;
                             })();
                             const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
-                            const hlfb = !!(p as any).fahrzeugfuehrerHLFB;
-                            return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, teilzeit, hlfb } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, teilzeit: number, hlfb: boolean };
+                            const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
+                            const ue50 = (p as any).ue50 === 1;
+                            return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, teilzeit, hlfb, ue50 } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, teilzeit: number, hlfb: boolean, ue50: boolean };
                         });
                         const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
                         const eligible = itemsWithIndex.filter(it => typeof it.target === 'number' && (it.target as number) > 0);
@@ -1654,12 +1923,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         }
                                         return (
                                             <div key={idx} className={styles.sidebarItem} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto auto', alignItems: 'center', gap: 8 }}>
-                                                <span className={styles.sidebarName} style={{ color: it.hlfb ? '#1565c0' : undefined }}>{it.name}</span>
+                                                <span className={styles.sidebarName} style={{ color: it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : undefined }}>{it.name}</span>
                                                 <span className={styles.sidebarVal}>{(it.target === '' ? '–' : it.target) + ' | ' + it.count}</span>
                                                 <span className={styles.sidebarVal}>{it.nef}</span>
                                                 <span className={styles.sidebarVal}>{it.itw}</span>
-                                                <span className={styles.sidebarVal} style={restStyle}>{Number.isFinite(it.rest) ? it.rest : '–'}</span>
-                                                <div style={{ gridColumn: '1 / span 6', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                                {!it.ue50 && <span className={styles.sidebarVal} style={restStyle}>{Number.isFinite(it.rest) ? it.rest : '–'}</span>}
+                                                {it.ue50 && <span className={styles.sidebarVal}>–</span>}
+                                                {!it.ue50 && <div style={{ gridColumn: '1 / span 6', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                                                 
                                                     <div style={{ position: 'relative', width: 100, height: 8, background: '#eef2f7', borderRadius: 4 }}>
                                                         <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1' }} />
@@ -1708,7 +1978,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                             </div>
                                                         );
                                                     })()}
-                                                </div>
+                                                </div>}
                                             </div>
                                         );
                                     })}

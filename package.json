@@ -7,7 +7,9 @@
     "build:main": "tsc --project tsconfig.main.json",
     "build:renderer": "vite build",
     "bump-build": "node ./scripts/bump-build.js",
-    "build": "rm -rf dist && npm run bump-build && npm run build:main && npm run build:renderer",
+    "copy:assets": "node -e \"const fs=require('fs');const path=require('path');fs.mkdirSync('dist/media',{recursive:true});fs.copyFileSync('splash.html','dist/splash.html');['media/RD-Plan Logo.gif','media/Timeline 1_01_00_05_29.png','media/Icon.icns','media/Icon.ico'].forEach(f=>fs.copyFileSync(f,path.join('dist',f)))\"",
+    "clean": "node -e \"const fs=require('fs');if(fs.existsSync('dist'))fs.rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && npm run bump-build && npm run build:main && npm run build:renderer && npm run copy:assets",
     "start": "electron .",
     "dev": "electron . --dev",
     "dist": "electron-builder --win --x64",
@@ -15,6 +17,8 @@
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
+    "pg": "^8.13.1",
+    "pg-connection-string": "^2.7.0",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "sqlite": "^5.1.1",
@@ -23,7 +27,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^24.9.2",
-    "@types/pg": "^8.11.0",
+    "@types/pg": "^8.11.10",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
     "@vitejs/plugin-react": "^4.6.0",
@@ -38,8 +42,21 @@
     "appId": "com.example.rdplan",
     "productName": "RD-Plan",
     "npmRebuild": false,
+    "publish": {
+      "provider": "github",
+      "owner": "PowderK",
+      "repo": "rd-plan"
+    },
     "win": {
-      "target": "portable"
+      "target": "portable",
+      "icon": "media/Icon.ico"
+    },
+    "mac": {
+      "icon": "media/Icon.icns",
+      "category": "public.app-category.healthcare-fitness"
+    },
+    "linux": {
+      "icon": "media/Icon.ico"
     },
     "files": [
       "dist/**/*",

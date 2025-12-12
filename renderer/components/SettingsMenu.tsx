@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import ImportYearTable from './ImportYearTable';
 import SettingsImportExport from './SettingsImportExport';
+import ExcelImport from './ExcelImport';
 import { BUILD_INFO } from '../buildInfo';
 import styles from './PersonnelOverview.module.css';
 
@@ -40,9 +41,17 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [editingHolidays, setEditingHolidays] = useState(false);
   const [originalHolidays, setOriginalHolidays] = useState<{ date: string, name: string }[] | null>(null);
   const [selectedHolidayIndex, setSelectedHolidayIndex] = useState<number | null>(null);
+  const [holidaysYear, setHolidaysYear] = useState<number>(year);
   // Settings Import/Export UI State
   const [showSettingsImportExport, setShowSettingsImportExport] = useState(false);
+  const [showExcelImport, setShowExcelImport] = useState(false);
   const [rosterImportPath, setRosterImportPath] = useState('');
+  // Jahresspezifische Vorplanungsdateien
+  const [yearPlannings, setYearPlannings] = useState<{ year: number; filePath: string }[]>([]);
+  const [editingYearPlannings, setEditingYearPlannings] = useState(false);
+  const [originalYearPlannings, setOriginalYearPlannings] = useState<{ year: number; filePath: string }[] | null>(null);
+  const [selectedYearPlanningIndex, setSelectedYearPlanningIndex] = useState<number | null>(null);
+  const [yearImportSelectedYear, setYearImportSelectedYear] = useState<number>(year); // Jahr für Excel-Import
   const [doBackup, setDoBackup] = useState<boolean>(true);
   const [showRestore, setShowRestore] = useState<boolean>(false);
   const [backups, setBackups] = useState<Array<{ path: string; year: string; ym: string; timestamp: string; label: string }>>([]);
@@ -61,6 +70,22 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   // DB path config UI
   const [dbConfig, setDbConfig] = useState<{ currentPath: string|null, configuredDir: string|null, defaults?: { appDir: string, userDataDir: string } } | null>(null);
   const [dbDirInput, setDbDirInput] = useState<string>('');
+  // Qualification Types Management UI
+  const [qualificationTypes, setQualificationTypes] = useState<{ id: number; name: string; description?: string; category?: string; active: boolean; sort: number; excludeFromStats?: boolean }[]>([]);
+  const [editingQualificationTypes, setEditingQualificationTypes] = useState(false);
+  const [selectedQualificationTypeId, setSelectedQualificationTypeId] = useState<number | null>(null);
+  const [originalQualificationTypes, setOriginalQualificationTypes] = useState<any[] | null>(null);
+  // HLFB 75%-Regel Qualifikationszuordnung
+  const [hlfbQualificationType, setHlfbQualificationType] = useState<string>('FzF HLF B');
+  // Ü50 Qualifikationszuordnung (keine Soll/Ist-Berechnung, rot im Kontrollfeld)
+  const [ue50QualificationType, setUe50QualificationType] = useState<string>('Ü50');
+  // Year Import Dialog States
+  const [showYearImportShiftTypeDialog, setShowYearImportShiftTypeDialog] = useState(false);
+  const [yearImportUnknownShiftTypes, setYearImportUnknownShiftTypes] = useState<string[]>([]);
+  const [yearImportPendingYear, setYearImportPendingYear] = useState<number>(0);
+  
+  const [showYearImportAzubiDialog, setShowYearImportAzubiDialog] = useState(false);
+  const [yearImportUnknownAzubiNames, setYearImportUnknownAzubiNames] = useState<string[]>([]);
 
     useEffect(() => {
         (async () => {
@@ -69,10 +94,20 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               const v = String(value);
               setRescueStation(['1','2','3','4','5'].includes(v) ? v : '1');
             }
-            const y = await (window as any).api.getSetting('year');
-            if (y) setYear(Number(y));
+            // year bleibt auf aktuellem Jahr (für Feiertage-Anzeige)
             const rosterPath = await (window as any).api.getSetting('rosterImportPath');
             if (rosterPath) setRosterImportPath(rosterPath);
+            
+            // Lade jahresspezifische Vorplanungen
+            try {
+              const plannings = await (window as any).api.getYearPlannings?.();
+              if (plannings && Array.isArray(plannings)) {
+                setYearPlannings(plannings.map((p: any) => ({ year: Number(p.year), filePath: String(p.filePath) })));
+              }
+            } catch (e) {
+              console.error('Failed to load year plannings:', e);
+            }
+            
             const types = await (window as any).api.getShiftTypes();
             setShiftTypes(types);
             // Fahrzeug-UI entfernt
@@ -122,7 +157,32 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       try {
         const list = await (window as any).api.getHolidaysForYear?.(Number(y || new Date().getFullYear()));
         setHolidays((list || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
-      } catch {}
+            } catch {}
+            
+            // Load qualification types
+            try {
+              const qualTypes = await (window as any).api.getQualificationTypes();
+              setQualificationTypes(qualTypes || []);
+            } catch (e) {
+              console.error('Failed to load qualification types:', e);
+            }
+            
+            // Load HLFB qualification type setting
+            try {
+              const hlfbQual = await (window as any).api.getSetting('hlfb_qualification_type');
+              if (hlfbQual) setHlfbQualificationType(String(hlfbQual));
+            } catch (e) {
+              console.error('Failed to load HLFB qualification type:', e);
+            }
+            
+            // Load Ü50 qualification type setting
+            try {
+              const ue50Qual = await (window as any).api.getSetting('ue50_qualification_type');
+              if (ue50Qual) setUe50QualificationType(String(ue50Qual));
+            } catch (e) {
+              console.error('Failed to load Ü50 qualification type:', e);
+            }
+            
             setShiftTypesLoading(false);
             setLoading(false);
             try {
@@ -133,15 +193,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               }
             } catch {}
         })();
-    }, []);
-
-    // Fahrzeug-UI entfernt
+    }, []);    // Fahrzeug-UI entfernt
 
     const handleSave = async () => {
         setSaving(true);
         await (window as any).api.setSetting('rescueStation', rescueStation);
-        await (window as any).api.setSetting('year', String(year));
-        await (window as any).api.setSetting('rosterImportPath', rosterImportPath);
+        // year wird nicht mehr als Setting gespeichert - direkt im Dienstplan/Werte gewählt
+        await (window as any).api.setSetting('hlfb_qualification_type', hlfbQualificationType);
+        await (window as any).api.setSetting('ue50_qualification_type', ue50QualificationType);
   // Anzahl RTW/NEF leitet sich aus den Einträgen ab – keine separaten Settings mehr
   // ITW wird im Fahrzeuge-Menü gesetzt
         await (window as any).api.setSetting('department', String(department));
@@ -271,6 +330,51 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     setShiftTypes(await (window as any).api.getShiftTypes());
   };
 
+  const saveQualificationTypes = async () => {
+    try {
+      setLoading(true);
+      
+      // Validierung: Alle Qualifikationen müssen einen Namen haben
+      const invalidQualifications = qualificationTypes.filter(qt => !qt.name || qt.name.trim() === '');
+      if (invalidQualifications.length > 0) {
+        alert('Alle Qualifikationen müssen einen Namen haben. Bitte füllen Sie alle leeren Namen aus.');
+        return;
+      }
+      
+      // Lösche entfernte Qualifikationen
+      const currentIds = qualificationTypes.map(qt => qt.id);
+      const originalIds = originalQualificationTypes?.map(qt => qt.id) || [];
+      for (const id of originalIds) {
+        if (!currentIds.includes(id)) {
+          await (window as any).api.deleteQualificationType(id);
+        }
+      }
+      
+      // Speichere/aktualisiere bestehende Qualifikationen
+      for (const qt of qualificationTypes) {
+        const original = originalQualificationTypes?.find(o => o.id === qt.id);
+        if (original) {
+          // Update bestehende Qualifikation
+          await (window as any).api.updateQualificationType(qt.id, qt);
+        } else {
+          // Neue Qualifikation hinzufügen
+          await (window as any).api.addQualificationType(qt);
+        }
+      }
+      
+      console.log('Qualifikationen gespeichert!');
+      alert('Qualifikationen gespeichert!');
+      setEditingQualificationTypes(false);
+      setSelectedQualificationTypeId(null);
+      setOriginalQualificationTypes(null);
+    } catch (err) {
+      console.error('Fehler beim Speichern:', err);
+      alert('Fehler beim Speichern: ' + (err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSettingsImportComplete = (result: any) => {
     console.log('Settings-Import abgeschlossen:', result);
     // Daten neu laden nach Import durch Seiten-Reload
@@ -284,6 +388,99 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     }
   };
 
+  // Year Import Shift Type Dialog Handlers
+  const handleYearImportShiftTypeConfirm = async (newShiftTypes: Array<{code: string, description: string, color: string, auswertung: string}>) => {
+    try {
+      setShowYearImportShiftTypeDialog(false);
+      
+      // Retry import with new shift types
+      const retryResult = await (window as any).api.importDutyRoster(rosterImportPath, yearImportPendingYear, undefined, { newShiftTypes });
+      
+      if (retryResult && retryResult.success) {
+        // Check if there are still unknown azubis
+        if (retryResult.unknownAzubis && retryResult.unknownAzubis.length > 0) {
+          const createNewAzubis = window.confirm(
+            `Folgende unbekannte Azubi-Namen wurden gefunden:\n${retryResult.unknownAzubis.join('\n')}\n\nMöchten Sie diese als neue Azubis anlegen?`
+          );
+          
+          if (createNewAzubis) {
+            setShowYearImportAzubiDialog(true);
+            setYearImportUnknownAzubiNames(retryResult.unknownAzubis);
+            // Keep yearImportPendingYear as it is
+          }
+          // Reload shift types
+          setShiftTypes(await (window as any).api.getShiftTypes());
+          return;
+        }
+        
+        alert(`Dienstplan für ${yearImportPendingYear} erfolgreich importiert. Einträge: ${retryResult.importedCount ?? 'n/v'}`);
+        try { (window as any).api.onDutyRosterUpdated?.(() => {}); } catch {}
+      } else {
+        alert(`Import fehlgeschlagen: ${retryResult?.message || 'Unbekannter Fehler'}`);
+      }
+      
+      // Reload shift types
+      setShiftTypes(await (window as any).api.getShiftTypes());
+      setYearImportUnknownShiftTypes([]);
+      setYearImportPendingYear(0);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Ein unbekannter Fehler ist aufgetreten.';
+      alert(`Fehler beim Import: ${message}`);
+    }
+  };
+
+  const handleYearImportShiftTypeCancel = () => {
+    setShowYearImportShiftTypeDialog(false);
+    setYearImportUnknownShiftTypes([]);
+    setYearImportPendingYear(0);
+  };
+
+  const handleYearImportAzubiConfirm = async (newAzubis: Array<{name: string, vorname: string, lehrjahr: number}>) => {
+    setShowYearImportAzubiDialog(false);
+    
+    const retryResult = await (window as any).api.importDutyRoster(rosterImportPath, yearImportPendingYear, undefined, { newAzubis });
+    
+    if (retryResult && retryResult.success) {
+      // Check if there are still unknown shift types
+      if (retryResult.unknownShiftTypes && retryResult.unknownShiftTypes.length > 0) {
+        const createNewShiftTypes = window.confirm(
+          `Folgende unbekannte Dienstarten wurden gefunden:\n${retryResult.unknownShiftTypes.join('\n')}\n\nMöchten Sie diese als neue Dienstarten anlegen?`
+        );
+        
+        if (createNewShiftTypes) {
+          setShowYearImportShiftTypeDialog(true);
+          setYearImportUnknownShiftTypes(retryResult.unknownShiftTypes);
+        }
+        return;
+      }
+      
+      alert(`Dienstplan für ${yearImportPendingYear} erfolgreich importiert. Einträge: ${retryResult.importedCount ?? 'n/v'}`);
+      try { (window as any).api.onDutyRosterUpdated?.(() => {}); } catch {}
+    } else {
+      alert(`Import fehlgeschlagen: ${retryResult?.message || 'Unbekannter Fehler'}`);
+    }
+    
+    setYearImportUnknownAzubiNames([]);
+    setYearImportPendingYear(0);
+  };
+
+  const handleYearImportAzubiCancel = () => {
+    setShowYearImportAzubiDialog(false);
+    setYearImportUnknownAzubiNames([]);
+    setYearImportPendingYear(0);
+  };
+
+  const handleExcelImportComplete = (result: any) => {
+    console.log('Excel-Import abgeschlossen:', result);
+    if (result.success) {
+      alert(`Import erfolgreich! ${result.imported} Personen importiert, ${result.skipped} übersprungen.`);
+    }
+    setShowExcelImport(false);
+  };
+
+  // State für Kategorie-Tabs
+  const [activeCategory, setActiveCategory] = useState<'general' | 'roster' | 'qualifications'>('general');
+
     if (loading) return <div className="settings-menu"><p>Lade Einstellungen ...</p></div>;
 
   return (
@@ -294,6 +491,62 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                 Version {BUILD_INFO.version} (Build {BUILD_INFO.build}) — © Benjamin Kreitz
               </div>
             </div>
+
+            {/* Kategorie-Tabs */}
+            <div style={{ 
+              display: 'flex', 
+              gap: 4, 
+              marginTop: 16, 
+              borderBottom: '2px solid #dee2e6',
+              marginBottom: 16
+            }}>
+              <button
+                onClick={() => setActiveCategory('general')}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderBottom: activeCategory === 'general' ? '3px solid #0d6efd' : '3px solid transparent',
+                  background: activeCategory === 'general' ? '#f8f9fa' : 'transparent',
+                  fontWeight: activeCategory === 'general' ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Allgemein
+              </button>
+              <button
+                onClick={() => setActiveCategory('roster')}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderBottom: activeCategory === 'roster' ? '3px solid #0d6efd' : '3px solid transparent',
+                  background: activeCategory === 'roster' ? '#f8f9fa' : 'transparent',
+                  fontWeight: activeCategory === 'roster' ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Dienstplan
+              </button>
+              <button
+                onClick={() => setActiveCategory('qualifications')}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderBottom: activeCategory === 'qualifications' ? '3px solid #0d6efd' : '3px solid transparent',
+                  background: activeCategory === 'qualifications' ? '#f8f9fa' : 'transparent',
+                  fontWeight: activeCategory === 'qualifications' ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Qualifikationen
+              </button>
+            </div>
+
+            {/* KATEGORIE: ALLGEMEIN */}
+            {activeCategory === 'general' && (
+              <div>
             <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
               <button onClick={async () => {
                 try {
@@ -343,66 +596,338 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               </div>
             </div>
 
-            {/* Reihenfolge: Jahr / Rettungswache / Abteilung */}
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
-              <label>
-                Jahr:
-                <input
-                  type="number"
-                  value={year}
-                  min={2020}
-                  max={2100}
-                  onChange={e => setYear(Number(e.target.value))}
-                  style={{ marginLeft: 8, width: 80 }}
-                />
-              </label>
-              <label>
-                Feuer- und Rettungswache:
-                <select value={rescueStation} onChange={e => setRescueStation(e.target.value)} style={{ marginLeft: 8 }}>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                  <option value="5">5</option>
-                </select>
-              </label>
-              <label>
-                Abteilung:
-                <select value={department} onChange={e => setDepartment(Number(e.target.value))} style={{ marginLeft: 8 }}>
-                  <option value={1}>1</option>
-                  <option value={2}>2</option>
-                  <option value={3}>3</option>
-                </select>
-              </label>
+            {/* Einstellungen importieren/exportieren */}
+            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
+              <h3>Einstellungen importieren/exportieren</h3>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => setShowSettingsImportExport(true)}>
+                  Einstellungen verwalten…
+                </button>
+              </div>
             </div>
 
-            {/* Dienstplan-Import */}
+            {/* Backups */}
             <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
-                <h3>Dienstplan-Vorausplanung</h3>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input
-                        type="text"
-                        value={rosterImportPath}
-                        readOnly
-                        placeholder="Pfad zur Excel-Datei für die Vorausplanung"
-                        style={{ flex: 1 }}
-                    />
-          <button onClick={async () => {
-            const result = await (window as any).api.showOpenDialog({
-              properties: ['openFile'],
-              filters: [{ name: 'Excel-Dateien', extensions: ['xlsx', 'xls', 'xlsm'] }]
-            });
-            if (!result.canceled && result.filePaths.length > 0) {
-              const p = result.filePaths[0];
-              setRosterImportPath(p);
-              try { await (window as any).api.setSetting('rosterImportPath', p); } catch {}
-            }
-          }}>Datei auswählen</button>
+              <h3>Backups</h3>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={async () => {
+                  try {
+                    const res = await (window as any).api.listBackups?.(100);
+                    if (res?.success) setBackups(res.list || []);
+                    else setBackups([]);
+                  } catch {
+                    setBackups([]);
+                  } finally {
+                    setShowRestore(true);
+                  }
+                }}>
+                  {showRestore ? 'Backups ausblenden' : 'Backups anzeigen…'}
+                </button>
+              </div>
+              {showRestore && (
+                <div style={{ marginTop: 16 }}>
+                  {backups.length === 0 ? (
+                    <p style={{ color: '#6b7280', fontSize: '14px' }}>Keine Backups gefunden.</p>
+                  ) : (
+                    <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid #e5e7eb', backgroundColor: '#f9fafb' }}>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>Zeitpunkt</th>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>Jahr</th>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>Monat</th>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>Pfad</th>
+                            <th style={{ padding: '8px', textAlign: 'right' }}>Aktionen</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {backups.map((backup, idx) => (
+                            <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                              <td style={{ padding: '8px' }}>{backup.timestamp}</td>
+                              <td style={{ padding: '8px' }}>{backup.year}</td>
+                              <td style={{ padding: '8px' }}>{backup.ym === 'ALL' ? 'Alle' : backup.ym}</td>
+                              <td style={{ padding: '8px', fontSize: '12px', color: '#6b7280' }}>{backup.path}</td>
+                              <td style={{ padding: '8px', textAlign: 'right' }}>
+                                <button
+                                  onClick={async () => {
+                                    if (confirm(`Backup vom ${backup.timestamp} wiederherstellen?\n\nAchtung: Die aktuellen Daten werden überschrieben!`)) {
+                                      try {
+                                        const res = await (window as any).api.restoreBackup?.(backup.path);
+                                        if (res?.success) {
+                                          alert(`Backup erfolgreich wiederhergestellt!\n\nPersonal: ${res.counts?.personnel || 0}\nAzubis: ${res.counts?.azubis || 0}\nDienstplan: ${res.counts?.dutyRoster || 0}`);
+                                          // Reload backups
+                                          const listRes = await (window as any).api.listBackups?.(100);
+                                          if (listRes?.success) setBackups(listRes.list || []);
+                                        } else {
+                                          alert('Fehler beim Wiederherstellen: ' + (res?.error || 'Unbekannter Fehler'));
+                                        }
+                                      } catch (err: any) {
+                                        alert('Fehler: ' + err.message);
+                                      }
+                                    }
+                                  }}
+                                  style={{
+                                    padding: '4px 12px',
+                                    fontSize: '13px',
+                                    backgroundColor: '#0ea5e9',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  Wiederherstellen
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
+              )}
+            </div>
+
+            {/* Excel Import Personal */}
+            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
+              <h3>Excel Import Personal</h3>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => setShowExcelImport(true)} style={{ backgroundColor: '#28a745', color: 'white' }}>
+                  Personal aus Excel importieren…
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* KATEGORIE: DIENSTPLAN */}
+        {activeCategory === 'roster' && (
+          <div>
+            {/* Rettungswache und Abteilung */}
+            <div style={{ marginBottom: 24 }}>
+              <h3>Rettungswache und Abteilung</h3>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <label>
+                  Feuer- und Rettungswache:
+                  <select value={rescueStation} onChange={e => setRescueStation(e.target.value)} style={{ marginLeft: 8 }}>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                  </select>
+                </label>
+                <label>
+                  Abteilung:
+                  <select value={department} onChange={e => setDepartment(Number(e.target.value))} style={{ marginLeft: 8 }}>
+                    <option value={1}>1</option>
+                    <option value={2}>2</option>
+                    <option value={3}>3</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            {/* Jahresspezifische Vorplanungsdateien */}
+            <div style={{ marginBottom: 24 }}>
+                <h3>Jahresspezifische Vorplanungsdateien</h3>
+                <p style={{ fontSize: 14, color: '#666', marginBottom: 12 }}>
+                  Hinterlegen Sie für jedes Jahr eine Excel-Datei mit der Vorausplanung.
+                </p>
+                
+                {!editingYearPlannings && (
+                  <div>
+                    {yearPlannings.length === 0 && (
+                      <p style={{ fontStyle: 'italic', color: '#999' }}>Keine Vorplanungen hinterlegt.</p>
+                    )}
+                    {yearPlannings.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        {yearPlannings.map((yp, idx) => (
+                          <div key={idx} style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center',
+                            padding: '8px 12px',
+                            marginBottom: 4,
+                            background: '#f8f9fa',
+                            borderRadius: 4,
+                            border: '1px solid #dee2e6'
+                          }}>
+                            <div style={{ flex: 1 }}>
+                              <strong>Jahr {yp.year}:</strong> <span style={{ fontSize: 13, color: '#555' }}>{yp.filePath}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <button 
+                      onClick={() => {
+                        setEditingYearPlannings(true);
+                        setOriginalYearPlannings(JSON.parse(JSON.stringify(yearPlannings)));
+                        setSelectedYearPlanningIndex(null);
+                      }}
+                      style={{ padding: '6px 12px' }}
+                    >
+                      Bearbeiten / Jahr hinzufügen
+                    </button>
+                  </div>
+                )}
+                
+                {editingYearPlannings && (
+                  <div style={{ border: '1px solid #ddd', padding: 12, borderRadius: 4, background: '#f9f9f9' }}>
+                    <h4 style={{ marginTop: 0 }}>Vorplanungen bearbeiten</h4>
+                    
+                    <div style={{ marginBottom: 12 }}>
+                      {yearPlannings.map((yp, idx) => (
+                        <div key={idx} style={{ 
+                          display: 'flex', 
+                          gap: 8, 
+                          alignItems: 'center', 
+                          marginBottom: 8,
+                          padding: 8,
+                          background: selectedYearPlanningIndex === idx ? '#e3f2fd' : 'white',
+                          borderRadius: 4,
+                          border: '1px solid #ccc',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => setSelectedYearPlanningIndex(idx)}
+                        >
+                          <input
+                            type="number"
+                            value={yp.year}
+                            onChange={e => {
+                              const updated = [...yearPlannings];
+                              updated[idx].year = Number(e.target.value) || new Date().getFullYear();
+                              setYearPlannings(updated);
+                            }}
+                            onClick={e => e.stopPropagation()}
+                            style={{ width: 80 }}
+                          />
+                          <input
+                            type="text"
+                            value={yp.filePath}
+                            readOnly
+                            placeholder="Pfad zur Excel-Datei"
+                            style={{ flex: 1 }}
+                            onClick={e => e.stopPropagation()}
+                          />
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const result = await (window as any).api.showOpenDialog({
+                                properties: ['openFile'],
+                                filters: [{ name: 'Excel-Dateien', extensions: ['xlsx', 'xls', 'xlsm'] }]
+                              });
+                              if (!result.canceled && result.filePaths.length > 0) {
+                                const updated = [...yearPlannings];
+                                updated[idx].filePath = result.filePaths[0];
+                                setYearPlannings(updated);
+                              }
+                            }}
+                            style={{ padding: '4px 8px', fontSize: 12 }}
+                          >
+                            Datei wählen
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Jahr ${yp.year} wirklich löschen?`)) {
+                                setYearPlannings(yearPlannings.filter((_, i) => i !== idx));
+                                if (selectedYearPlanningIndex === idx) setSelectedYearPlanningIndex(null);
+                              }
+                            }}
+                            style={{ padding: '4px 8px', fontSize: 12, background: '#dc3545', color: 'white', border: 'none', borderRadius: 4 }}
+                          >
+                            Löschen
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <button
+                      onClick={() => {
+                        // Finde das nächste freie Jahr
+                        const currentYear = new Date().getFullYear();
+                        const existingYears = yearPlannings.map(yp => yp.year).sort((a, b) => b - a);
+                        
+                        let newYear = currentYear;
+                        
+                        // Wenn es bereits Jahre gibt, nimm das höchste Jahr + 1
+                        if (existingYears.length > 0) {
+                          const maxYear = Math.max(...existingYears);
+                          // Wenn das aktuelle Jahr oder höher schon existiert, nimm das Maximum + 1
+                          if (maxYear >= currentYear) {
+                            newYear = maxYear + 1;
+                          }
+                        }
+                        
+                        // Sicherheitsprüfung: Falls das Jahr trotzdem existiert, suche das nächste freie
+                        while (yearPlannings.some(yp => yp.year === newYear)) {
+                          newYear++;
+                        }
+                        
+                        setYearPlannings([...yearPlannings, { year: newYear, filePath: '' }]);
+                      }}
+                      style={{ padding: '6px 12px', marginRight: 8 }}
+                    >
+                      + Jahr hinzufügen
+                    </button>
+                    
+                    <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #ddd', display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={async () => {
+                          // Speichern in Datenbank
+                          try {
+                            await (window as any).api.saveYearPlannings?.(yearPlannings);
+                            setEditingYearPlannings(false);
+                            setOriginalYearPlannings(null);
+                            setSelectedYearPlanningIndex(null);
+                            alert('Vorplanungen gespeichert!');
+                          } catch (e) {
+                            alert(`Fehler beim Speichern: ${e instanceof Error ? e.message : String(e)}`);
+                          }
+                        }}
+                        style={{ padding: '6px 12px', background: '#28a745', color: 'white', border: 'none', borderRadius: 4 }}
+                      >
+                        Speichern
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (originalYearPlannings) {
+                            setYearPlannings(originalYearPlannings);
+                          }
+                          setEditingYearPlannings(false);
+                          setOriginalYearPlannings(null);
+                          setSelectedYearPlanningIndex(null);
+                        }}
+                        style={{ padding: '6px 12px' }}
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
+                  </div>
+                )}
             </div>
 
             {/* Import Dienstplan (Excel) - Monatsimport aus Settings entfernt */}
             <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                Jahr für Import:
+                <select
+                  value={yearImportSelectedYear}
+                  onChange={e => setYearImportSelectedYear(Number(e.target.value))}
+                  style={{ marginLeft: 6, padding: '4px 8px' }}
+                >
+                  {yearPlannings.map(yp => (
+                    <option key={yp.year} value={yp.year}>{yp.year}</option>
+                  ))}
+                  {/* Fallback falls keine Jahr-Planungen definiert */}
+                  {yearPlannings.length === 0 && <option value={year}>{year}</option>}
+                </select>
+              </label>
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <input type="checkbox" checked={doBackup} onChange={e => setDoBackup(e.target.checked)} />
                 Backup vor Import erstellen
@@ -412,26 +937,44 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               <button
                 onClick={async () => {
                   try {
-                    if (!rosterImportPath) {
-                      alert('Bitte zuerst die Excel-Datei auswählen.');
+                    // Versuche jahresspezifische Vorplanungsdatei zu laden
+                    let importPath = null;
+                    try {
+                      console.log('[Import] Lade Vorplanung für Jahr:', yearImportSelectedYear);
+                      const yearPlanning = await (window as any).api.getYearPlanningForYear?.(yearImportSelectedYear);
+                      console.log('[Import] Geladene Vorplanung:', yearPlanning);
+                      if (yearPlanning?.filePath) {
+                        importPath = yearPlanning.filePath;
+                        console.log('[Import] Verwende jahresspezifische Datei:', importPath);
+                      }
+                    } catch (e) {
+                      console.warn('Fehler beim Laden der jahresspezifischen Vorplanung:', e);
+                    }
+                    
+                    // Fallback: alte rosterImportPath Einstellung
+                    if (!importPath) {
+                      importPath = rosterImportPath;
+                      console.log('[Import] Fallback auf rosterImportPath:', importPath);
+                    }
+                    
+                    if (!importPath) {
+                      alert('Bitte zuerst eine Vorplanungsdatei für das Jahr ' + yearImportSelectedYear + ' hinterlegen.');
                       return;
                     }
-                    // Pfad sicherheitshalber direkt persistieren, falls der Nutzer nicht speichert
-                    try { await (window as any).api.setSetting('rosterImportPath', rosterImportPath); } catch {}
                     // Warnung anzeigen: Überschreiben bestätigen
                     let proceed = true;
                     try {
-                      const prev = await (window as any).api.getDatabaseSummary?.(Number(year));
+                      const prev = await (window as any).api.getDatabaseSummary?.(yearImportSelectedYear);
                       const prevCount = prev?.success ? prev.counts?.dutyRoster : undefined;
-                      const detail = `Vorhandene Einträge für ${year}: ${prevCount ?? 'n/v'}\n`+
-                        `Backup wird unter backups/${year}/${year}-ALL/... erstellt.`;
+                      const detail = `Vorhandene Einträge für ${yearImportSelectedYear}: ${prevCount ?? 'n/v'}\n`+
+                        `Backup wird unter backups/${yearImportSelectedYear}/${yearImportSelectedYear}-ALL/... erstellt.`;
                       const box = await (window as any).api.showMessageBox?.({
                         type: 'warning',
                         buttons: ['Import starten', 'Abbrechen'],
                         defaultId: 0,
                         cancelId: 1,
                         title: 'Dienstplan überschreiben',
-                        message: `Achtung: Der Dienstplan für ${year} wird vollständig überschrieben. Fortfahren?`,
+                        message: `Achtung: Der Dienstplan für ${yearImportSelectedYear} wird vollständig überschrieben. Fortfahren?`,
                         detail
                       });
                       proceed = !box || typeof box.response !== 'number' ? true : (box.response === 0);
@@ -441,7 +984,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                     // Optionales Backup
                     if (doBackup) {
                       try {
-                        const r = await (window as any).api.createDatabaseBackup?.({ year: Number(year) });
+                        const r = await (window as any).api.createDatabaseBackup?.({ year: yearImportSelectedYear });
                         if (!r?.success) console.warn('[SettingsMenu] Backup fehlgeschlagen:', r?.message);
                         else console.log('[SettingsMenu] Backup erstellt unter:', r.dir);
                       } catch (e) {
@@ -453,14 +996,43 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
 
                     // Altdaten für das Jahr löschen
                     try {
-                      await (window as any).api.clearDutyRosterYear?.(Number(year));
+                      await (window as any).api.clearDutyRosterYear?.(yearImportSelectedYear);
                     } catch (e) {
                       console.warn('[SettingsMenu] clearDutyRosterYear Fehler', e);
                     }
 
-                    const res = await (window as any).api.importDutyRoster(rosterImportPath, Number(year));
+                    const res = await (window as any).api.importDutyRoster(importPath, yearImportSelectedYear);
                     if (res && res.success) {
-                      alert(`Dienstplan für ${year} erfolgreich importiert. Einträge: ${res.importedCount ?? 'n/v'}`);
+                      // Check if unknown shift types were found
+                      if (res.unknownShiftTypes && res.unknownShiftTypes.length > 0) {
+                        const createNewShiftTypes = window.confirm(
+                          `Folgende unbekannte Dienstarten wurden gefunden:\n${res.unknownShiftTypes.join('\n')}\n\nMöchten Sie diese als neue Dienstarten anlegen?`
+                        );
+                        
+                        if (createNewShiftTypes) {
+                          // Show new shift type dialog
+                          setShowYearImportShiftTypeDialog(true);
+                          setYearImportUnknownShiftTypes(res.unknownShiftTypes);
+                          setYearImportPendingYear(yearImportSelectedYear);
+                        }
+                        return;
+                      }
+                      
+                      // Check if unknown azubis were found  
+                      if (res.unknownAzubis && res.unknownAzubis.length > 0) {
+                        const createNewAzubis = window.confirm(
+                          `Folgende unbekannte Azubi-Namen wurden gefunden:\n${res.unknownAzubis.join('\n')}\n\nMöchten Sie diese als neue Azubis anlegen?`
+                        );
+                        
+                        if (createNewAzubis) {
+                          setShowYearImportAzubiDialog(true);
+                          setYearImportUnknownAzubiNames(res.unknownAzubis);
+                          setYearImportPendingYear(yearImportSelectedYear);
+                        }
+                        return;
+                      }
+                      
+                      alert(`Dienstplan für ${yearImportSelectedYear} erfolgreich importiert. Einträge: ${res.importedCount ?? 'n/v'}`);
                       try { (window as any).api.onDutyRosterUpdated?.(() => {}); } catch {}
                     } else {
                       alert(`Import fehlgeschlagen: ${res?.message || 'Unbekannter Fehler'}`);
@@ -476,12 +1048,32 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               <button
                 onClick={async () => {
                   try {
-                    if (!rosterImportPath) {
-                      alert('Bitte zuerst die Excel-Datei auswählen.');
+                    // Versuche jahresspezifische Vorplanungsdatei zu laden
+                    let importPath = null;
+                    try {
+                      console.log('[Vorschau] Lade Vorplanung für Jahr:', yearImportSelectedYear);
+                      const yearPlanning = await (window as any).api.getYearPlanningForYear?.(yearImportSelectedYear);
+                      console.log('[Vorschau] Geladene Vorplanung:', yearPlanning);
+                      if (yearPlanning?.filePath) {
+                        importPath = yearPlanning.filePath;
+                        console.log('[Vorschau] Verwende jahresspezifische Datei:', importPath);
+                      }
+                    } catch (e) {
+                      console.warn('Fehler beim Laden der jahresspezifischen Vorplanung:', e);
+                    }
+                    
+                    // Fallback: alte rosterImportPath Einstellung
+                    if (!importPath) {
+                      importPath = rosterImportPath;
+                      console.log('[Vorschau] Fallback auf rosterImportPath:', importPath);
+                    }
+                    
+                    if (!importPath) {
+                      alert('Bitte zuerst eine Vorplanungsdatei für das Jahr ' + yearImportSelectedYear + ' hinterlegen.');
                       return;
                     }
                     // Lade Vorschau
-                    const prev = await (window as any).api.previewDutyRoster?.(rosterImportPath, Number(year));
+                    const prev = await (window as any).api.previewDutyRoster?.(importPath, yearImportSelectedYear);
                     if (!prev?.success) {
                       alert('Vorschau fehlgeschlagen: ' + (prev?.message || 'Unbekannt'));
                       return;
@@ -516,6 +1108,10 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                   }
                 }}
               >Backup wiederherstellen…</button>
+              <button
+                onClick={() => setShowExcelImport(true)}
+                style={{ backgroundColor: '#28a745', color: 'white' }}
+              >Excel Import/Export Personal</button>
             </div>
       {/* Buttons werden ans Seitenende verschoben */}
       {/* per-shift-type auswertung selector will be rendered as a column in the Dienstarten table below */}
@@ -653,7 +1249,28 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
 
       {/* Feiertage (dieses Jahr) */}
       <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
-        <h3>Feiertage {year}</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+          <h3 style={{ margin: 0 }}>Feiertage</h3>
+          <select 
+            value={holidaysYear} 
+            onChange={async (e) => {
+              const newYear = Number(e.target.value);
+              setHolidaysYear(newYear);
+              try {
+                const fresh = await (window as any).api.getHolidaysForYear?.(newYear);
+                setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
+              } catch {}
+              setEditingHolidays(false);
+              setOriginalHolidays(null);
+              setSelectedHolidayIndex(null);
+            }}
+            style={{ padding: '4px 8px', fontSize: '1em', fontWeight: 600 }}
+          >
+            {yearPlannings.map(yp => (
+              <option key={yp.year} value={yp.year}>{yp.year}</option>
+            ))}
+          </select>
+        </div>
         <p style={{ marginTop: 0, color: '#666' }}>An diesen Tagen wird der ITW nicht besetzt (IW entfällt). Du kannst Datum und (optional) Name pflegen.</p>
         <table className={styles.table}>
           <thead>
@@ -697,13 +1314,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         </table>
         {!editingHolidays ? (
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button onClick={() => { setEditingHolidays(true); setOriginalHolidays(JSON.parse(JSON.stringify(holidays))); setHolidays(prev => [...prev, { date: `${year}-01-01`, name: '' }]); setSelectedHolidayIndex((holidays?.length ?? 0)); }}>Hinzufügen</button>
+            <button onClick={() => { setEditingHolidays(true); setOriginalHolidays(JSON.parse(JSON.stringify(holidays))); setHolidays(prev => [...prev, { date: `${holidaysYear}-01-01`, name: '' }]); setSelectedHolidayIndex((holidays?.length ?? 0)); }}>Hinzufügen</button>
             <button onClick={() => setEditingHolidays(true)} disabled={holidays.length === 0}>Ändern</button>
             <button onClick={() => { if (selectedHolidayIndex != null) setHolidays(prev => prev.filter((_, i) => i !== selectedHolidayIndex)); setSelectedHolidayIndex(null); }} disabled={selectedHolidayIndex == null}>Löschen</button>
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button onClick={async () => { try { await (window as any).api.setHolidaysForYear?.(year, holidays.map(h => ({ date: h.date, name: h.name }))); const fresh = await (window as any).api.getHolidaysForYear?.(year); setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') }))); } catch {} finally { setEditingHolidays(false); setOriginalHolidays(null); setSelectedHolidayIndex(null); } }}>Speichern</button>
+            <button onClick={async () => { try { await (window as any).api.setHolidaysForYear?.(holidaysYear, holidays.map(h => ({ date: h.date, name: h.name }))); const fresh = await (window as any).api.getHolidaysForYear?.(holidaysYear); setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') }))); } catch {} finally { setEditingHolidays(false); setOriginalHolidays(null); setSelectedHolidayIndex(null); } }}>Speichern</button>
             <button onClick={() => { if (originalHolidays) setHolidays(originalHolidays); setOriginalHolidays(null); setEditingHolidays(false); setSelectedHolidayIndex(null); }}>Abbrechen</button>
           </div>
         )}
@@ -809,6 +1426,176 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
           </>
         )}
       </div>
+          </div>
+        )}
+
+        {/* KATEGORIE: QUALIFIKATIONEN */}
+        {activeCategory === 'qualifications' && (
+          <div>
+            {/* HLFB 75%-Regel Zuordnung */}
+            <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#f8f9fa', borderRadius: 6 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <strong style={{ minWidth: 250 }}>Qualifikation für FzF HLF B (75%-Regel):</strong>
+                <select 
+                  value={hlfbQualificationType} 
+                  onChange={e => setHlfbQualificationType(e.target.value)}
+                  style={{ flex: 1, maxWidth: 400 }}
+                >
+                  {qualificationTypes.filter(qt => qt.active).map(qt => (
+                    <option key={qt.id} value={qt.name}>{qt.name}</option>
+                  ))}
+                </select>
+              </label>
+              <p style={{ margin: '8px 0 0', fontSize: '0.9em', color: '#666' }}>
+                Personen mit dieser Qualifikation werden in der Anwesenheitsauswertung mit 75% gewichtet (statt 100%).
+              </p>
+            </div>
+
+            {/* Ü50 Zuordnung (keine Soll/Ist-Berechnung) */}
+            <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#fff3cd', borderRadius: 6, border: '1px solid #ffc107' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <strong style={{ minWidth: 250 }}>Qualifikation für Ü50 (wie Azubi):</strong>
+                <select 
+                  value={ue50QualificationType} 
+                  onChange={e => setUe50QualificationType(e.target.value)}
+                  style={{ flex: 1, maxWidth: 400 }}
+                >
+                  {qualificationTypes.filter(qt => qt.active).map(qt => (
+                    <option key={qt.id} value={qt.name}>{qt.name}</option>
+                  ))}
+                </select>
+              </label>
+              <p style={{ margin: '8px 0 0', fontSize: '0.9em', color: '#856404' }}>
+                Personen mit dieser Qualifikation haben <strong>keine Soll/Ist-Berechnung</strong> (wie Azubis), werden aber <strong style={{color: '#dc3545'}}>rot</strong> im Kontrollfeld angezeigt. Alle anderen Qualifikationen bleiben gültig.
+              </p>
+            </div>
+
+            {/* Qualifikationsverwaltung */}
+            <div style={{ marginTop: 24, paddingTop: 12 }}>
+              <h3>Qualifikationsverwaltung</h3>
+        
+              <table className={styles.table}>
+                <thead>
+                  <tr className={styles.thead}>
+                    <th>Name</th>
+                    <th>Beschreibung</th>
+                    <th>Kategorie</th>
+                    <th style={{ width: 80 }}>Aktiv</th>
+                    <th style={{ width: 120 }}>Statistik ausschl.</th>
+                    <th className={styles.center} style={{ width: 60 }}>#</th>
+                  </tr>
+                </thead>
+                <tbody className={styles.tbody}>
+                  {qualificationTypes.map(qt => (
+                    <tr key={qt.id} className={[styles.row, selectedQualificationTypeId === qt.id ? styles.selected : ''].filter(Boolean).join(' ')} onClick={() => setSelectedQualificationTypeId(prev => prev === qt.id ? null : qt.id)}>
+                      <td>
+                        {editingQualificationTypes ? (
+                          <input 
+                            value={qt.name}
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, name: e.target.value } : x))}
+                            style={{ 
+                              borderColor: (!qt.name || qt.name.trim() === '') ? '#ff4444' : '#ddd',
+                              backgroundColor: (!qt.name || qt.name.trim() === '') ? '#fff5f5' : 'white'
+                            }}
+                            placeholder="Name erforderlich"
+                          />
+                        ) : qt.name}
+                      </td>
+                      <td>
+                        {editingQualificationTypes ? (
+                          <input value={qt.description || ''}
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, description: e.target.value } : x))} />
+                        ) : (qt.description || '')}
+                      </td>
+                      <td>
+                        {editingQualificationTypes ? (
+                          <select value={qt.category}
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, category: e.target.value } : x))}>
+                            <option value="Fahrzeugführung">Fahrzeugführung</option>
+                            <option value="Notfall">Notfall</option>
+                            <option value="Transport">Transport</option>
+                            <option value="Ausbildung">Ausbildung</option>
+                            <option value="Sonstiges">Sonstiges</option>
+                          </select>
+                        ) : qt.category}
+                      </td>
+                      <td className={styles.center}>
+                        {editingQualificationTypes ? (
+                          <input type="checkbox" checked={qt.active}
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, active: e.target.checked } : x))} />
+                        ) : (qt.active ? '✓' : '✗')}
+                      </td>
+                      <td className={styles.center} title="Von Soll/Ist-Berechnung ausschließen (wie Azubis)">
+                        {editingQualificationTypes ? (
+                          <input type="checkbox" checked={qt.excludeFromStats || false}
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, excludeFromStats: e.target.checked } : x))} />
+                        ) : (qt.excludeFromStats ? '✓' : '✗')}
+                      </td>
+                      <td className={styles.center}>
+                        <button onClick={() => {
+                          if (confirm(`Qualifikation "${qt.name}" löschen?`)) {
+                            setQualificationTypes(prev => prev.filter(x => x.id !== qt.id));
+                          }
+                        }}
+                        disabled={!editingQualificationTypes}
+                        style={{ color: '#cc0000', background: 'none', border: 'none', cursor: editingQualificationTypes ? 'pointer' : 'default' }}>
+                          ✗
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button onClick={() => {
+                  if (editingQualificationTypes) {
+                    // Speichern
+                    saveQualificationTypes();
+                  } else {
+                    // Bearbeiten starten
+                    setEditingQualificationTypes(true);
+                    setOriginalQualificationTypes([...qualificationTypes]);
+                  }
+                }}>
+                  {editingQualificationTypes ? 'Speichern' : 'Bearbeiten'}
+                </button>
+                
+                {editingQualificationTypes && (
+                  <>
+                    <button onClick={() => {
+                      // Abbrechen
+                      setQualificationTypes(originalQualificationTypes ? [...originalQualificationTypes] : []);
+                      setEditingQualificationTypes(false);
+                      setSelectedQualificationTypeId(null);
+                      setOriginalQualificationTypes(null);
+                    }}>
+                      Abbrechen
+                    </button>
+                    
+                    <button onClick={() => {
+                      // Neue Qualifikation hinzufügen
+                      const newId = Math.max(0, ...qualificationTypes.map(qt => qt.id)) + 1;
+                      const newSort = Math.max(0, ...qualificationTypes.map(qt => qt.sort)) + 1;
+                      setQualificationTypes(prev => [...prev, {
+                        id: newId,
+                        name: 'Neue Qualifikation',
+                        description: '',
+                        category: 'Sonstiges',
+                        active: true,
+                        sort: newSort
+                      }]);
+                      setSelectedQualificationTypeId(newId);
+                    }}>
+                      Neue Qualifikation
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+            
       {/* Speichern/Abbrechen unten platzieren */}
       <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
         <button onClick={onClose} style={{ marginRight: 8 }}>Abbrechen</button>
@@ -1089,8 +1876,256 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
           </div>
         </div>
       )}
+      {showExcelImport && (
+        <div style={{ 
+          position: 'fixed', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          bottom: 0, 
+          backgroundColor: 'rgba(0,0,0,0.5)', 
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            maxHeight: '90vh',
+            overflow: 'auto',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+          }}>
+            <ExcelImport 
+              onImportComplete={handleExcelImportComplete}
+              onClose={() => setShowExcelImport(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Year Import Shift Type Dialog */}
+      {showYearImportShiftTypeDialog && (
+        <NewShiftTypeDialog
+          unknownShiftTypes={yearImportUnknownShiftTypes}
+          onConfirm={handleYearImportShiftTypeConfirm}
+          onCancel={handleYearImportShiftTypeCancel}
+        />
+      )}
+
+      {/* Year Import Azubi Dialog */}
+      {showYearImportAzubiDialog && (
+        <NewAzubiDialog
+          unknownNames={yearImportUnknownAzubiNames}
+          onConfirm={handleYearImportAzubiConfirm}
+          onCancel={handleYearImportAzubiCancel}
+        />
+      )}
           </div>
     );
+};
+
+// New ShiftType Dialog Component (shared with DutyRoster)
+interface NewShiftTypeDialogProps {
+  unknownShiftTypes: string[];
+  onConfirm: (shiftTypes: Array<{code: string, description: string, color: string, auswertung: string}>) => void;
+  onCancel: () => void;
+}
+
+const NewShiftTypeDialog: React.FC<NewShiftTypeDialogProps> = ({ unknownShiftTypes, onConfirm, onCancel }) => {
+  const [shiftTypeData, setShiftTypeData] = useState<Array<{code: string, description: string, color: string, auswertung: string}>>(() => {
+    return unknownShiftTypes.map(code => ({
+      code: code,
+      description: code, // Default description is the code itself
+      color: '#cccccc', // Default gray color
+      auswertung: 'off' // Default: no counting
+    }));
+  });
+
+  const handleDescriptionChange = (index: number, value: string) => {
+    const newData = [...shiftTypeData];
+    newData[index].description = value;
+    setShiftTypeData(newData);
+  };
+
+  const handleColorChange = (index: number, value: string) => {
+    const newData = [...shiftTypeData];
+    newData[index].color = value;
+    setShiftTypeData(newData);
+  };
+
+  const handleAuswertungChange = (index: number, value: string) => {
+    const newData = [...shiftTypeData];
+    newData[index].auswertung = value;
+    setShiftTypeData(newData);
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+      background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }}>
+      <div style={{
+        background: 'white', padding: '20px', borderRadius: '8px', minWidth: '600px', maxWidth: '800px', maxHeight: '80vh', overflow: 'auto'
+      }}>
+        <h3>Neue Dienstarten anlegen</h3>
+        <p>Folgende unbekannte Dienstarten wurden gefunden:</p>
+        
+        {shiftTypeData.map((shiftType, index) => (
+          <div key={index} style={{ marginBottom: '20px', border: '1px solid #ddd', padding: '15px', borderRadius: '4px' }}>
+            <div><strong>Code:</strong> {shiftType.code}</div>
+            
+            <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center' }}>
+              <div>
+                <label>Bezeichnung: </label>
+                <input 
+                  type="text" 
+                  value={shiftType.description} 
+                  onChange={(e) => handleDescriptionChange(index, e.target.value)}
+                  style={{ width: '150px', padding: '4px' }}
+                  placeholder="z.B. Tagdienst"
+                />
+              </div>
+              
+              <div>
+                <label>Farbe: </label>
+                <input 
+                  type="color" 
+                  value={shiftType.color} 
+                  onChange={(e) => handleColorChange(index, e.target.value)}
+                  style={{ width: '50px', height: '30px', padding: '2px' }}
+                />
+              </div>
+              
+              <div>
+                <label>Auswertung: </label>
+                <select 
+                  value={shiftType.auswertung} 
+                  onChange={(e) => handleAuswertungChange(index, e.target.value)}
+                  style={{ padding: '4px' }}
+                >
+                  <option value="off">Nicht zählen</option>
+                  <option value="tag">Tagdienst</option>
+                  <option value="nacht">Nachtdienst</option>
+                  <option value="24h">24h-Dienst</option>
+                  <option value="itw">ITW-Dienst</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        ))}
+        
+        <div style={{ marginTop: '20px', textAlign: 'right' }}>
+          <button 
+            onClick={onCancel}
+            style={{ marginRight: '10px', padding: '8px 16px' }}
+          >
+            Abbrechen
+          </button>
+          <button 
+            onClick={() => onConfirm(shiftTypeData)}
+            style={{ padding: '8px 16px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px' }}
+          >
+            Dienstarten anlegen und Import fortsetzen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// New Azubi Dialog Component (shared with DutyRoster)
+interface NewAzubiDialogProps {
+  unknownNames: string[];
+  onConfirm: (azubis: Array<{name: string, vorname: string, lehrjahr: number}>) => void;
+  onCancel: () => void;
+}
+
+const NewAzubiDialog: React.FC<NewAzubiDialogProps> = ({ unknownNames, onConfirm, onCancel }) => {
+  const [azubiData, setAzubiData] = useState<Array<{name: string, vorname: string, lehrjahr: number}>>(() => {
+    return unknownNames.map(fullName => {
+      const parts = fullName.split(',').map(p => p.trim());
+      return {
+        name: parts[0] || fullName,
+        vorname: parts[1] || '',
+        lehrjahr: 1
+      };
+    });
+  });
+
+  const handleLehrjahrChange = (index: number, value: string) => {
+    const newData = [...azubiData];
+    newData[index].lehrjahr = parseInt(value) || 1;
+    setAzubiData(newData);
+  };
+
+  const handleVornameChange = (index: number, value: string) => {
+    const newData = [...azubiData];
+    newData[index].vorname = value;
+    setAzubiData(newData);
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+      background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }}>
+      <div style={{
+        background: 'white', padding: '20px', borderRadius: '8px', minWidth: '400px', maxWidth: '600px', maxHeight: '80vh', overflow: 'auto'
+      }}>
+        <h3>Neue Azubis anlegen</h3>
+        <p>Folgende unbekannte Namen wurden gefunden:</p>
+        
+        {azubiData.map((azubi, index) => (
+          <div key={index} style={{ marginBottom: '15px', border: '1px solid #ddd', padding: '10px', borderRadius: '4px' }}>
+            <div><strong>Original:</strong> {unknownNames[index]}</div>
+            <div style={{ marginTop: '5px' }}>
+              <label>Nachname: </label>
+              <input 
+                type="text" 
+                value={azubi.name} 
+                readOnly 
+                style={{ marginRight: '10px', padding: '2px' }}
+              />
+              <label>Vorname: </label>
+              <input 
+                type="text" 
+                value={azubi.vorname} 
+                onChange={(e) => handleVornameChange(index, e.target.value)}
+                style={{ marginRight: '10px', padding: '2px' }}
+              />
+              <label>Lehrjahr: </label>
+              <select 
+                value={azubi.lehrjahr} 
+                onChange={(e) => handleLehrjahrChange(index, e.target.value)}
+                style={{ padding: '2px' }}
+              >
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+                <option value={3}>3</option>
+                <option value={4}>4</option>
+              </select>
+            </div>
+          </div>
+        ))}
+        
+        <div style={{ marginTop: '20px', textAlign: 'right' }}>
+          <button 
+            onClick={onCancel}
+            style={{ marginRight: '10px', padding: '8px 16px' }}
+          >
+            Abbrechen
+          </button>
+          <button 
+            onClick={() => onConfirm(azubiData)}
+            style={{ padding: '8px 16px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px' }}
+          >
+            Azubis anlegen und Import fortsetzen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default SettingsMenu;

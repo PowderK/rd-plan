@@ -2,17 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 const monthNames = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
 
-function useYear(): number {
-  const [year, setYear] = useState<number>(new Date().getFullYear());
-  useEffect(() => {
-    (async () => {
-      try {
-        const y = await (window as any).api.getSetting('year');
-        setYear(Number(y || new Date().getFullYear()));
-      } catch {}
-    })();
-  }, []);
-  return year;
+function useYear(): [number, React.Dispatch<React.SetStateAction<number>>] {
+  const [year, setYear] = useState<number>((window as any).rdPlanYear || new Date().getFullYear());
+  return [year, setYear];
 }
 
 function useRoster(year: number) {
@@ -52,6 +44,48 @@ function useAzubis() {
     })();
   }, []);
   return list;
+}
+
+function useUe50PersonnelIds(year: number) {
+  const [ue50Ids, setUe50Ids] = useState<Set<number>>(new Set());
+  useEffect(() => {
+    (async () => {
+      try {
+        // Lade Ü50 Qualifikationstyp aus Settings
+        let ue50QualName = 'Ü50';
+        const setting = await (window as any).api.getSetting('ue50_qualification_type');
+        if (setting) ue50QualName = String(setting);
+
+        // Lade alle Personen
+        const personnel = await (window as any).api.getPersonnelList?.() || [];
+        const ids = new Set<number>();
+
+        // Für jede Person prüfen, ob sie Ü50-Qualifikation hat
+        for (const person of personnel) {
+          try {
+            const periods = await (window as any).api.getQualificationPeriods?.(person.id) || [];
+            
+            // Prüfe für jeden Monat des Jahres, ob Ü50 aktiv ist
+            for (let month = 0; month < 12; month++) {
+              const yearMonth = `${year}-${String(month + 1).padStart(2, '0')}`;
+              const hasUe50 = periods.some((p: any) => 
+                p.active && 
+                p.qualType === ue50QualName &&
+                p.startYM <= yearMonth &&
+                (!p.endYM || p.endYM >= yearMonth)
+              );
+              if (hasUe50) {
+                ids.add(person.id);
+                break; // Einmal gefunden reicht
+              }
+            }
+          } catch {}
+        }
+        setUe50Ids(ids);
+      } catch { setUe50Ids(new Set()); }
+    })();
+  }, [year]);
+  return ue50Ids;
 }
 
 function useAuswertungByType() {
@@ -205,13 +239,17 @@ function computeActivePersonnelPerMonth(
   year: number,
   roster: any[],
   auswertungByType: Record<string, 'off'|'tag'|'nacht'|'24h'|'itw'>,
-  personnel: Array<{ id:number; fahrzeugfuehrerHLFB?: boolean }>
+  personnel: Array<{ id:number; fahrzeugfuehrerHLFB?: boolean }>,
+  ue50Ids: Set<number>
 ) {
   // Ermittelt Anwesenheit pro Monat und zählt UNGEWICHTET: jede Person mit >0 Präsenz zählt 1
+  // Ü50-Personen werden ausgeschlossen (wie Azubis)
   const presentByMonth: Array<Set<number>> = Array.from({ length: 12 }, () => new Set());
   for (const row of (roster || [])) {
     try {
       if (String(row.personType) !== 'person') continue;
+      const pid = Number(row.personId);
+      if (ue50Ids.has(pid)) continue; // Ü50 ausschließen
       const val = String(row.value || '').trim();
       if (!val) continue;
       const evalMode = auswertungByType[val] || 'off';
@@ -219,7 +257,7 @@ function computeActivePersonnelPerMonth(
       const iso = String(row.date);
       const m = new Date(iso + 'T00:00:00Z');
       const month = m.getUTCMonth();
-      presentByMonth[month].add(Number(row.personId));
+      presentByMonth[month].add(pid);
     } catch {}
   }
   return presentByMonth.map(set => set.size);
@@ -230,15 +268,27 @@ function computeShiftsPerPerson(row1: number[], row2: number[]) {
 }
 
 const ValuesPage: React.FC = () => {
-  const year = useYear();
+  const [year, setYear] = useYear();
   const roster = useRoster(year);
   const personnel = usePersonnel();
   const azubis = useAzubis();
+  const ue50Ids = useUe50PersonnelIds(year);
   const auswertungByType = useAuswertungByType();
   const { rtw, nef } = useVehicles();
   const { rtwActs, nefActs } = useActivations(year);
   const department = useDepartment();
   const deptPatternSeqs = useDeptPatterns();
+  
+  // Reagiere auf Jahr-Änderungen von DutyRoster
+  useEffect(() => {
+    const handleYearChange = (e: any) => {
+      if (e.detail?.year) {
+        setYear(e.detail.year);
+      }
+    };
+    window.addEventListener('rdplan-year-changed', handleYearChange);
+    return () => window.removeEventListener('rdplan-year-changed', handleYearChange);
+  }, [setYear]);
 
   const rowItw = useMemo(() => {
     const sums = Array(12).fill(0);
@@ -263,7 +313,7 @@ const ValuesPage: React.FC = () => {
     () => computePositionsPerMonth(year, { rtw, nef }, { rtwActs, nefActs }, deptShifts, rowItw),
     [year, rtw, nef, rtwActs, nefActs, deptShifts, rowItw]
   );
-  const row2 = useMemo(() => computeActivePersonnelPerMonth(year, roster, auswertungByType, personnel), [year, roster, auswertungByType, personnel]);
+  const row2 = useMemo(() => computeActivePersonnelPerMonth(year, roster, auswertungByType, personnel, ue50Ids), [year, roster, auswertungByType, personnel, ue50Ids]);
 
   const perPerson24h = useMemo(() => {
     const countsByPerson: Record<number, number[]> = {};
@@ -271,13 +321,15 @@ const ValuesPage: React.FC = () => {
     for (const row of (roster || [])) {
       try {
         if (String(row.personType) !== 'person') continue;
+        const pid = Number(row.personId);
+        if (ue50Ids.has(pid)) continue; // Ü50 ausschließen
         const code = String(row.value || '').trim();
         if (!code) continue;
         if (auswertungByType[code] !== '24h') continue;
         const iso = String(row.date);
         const m = new Date(iso + 'T00:00:00Z');
         const month = m.getUTCMonth();
-        ensure(Number(row.personId))[month] += 1;
+        ensure(pid)[month] += 1;
       } catch {}
     }
     const rows = (personnel || []).map(p => ({
@@ -294,12 +346,14 @@ const ValuesPage: React.FC = () => {
     for (const row of (roster || [])) {
       try {
         if (String(row.personType) !== 'person') continue;
+        const pid = Number(row.personId);
+        if (ue50Ids.has(pid)) continue; // Ü50 ausschließen
         const iso = String(row.date);
         const m = new Date(iso + 'T00:00:00Z').getUTCMonth();
         const t = String(row.type || '');
         const code = String(row.value || '').trim();
         if (t.startsWith('itw_') || (code && auswertungByType[code] === 'itw')) {
-          ensure(Number(row.personId))[m] += 1;
+          ensure(pid)[m] += 1;
         }
       } catch {}
     }
@@ -318,12 +372,14 @@ const ValuesPage: React.FC = () => {
     for (const row of (roster || [])) {
       try {
         if (String(row.personType) !== 'person') continue;
+        const pid = Number(row.personId);
+        if (ue50Ids.has(pid)) continue; // Ü50 ausschließen
         const code = String(row.value || '').trim();
         if (!code) continue;
         if ((auswertungByType[code] || 'off') === 'off') continue;
         const iso = String(row.date);
         const month = new Date(iso + 'T00:00:00Z').getUTCMonth();
-        ensure(Number(row.personId))[month] += 1;
+        ensure(pid)[month] += 1;
       } catch {}
     }
     const byId: Record<number, boolean> = {};
@@ -335,7 +391,7 @@ const ValuesPage: React.FC = () => {
       counts: countsByPerson[p.id] || Array(12).fill(0)
     }));
     return rows;
-  }, [roster, personnel, auswertungByType]);
+  }, [roster, personnel, auswertungByType, ue50Ids]);
 
   // Gewichtete Präsenz je Person/Monat für Anzeige & Berechnung (HLF‑B = round(0,75 × Ai,m))
   const perPersonPresenceWeighted = useMemo(() => {
@@ -379,7 +435,26 @@ const ValuesPage: React.FC = () => {
     return sums;
   }, [perAzubiMaschinist]);
 
-  const row1Adj = useMemo(() => row1.map((v, i) => Math.max(0, v - (rowAzubis[i] || 0))), [row1, rowAzubis]);
+  // Ü50-Schichten pro Monat (alle Positionen)
+  const rowUe50 = useMemo(() => {
+    const sums = Array(12).fill(0);
+    const reSlot = /^(rtw\d+_(tag|nacht)_[12]|nef(\d+)?_(arzt|assist|azubi)|itw_row_[123])$/;
+    for (const row of (roster || [])) {
+      try {
+        if (String(row.personType) !== 'person') continue;
+        const pid = Number(row.personId);
+        if (!ue50Ids.has(pid)) continue;
+        const t = String(row.type || '');
+        if (!reSlot.test(t)) continue; // Nur echte Schicht-Slots zählen
+        const iso = String(row.date);
+        const m = new Date(iso + 'T00:00:00Z').getUTCMonth();
+        sums[m] += 1;
+      } catch {}
+    }
+    return sums;
+  }, [roster, ue50Ids]);
+
+  const row1Adj = useMemo(() => row1.map((v, i) => Math.max(0, v - (rowAzubis[i] || 0) - (rowUe50[i] || 0))), [row1, rowAzubis, rowUe50]);
   const row3 = useMemo(() => computeShiftsPerPerson(row1Adj, row2), [row1Adj, row2]);
 
   const rowAvgCombined = useMemo(() => {
@@ -467,7 +542,7 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600 }}>Positionen gesamt (netto)</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Abteilungsschichten × (RTW×4 + NEF×2) + ITW − Azubis (Maschinist)</div>
+                <div style={{ fontSize: 12, color: '#666' }}>Abteilungsschichten × (RTW×4 + NEF×2) + ITW − Azubis (Maschinist) − Ü50</div>
               </td>
               {row1Adj.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }}>{fmt(sumPositionsYear)}</td>
@@ -486,6 +561,14 @@ const ValuesPage: React.FC = () => {
                 <div style={{ fontSize: 12, color: '#666' }}>Summe der Azubi‑Maschinist‑Einsätze je Monat</div>
               </td>
               {rowAzubis.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
+              <td style={{ ...styles.td, ...styles.kpiRow }} />
+            </tr>
+            <tr>
+              <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
+                <div style={{ fontWeight: 600 }}>Anzahl Ü50-Schichten</div>
+                <div style={{ fontSize: 12, color: '#666' }}>Summe aller Ü50-Personen-Einsätze je Monat (alle Positionen)</div>
+              </td>
+              {rowUe50.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
             </tr>
             <tr>

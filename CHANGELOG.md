@@ -1,3 +1,705 @@
+## Build 495 - 2025-12-12
+
+- automated build
+
+## Build 494 - 2025-12-12
+
+- automated build
+
+## Build 493 - 2025-12-12
+
+- automated build
+
+## Build 492 - 2025-12-11
+
+- automated build
+
+## Build 491 - 2025-12-11
+
+- automated build
+
+## Build 490 - 2025-12-11
+
+- automated build
+
+## Build 489 - 2025-12-11
+
+- automated build
+
+## Build 488 - 2025-12-11
+
+- automated build
+
+## Build 487 - 2025-12-11
+
+- automated build
+
+## Build 486 - 2025-12-11
+
+- automated build
+
+## Build 485 - 2025-12-11
+
+- automated build
+
+## Build 484 - 2025-12-11
+
+- automated build
+
+## Build 483 - 2025-12-11
+
+- automated build
+
+## Build 482 - 2025-12-11
+
+- automated build
+
+## Build 481 - 2025-12-11
+
+- automated build
+
+## Build 480 - 2025-12-11
+
+- automated build
+
+## Build 479 - 2025-12-11
+
+- automated build
+
+## Build 478 - 2025-12-11
+
+- automated build
+
+## Build 477 - 2025-12-11
+
+- automated build
+
+## Build 475 - 2025-12-11
+
+- automated build
+
+## Build 468 - 2025-12-11
+
+- automated build
+
+## Build 467 - 2025-12-11
+
+- automated build
+
+## Build 466 - 2025-12-11
+
+- automated build
+
+## Build 464 - 2025-12-11
+
+- automated build
+
+## Build 463 - 2025-12-11
+
+- automated build
+
+## Build 462 - 2025-12-11
+
+- automated build
+
+## Build 461 - 2025-12-11
+
+- automated build
+
+## Build 460 - 2025-12-11
+
+- automated build
+
+## Build 459 - 2025-12-11
+
+- automated build
+
+## Build 458 - 2025-12-11
+
+- automated build
+
+## Build 457 - 2025-12-11
+
+- automated build
+
+## Build 456 - 2025-12-11
+
+- automated build
+
+## Build 455 - 2025-12-11
+
+- automated build
+
+## Build 454 - 2025-12-11
+
+- automated build
+
+## Build 453 - 2025-12-11
+
+- automated build
+
+## Build 452 - 2025-12-11
+
+- automated build
+
+## Build 451 - 2025-12-11
+
+- automated build
+
+## Build 450 - 2025-12-11
+
+- automated build
+
+## Build 449 - 2025-12-11
+
+- automated build
+
+## Build 448 - 2025-12-11
+
+- automated build
+
+## Build 447 - 2025-12-11
+
+- automated build
+
+## Build 446 - 2025-12-11
+
+- automated build
+
+## Build 445 - 2025-12-11
+
+- automated build
+
+## Build 444 - 2025-12-11
+
+- automated build
+
+## Build 443 - 2025-12-11
+
+- automated build
+
+## Build 442 - 2025-12-11
+
+- automated build
+
+## Build 441 - 2025-12-11
+
+- automated build
+
+## Build 440 - 2025-12-11
+
+- automated build
+
+## Build 439 - 2025-12-11
+
+- automated build
+
+## Build 438 - 2025-12-11
+
+- automated build
+
+## Build 437 - 2025-12-11
+
+- automated build
+
+## Build 436 - 2025-12-11
+
+- automated build
+
+## Build 435 - 2025-12-11
+
+- automated build
+
+## Build 434 - 2025-12-11
+
+- automated build
+
+## Build 433 - 2025-12-11
+
+- automated build
+
+## Build 432 - 2025-12-11
+
+- automated build
+
+## Build 431 - 2025-12-11
+
+- automated build
+
+## Build 430 - 2025-12-11
+
+- automated build
+
+## Build 429 - 2025-12-11
+
+- automated build
+
+## Build 428 - 2025-12-11
+
+- automated build
+
+## Build 427 - 2025-12-11
+
+- automated build
+
+## Build 426 - 2025-12-11
+
+- automated build
+
+## Build 425 - 2025-12-11
+
+- automated build
+
+## Build 424 - 2025-12-11
+
+- automated build
+
+## Build 423 - 2025-12-11
+
+- automated build
+
+## Build 422 - 2025-12-11
+
+- automated build
+
+## Build 421 - 2025-12-11
+
+- automated build
+
+## Build 420 - 2025-12-10
+
+- automated build
+
+## Build 419 - 2025-12-10
+
+- automated build
+
+## Build 418 - 2025-12-10
+
+- automated build
+
+## Build 417 - 2025-12-10
+
+- automated build
+
+## Build 416 - 2025-12-10
+
+- automated build
+
+## Build 415 - 2025-12-10
+
+- automated build
+
+## Build 414 - 2025-12-10
+
+- automated build
+
+## Build 413 - 2025-12-10
+
+- automated build
+
+## Build 412 - 2025-12-09
+
+- automated build
+
+## Build 411 - 2025-12-09
+
+- automated build
+
+## Build 410 - 2025-12-09
+
+- automated build
+
+# Changelog
+
+## [0.2.0-beta.1] - 2025-12-07
+
+### Neue Features
+- ✅ **Fahrzeug-Zeiträume**: RTW, NEF und ITW nutzen jetzt zeitraumbasierte Aktivierung (analog zu Qualifikationen)
+- ✅ **Dynamische Fahrzeugpositionen**: Positionen können mit Qualifikationen verknüpft werden (konfigurierbar in Einstellungen → Fahrzeuge)
+- ✅ **ITW-Integration**: ITW-Fahrzeuge in Fahrzeugeinstellungen integriert
+- ✅ **Qualifikations-System**: Vollständige Integration in Dienstplan und Einteilung
+
+### Bug-Fixes
+- ✅ Fahrzeug-Qualifikationen werden nun aus qualification_periods geladen
+- ✅ Azubi-Vorplanung wird bei Jahresimporten korrekt importiert
+- ✅ Manuelle Einteilungen werden nicht mehr durch Synchronisation überschrieben
+- ✅ Fahrzeugführer-Filter nutzt jetzt numerischen Vergleich (=== 1) statt Boolean-Check
+- ✅ Dynamische Qualifikations-Validierung mit cellType-Parameter
+
+### Technische Änderungen
+- Migration 4: `vehicle_positions` Tabelle für flexible Position-Qualifikation-Zuordnung
+- Neue Komponenten: `VehiclePositionEditor.tsx`, `VehiclePeriodEditor.tsx`
+- Backend-Funktionen für Fahrzeugpositionen: CRUD-Operationen
+- IPC-Handler erweitert mit cellType-Parameter für Qualifikations-Validierung
+- EinteilungPage lädt Qualifikationen aus qualification_periods
+
+### Bekannte Einschränkungen
+- Bestehende Daten benötigen manuelle Qualifikations-Zuweisung in Einstellungen → Personal
+- Splash-Screen noch nicht implementiert
+
+---
+
+## Build 409 - 2025-12-02
+
+- automated build
+
+## Build 408 - 2025-12-02
+
+- automated build
+
+## Build 407 - 2025-12-02
+
+- automated build
+
+## Build 406 - 2025-12-02
+
+- automated build
+
+## Build 405 - 2025-12-02
+
+- automated build
+
+## Build 404 - 2025-12-02
+
+- automated build
+
+## Build 403 - 2025-12-02
+
+- automated build
+
+## Build 402 - 2025-12-02
+
+- automated build
+
+## Build 401 - 2025-12-02
+
+- automated build
+
+## Build 400 - 2025-12-02
+
+- automated build
+
+## Build 399 - 2025-12-02
+
+- automated build
+
+## Build 398 - 2025-12-02
+
+- automated build
+
+## Build 397 - 2025-12-02
+
+- automated build
+
+## Build 396 - 2025-12-02
+
+- automated build
+
+## Build 395 - 2025-12-02
+
+- automated build
+
+## Build 394 - 2025-12-02
+
+- automated build
+
+## Build 393 - 2025-12-02
+
+- automated build
+
+## Build 392 - 2025-12-02
+
+- automated build
+
+## Build 391 - 2025-12-02
+
+- automated build
+
+## Build 390 - 2025-12-02
+
+- automated build
+
+## Build 389 - 2025-12-02
+
+- automated build
+
+## Build 388 - 2025-12-02
+
+- automated build
+
+## Build 387 - 2025-12-02
+
+- automated build
+
+## Build 386 - 2025-12-02
+
+- automated build
+
+## Build 385 - 2025-12-02
+
+- automated build
+
+## Build 384 - 2025-12-02
+
+- automated build
+
+## Build 383 - 2025-12-02
+
+- automated build
+
+## Build 382 - 2025-12-02
+
+- automated build
+
+## Build 381 - 2025-12-02
+
+- automated build
+
+## Build 380 - 2025-12-02
+
+- automated build
+
+## Build 379 - 2025-12-02
+
+- automated build
+
+## Build 378 - 2025-11-24
+
+- automated build
+
+## Build 377 - 2025-11-19
+
+- automated build
+
+## Build 376 - 2025-11-11
+
+- automated build
+
+## Build 375 - 2025-11-10
+
+- automated build
+
+## Build 374 - 2025-11-10
+
+- automated build
+
+## Build 373 - 2025-11-10
+
+- automated build
+
+## Build 372 - 2025-11-10
+
+- automated build
+
+## Build 371 - 2025-11-10
+
+- automated build
+
+## Build 370 - 2025-11-10
+
+- automated build
+
+## Build 369 - 2025-11-10
+
+- automated build
+
+## Build 368 - 2025-11-10
+
+- automated build
+
+## Build 367 - 2025-11-10
+
+- automated build
+
+## Build 366 - 2025-11-10
+
+- automated build
+
+## Build 365 - 2025-11-10
+
+- automated build
+
+## Build 364 - 2025-11-10
+
+- automated build
+
+## Build 363 - 2025-11-10
+
+- automated build
+
+## Build 362 - 2025-11-10
+
+- automated build
+
+## Build 361 - 2025-11-10
+
+- automated build
+
+## Build 360 - 2025-11-10
+
+- automated build
+
+## Build 359 - 2025-11-09
+
+- automated build
+
+## Build 358 - 2025-11-09
+
+- automated build
+
+## Build 357 - 2025-11-09
+
+- automated build
+
+## Build 356 - 2025-11-09
+
+- automated build
+
+## Build 355 - 2025-11-09
+
+- automated build
+
+## Build 354 - 2025-11-09
+
+- automated build
+
+## Build 353 - 2025-11-09
+
+- automated build
+
+## Build 352 - 2025-11-09
+
+- automated build
+
+## Build 351 - 2025-11-09
+
+- automated build
+
+## Build 350 - 2025-11-09
+
+- automated build
+
+## Build 349 - 2025-11-09
+
+- automated build
+
+## Build 348 - 2025-11-09
+
+- automated build
+
+## Build 347 - 2025-11-09
+
+- automated build
+
+## Build 346 - 2025-11-09
+
+- automated build
+
+## Build 345 - 2025-11-09
+
+- automated build
+
+## Build 344 - 2025-11-09
+
+- automated build
+
+## Build 343 - 2025-11-09
+
+- automated build
+
+## Build 342 - 2025-11-09
+
+- automated build
+
+## Build 341 - 2025-11-09
+
+- automated build
+
+## Build 340 - 2025-11-09
+
+- automated build
+
+## Build 339 - 2025-11-09
+
+- automated build
+
+## Build 338 - 2025-11-09
+
+- automated build
+
+## Build 337 - 2025-11-09
+
+- automated build
+
+## Build 336 - 2025-11-09
+
+- automated build
+
+## Build 335 - 2025-11-09
+
+- automated build
+
+## Build 334 - 2025-11-09
+
+- automated build
+
+## Build 333 - 2025-11-09
+
+- automated build
+
+## Build 332 - 2025-11-09
+
+- automated build
+
+## Build 331 - 2025-11-08
+
+- automated build
+
+## Build 330 - 2025-11-08
+
+- automated build
+
+## Build 329 - 2025-11-08
+
+- automated build
+
+## Build 328 - 2025-11-08
+
+- automated build
+
+## Build 327 - 2025-11-08
+
+- automated build
+
+## Build 326 - 2025-11-08
+
+- automated build
+
+## Build 325 - 2025-11-08
+
+- automated build
+
+## Build 324 - 2025-11-08
+
+- automated build
+
+## Build 323 - 2025-11-07
+
+- automated build
+
+## Build 322 - 2025-11-07
+
+- automated build
+
+## Build 321 - 2025-11-07
+
+- automated build
+
+## Build 320 - 2025-11-07
+
+- automated build
+
 ## Build 319 - 2025-11-07
 
 - automated build

@@ -8,10 +8,8 @@
     <script>
       try { const t = localStorage.getItem('rdplan.theme'); if (t === 'dark') document.documentElement.setAttribute('data-theme','dark'); } catch (e) {}
     </script>
-    <script type="module" crossorigin src="./assets/editAzubi-DnerBn-G.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/client-nyetWBf2.js">
-    <link rel="modulepreload" crossorigin href="./assets/index-DOOLV48n.js">
-    <link rel="stylesheet" crossorigin href="./assets/client-N9Jk7FPM.css">
+    <!-- Vite: lade den TypeScript/React Entry, Vite injiziert gebündelte Assets beim Build -->
+    <script type="module" src="./editAzubi.tsx"></script>
   </head>
   <body>
     <div id="edit-azubi-root"></div>

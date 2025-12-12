@@ -24,6 +24,7 @@ export default defineConfig({
         itw: resolve(__dirname, 'renderer/itw.html'),
         addItw: resolve(__dirname, 'renderer/addItw.html'),
         editItw: resolve(__dirname, 'renderer/editItw.html'),
+        addItwVehicle: resolve(__dirname, 'renderer/addItwVehicle.html'),
         vehicles: resolve(__dirname, 'renderer/vehicles.html'),
         addRtw: resolve(__dirname, 'renderer/addRtw.html'),
         addNef: resolve(__dirname, 'renderer/addNef.html'),

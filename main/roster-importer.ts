@@ -117,7 +117,7 @@ export class RosterImporter {
         worksheet: XLSX.WorkSheet, 
         fixed: any, 
         year: number, 
-        month: number,
+        month: number | undefined,
         fullNameMap: Map<string, {id: number, type: 'person' | 'azubi'}>,
         lastNameMap: Map<string, {id: number, type: 'person' | 'azubi'} | 'conflict'>,
         mapByLastName: Record<string, number>,
@@ -131,7 +131,9 @@ export class RosterImporter {
             if (!dateCell || dateCell.v == null) break;
             
             const dateValue = parseHeaderDate(dateCell.v, year);
-            if (!dateValue || dateValue.getFullYear() !== year || dateValue.getMonth() !== month) continue;
+            if (!dateValue || dateValue.getFullYear() !== year) continue;
+            // Only filter by month if month is specified
+            if (month !== undefined && dateValue.getMonth() !== month) continue;
             
             for (let row = fixed.azubiStart; row <= fixed.azubiEnd; row++) {
                 const nameAddr = XLSX.utils.encode_cell({ r: row, c: fixed.nameCol });
@@ -195,6 +197,9 @@ export class RosterImporter {
             for (const sheetName of targetSheets) {
                 const worksheet = workbook.Sheets[sheetName];
                 if (!worksheet) continue;
+                // Namen in Spalte B (nameCol: 1), Dienstarten ab Spalte D (firstDateCol: 3)
+                // Personal: Zeilen 6-57 (Excel) = 5-56 (0-based)
+                // Azubis: Zeilen 70-87 (Excel) = 69-86 (0-based)
                 const fixed = { headerRow: 3, firstDateCol: 3, nameCol: 1, personnelStart: 5, personnelEnd: 56, azubiStart: 69, azubiEnd: 86 };
                 const baseAddr = XLSX.utils.encode_cell({ r: 1, c: 0 });
                 const baseCell = worksheet[baseAddr];
@@ -254,11 +259,13 @@ export class RosterImporter {
         try {
             const workbook = XLSX.readFile(filePath);
             const sheetNames = workbook.SheetNames;
+            console.log('[RosterImporter] Excel-Datei geladen. Sheets:', sheetNames);
             const entriesToImport: RosterEntry[] = [];
 
             // Build name maps once
             const personnel = await this.dbAdapter.getPersonnel();
             const azubis = await this.dbAdapter.getAzubiList();
+            console.log(`[RosterImporter] Datenbank geladen: ${personnel.length} Personal, ${azubis.length} Azubis`);
             const fullNameMap = new Map<string, {id: number, type: 'person' | 'azubi'}>();
             const lastNameMap = new Map<string, {id: number, type: 'person' | 'azubi'} | 'conflict'>();
             const idMap = new Map<number, {id: number, type: 'person' | 'azubi'}>();
@@ -295,14 +302,15 @@ export class RosterImporter {
                 if (!worksheet) continue;
 
                 // Preferred fixed layout for your sheet
+                // Namen in Spalte B, Dienstarten ab Spalte D
                 const fixed = {
-                    headerRow: 3,           // Zeile 4 (0-based)
-                    firstDateCol: 3,        // Spalte D (0-based)
-                    nameCol: 1,             // Spalte B (0-based)
-                    personnelStart: 5,      // Zeile 6 (0-based)
-                    personnelEnd: 56,       // Zeile 57 (0-based)
-                    azubiStart: 69,         // Zeile 70 (0-based)
-                    azubiEnd: 86            // Zeile 87 (0-based)
+                    headerRow: 3,           // Zeile 4 (Excel) = Index 3 (0-based) - Datums-Header
+                    firstDateCol: 3,        // Spalte D (Excel) = Index 3 (0-based) - Erste Dienstart-Spalte
+                    nameCol: 1,             // Spalte B (Excel) = Index 1 (0-based) - Namen-Spalte
+                    personnelStart: 5,      // Zeile 6 (Excel) = Index 5 (0-based)
+                    personnelEnd: 56,       // Zeile 57 (Excel) = Index 56 (0-based)
+                    azubiStart: 69,         // Zeile 70 (Excel) = Index 69 (0-based) - B70 START
+                    azubiEnd: 86            // Zeile 87 (Excel) = Index 86 (0-based) - B87 END
                 };
 
                 // Determine base date from A2 for formula fallback
@@ -370,9 +378,6 @@ export class RosterImporter {
                                 }
                             }
                             
-                            if (personInfo) {
-                                console.log(`[RosterImporter] Name '${rawName}' zugeordnet zu ${personInfo.type} ID ${personInfo.id}`);
-                            }
                             if (!personInfo) continue;
 
                             const dutyAddr = XLSX.utils.encode_cell({ r: row, c: col });
@@ -408,77 +413,75 @@ export class RosterImporter {
                 // Process personnel block always
                 processBlock(fixed.personnelStart, fixed.personnelEnd, 'Personal');
                 
-                // Process azubi block only for month imports (not year imports)
-                if (month !== undefined) {
-                    // For month imports, collect unknown azubi names first
-                    const unknownAzubiNames = await this.collectUnknownAzubiNames(worksheet, fixed, year, month, fullNameMap, lastNameMap, mapByLastName, idMap);
-                    
-                    if (unknownAzubiNames.length > 0) {
-                        // If new azubis are provided in options, create them first
-                        if (options?.newAzubis && options.newAzubis.length > 0) {
-                            console.log('[RosterImporter] Erstelle neue Azubis:', options.newAzubis);
-                            for (const newAzubi of options.newAzubis) {
-                                await this.dbAdapter.addAzubi(newAzubi);
-                            }
-                            // Reload azubi list and rebuild ALL maps completely
-                            const updatedAzubis = await this.dbAdapter.getAzubiList();
-                            // Clear existing azubi entries from maps
-                            fullNameMap.clear();
-                            lastNameMap.clear();
-                            idMap.clear();
-                            
-                            // Rebuild maps with personnel
-                            for (const p of personnel) {
-                                fullNameMap.set(`${p.name}, ${p.vorname}`.toLowerCase(), { id: p.id, type: 'person' });
-                                const key = normalizeLastName(String(p.name || ''));
-                                if (key) {
-                                    if (lastNameMap.has(key)) lastNameMap.set(key, 'conflict'); 
-                                    else lastNameMap.set(key, { id: p.id, type: 'person' });
-                                }
-                                idMap.set(p.id, { id: p.id, type: 'person' });
-                            }
-                            
-                            // Rebuild maps with updated azubis
-                            for (const a of updatedAzubis) {
-                                // Add multiple name formats for azubis
-                                const fullName = `${a.name}, ${a.vorname}`.toLowerCase();
-                                const nameOnly = a.name.toLowerCase();
-                                
-                                fullNameMap.set(fullName, { id: a.id, type: 'azubi' });
-                                // Also add name-only format for azubis without vorname
-                                if (!a.vorname || a.vorname.trim() === '') {
-                                    fullNameMap.set(nameOnly, { id: a.id, type: 'azubi' });
-                                }
-                                
-                                const key = normalizeLastName(String(a.name || ''));
-                                if (key) {
-                                    if (lastNameMap.has(key)) lastNameMap.set(key, 'conflict'); 
-                                    else lastNameMap.set(key, { id: a.id, type: 'azubi' });
-                                }
-                                idMap.set(a.id, { id: a.id, type: 'azubi' });
-                                
-                                console.log(`[RosterImporter] Azubi in Maps: fullName='${fullName}', nameOnly='${nameOnly}', key='${key}'`);
-                            }
-                            console.log('[RosterImporter] Maps nach Azubi-Erstellung aktualisiert. Neue Azubi-Anzahl:', updatedAzubis.length);
-                        } else {
-                            // Return unknown names for user dialog
-                            console.log('[RosterImporter] Gefundene unbekannte Azubi-Namen für Dialog:', unknownAzubiNames);
-                            return { 
-                                success: true, 
-                                message: `Unbekannte Azubi-Namen gefunden: ${unknownAzubiNames.join(', ')}`, 
-                                importedCount: 0,
-                                unknownAzubis: unknownAzubiNames 
-                            };
+                // Process azubi block for both month and year imports
+                // Collect unknown azubi names first
+                const unknownAzubiNames = await this.collectUnknownAzubiNames(worksheet, fixed, year, month, fullNameMap, lastNameMap, mapByLastName, idMap);
+                
+                if (unknownAzubiNames.length > 0) {
+                    // If new azubis are provided in options, create them first
+                    if (options?.newAzubis && options.newAzubis.length > 0) {
+                        console.log('[RosterImporter] Erstelle neue Azubis:', options.newAzubis);
+                        for (const newAzubi of options.newAzubis) {
+                            await this.dbAdapter.addAzubi(newAzubi);
                         }
+                        // Reload azubi list and rebuild ALL maps completely
+                        const updatedAzubis = await this.dbAdapter.getAzubiList();
+                        // Clear existing azubi entries from maps
+                        fullNameMap.clear();
+                        lastNameMap.clear();
+                        idMap.clear();
+                        
+                        // Rebuild maps with personnel
+                        for (const p of personnel) {
+                            fullNameMap.set(`${p.name}, ${p.vorname}`.toLowerCase(), { id: p.id, type: 'person' });
+                            const key = normalizeLastName(String(p.name || ''));
+                            if (key) {
+                                if (lastNameMap.has(key)) lastNameMap.set(key, 'conflict'); 
+                                else lastNameMap.set(key, { id: p.id, type: 'person' });
+                            }
+                            idMap.set(p.id, { id: p.id, type: 'person' });
+                        }
+                        
+                        // Rebuild maps with updated azubis
+                        for (const a of updatedAzubis) {
+                            // Add multiple name formats for azubis
+                            const fullName = `${a.name}, ${a.vorname}`.toLowerCase();
+                            const nameOnly = a.name.toLowerCase();
+                            
+                            fullNameMap.set(fullName, { id: a.id, type: 'azubi' });
+                            // Also add name-only format for azubis without vorname
+                            if (!a.vorname || a.vorname.trim() === '') {
+                                fullNameMap.set(nameOnly, { id: a.id, type: 'azubi' });
+                            }
+                            
+                            const key = normalizeLastName(String(a.name || ''));
+                            if (key) {
+                                if (lastNameMap.has(key)) lastNameMap.set(key, 'conflict'); 
+                                else lastNameMap.set(key, { id: a.id, type: 'azubi' });
+                            }
+                            idMap.set(a.id, { id: a.id, type: 'azubi' });
+                            
+                            console.log(`[RosterImporter] Azubi in Maps: fullName='${fullName}', nameOnly='${nameOnly}', key='${key}'`);
+                        }
+                        console.log('[RosterImporter] Maps nach Azubi-Erstellung aktualisiert. Neue Azubi-Anzahl:', updatedAzubis.length);
+                    } else {
+                        // Return unknown names for user dialog
+                        console.log('[RosterImporter] Gefundene unbekannte Azubi-Namen für Dialog:', unknownAzubiNames);
+                        return { 
+                            success: true, 
+                            message: `Unbekannte Azubi-Namen gefunden: ${unknownAzubiNames.join(', ')}`, 
+                            importedCount: 0,
+                            unknownAzubis: unknownAzubiNames 
+                        };
                     }
-                    
-                    processBlock(fixed.azubiStart, fixed.azubiEnd, 'Azubis');
-                } else {
-                    console.log('[RosterImporter] Jahresimport: Azubi-Block übersprungen');
                 }
+                
+                // Now process the azubi block (for both month and year imports)
+                processBlock(fixed.azubiStart, fixed.azubiEnd, 'Azubis');
             }
 
             if (entriesToImport.length > 0) {
+                console.log(`[RosterImporter] ${entriesToImport.length} Einträge gesammelt. Prüfe Dienstarten...`);
                 // Check for unknown shift types
                 const unknownShiftTypes = await this.collectUnknownShiftTypes(entriesToImport);
                 
@@ -506,18 +509,11 @@ export class RosterImporter {
 
                 console.log(`[RosterImporter] Schreibe ${entriesToImport.length} Einträge in duty_roster.`);
                 
-                // Bei Monatsimport (month definiert) respektiere manuelle Bearbeitungen
-                // Bei Jahresimport (month undefined) überschreibe alles
-                const respectManualEdits = month !== undefined;
-                
-                if (respectManualEdits) {
-                    const result = await this.dbAdapter.bulkImportDutyRosterEntries(entriesToImport, true);
-                    console.log(`[RosterImporter] Monatsimport: ${result.imported} importiert, ${result.skipped} übersprungen (manuell bearbeitet)`);
-                    return { success: true, message: `Dienstplan erfolgreich importiert. ${result.imported} Einträge verarbeitet, ${result.skipped} manuelle Änderungen geschützt.`, importedCount: result.imported };
-                } else {
-                    await this.dbAdapter.bulkSetDutyRosterEntries(entriesToImport);
-                    return { success: true, message: `Dienstplan erfolgreich importiert. ${entriesToImport.length} Einträge verarbeitet.`, importedCount: entriesToImport.length };
-                }
+                // IMMER manuelle Bearbeitungen respektieren (sowohl bei Monats- als auch bei Jahresimport)
+                // Nur Excel-Einträge überschreiben, die nicht manuell geändert wurden
+                const result = await this.dbAdapter.bulkImportDutyRosterEntries(entriesToImport, true);
+                console.log(`[RosterImporter] Import: ${result.imported} importiert, ${result.skipped} übersprungen (manuell bearbeitet)`);
+                return { success: true, message: `Dienstplan erfolgreich importiert. ${result.imported} Einträge verarbeitet, ${result.skipped} manuelle Änderungen geschützt.`, importedCount: result.imported };
             } else {
                 console.warn('[RosterImporter] Keine Einträge zum Import gefunden.');
             }
