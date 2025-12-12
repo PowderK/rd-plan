@@ -528,6 +528,7 @@ interface QualificationPeriod {
 }
 
 const PersonnelOverview: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'stammpersonal' | 'azubis' | 'ärzte'>('stammpersonal');
   const [personnel, setPersonnel] = useState<Person[]>([]);
   const [azubis, setAzubis] = useState<Azubi[]>([]);
   const [azubiPeriods, setAzubiPeriods] = useState<Record<number, AzubiPeriod[]>>({});
@@ -773,6 +774,61 @@ const PersonnelOverview: React.FC = () => {
   {/* Überschrift entfernt */}
       {loading ? <div>Lade Daten...</div> : (
       <>
+      
+      {/* Tab Navigation */}
+      <div style={{ 
+        display: 'flex', 
+        gap: 4, 
+        marginBottom: 16,
+        borderBottom: '2px solid #dee2e6'
+      }}>
+        <button
+          onClick={() => setActiveTab('stammpersonal')}
+          style={{
+            padding: '8px 16px',
+            border: 'none',
+            borderBottom: activeTab === 'stammpersonal' ? '3px solid #0ea5e9' : '3px solid transparent',
+            background: activeTab === 'stammpersonal' ? '#f8f9fa' : 'transparent',
+            fontWeight: activeTab === 'stammpersonal' ? 600 : 400,
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+        >
+          Stammpersonal
+        </button>
+        <button
+          onClick={() => setActiveTab('azubis')}
+          style={{
+            padding: '8px 16px',
+            border: 'none',
+            borderBottom: activeTab === 'azubis' ? '3px solid #0ea5e9' : '3px solid transparent',
+            background: activeTab === 'azubis' ? '#f8f9fa' : 'transparent',
+            fontWeight: activeTab === 'azubis' ? 600 : 400,
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+        >
+          Azubis
+        </button>
+        <button
+          onClick={() => setActiveTab('ärzte')}
+          style={{
+            padding: '8px 16px',
+            border: 'none',
+            borderBottom: activeTab === 'ärzte' ? '3px solid #0ea5e9' : '3px solid transparent',
+            background: activeTab === 'ärzte' ? '#f8f9fa' : 'transparent',
+            fontWeight: activeTab === 'ärzte' ? 600 : 400,
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+        >
+          Ärzte
+        </button>
+      </div>
+      
+      {/* Stammpersonal Tab */}
+      {activeTab === 'stammpersonal' && (
+      <div>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Inaktive anzeigen
@@ -893,9 +949,12 @@ const PersonnelOverview: React.FC = () => {
       Hinzufügen
     </button>
   </div>
-  </>
+  </div>
       )}
-      <div style={{ marginTop: 32 }}>
+      
+      {/* Azubis Tab */}
+      {activeTab === 'azubis' && (
+      <div>
         <h3>Azubis</h3>
         {/* Azubis: Buttons unter der Tabelle */}
         <table className={styles.table}>
@@ -974,7 +1033,11 @@ const PersonnelOverview: React.FC = () => {
           </div>
         )}
       </div>
-      <div style={{ marginTop: 32 }}>
+      )}
+      
+      {/* Ärzte Tab */}
+      {activeTab === 'ärzte' && (
+      <div>
         <h3>ITW Ärzte</h3>
         {/* ITW Ärzte: Buttons unter der Tabelle */}
         <table className={styles.table}>
@@ -1020,6 +1083,10 @@ const PersonnelOverview: React.FC = () => {
           </div>
         )}
       </div>
+      )}
+      
+      </>
+      )}
       
       {/* PersonEditModal entfernt - nutzt direkt openEditPersonWindow */}
 

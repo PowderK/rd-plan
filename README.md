@@ -11,7 +11,9 @@ RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die 
 ### Kernfunktionen
 - **Monats-Tabs** zur Navigation und Einteilung pro Monat
 - **Dienstplan-Verwaltung** mit rechter Sidebar (Kontrollkasten) unterhalb des Headers via Portal
-- **Personal-, Azubi- und ITW-Verwaltung** mit drag-and-drop Sortierung
+- **Personal-Verwaltung** mit Tab-Navigation für Stammpersonal, Azubis und Ärzte
+- **Drag-and-Drop-Sortierung** für alle Personalkategorien
+- **Qualifikationsverwaltung** direkt beim Erstellen von Personen
 - **Excel Import/Export** für Dienstplandaten mit intelligenter Konfliktlösung
 - **Einstellungsmenü** mit umfangreichen Konfigurationsmöglichkeiten
 
@@ -93,18 +95,21 @@ Hinweis für Administratoren: Wenn du die Anwendung paketieren oder für andere 
 
 ## Entwicklungsstatus
 
-**Version 2.0.0 (Build 441)** - Aktive Entwicklung
+**Version 2.0.0 (Build 494)** - Aktive Entwicklung
 
-Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangreichen Feature-Set. Die aktuelle Version 2.0.0 führt das **Azubi-Zeiträume-Management-System** ein und bietet erweiterte Import-Funktionen mit Datenschutz.
+Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangreichen Feature-Set. Die aktuelle Version 2.0.0 führt das **Azubi-Zeiträume-Management-System** ein, bietet erweiterte Import-Funktionen mit Datenschutz und eine moderne Tab-basierte Personal-Verwaltung.
 
 **Produktionstauglichkeit**: Die Anwendung wird bereits in mehreren Rettungswachen erfolgreich eingesetzt. Für kritische Umgebungen wird empfohlen, die Funktionen vorab zu testen und regelmäßige Datensicherungen durchzuführen.
 
-**Neue Features in v2.0.0 (Build 441)**:
+**Neue Features in v2.0.0 (Build 494)**:
+- ✅ Tab-Navigation in der Personal-Verwaltung (Stammpersonal/Azubis/Ärzte)
+- ✅ Qualifikationsmanagement beim Erstellen von Personen
+- ✅ Modernisierte Add-Dialoge mit Validierung
 - ✅ Vollständiges Azubi-Zeiträume-Management
 - ✅ Schutz manueller Bearbeitungen beim Import
 - ✅ Automatische Erkennung neuer Azubis und Dienstarten mit Dialog-Unterstützung
 - ✅ Dialog-basierte Anlage unbekannter Entitäten (Azubis & Dienstarten) während Import
-- ✅ Erweiterte Benutzeroberfläche im Personal-Tab
+- ✅ Erweiterte Benutzeroberfläche mit konsistentem Design
 - ✅ Jahresimport mit vollständiger Azubi- und Dienstarten-Erkennung
 - ✅ Intelligente Namensauflösung mit Konfliktbehandlung
 
@@ -208,7 +213,15 @@ Das **erweiterte Import-System** bietet umfassenden Schutz vor Datenverlust und 
 
 ## Roadmap & Changelog
 
-### Version 2.0.0 Build 441 (11. Dezember 2025) - Aktuell
+### Version 2.0.0 Build 494 (12. Dezember 2025) - Aktuell
+- ✅ **Tab-Navigation Personal**: Übersichtliche Aufteilung in Stammpersonal, Azubis und Ärzte
+- ✅ **Qualifikationsmanagement**: Direkte Verwaltung von Qualifikationen beim Erstellen von Personen
+- ✅ **Modernisierte Add-Dialoge**: Konsistentes Design mit Validierung für addPerson und addAzubi
+- ✅ **UI-Verbesserungen**: Blaue Tab-Akzente und smooth Transitions
+- ✅ **Icon-Integration**: Vollständige macOS (.icns) und Windows (.ico) Icon-Unterstützung
+- ✅ **CI/CD-Fixes**: Robuste GitHub Actions Workflows für macOS und Windows
+
+### Version 2.0.0 Build 441 (11. Dezember 2025)
 - ✅ **Azubi-Dialog für Jahresimport**: Unbekannte Azubis können nun auch beim Jahresimport per Dialog angelegt werden
 - ✅ **Dienstarten-Dialog für Jahresimport**: Automatische Erkennung und Erstellung neuer Shift-Typen
 - ✅ **Verbesserte Import-Engine**: `collectUnknownAzubiNames` unterstützt optionale Monatsfilterung
