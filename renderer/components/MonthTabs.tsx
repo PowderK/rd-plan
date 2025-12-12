@@ -489,18 +489,57 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 marginBottom: '16px',
                 marginTop: '8px'
             }}>
+                {(() => {
+                    // Prüfe ob die hervorgehobene Person im jeweils anderen Tab Einteilungen hat
+                    let hasRtwNefAssignments = false;
+                    let hasItwAssignments = false;
+                    
+                    if (highlightedPersonKey) {
+                        // Hole die Daten der hervorgehobenen Person
+                        const personData = (localRoster as any)?.[highlightedPersonKey] || (roster as any)?.[highlightedPersonKey];
+                        
+                        if (personData) {
+                            // Durchsuche ALLE Tage im aktuellen Monat
+                            const daysInMonth = new Date(year, currentMonth + 1, 0).getDate();
+                            for (let d = 1; d <= daysInMonth; ++d) {
+                                const date = new Date(Date.UTC(year, currentMonth, d)).toISOString().slice(0, 10);
+                                const entry = personData[date];
+                                
+                                if (entry && entry.type) {
+                                    const type = entry.type;
+                                    
+                                    // Prüfe ob RTW/NEF Einteilung
+                                    if (type.startsWith('rtw') || type.startsWith('nef')) {
+                                        hasRtwNefAssignments = true;
+                                    }
+                                    
+                                    // Prüfe ob ITW Einteilung
+                                    if (type.startsWith('itw_row_')) {
+                                        hasItwAssignments = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    const showRtwNefIndicator = viewMode === 'itw' && hasRtwNefAssignments;
+                    const showItwIndicator = viewMode === 'rtwnef' && hasItwAssignments;
+                    
+                    return (
+                        <>
                 <button 
                     onClick={() => setViewMode('rtwnef')} 
                     style={{
                         padding: '8px 16px',
-                        background: viewMode === 'rtwnef' ? '#f8f9fa' : 'transparent',
+                        background: viewMode === 'rtwnef' ? '#f8f9fa' : (showRtwNefIndicator ? '#fef2f2' : 'transparent'),
                         border: 'none',
                         borderBottom: viewMode === 'rtwnef' ? '3px solid #dc3545' : '3px solid transparent',
                         cursor: 'pointer',
-                        fontWeight: viewMode === 'rtwnef' ? 600 : 400,
-                        color: viewMode === 'rtwnef' ? '#dc3545' : '#6b7280',
+                        fontWeight: viewMode === 'rtwnef' ? 600 : (showRtwNefIndicator ? 600 : 400),
+                        color: viewMode === 'rtwnef' ? '#dc3545' : (showRtwNefIndicator ? '#dc2626' : '#6b7280'),
                         transition: 'all 0.2s',
-                        fontSize: '14px'
+                        fontSize: '14px',
+                        position: 'relative'
                     }}
                     onMouseEnter={(e) => {
                         if (viewMode !== 'rtwnef') {
@@ -510,8 +549,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                     }}
                     onMouseLeave={(e) => {
                         if (viewMode !== 'rtwnef') {
-                            e.currentTarget.style.background = 'transparent';
-                            e.currentTarget.style.color = '#6b7280';
+                            e.currentTarget.style.background = showRtwNefIndicator ? '#fef2f2' : 'transparent';
+                            e.currentTarget.style.color = showRtwNefIndicator ? '#dc2626' : '#6b7280';
                         }
                     }}
                 >
@@ -522,15 +561,16 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                     disabled={!itwEnabled}
                     style={{
                         padding: '8px 16px',
-                        background: viewMode === 'itw' ? '#f8f9fa' : 'transparent',
+                        background: viewMode === 'itw' ? '#f8f9fa' : (showItwIndicator ? '#fefce8' : 'transparent'),
                         border: 'none',
                         borderBottom: viewMode === 'itw' ? '3px solid #ffc107' : '3px solid transparent',
                         cursor: itwEnabled ? 'pointer' : 'not-allowed',
-                        fontWeight: viewMode === 'itw' ? 600 : 400,
-                        color: viewMode === 'itw' ? '#ffc107' : '#6b7280',
+                        fontWeight: viewMode === 'itw' ? 600 : (showItwIndicator ? 600 : 400),
+                        color: viewMode === 'itw' ? '#ffc107' : (showItwIndicator ? '#ca8a04' : '#6b7280'),
                         transition: 'all 0.2s',
                         fontSize: '14px',
-                        opacity: itwEnabled ? 1 : 0.5
+                        opacity: itwEnabled ? 1 : 0.5,
+                        position: 'relative'
                     }}
                     onMouseEnter={(e) => {
                         if (viewMode !== 'itw' && itwEnabled) {
@@ -540,13 +580,16 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                     }}
                     onMouseLeave={(e) => {
                         if (viewMode !== 'itw' && itwEnabled) {
-                            e.currentTarget.style.background = 'transparent';
-                            e.currentTarget.style.color = '#6b7280';
+                            e.currentTarget.style.background = showItwIndicator ? '#fefce8' : 'transparent';
+                            e.currentTarget.style.color = showItwIndicator ? '#ca8a04' : '#6b7280';
                         }
                     }}
                 >
                     ITW
                 </button>
+                        </>
+                    );
+                })()}
             </div>
 
             {viewMode === 'rtwnef' && (
@@ -629,11 +672,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                     const renderOptions = value && !optionsP.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
                                                     const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                    const highlightStyle = isHighlighted ? { background: '#ffebee', fontWeight: 600 } : undefined; // Dezentes Rot für Tag
                                                     return (
                                                         <select 
                                                             className={styles.select} 
                                                             value={value}
-                                                            style={isHighlighted ? { background: '#fef3c7', border: '2px solid #f59e0b', fontWeight: 600 } : undefined}
+                                                            style={highlightStyle}
                                                             onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
                                                             onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
                                                             <option value=""></option>
@@ -650,11 +694,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                     const renderOptions = value && !optionsP.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
                                                     const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                    const highlightStyle = isHighlighted ? { background: '#e3f2fd', fontWeight: 600 } : undefined; // Dezentes Blau für Nacht
                                                     return (
                                                         <select 
                                                             className={styles.select} 
                                                             value={value}
-                                                            style={isHighlighted ? { background: '#fef3c7', border: '2px solid #f59e0b', fontWeight: 600 } : undefined}
+                                                            style={highlightStyle}
                                                             onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
                                                             onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
                                                             <option value=""></option>
@@ -676,9 +721,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                     const renderOptions = value && !options.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...options] : options;
                                                     const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                    const highlightStyle = isHighlighted ? { background: '#ffebee', fontWeight: 600 } : undefined; // Dezentes Rot für Tag
                                                     return (
                                                         <select className={styles.select} value={value}
-                                                            style={isHighlighted ? { background: '#fef3c7', border: '2px solid #f59e0b', fontWeight: 600 } : undefined}
+                                                            style={highlightStyle}
                                                             onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
                                                             onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
                                                             <option value=""></option>
@@ -699,9 +745,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                     const renderOptions = value && !options.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...options] : options;
                                                     const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                    const highlightStyle = isHighlighted ? { background: '#e3f2fd', fontWeight: 600 } : undefined; // Dezentes Blau für Nacht
                                                     return (
                                                         <select className={styles.select} value={value}
-                                                            style={isHighlighted ? { background: '#fef3c7', border: '2px solid #f59e0b', fontWeight: 600 } : undefined}
+                                                            style={highlightStyle}
                                                             onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
                                                             onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
                                                             <option value=""></option>
@@ -778,9 +825,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                     const renderOptions = value && !optionsP.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
                                                     const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                    const highlightStyle = isHighlighted ? { background: '#ffebee', fontWeight: 600 } : undefined; // Dezentes Rot für Tag/24h
                                                     return (
                                                         <select className={styles.select} value={value}
-                                                            style={isHighlighted ? { background: '#fef3c7', border: '2px solid #f59e0b', fontWeight: 600 } : undefined}
+                                                            style={highlightStyle}
                                                             onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx===0) clearAssignedForSlot('nef_assist'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
                                                             onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx===0) clearAssignedForSlot('nef_assist'); } }}>
                                                             <option value=""></option>
@@ -1445,9 +1493,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 options = [{ value, label }, ...options];
                             }
                             const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                            const highlightStyle = isHighlighted ? { background: '#ffebee', fontWeight: 600 } : undefined; // Dezentes Rot für Tag
                             return (
                                 <select className={styles.select} value={value}
-                                    style={isHighlighted ? { background: '#fef3c7', border: '2px solid #f59e0b', fontWeight: 600 } : undefined}
+                                    style={highlightStyle}
                                     onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } else { handleAssign(date, 0, v, slotId); } }}
                                     onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } }}>
                                     <option value=""></option>
