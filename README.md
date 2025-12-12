@@ -41,6 +41,13 @@ RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die 
 	- Jahres-Rest (Ziel − gefahren)
 	- Tag/Nacht-Balken mit Ziffern direkt im Segment (globale Jahreswerte)
 	- Restschichten-Balken (80 px) mit intelligenter Ampel-Färbung
+- **Person-Highlighting**: Klick auf Namen im Kontrollkasten hebt Person in der Einteilung hervor
+	- Dezente Farbcodierung: Rot für Tag-Schichten, Blau für Nacht-Schichten
+	- Toggle-Funktion: Erneuter Klick entfernt Hervorhebung
+- **Cross-Tab-Hervorhebung**: Tabs zeigen automatisch an, wenn hervorgehobene Person Einteilungen im anderen Bereich hat
+	- RTW/NEF-Tab: Dezente rote Hinterlegung bei ITW-Einteilungen
+	- ITW-Tab: Dezente gelbe Hinterlegung bei RTW/NEF-Einteilungen
+	- Verbessert Navigation zwischen verschiedenen Dienstbereichen
 - **Abteilungsfilter**: In der RTW/NEF-Ansicht werden nur Tage der eingestellten Abteilung angezeigt
 - **Fahrzeug- und Musterverwaltung** (RTW/NEF/ITW) mit monatlicher Aktivierung
 - **Feiertagsverwaltung** mit automatischer Berechnung für Niedersachsen
@@ -95,13 +102,13 @@ Hinweis für Administratoren: Wenn du die Anwendung paketieren oder für andere 
 
 ## Entwicklungsstatus
 
-**Version 2.0.0 (Build 494)** - Aktive Entwicklung
+**Version 2.0.0 (Build 498)** - Aktive Entwicklung
 
-Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangreichen Feature-Set. Die aktuelle Version 2.0.0 führt das **Azubi-Zeiträume-Management-System** ein, bietet erweiterte Import-Funktionen mit Datenschutz und eine moderne Tab-basierte Personal-Verwaltung.
+Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangreichen Feature-Set. Die aktuelle Version 2.0.0 führt das **Azubi-Zeiträume-Management-System**, **Person-Highlighting** und **Cross-Tab-Navigation** ein, bietet erweiterte Import-Funktionen mit Datenschutz und eine moderne Tab-basierte Personal-Verwaltung.
 
 **Produktionstauglichkeit**: Die Anwendung wird bereits in mehreren Rettungswachen erfolgreich eingesetzt. Für kritische Umgebungen wird empfohlen, die Funktionen vorab zu testen und regelmäßige Datensicherungen durchzuführen.
 
-**Neue Features in v2.0.0 (Build 494)**:
+**Neue Features in v2.0.0 (Build 498)**:
 - ✅ Tab-Navigation in der Personal-Verwaltung (Stammpersonal/Azubis/Ärzte)
 - ✅ Qualifikationsmanagement beim Erstellen von Personen
 - ✅ Modernisierte Add-Dialoge mit Validierung
@@ -112,6 +119,8 @@ Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangrei
 - ✅ Erweiterte Benutzeroberfläche mit konsistentem Design
 - ✅ Jahresimport mit vollständiger Azubi- und Dienstarten-Erkennung
 - ✅ Intelligente Namensauflösung mit Konfliktbehandlung
+- ✅ Person-Highlighting mit Tag/Nacht-Farbcodierung
+- ✅ Cross-Tab-Hervorhebung für verbesserte Navigation zwischen RTW/NEF und ITW
 
 ## Verwendung
 
