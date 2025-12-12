@@ -14,9 +14,6 @@ jobs:
     strategy:
       matrix:
         include:
-          # Intel (x64)
-          - runner: macos-13
-            arch: x64
           # Apple Silicon (arm64)
           - runner: macos-14
             arch: arm64
