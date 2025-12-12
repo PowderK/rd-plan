@@ -7,7 +7,7 @@
     "build:main": "tsc --project tsconfig.main.json",
     "build:renderer": "vite build",
     "bump-build": "node ./scripts/bump-build.js",
-    "copy:assets": "cp splash.html dist/ && mkdir -p dist/media && cp \"media/RD-Plan Logo.gif\" dist/media/ && cp \"media/Timeline 1_01_00_05_29.png\" dist/media/ && cp \"media/Icon.icns\" dist/media/ && cp \"media/Icon.ico\" dist/media/",
+    "copy:assets": "node -e \"const fs=require('fs');const path=require('path');fs.mkdirSync('dist/media',{recursive:true});fs.copyFileSync('splash.html','dist/splash.html');['media/RD-Plan Logo.gif','media/Timeline 1_01_00_05_29.png','media/Icon.icns','media/Icon.ico'].forEach(f=>fs.copyFileSync(f,path.join('dist',f)))\"",
     "build": "rm -rf dist && npm run bump-build && npm run build:main && npm run build:renderer && npm run copy:assets",
     "start": "electron .",
     "dev": "electron . --dev",
