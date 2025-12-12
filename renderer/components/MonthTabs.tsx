@@ -41,6 +41,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     // Zusätzliche ITW-Tage außerhalb der Schichtfolge (nur UI-state für aktuellen Monat)
     const [itwExtraDays, setItwExtraDays] = useState<Set<string>>(new Set());
     const [itwExtraInput, setItwExtraInput] = useState<string>('');
+    // Hervorgehobene Person aus Kontrollkasten
+    const [highlightedPersonKey, setHighlightedPersonKey] = useState<string | null>(null);
 
     useEffect(() => {
         const load = async () => {
@@ -626,8 +628,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                     const renderOptions = value && !optionsP.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
+                                                    const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
                                                     return (
-                                                        <select className={styles.select} value={value}
+                                                        <select 
+                                                            className={styles.select} 
+                                                            value={value}
+                                                            style={isHighlighted ? { background: '#fef3c7', border: '2px solid #f59e0b', fontWeight: 600 } : undefined}
                                                             onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
                                                             onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
                                                             <option value=""></option>
@@ -643,8 +649,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                     const renderOptions = value && !optionsP.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
+                                                    const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
                                                     return (
-                                                        <select className={styles.select} value={value}
+                                                        <select 
+                                                            className={styles.select} 
+                                                            value={value}
+                                                            style={isHighlighted ? { background: '#fef3c7', border: '2px solid #f59e0b', fontWeight: 600 } : undefined}
                                                             onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
                                                             onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
                                                             <option value=""></option>
@@ -665,8 +675,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                     const options = [...optionsP, ...optionsA];
                                                     const renderOptions = value && !options.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...options] : options;
+                                                    const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
                                                     return (
                                                         <select className={styles.select} value={value}
+                                                            style={isHighlighted ? { background: '#fef3c7', border: '2px solid #f59e0b', fontWeight: 600 } : undefined}
                                                             onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
                                                             onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
                                                             <option value=""></option>
@@ -686,8 +698,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                     const options = [...optionsP, ...optionsA];
                                                     const renderOptions = value && !options.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...options] : options;
+                                                    const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
                                                     return (
                                                         <select className={styles.select} value={value}
+                                                            style={isHighlighted ? { background: '#fef3c7', border: '2px solid #f59e0b', fontWeight: 600 } : undefined}
                                                             onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
                                                             onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
                                                             <option value=""></option>
@@ -763,8 +777,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                     const renderOptions = value && !optionsP.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
+                                                    const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
                                                     return (
                                                         <select className={styles.select} value={value}
+                                                            style={isHighlighted ? { background: '#fef3c7', border: '2px solid #f59e0b', fontWeight: 600 } : undefined}
                                                             onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx===0) clearAssignedForSlot('nef_assist'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
                                                             onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx===0) clearAssignedForSlot('nef_assist'); } }}>
                                                             <option value=""></option>
@@ -1259,7 +1275,18 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         }
                                         return (
                                             <div key={idx} className={styles.sidebarItem} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto auto', alignItems: 'center', gap: 8 }}>
-                                            <span className={styles.sidebarName} style={{ color: it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : undefined }}>{it.name}</span>
+                                            <span 
+                                                className={styles.sidebarName} 
+                                                onClick={() => setHighlightedPersonKey(highlightedPersonKey === it.key ? null : it.key)}
+                                                style={{ 
+                                                    color: it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : undefined,
+                                                    cursor: 'pointer',
+                                                    fontWeight: highlightedPersonKey === it.key ? 700 : undefined,
+                                                    textDecoration: highlightedPersonKey === it.key ? 'underline' : undefined
+                                                }}
+                                            >
+                                                {it.name}
+                                            </span>
                                             <span className={styles.sidebarVal}>{(it.target === '' ? '–' : it.target) + ' | ' + it.count}</span>
                                             <span className={styles.sidebarVal}>{it.nef}</span>
                                             <span className={styles.sidebarVal}>{it.itw}</span>
@@ -1417,8 +1444,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 const label = findPersonLabelByValue(value);
                                 options = [{ value, label }, ...options];
                             }
+                            const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
                             return (
                                 <select className={styles.select} value={value}
+                                    style={isHighlighted ? { background: '#fef3c7', border: '2px solid #f59e0b', fontWeight: 600 } : undefined}
                                     onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } else { handleAssign(date, 0, v, slotId); } }}
                                     onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } }}>
                                     <option value=""></option>
@@ -1923,7 +1952,18 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         }
                                         return (
                                             <div key={idx} className={styles.sidebarItem} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto auto', alignItems: 'center', gap: 8 }}>
-                                                <span className={styles.sidebarName} style={{ color: it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : undefined }}>{it.name}</span>
+                                                <span 
+                                                    className={styles.sidebarName} 
+                                                    onClick={() => setHighlightedPersonKey(highlightedPersonKey === it.key ? null : it.key)}
+                                                    style={{ 
+                                                        color: it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : undefined,
+                                                        cursor: 'pointer',
+                                                        fontWeight: highlightedPersonKey === it.key ? 700 : undefined,
+                                                        textDecoration: highlightedPersonKey === it.key ? 'underline' : undefined
+                                                    }}
+                                                >
+                                                    {it.name}
+                                                </span>
                                                 <span className={styles.sidebarVal}>{(it.target === '' ? '–' : it.target) + ' | ' + it.count}</span>
                                                 <span className={styles.sidebarVal}>{it.nef}</span>
                                                 <span className={styles.sidebarVal}>{it.itw}</span>
