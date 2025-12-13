@@ -1,3 +1,7 @@
+## Build 511 - 2025-12-13
+
+- automated build
+
 ## Build 510 - 2025-12-13
 
 - fix: ITW-Soll/Ist-Zählung berücksichtigt nun alle Tage statt nur Abteilungs-Tage
