@@ -1,10 +1,12 @@
 ## Build 514 - 2025-12-13
 
-- automated build
+- fix: ITW-Kontrollanzeige wird sofort nach Einteilung aktualisiert
+  - onRosterChanged() wird sofort aufgerufen statt mit 200ms Verzögerung
+  - Behebt Race Condition wo Kontrollkasten alte Daten anzeigte
 
 ## Build 513 - 2025-12-13
 
-- automated build
+- debug: Debug-Logging für ITW-IST-Zählung hinzugefügt (02.01/03.01)
 
 ## Build 512 - 2025-12-13
 
