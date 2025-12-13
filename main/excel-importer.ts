@@ -55,6 +55,7 @@ export class ExcelPersonnelImporter {
   parseExcelFile(filePath: string): { personnel: PersonnelImportData[]; azubis: AzubiImportData[] } {
     try {
       const workbook = XLSX.readFile(filePath);
+      console.log('[ExcelImporter] Workbook-Sheets:', workbook.SheetNames);
       
       // Verarbeite Personal-Sheet
       const personnelSheetName = workbook.SheetNames[0];
@@ -76,7 +77,7 @@ export class ExcelPersonnelImporter {
         // Neues Format: Lese mit Header-Namen und extrahiere Qualifikationen
         const data = XLSX.utils.sheet_to_json(personnelSheet);
         console.log(`[ExcelImporter] Gelesene Personal-Zeilen (Neues Format):`, data.length);
-        console.log(`[ExcelImporter] Erste Zeile:`, data[0]);
+        if (data.length > 0) console.log(`[ExcelImporter] Erste Zeile:`, data[0]);
         personnel = data.map((row: any) => this.parseNewFormatRow(row, headerRow)).filter(p => p !== null) as PersonnelImportData[];
         console.log(`[ExcelImporter] Geparste Personen:`, personnel.length);
       } else {
@@ -91,10 +92,12 @@ export class ExcelPersonnelImporter {
       // Verarbeite Azubis-Sheet (falls vorhanden)
       let azubis: AzubiImportData[] = [];
       if (workbook.SheetNames.includes('Azubis')) {
-        console.log('[ExcelImporter] Azubis-Sheet gefunden, verarbeite...');
+        console.log('[ExcelImporter] ✓ Azubis-Sheet gefunden, verarbeite...');
         const azubiSheet = workbook.Sheets['Azubis'];
         azubis = this.parseAzubiSheet(azubiSheet);
-        console.log(`[ExcelImporter] ${azubis.length} Azubis geparst`);
+        console.log(`[ExcelImporter] ✓ ${azubis.length} Azubis geparst (mit ${azubis.reduce((sum, a) => sum + (a.periods?.length || 0), 0)} Zeiträumen)`);
+      } else {
+        console.log('[ExcelImporter] ✗ Kein Azubis-Sheet gefunden in Sheets:', workbook.SheetNames);
       }
       
       return { personnel, azubis };
@@ -109,14 +112,19 @@ export class ExcelPersonnelImporter {
    */
   private parseAzubiSheet(sheet: XLSX.WorkSheet): AzubiImportData[] {
     const data = XLSX.utils.sheet_to_json(sheet);
-    console.log(`[ExcelImporter] Azubi-Zeilen gelesen:`, data.length);
+    console.log(`[ExcelImporter] Azubi-Sheet: ${data.length} Zeilen gelesen`);
+    
+    if (data.length > 0) {
+      console.log(`[ExcelImporter] Erste Azubi-Zeile:`, data[0]);
+      console.log(`[ExcelImporter] Azubi-Headers:`, Object.keys(data[0] as any));
+    }
     
     // Gruppiere nach Name/Vorname
     const azubiMap = new Map<string, AzubiImportData>();
     
     for (const row of data as any[]) {
       if (!row['Name'] || typeof row['Name'] !== 'string' || row['Name'].trim() === '') {
-        console.log(`[ExcelImporter] Überspringe Azubi-Zeile ohne Namen:`, row);
+        console.log(`[ExcelImporter] ✗ Überspringe Azubi-Zeile ohne Namen:`, row);
         continue;
       }
       
@@ -137,7 +145,7 @@ export class ExcelPersonnelImporter {
           periods: []
         });
         
-        console.log(`[ExcelImporter] Neuer Azubi: ${name}, ${vorname} (Lehrjahr: ${lehrjahr})`);
+        console.log(`[ExcelImporter] ✓ Neuer Azubi: ${name}, ${vorname} (Lehrjahr: ${lehrjahr}, Aktiv: ${active})`);
       }
       
       const azubi = azubiMap.get(key)!;
@@ -154,11 +162,15 @@ export class ExcelPersonnelImporter {
           description
         });
         
-        console.log(`[ExcelImporter] Zeitraum für ${name}: ${start_date} - ${end_date} (${description})`);
+        console.log(`[ExcelImporter] ✓ Zeitraum für ${name}: ${start_date} - ${end_date || 'offen'} ${description ? `(${description})` : ''}`);
+      } else {
+        console.log(`[ExcelImporter] ⚠ Azubi ${name}, ${vorname}: Zeile ohne Von-Datum (wird ignoriert für Zeiträume)`);
       }
     }
     
-    return Array.from(azubiMap.values());
+    const result = Array.from(azubiMap.values());
+    console.log(`[ExcelImporter] Azubi-Parsing abgeschlossen: ${result.length} eindeutige Azubis`);
+    return result;
   }
 
   /**
