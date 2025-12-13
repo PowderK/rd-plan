@@ -7,7 +7,7 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v2.0.0 Build 500** - Import-Pfad-Fix für jahresspezifische Vorplanungen
+**v2.0.0 Build 501** - Azubi-Zeiträume und Namen beim Personal-Import korrigiert
 
 ## Funktionen
 
