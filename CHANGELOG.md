@@ -1,3 +1,7 @@
+## Build 522 - 2025-12-13
+
+- automated build
+
 ## Build 521 - 2025-12-13
 
 - automated build
@@ -25,6 +29,17 @@
 ## Build 515 - 2025-12-13
 
 - automated build
+
+## Build 521 - 2025-12-13
+
+- fix: ITW-Kontrollanzeige im ITW-Tab zählt nun ebenfalls an allen Tagen
+  - Gleicher Fix wie Build 510 auch für ITW-Tab-Kontrollkasten angewendet
+  - ITW-Schichten werden nun konsistent über alle Tage gezählt
+  - Behebt Problem dass IST im ITW-Tab nicht hochgezählt wurde
+
+## Build 520 - 2025-12-13
+
+- debug: Erweiterte Debug-Logs für ITW-Kontrollkasten-Berechnung
 
 ## Build 514 - 2025-12-13
 
