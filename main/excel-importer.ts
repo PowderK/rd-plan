@@ -26,7 +26,6 @@ export interface AzubiImportData {
   name: string;
   vorname: string;
   lehrjahr: number;
-  active?: boolean;
   periods?: Array<{ start_date: string; end_date: string; description?: string }>;
 }
 
@@ -135,17 +134,15 @@ export class ExcelPersonnelImporter {
       // Hole oder erstelle Azubi-Eintrag
       if (!azubiMap.has(key)) {
         const lehrjahr = row['Lehrjahr'] ? parseInt(String(row['Lehrjahr']), 10) : 1;
-        const active = row['Aktiv'] !== undefined ? this.parseBooleanValue(row['Aktiv']) : true;
         
         azubiMap.set(key, {
           name,
           vorname,
           lehrjahr,
-          active,
           periods: []
         });
         
-        console.log(`[ExcelImporter] ✓ Neuer Azubi: ${name}, ${vorname} (Lehrjahr: ${lehrjahr}, Aktiv: ${active})`);
+        console.log(`[ExcelImporter] ✓ Neuer Azubi: ${name}, ${vorname} (Lehrjahr: ${lehrjahr})`);
       }
       
       const azubi = azubiMap.get(key)!;
@@ -450,14 +447,13 @@ export class ExcelPersonnelImporter {
           const maxSortResult = await this.db.get('SELECT MAX(sort) as maxSort FROM azubis');
           const nextSort = (maxSortResult?.maxSort || 0) + 1;
 
-          // Füge Azubi hinzu
+          // Füge Azubi hinzu (OHNE active - die Tabelle hat diese Spalte nicht!)
           const insertResult = await this.db.run(
-            'INSERT INTO azubis (name, vorname, lehrjahr, active, sort) VALUES (?, ?, ?, ?, ?)',
+            'INSERT INTO azubis (name, vorname, lehrjahr, sort) VALUES (?, ?, ?, ?)',
             [
               azubi.name,
               azubi.vorname,
               azubi.lehrjahr,
-              azubi.active !== false ? 1 : 0,
               nextSort
             ]
           );
@@ -634,24 +630,16 @@ export class ExcelPersonnelImporter {
       console.log('[ExcelImporter] Exporting Azubis...');
       const azubis = await this.db.all('SELECT * FROM azubis ORDER BY sort ASC, name ASC');
       
-      const azubiHeaders = ['Name', 'Vorname', 'Lehrjahr', 'Aktiv'];
+      // Header OHNE "Aktiv" (Spalte existiert nicht in azubis-Tabelle)
+      const azubiHeaders = ['Name', 'Vorname', 'Lehrjahr', 'Von', 'Bis', 'Beschreibung'];
       const azubiExportData = [azubiHeaders];
 
       for (const azubi of azubis) {
-        // Prüfe, ob lehrjahr-Spalte in azubi_periods existiert
-        const columns = await this.db.all("PRAGMA table_info('azubi_periods')");
-        const hasLehrjahrColumn = columns.some((col: any) => col.name === 'lehrjahr');
-        
-        // Lade Zeiträume für diesen Azubi (mit oder ohne lehrjahr-Spalte)
-        const periods = hasLehrjahrColumn 
-          ? await this.db.all(
-              'SELECT start_date, end_date, description, lehrjahr FROM azubi_periods WHERE azubi_id = ? ORDER BY start_date ASC', 
-              [azubi.id]
-            )
-          : await this.db.all(
-              'SELECT start_date, end_date, description FROM azubi_periods WHERE azubi_id = ? ORDER BY start_date ASC', 
-              [azubi.id]
-            ).then(rows => rows.map((row: any) => ({ ...row, lehrjahr: azubi.lehrjahr })));
+        // Lade Zeiträume für diesen Azubi
+        const periods = await this.db.all(
+          'SELECT start_date, end_date, description FROM azubi_periods WHERE azubi_id = ? ORDER BY start_date ASC', 
+          [azubi.id]
+        );
         
         if (periods.length > 0) {
           // Für jeden Zeitraum eine Zeile erstellen
@@ -659,20 +647,18 @@ export class ExcelPersonnelImporter {
             azubiExportData.push([
               azubi.name,
               azubi.vorname || '',
-              period.lehrjahr || azubi.lehrjahr,
-              azubi.active ? 'ja' : 'nein',
+              azubi.lehrjahr,
               period.start_date,
               period.end_date,
               period.description || ''
             ]);
           }
         } else {
-          // Wenn keine Zeiträume, nur Basisdaten
+          // Wenn keine Zeiträume, nur Basisdaten (leere Zeitraum-Felder)
           azubiExportData.push([
             azubi.name,
             azubi.vorname || '',
             azubi.lehrjahr,
-            azubi.active ? 'ja' : 'nein',
             '',
             '',
             ''
@@ -680,15 +666,11 @@ export class ExcelPersonnelImporter {
         }
       }
 
-      // Erweitere Header für Zeiträume
-      azubiExportData[0] = ['Name', 'Vorname', 'Lehrjahr', 'Aktiv', 'Von', 'Bis', 'Beschreibung'];
-
       const azubiWorksheet = XLSX.utils.aoa_to_sheet(azubiExportData);
       azubiWorksheet['!cols'] = [
         { width: 20 }, // Name
         { width: 20 }, // Vorname
         { width: 10 }, // Lehrjahr
-        { width: 10 }, // Aktiv
         { width: 12 }, // Von
         { width: 12 }, // Bis
         { width: 25 }  // Beschreibung
