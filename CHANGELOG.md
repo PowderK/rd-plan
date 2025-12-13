@@ -1,14 +1,24 @@
 ## Build 510 - 2025-12-13
 
-- automated build
+- fix: ITW-Soll/Ist-Zählung berücksichtigt nun alle Tage statt nur Abteilungs-Tage
+  - perPersonItwInMonth verwendet nun allMonthDays für ITW-Schichten
+  - RTW/NEF-Zählung bleibt korrekt auf Abteilungs-Tage beschränkt
 
 ## Build 509 - 2025-12-13
 
-- automated build
+- fix: ITW-Einteilung - Dienstplan wird beim Löschen nicht mehr gelöscht
+  - assignSlot mit leerem slotType führt UPDATE statt DELETE aus
+  - Nur type-Feld wird geleert, value (Dienstplan) bleibt erhalten
+- fix: ITW-Schichten werden korrekt in Soll/Ist berücksichtigt
+  - isItwShift prüft type UND value mit auswertung='itw'
 
 ## Build 508 - 2025-12-13
 
-- automated build
+- feat: Fahrzeugverwaltung Event-System und Löschen-Buttons
+  - Event vehicles-updated wird nach Änderungen getriggert
+  - RTW/NEF/ITW-Komponenten reagieren auf vehicles-updated
+  - Löschen-Buttons für RTW/NEF/ITW Fahrzeuge
+  - Export/Import für ITW-Fahrzeuge
 
 ## Build 507 - 2025-12-13
 
