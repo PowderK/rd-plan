@@ -18,7 +18,7 @@ export interface DatabaseAdapter {
   getPersonnel(includeInactive?: boolean): Promise<any[]>;
   setPersonnelActive(id: number, active: boolean): Promise<void>;
   getPersonById(id: number): Promise<any | null>;
-  addPersonnel(person: any): Promise<void>;
+  addPersonnel(person: any): Promise<any>;
   updatePersonnel(person: any): Promise<void>;
   deletePersonnel(id: number): Promise<void>;
   updatePersonnelOrder(order: number[]): Promise<void>;
@@ -26,11 +26,11 @@ export interface DatabaseAdapter {
   getDutyRoster(year: number): Promise<any[]>;
   setDutyRosterEntry(entry: any): Promise<void>;
   bulkSetDutyRosterEntries(entries: any[]): Promise<number>;
-  bulkImportDutyRosterEntries(entries: any[], respectManualEdits?: boolean): Promise<{ imported: number, skipped: number }>;
+  bulkImportDutyRosterEntries(entries: any[], respectManualEdits?: boolean, deleteEmpty?: boolean): Promise<{ imported: number, skipped: number }>;
   
   getAzubiList(): Promise<any[]>;
   getAzubi(id: number): Promise<any | null>;
-  addAzubi(azubi: any): Promise<void>;
+  addAzubi(azubi: any): Promise<any>;
   updateAzubi(azubi: any): Promise<void>;
   deleteAzubi(id: number): Promise<void>;
   updateAzubiOrder(order: number[]): Promise<void>;
@@ -218,9 +218,9 @@ class SQLiteAdapter implements DatabaseAdapter {
     return bulkSetDutyRosterEntries(this.db, entries);
   }
   
-  async bulkImportDutyRosterEntries(entries: any[], respectManualEdits: boolean = true) {
+  async bulkImportDutyRosterEntries(entries: any[], respectManualEdits: boolean = true, deleteEmpty: boolean = true) {
     const { bulkImportDutyRosterEntries } = await import('./database');
-    return bulkImportDutyRosterEntries(this.db, entries, respectManualEdits);
+    return bulkImportDutyRosterEntries(this.db, entries, respectManualEdits, deleteEmpty);
   }
   
   async getAzubiList() {

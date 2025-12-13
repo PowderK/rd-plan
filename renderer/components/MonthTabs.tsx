@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { calculateTargets } from '../utils/calculation';
 import styles from './MonthTabs.module.css';
 
 interface MonthTabsProps {
@@ -43,6 +44,40 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     const [itwExtraInput, setItwExtraInput] = useState<string>('');
     // Hervorgehobene Person aus Kontrollkasten
     const [highlightedPersonKey, setHighlightedPersonKey] = useState<string | null>(null);
+    // Ü50-IDs für korrekte Berechnung (analog ValuesPage)
+    const [ue50Ids, setUe50Ids] = useState<Set<number>>(new Set());
+
+    useEffect(() => {
+        const loadUe50 = async () => {
+            try {
+                let ue50QualName = 'Ü50';
+                const setting = await (window as any).api.getSetting('ue50_qualification_type');
+                if (setting) ue50QualName = String(setting);
+                
+                const ids = new Set<number>();
+                for (const p of personnel) {
+                    try {
+                        const periods = await (window as any).api.getQualificationPeriods?.(p.id) || [];
+                        for (let month = 0; month < 12; month++) {
+                            const yearMonth = `${year}-${String(month + 1).padStart(2, '0')}`;
+                            const hasUe50 = periods.some((per: any) => 
+                                per.active && 
+                                per.qualType === ue50QualName &&
+                                per.startYM <= yearMonth &&
+                                (!per.endYM || per.endYM >= yearMonth)
+                            );
+                            if (hasUe50) {
+                                ids.add(p.id);
+                                break;
+                            }
+                        }
+                    } catch {}
+                }
+                setUe50Ids(ids);
+            } catch { setUe50Ids(new Set()); }
+        };
+        loadUe50();
+    }, [year, personnel]);
 
     useEffect(() => {
         const load = async () => {
@@ -387,16 +422,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
             await (window as any).api.assignSlot({ personId: pid, personType: ptype, date, slotType: slotId || '' });
             console.log('[MonthTabs] handleAssign API call completed');
             
-            // 4. Kurze Verzögerung, dann Parent-Updates wieder erlauben
+            // 4. Sofort Roster neu laden damit Kontrollkasten aktualisiert wird
+            if (onRosterChanged) onRosterChanged();
+            
+            // 5. Kurze Verzögerung, dann Parent-Updates wieder erlauben
             setTimeout(() => {
                 setIsUpdating(false);
             }, 100);
             
             if (onEntryAssigned) onEntryAssigned(key, date, (localRoster[key]?.[date]?.value || ''), slotId || '');
-            // onRosterChanged wird nur verzögert aufgerufen um excessive Reloads zu vermeiden
-            setTimeout(() => {
-                if (onRosterChanged) onRosterChanged();
-            }, 200);
             
             console.log('[MonthTabs] handleAssign COMPLETED');
         } catch (e) {
@@ -591,6 +625,160 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                     );
                 })()}
             </div>
+
+            {/* ========================================================== */}
+            {/* GEMEINSAME SOLL-BERECHNUNG für RTW-Tab und ITW-Tab        */}
+            {/* ========================================================== */}
+            {(() => {
+                const computeSharedTargets = () => {
+                    // 1. Flatten Roster for Shared Calculation
+                    const flattenedRoster: any[] = [];
+                    const mergedKeys = Array.from(new Set([...Object.keys(roster || {}), ...Object.keys(localRoster || {})]));
+                    for (const key of mergedKeys) {
+                        const pid = Number(key.replace(/^[pa]_/, ''));
+                        const pType = key.startsWith('p_') ? 'person' : 'azubi';
+                        const rowMap = { ...(roster?.[key] || {}), ...(localRoster?.[key] || {}) };
+                        for (const [date, cell] of Object.entries(rowMap)) {
+                            if (cell) {
+                                flattenedRoster.push({
+                                    date,
+                                    personId: pid,
+                                    personType: pType,
+                                    type: cell.type,
+                                    value: cell.value
+                                });
+                            }
+                        }
+                    }
+
+                    // 2. Calculate Targets using Shared Utility
+                    const targetsByPersonId = calculateTargets(
+                        year,
+                        flattenedRoster,
+                        personnel,
+                        azubis,
+                        ue50Ids,
+                        auswertungByType,
+                        { rtw: rtwVehicles, nef: nefVehicles },
+                        { rtwActs: rtwActivations, nefActs: nefActivations },
+                        department,
+                        deptPatternSeqs || []
+                    );
+
+                    // 3. Map Targets to MonthTabs format
+                    const targetYearMap: Record<string, number> = {};
+                    const allocTargetsInMonth: Record<string, number> = {};
+                    
+                    for (const p of personnel) {
+                        const key = `p_${p.id}`;
+                        const t = targetsByPersonId[p.id] || Array(12).fill(0);
+                        targetYearMap[key] = t.reduce((a, b) => a + b, 0);
+                        allocTargetsInMonth[key] = t[currentMonth];
+                    }
+
+                    // 4. Calculate Driven/Assigned Stats (Local Logic preserved)
+                    const drivenYearMap: Record<string, number> = {};
+                    const perPersonAssignedWeightedInMonth: Record<string, number> = {};
+                    const perPersonNefInMonth: Record<string, number> = {};
+                    const perPersonItwInMonth: Record<string, number> = {};
+                    const perPersonRtwTagNightYear: Record<string, { tag: number; nacht: number }> = {};
+                    const perPersonRtwTagNightInMonth: Record<string, { tag: number; nacht: number }> = {};
+
+                    const daysInMonth = new Date(year, currentMonth + 1, 0).getDate();
+                    const allMonthDays: string[] = [];
+                    for (let i = 1; i <= daysInMonth; i++) {
+                        allMonthDays.push(new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0,10));
+                    }
+
+                    // Helper to get cell from local or global roster
+                    const getCell = (key: string, iso: string) => (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
+
+                    for (const p of (personnel || [])) {
+                        const key = `p_${p.id}`;
+                        
+                        // Yearly Stats
+                        let sumDrivenY = 0;
+                        let tagCntY = 0;
+                        let nachtCntY = 0;
+                        for (let mIdx = 0; mIdx < 12; mIdx++) {
+                            const dim = new Date(year, mIdx + 1, 0).getDate();
+                            for (let i = 1; i <= dim; i++) {
+                                const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0,10);
+                                const cell = getCell(key, iso);
+                                const t = String(cell?.type || '');
+                                if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) sumDrivenY += 1;
+                                else if (t.startsWith('itw_row_')) sumDrivenY += 1;
+                                else if (/^nef(\d+)?_assist$/.test(t)) sumDrivenY += 2;
+
+                                if (/^rtw\d+_tag_(1|2)$/.test(t)) tagCntY += 1;
+                                if (/^rtw\d+_nacht_(1|2)$/.test(t)) nachtCntY += 1;
+                            }
+                        }
+                        drivenYearMap[key] = sumDrivenY;
+                        perPersonRtwTagNightYear[key] = { tag: tagCntY, nacht: nachtCntY };
+
+                        // Monthly Stats
+                        let cntM = 0;
+                        let tagCntM = 0;
+                        let nachtCntM = 0;
+                        let nefCntM = 0;
+                        let itwCntM = 0;
+
+                        // Filter days where department is active
+                        const monthDeptIsos: string[] = (() => {
+                            const list: string[] = [];
+                            for (let i = 1; i <= daysInMonth; i++) {
+                                const iso = new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0,10);
+                                const seqs = [...(deptPatternSeqs || [])].sort((a,b) => a.startDate.localeCompare(b.startDate));
+                                let active = seqs[0];
+                                for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
+                                const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
+                                const cur = new Date(iso + 'T00:00:00Z');
+                                const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000*60*60*24));
+                                const pat = active?.pattern || [];
+                                const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
+                                if (depDay && String(department) === depDay) list.push(iso);
+                            }
+                            return list;
+                        })();
+
+                        for (const iso of monthDeptIsos) {
+                            const cell = getCell(key, iso);
+                            const t = String(cell?.type || '');
+                            if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) cntM += 1;
+                            if (/^rtw\d+_tag_(1|2)$/.test(t)) tagCntM += 1;
+                            if (/^rtw\d+_nacht_(1|2)$/.test(t)) nachtCntM += 1;
+                            else if (/^nef(\d+)?_assist$/.test(t)) { cntM += 2; nefCntM += 2; }
+                        }
+                        // ITW counts (all days)
+                        for (const iso of allMonthDays) {
+                            const cell = getCell(key, iso);
+                            const t = String(cell?.type || '');
+                            if (t.startsWith('itw_row_')) {
+                                cntM += 1;
+                                itwCntM += 1;
+                            }
+                        }
+                        perPersonAssignedWeightedInMonth[key] = cntM;
+                        perPersonRtwTagNightInMonth[key] = { tag: tagCntM, nacht: nachtCntM };
+                        perPersonNefInMonth[key] = nefCntM;
+                        perPersonItwInMonth[key] = itwCntM;
+                    }
+                    
+                    return { 
+                        targetYearMap, 
+                        drivenYearMap,
+                        allocTargetsInMonth,
+                        perPersonAssignedWeightedInMonth,
+                        perPersonNefInMonth,
+                        perPersonItwInMonth,
+                        perPersonRtwTagNightYear
+                    };
+                };
+                
+                (window as any).__sharedTargets = computeSharedTargets();
+                return null;
+            })()}
 
             {viewMode === 'rtwnef' && (
                 <>
@@ -868,353 +1056,16 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                     })}
                     </div>
                     {(() => {
-                        // Kontrollkasten-Berechnungen (Monatsbasis)
-                        const daysInMonth = new Date(year, currentMonth + 1, 0).getDate();
-                        const allMonthDays: string[] = [];
-                        for (let i = 1; i <= daysInMonth; i++) {
-                            allMonthDays.push(new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0,10));
-                        }
-                        // Dept-Schichten im Monat
-                        const deptShiftsInMonth = (() => {
-                            let cnt = 0;
-                            for (let i = 1; i <= daysInMonth; i++) {
-                                const iso = new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0,10);
-                                const seqs = [...(deptPatternSeqs || [])].sort((a,b) => a.startDate.localeCompare(b.startDate));
-                                let active = seqs[0];
-                                for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
-                                const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
-                                const cur = new Date(iso + 'T00:00:00Z');
-                                const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000*60*60*24));
-                                const pat = active?.pattern || [];
-                                const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
-                                if (depDay && String(department) === depDay) cnt++;
-                            }
-                            return cnt;
-                        })();
-                        // Aktive Fahrzeuge im Monat
-                        const activeRtwCount = (rtwVehicles || []).filter(v => (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false).length;
-                        const activeNefCount = (nefVehicles || []).filter(v => (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false).length;
-                        // ITW-Schichten im Monat (aus Roster)
-                        const itwShiftsInMonth = (() => {
-                            let sum = 0;
-                            const mergedKeys = Array.from(new Set([...(Object.keys(localRoster || {})), ...(Object.keys(roster || {}))]));
-                            for (const key of mergedKeys) {
-                                for (const iso of allMonthDays) {
-                                    const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                    if (!cell) continue;
-                                    const t = String(cell.type || '');
-                                    const raw = String(cell.value || '').trim();
-                                    if (t.startsWith('itw_') || (raw && auswertungByType[raw] === 'itw')) sum++;
-                                }
-                            }
-                            return sum;
-                        })();
-                        // Azubi-Maschinist-Schichten (Slot 2)
-                        const azubiMaschinistShiftsInMonth = (() => {
-                            let sum = 0;
-                            const reMasch = /^rtw\d+_(tag|nacht)_2$/;
-                            for (const a of azubis || []) {
-                                const key = `a_${a.id}`;
-                                for (const iso of allMonthDays) {
-                                    const t = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.type || '');
-                                    if (reMasch.test(t)) sum++;
-                                }
-                            }
-                            return sum;
-                        })();
-                        // Ü50-Personen-Schichten (alle Positionen)
-                        const ue50ShiftsInMonth = (() => {
-                            let sum = 0;
-                            for (const p of personnel || []) {
-                                if ((p as any).ue50 !== 1) continue;
-                                const key = `p_${p.id}`;
-                                for (const iso of allMonthDays) {
-                                    const t = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.type || '');
-                                    if (t) sum++;
-                                }
-                            }
-                            return sum;
-                        })();
-                        const positionsAdjInMonth = Math.max(0, deptShiftsInMonth * (activeRtwCount * 4 + activeNefCount * 2) + itwShiftsInMonth - azubiMaschinistShiftsInMonth - ue50ShiftsInMonth);
-                        // Aktives Stammpersonal im Monat (mind. ein Präsenz-Tag) – ungewichtet
-                        const activePersonnelInMonth = (() => {
-                            let sum = 0;
-                            for (const p of personnel || []) {
-                                // Ü50-Personen ausschließen (wie Azubis: keine Soll/Ist-Berechnung)
-                                if ((p as any).ue50 === 1) continue;
-                                const key = `p_${p.id}`;
-                                let presence = 0;
-                                for (const iso of allMonthDays) {
-                                    const raw = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.value || '').trim();
-                                    if (!raw) continue;
-                                    if ((auswertungByType[raw] || 'off') !== 'off') presence++;
-                                }
-                                if (presence > 0) {
-                                    sum += 1;
-                                }
-                            }
-                            return sum;
-                        })();
-                        const shiftsPerPersonInMonth = activePersonnelInMonth > 0 ? (positionsAdjInMonth / activePersonnelInMonth) : 0;
-                        // Präsenz je Person im Monat (Auswertung != 'off') – RAW und gewichtete (HLF‑B=round(0,75×Ai))
-                        const perPersonPresenceInMonth: Record<string, number> = (() => {
-                            const map: Record<string, number> = {};
-                            for (const p of personnel || []) {
-                                // Ü50-Personen ausschließen
-                                if ((p as any).ue50 === 1) continue;
-                                const key = `p_${p.id}`;
-                                let presence = 0;
-                                for (const iso of allMonthDays) {
-                                    const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                    const raw = String(cell?.value || '').trim();
-                                    if (raw && (auswertungByType[raw] || 'off') !== 'off') presence++;
-                                }
-                                map[key] = presence;
-                            }
-                            return map;
-                        })();
-                        const perPersonPresenceWeightedInMonth: Record<string, number> = (() => {
-                            const map: Record<string, number> = {};
-                            for (const p of personnel || []) {
-                                // Ü50-Personen ausschließen
-                                if ((p as any).ue50 === 1) continue;
-                                const key = `p_${p.id}`;
-                                const raw = perPersonPresenceInMonth[key] || 0;
-                                const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
-                                map[key] = hasHLFB ? Math.round(raw * 0.75) : raw;
-                            }
-                            return map;
-                        })();
-                        const avgPresenceInMonth = (() => {
-                            const vals = Object.values(perPersonPresenceWeightedInMonth).filter(v => v > 0);
-                            if (vals.length === 0) return 0;
-                            const sum = vals.reduce((a, b) => a + b, 0);
-                            return Math.round(sum / vals.length);
-                        })();
-                        // Gewichtet gezählte Einsätze je Person im Monat:
-                        // - RTW (Fahrzeugführer/Maschinist): +1 bei rtw\d+_(tag|nacht)_(1|2)
-                        // - ITW (Pos 1/2): +1 bei itw_row_[12] ODER value mit auswertung='itw' (FzF/Ma)
-                        // - NEF Assistent: +2 bei nef(\d+_)?assist
-                        // - Keine Zählung für Azubi-Positionen (z.B. itw_row_3, nef*_azubi)
-                        const perPersonAssignedWeightedInMonth: Record<string, number> = {};
-                        const perPersonRtwTagNightInMonth: Record<string, { tag: number; nacht: number }> = {};
-                        const perPersonNefInMonth: Record<string, number> = {};
-                        const perPersonItwInMonth: Record<string, number> = {};
-                        for (const p of (personnel || [])) {
-                            // Ü50-Personen ausschließen
-                            if ((p as any).ue50 === 1) continue;
-                            const key = `p_${p.id}`;
-                            let cnt = 0;
-                            let tagCnt = 0;
-                            let nachtCnt = 0;
-                            let nefCnt = 0;
-                            let itwCnt = 0;
-                            // Für Tag/Nacht-Zählung nur Abteilungs-Tage dieses Monats berücksichtigen
-                            const monthDeptIsos: string[] = (() => {
-                                const list: string[] = [];
-                                for (let i = 1; i <= daysInMonth; i++) {
-                                    const iso = new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0,10);
-                                    const seqs = [...(deptPatternSeqs || [])].sort((a,b) => a.startDate.localeCompare(b.startDate));
-                                    let active = seqs[0];
-                                    for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
-                                    const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
-                                    const cur = new Date(iso + 'T00:00:00Z');
-                                    const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000*60*60*24));
-                                    const pat = active?.pattern || [];
-                                    const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
-                                    if (depDay && String(department) === depDay) list.push(iso);
-                                }
-                                return list;
-                            })();
-                            for (const iso of monthDeptIsos) {
-                                const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                const t = String(cell?.type || '');
-                                const v = String(cell?.value || '').trim();
-                                const isItwShift = /^itw_row_[12]$/.test(t) || (v && auswertungByType[v] === 'itw');
-                                
-                                if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) cnt += 1;
-                                if (/^rtw\d+_tag_(1|2)$/.test(t)) tagCnt += 1;
-                                if (/^rtw\d+_nacht_(1|2)$/.test(t)) nachtCnt += 1;
-                                else if (isItwShift) cnt += 1;
-                                else if (/^nef(\d+)?_assist$/.test(t)) cnt += 2;
-                                // separate Summen für NEF/ITW
-                                if (isItwShift) itwCnt += 1;
-                                if (/^nef(\d+)?_assist$/.test(t)) nefCnt += 2;
-                            }
-                            perPersonAssignedWeightedInMonth[key] = cnt;
-                            perPersonRtwTagNightInMonth[key] = { tag: tagCnt, nacht: nachtCnt };
-                            perPersonNefInMonth[key] = nefCnt;
-                            perPersonItwInMonth[key] = itwCnt;
-                        }
-                        // Jahres-Soll je Person: Summe der monatlichen Soll-Ziele über alle Monate (Hamilton auf Basis gewichteter Präsenz, HLF‑B=0,75)
-                        const computeTargetsForMonth = (mIdx: number) => {
-                            const daysInMonth = new Date(year, mIdx + 1, 0).getDate();
-                            const allMonthDays: string[] = [];
-                            for (let i = 1; i <= daysInMonth; i++) {
-                                allMonthDays.push(new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0,10));
-                            }
-                            const deptShiftsInMonthCalc = (() => {
-                                let cnt = 0;
-                                for (let i = 1; i <= daysInMonth; i++) {
-                                    const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0,10);
-                                    const seqs = [...(deptPatternSeqs || [])].sort((a,b) => a.startDate.localeCompare(b.startDate));
-                                    let active = seqs[0];
-                                    for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
-                                    const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
-                                    const cur = new Date(iso + 'T00:00:00Z');
-                                    const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000*60*60*24));
-                                    const pat = active?.pattern || [];
-                                    const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
-                                    if (depDay && String(department) === depDay) cnt++;
-                                }
-                                return cnt;
-                            })();
-                            const activeRtwCountM = (rtwVehicles || []).filter(v => (rtwActivations[v.id] ?? Array(12).fill(true))[mIdx] !== false).length;
-                            const activeNefCountM = (nefVehicles || []).filter(v => (nefActivations[v.id] ?? Array(12).fill(true))[mIdx] !== false).length;
-                            const itwShiftsInMonthCalc = (() => {
-                                let sum = 0;
-                                const mergedKeys = Array.from(new Set([...(Object.keys(localRoster || {})), ...(Object.keys(roster || {}))]));
-                                for (const key of mergedKeys) {
-                                    for (const iso of allMonthDays) {
-                                        const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                        if (!cell) continue;
-                                        const t = String(cell.type || '');
-                                        const raw = String(cell.value || '').trim();
-                                        if (t.startsWith('itw_') || (raw && auswertungByType[raw] === 'itw')) sum++;
-                                    }
-                                }
-                                return sum;
-                            })();
-                            const azubiMaschinistShiftsInMonthCalc = (() => {
-                                let sum = 0;
-                                const reMasch = /^rtw\d+_(tag|nacht)_2$/;
-                                for (const a of azubis || []) {
-                                    const key = `a_${a.id}`;
-                                    for (const iso of allMonthDays) {
-                                        const t = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.type || '');
-                                        if (reMasch.test(t)) sum++;
-                                    }
-                                }
-                                return sum;
-                            })();
-                            // Ü50-Personen-Schichten (alle Positionen)
-                            const ue50ShiftsInMonthCalc = (() => {
-                                let sum = 0;
-                                const reSlot = /^(rtw\d+_(tag|nacht)_[12]|nef(\d+)?_(arzt|assist|azubi)|itw_row_[123])$/;
-                                for (const p of personnel || []) {
-                                    if ((p as any).ue50 !== 1) continue;
-                                    const key = `p_${p.id}`;
-                                    for (const iso of allMonthDays) {
-                                        const t = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.type || '');
-                                        if (reSlot.test(t)) sum++;
-                                    }
-                                }
-                                return sum;
-                            })();
-                            const positionsAdjInMonthCalc = Math.max(0, deptShiftsInMonthCalc * (activeRtwCountM * 4 + activeNefCountM * 2) + itwShiftsInMonthCalc - azubiMaschinistShiftsInMonthCalc - ue50ShiftsInMonthCalc);
-                            const perPersonPresenceInMonthCalc: Record<string, number> = (() => {
-                                const map: Record<string, number> = {};
-                                for (const p of personnel || []) {
-                                    if ((p as any).ue50 === 1) continue;
-                                    const key = `p_${p.id}`;
-                                    let presence = 0;
-                                    for (const iso of allMonthDays) {
-                                        const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                        const raw = String(cell?.value || '').trim();
-                                        if (raw && (auswertungByType[raw] || 'off') !== 'off') presence++;
-                                    }
-                                    map[key] = presence;
-                                }
-                                return map;
-                            })();
-                            const perPersonPresenceWeightedInMonthCalc: Record<string, number> = (() => {
-                                const map: Record<string, number> = {};
-                                for (const p of personnel || []) {
-                                    if ((p as any).ue50 === 1) continue;
-                                    const key = `p_${p.id}`;
-                                    const raw = perPersonPresenceInMonthCalc[key] || 0;
-                                    const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
-                                    map[key] = hasHLFB ? Math.round(raw * 0.75) : raw;
-                                }
-                                return map;
-                            })();
-                            // Hamilton-Allokation: Summe == positionsAdjInMonthCalc
-                            const entries = (personnel || []).map(p => {
-                                const key = `p_${p.id}`;
-                                return { key, w: perPersonPresenceWeightedInMonthCalc[key] || 0 };
-                            }).filter(e => e.w > 0);
-                            const totalW = entries.reduce((s, e) => s + e.w, 0);
-                            const targets: Record<string, number> = {};
-                            if (positionsAdjInMonthCalc <= 0 || totalW <= 0) return targets;
-                            const parts = entries.map(e => ({ key: e.key, exact: (positionsAdjInMonthCalc * e.w) / totalW }));
-                            const floors = parts.map(p => ({ key: p.key, v: Math.floor(p.exact), frac: p.exact - Math.floor(p.exact) }));
-                            let assigned = floors.reduce((s, f) => s + f.v, 0);
-                            let rest = positionsAdjInMonthCalc - assigned;
-                            floors.sort((a, b) => b.frac - a.frac);
-                            for (let i = 0; i < floors.length && rest > 0; i++, rest--) floors[i].v += 1;
-                            for (const f of floors) targets[f.key] = f.v;
-                            return targets;
-                        };
-                        const targetYearMap: Record<string, number> = {};
-                        for (let mIdx = 0; mIdx < 12; mIdx++) {
-                            const mt = computeTargetsForMonth(mIdx);
-                            for (const [k, v] of Object.entries(mt)) targetYearMap[k] = (targetYearMap[k] || 0) + (v || 0);
-                        }
-                        // Jahres-Zählung der gefahrenen (RTW+ITW+NEF) je Person
-                        const drivenYearMap: Record<string, number> = {};
-                        for (const p of (personnel || [])) {
-                            const key = `p_${p.id}`;
-                            let sum = 0;
-                            for (let mIdx = 0; mIdx < 12; mIdx++) {
-                                const daysInMonth = new Date(year, mIdx + 1, 0).getDate();
-                                for (let i = 1; i <= daysInMonth; i++) {
-                                    const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0,10);
-                                    const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                    const t = String(cell?.type || '');
-                                    if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) sum += 1;
-                                    else if (/^itw_row_[12]$/.test(t)) sum += 1;
-                                    else if (/^nef(\d+)?_assist$/.test(t)) sum += 2;
-                                }
-                            }
-                            drivenYearMap[key] = sum;
-                        }
-                        
-                        // Jahres-Zählung Tag/Nacht (RTW) je Person (global über das Jahr)
-                        const perPersonRtwTagNightYear: Record<string, { tag: number; nacht: number }> = {};
-                        for (const p of (personnel || [])) {
-                            const key = `p_${p.id}`;
-                            let tagCntY = 0;
-                            let nachtCntY = 0;
-                            for (let mIdx = 0; mIdx < 12; mIdx++) {
-                                const dim = new Date(year, mIdx + 1, 0).getDate();
-                                for (let i = 1; i <= dim; i++) {
-                                    const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0,10);
-                                    const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                    const t = String(cell?.type || '');
-                                    if (/^rtw\d+_tag_(1|2)$/.test(t)) tagCntY += 1;
-                                    if (/^rtw\d+_nacht_(1|2)$/.test(t)) nachtCntY += 1;
-                                }
-                            }
-                            perPersonRtwTagNightYear[key] = { tag: tagCntY, nacht: nachtCntY };
-                        }
-                        // Hamilton-Verteilung für den aktuellen Monat (Summe == positionsAdjInMonth)
-                        const allocTargetsInMonth: Record<string, number> = (() => {
-                            const entries = (personnel || []).map(p => {
-                                const key = `p_${p.id}`;
-                                return { key, w: perPersonPresenceWeightedInMonth[key] || 0 };
-                            }).filter(e => e.w > 0);
-                            const totalW = entries.reduce((s, e) => s + e.w, 0);
-                            const res: Record<string, number> = {};
-                            if (positionsAdjInMonth <= 0 || totalW <= 0) return res;
-                            const parts = entries.map(e => ({ key: e.key, exact: (positionsAdjInMonth * e.w) / totalW }));
-                            const floors = parts.map(p => ({ key: p.key, v: Math.floor(p.exact), frac: p.exact - Math.floor(p.exact) }));
-                            let assigned = floors.reduce((s, f) => s + f.v, 0);
-                            let rest = positionsAdjInMonth - assigned;
-                            floors.sort((a, b) => b.frac - a.frac);
-                            for (let i = 0; i < floors.length && rest > 0; i++, rest--) floors[i].v += 1;
-                            for (const f of floors) res[f.key] = f.v;
-                            return res;
-                        })();
+                        // Kontrollkasten-Berechnungen (Monatsbasis) - jetzt zentralisiert
+                        const { 
+                            targetYearMap, 
+                            drivenYearMap, 
+                            allocTargetsInMonth, 
+                            perPersonAssignedWeightedInMonth,
+                            perPersonNefInMonth,
+                            perPersonItwInMonth,
+                            perPersonRtwTagNightYear
+                        } = (window as any).__sharedTargets || {};
 
                         const items = (personnel || []).map(p => {
                             const key = `p_${p.id}`;
@@ -1426,8 +1277,33 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             const weekday = local.toLocaleDateString('de-DE', { weekday: 'short' });
                             allMonthDays.push({ date: iso, weekday, day: d, dayOfYear: idx });
                         }
-                        // Nur Tage anzeigen, an denen im Dienstplan tatsächlich ITW gefahren wird (Slot oder Auswertung = ITW) – Musterfolge ignorieren
+                        // Tage ermitteln: 1. Aus Musterfolge, 2. Aus tatsächlichen Einträgen (Slot/Auswertung), 3. Manuelle Extras
                         const assignedItwDates = new Set<string>();
+                        
+                        // 1. Musterfolge (Deaktiviert: ITW-Spalten nur anzeigen, wenn tatsächlich Einträge im Dienstplan existieren)
+                        /*
+                        for (let i = 1; i <= daysInMonth; i++) {
+                            const iso = new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0,10);
+                            if (holidays.has(iso)) continue;
+                            
+                            const seqs = [...(itwPatternSeqs || [])].sort((a,b) => a.startDate.localeCompare(b.startDate));
+                            if (seqs.length === 0) continue;
+                            
+                            let active = seqs[0];
+                            for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
+                            
+                            const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
+                            const cur = new Date(iso + 'T00:00:00Z');
+                            const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000*60*60*24));
+                            const pat = active?.pattern || [];
+                            if (pat.length === 0) continue;
+                            
+                            const val = pat[((diffDays % pat.length) + pat.length) % pat.length];
+                            if (val) assignedItwDates.add(iso);
+                        }
+                        */
+
+                        // 2. Tatsächliche Einträge
                         try {
                             const mergedKeys = Array.from(new Set([...(Object.keys(localRoster || {})), ...(Object.keys(roster || {}))]));
                             for (const key of mergedKeys) {
@@ -1554,354 +1430,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                     </div>
                     {(() => {
                         // Kontrollkasten-Berechnungen (Monatsbasis) – identisch wie in RTW/NEF-Ansicht (mit Präsenz & HLF‑B Gewichtung)
-                        const daysInMonth = new Date(year, currentMonth + 1, 0).getDate();
-                        const allMonthDays: string[] = [];
-                        for (let i = 1; i <= daysInMonth; i++) {
-                            allMonthDays.push(new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0,10));
-                        }
-                        const deptShiftsInMonth = (() => {
-                            let cnt = 0;
-                            for (let i = 1; i <= daysInMonth; i++) {
-                                const iso = new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0,10);
-                                const seqs = [...(deptPatternSeqs || [])].sort((a,b) => a.startDate.localeCompare(b.startDate));
-                                let active = seqs[0];
-                                for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
-                                const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
-                                const cur = new Date(iso + 'T00:00:00Z');
-                                const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000*60*60*24));
-                                const pat = active?.pattern || [];
-                                const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
-                                if (depDay && String(department) === depDay) cnt++;
-                            }
-                            return cnt;
-                        })();
-                        const activeRtwCount = (rtwVehicles || []).filter(v => (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false).length;
-                        const activeNefCount = (nefVehicles || []).filter(v => (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false).length;
-                        const itwShiftsInMonth = (() => {
-                            let sum = 0;
-                            const mergedKeys = Array.from(new Set([...(Object.keys(localRoster || {})), ...(Object.keys(roster || {}))]));
-                            for (const key of mergedKeys) {
-                                for (const iso of allMonthDays) {
-                                    const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                    if (!cell) continue;
-                                    const t = String(cell.type || '');
-                                    const raw = String(cell.value || '').trim();
-                                    if (t.startsWith('itw_') || (raw && auswertungByType[raw] === 'itw')) sum++;
-                                }
-                            }
-                            return sum;
-                        })();
-                        const azubiMaschinistShiftsInMonth = (() => {
-                            let sum = 0;
-                            const reMasch = /^rtw\d+_(tag|nacht)_2$/;
-                            for (const a of azubis || []) {
-                                const key = `a_${a.id}`;
-                                for (const iso of allMonthDays) {
-                                    const t = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.type || '');
-                                    if (reMasch.test(t)) sum++;
-                                }
-                            }
-                            return sum;
-                        })();
-                        // Ü50-Personen-Schichten (alle Positionen)
-                        const ue50ShiftsInMonth = (() => {
-                            let sum = 0;
-                            const reSlot = /^(rtw\d+_(tag|nacht)_[12]|nef(\d+)?_(arzt|assist|azubi)|itw_row_[123])$/;
-                            for (const p of personnel || []) {
-                                if ((p as any).ue50 !== 1) continue;
-                                const key = `p_${p.id}`;
-                                for (const iso of allMonthDays) {
-                                    const t = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.type || '');
-                                    if (reSlot.test(t)) sum++;
-                                }
-                            }
-                            return sum;
-                        })();
-                        const positionsAdjInMonth = Math.max(0, deptShiftsInMonth * (activeRtwCount * 4 + activeNefCount * 2) + itwShiftsInMonth - azubiMaschinistShiftsInMonth - ue50ShiftsInMonth);
-                        const activePersonnelInMonth = (() => {
-                            let sum = 0;
-                            for (const p of personnel || []) {
-                                // Ü50-Personen ausschließen (ITW View)
-                                if ((p as any).ue50 === 1) continue;
-                                const key = `p_${p.id}`;
-                                let presence = 0;
-                                for (const iso of allMonthDays) {
-                                    const raw = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.value || '').trim();
-                                    if (!raw) continue;
-                                    if ((auswertungByType[raw] || 'off') !== 'off') presence++;
-                                }
-                                if (presence > 0) {
-                                    sum += 1;
-                                }
-                            }
-                            return sum;
-                        })();
-                        const shiftsPerPersonInMonth = activePersonnelInMonth > 0 ? (positionsAdjInMonth / activePersonnelInMonth) : 0;
-                        const perPersonPresenceInMonth: Record<string, number> = (() => {
-                            const map: Record<string, number> = {};
-                            for (const p of personnel || []) {
-                                if ((p as any).ue50 === 1) continue;
-                                const key = `p_${p.id}`;
-                                let presence = 0;
-                                for (const iso of allMonthDays) {
-                                    const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                    const raw = String(cell?.value || '').trim();
-                                    if (raw && (auswertungByType[raw] || 'off') !== 'off') presence++;
-                                }
-                                map[key] = presence;
-                            }
-                            return map;
-                        })();
-                        const avgPresenceInMonth = (() => {
-                            const vals = Object.values(perPersonPresenceInMonth).filter(v => v > 0);
-                            if (vals.length === 0) return 0;
-                            const sum = vals.reduce((a, b) => a + b, 0);
-                            return Math.round(sum / vals.length);
-                        })();
-                        const perPersonAssignedWeightedInMonth: Record<string, number> = {};
-                        const perPersonRtwTagNightInMonth: Record<string, { tag: number; nacht: number }> = {};
-                        const perPersonNefInMonth: Record<string, number> = {};
-                        const perPersonItwInMonth: Record<string, number> = {};
-                        for (const p of (personnel || [])) {
-                            // Ü50-Personen ausschließen
-                            if ((p as any).ue50 === 1) continue;
-                            const key = `p_${p.id}`;
-                            let cnt = 0;
-                            let tagCnt = 0;
-                            let nachtCnt = 0;
-                            let nefCnt = 0;
-                            let itwCnt = 0;
-                            // Für Tag/Nacht-Zählung nur Abteilungs-Tage dieses Monats berücksichtigen
-                            const monthDeptIsos: string[] = (() => {
-                                const list: string[] = [];
-                                for (let i = 1; i <= daysInMonth; i++) {
-                                    const iso = new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0,10);
-                                    const seqs = [...(deptPatternSeqs || [])].sort((a,b) => a.startDate.localeCompare(b.startDate));
-                                    let active = seqs[0];
-                                    for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
-                                    const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
-                                    const cur = new Date(iso + 'T00:00:00Z');
-                                    const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000*60*60*24));
-                                    const pat = active?.pattern || [];
-                                    const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
-                                    if (depDay && String(department) === depDay) list.push(iso);
-                                }
-                                return list;
-                            })();
-                            for (const iso of monthDeptIsos) {
-                                const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                const t = String(cell?.type || '');
-                                if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) cnt += 1;
-                                if (/^rtw\d+_tag_(1|2)$/.test(t)) tagCnt += 1;
-                                if (/^rtw\d+_nacht_(1|2)$/.test(t)) nachtCnt += 1;
-                                else if (/^itw_row_[12]$/.test(t)) cnt += 1;
-                                else if (/^nef(\d+)?_assist$/.test(t)) cnt += 2;
-                                if (/^itw_row_[12]$/.test(t)) itwCnt += 1;
-                                if (/^nef(\d+)?_assist$/.test(t)) nefCnt += 2;
-                            }
-                            perPersonAssignedWeightedInMonth[key] = cnt;
-                            perPersonRtwTagNightInMonth[key] = { tag: tagCnt, nacht: nachtCnt };
-                            perPersonNefInMonth[key] = nefCnt;
-                            perPersonItwInMonth[key] = itwCnt;
-                        }
-                        const computeTargetsForMonth = (mIdx: number) => {
-                            const daysInMonth = new Date(year, mIdx + 1, 0).getDate();
-                            const allMonthDays: string[] = [];
-                            for (let i = 1; i <= daysInMonth; i++) {
-                                allMonthDays.push(new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0,10));
-                            }
-                            const deptShiftsInMonthCalc = (() => {
-                                let cnt = 0;
-                                for (let i = 1; i <= daysInMonth; i++) {
-                                    const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0,10);
-                                    const seqs = [...(deptPatternSeqs || [])].sort((a,b) => a.startDate.localeCompare(b.startDate));
-                                    let active = seqs[0];
-                                    for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
-                                    const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
-                                    const cur = new Date(iso + 'T00:00:00Z');
-                                    const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000*60*60*24));
-                                    const pat = active?.pattern || [];
-                                    const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
-                                    if (depDay && String(department) === depDay) cnt++;
-                                }
-                                return cnt;
-                            })();
-                            const activeRtwCountM = (rtwVehicles || []).filter(v => (rtwActivations[v.id] ?? Array(12).fill(true))[mIdx] !== false).length;
-                            const activeNefCountM = (nefVehicles || []).filter(v => (nefActivations[v.id] ?? Array(12).fill(true))[mIdx] !== false).length;
-                            const itwShiftsInMonthCalc = (() => {
-                                let sum = 0;
-                                const mergedKeys = Array.from(new Set([...(Object.keys(localRoster || {})), ...(Object.keys(roster || {}))]));
-                                for (const key of mergedKeys) {
-                                    for (const iso of allMonthDays) {
-                                        const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                        if (!cell) continue;
-                                        const t = String(cell.type || '');
-                                        const raw = String(cell.value || '').trim();
-                                        if (t.startsWith('itw_') || (raw && auswertungByType[raw] === 'itw')) sum++;
-                                    }
-                                }
-                                return sum;
-                            })();
-                            const azubiMaschinistShiftsInMonthCalc = (() => {
-                                let sum = 0;
-                                const reMasch = /^rtw\d+_(tag|nacht)_2$/;
-                                for (const a of azubis || []) {
-                                    const key = `a_${a.id}`;
-                                    for (const iso of allMonthDays) {
-                                        const t = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.type || '');
-                                        if (reMasch.test(t)) sum++;
-                                    }
-                                }
-                                return sum;
-                            })();
-                            // Ü50-Personen-Schichten (alle Positionen)
-                            const ue50ShiftsInMonthCalc = (() => {
-                                let sum = 0;
-                                const reSlot = /^(rtw\d+_(tag|nacht)_[12]|nef(\d+)?_(arzt|assist|azubi)|itw_row_[123])$/;
-                                for (const p of personnel || []) {
-                                    if ((p as any).ue50 !== 1) continue;
-                                    const key = `p_${p.id}`;
-                                    for (const iso of allMonthDays) {
-                                        const t = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.type || '');
-                                        if (reSlot.test(t)) sum++;
-                                    }
-                                }
-                                return sum;
-                            })();
-                            const positionsAdjInMonthCalc = Math.max(0, deptShiftsInMonthCalc * (activeRtwCountM * 4 + activeNefCountM * 2) + itwShiftsInMonthCalc - azubiMaschinistShiftsInMonthCalc - ue50ShiftsInMonthCalc);
-                            const activePersonnelInMonthCalc = (() => {
-                                let sum = 0;
-                                for (const p of personnel || []) {
-                                    if ((p as any).ue50 === 1) continue;
-                                    const key = `p_${p.id}`;
-                                    let presence = 0;
-                                    for (const iso of allMonthDays) {
-                                        const raw = String(((localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso])?.value || '').trim();
-                                        if (!raw) continue;
-                                        if ((auswertungByType[raw] || 'off') !== 'off') presence++;
-                                    }
-                                    if (presence > 0) {
-                                        sum += 1;
-                                    }
-                                }
-                                return sum;
-                            })();
-                            const shiftsPerPersonInMonthCalc = activePersonnelInMonthCalc > 0 ? (positionsAdjInMonthCalc / activePersonnelInMonthCalc) : 0;
-                            const perPersonPresenceInMonthCalc: Record<string, number> = (() => {
-                                const map: Record<string, number> = {};
-                                for (const p of personnel || []) {
-                                    if ((p as any).ue50 === 1) continue;
-                                    const key = `p_${p.id}`;
-                                    let presence = 0;
-                                    for (const iso of allMonthDays) {
-                                        const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                        const raw = String(cell?.value || '').trim();
-                                        if (raw && (auswertungByType[raw] || 'off') !== 'off') presence++;
-                                    }
-                                    map[key] = presence;
-                                }
-                                return map;
-                            })();
-                            const perPersonPresenceWeightedInMonthCalc: Record<string, number> = (() => {
-                                const map: Record<string, number> = {};
-                                for (const p of personnel || []) {
-                                    if ((p as any).ue50 === 1) continue;
-                                    const key = `p_${p.id}`;
-                                    const raw = perPersonPresenceInMonthCalc[key] || 0;
-                                    const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
-                                    map[key] = hasHLFB ? Math.round(raw * 0.75) : raw;
-                                }
-                                return map;
-                            })();
-                            // Hamilton-Allokation: Summe == positionsAdjInMonthCalc
-                            const entries = (personnel || []).map(p => {
-                                const key = `p_${p.id}`;
-                                return { key, w: perPersonPresenceWeightedInMonthCalc[key] || 0 };
-                            }).filter(e => e.w > 0);
-                            const totalW = entries.reduce((s, e) => s + e.w, 0);
-                            const targets: Record<string, number> = {};
-                            if (positionsAdjInMonthCalc <= 0 || totalW <= 0) return targets;
-                            const parts = entries.map(e => ({ key: e.key, exact: (positionsAdjInMonthCalc * e.w) / totalW }));
-                            const floors = parts.map(p => ({ key: p.key, v: Math.floor(p.exact), frac: p.exact - Math.floor(p.exact) }));
-                            let assigned = floors.reduce((s, f) => s + f.v, 0);
-                            let rest = positionsAdjInMonthCalc - assigned;
-                            floors.sort((a, b) => b.frac - a.frac);
-                            for (let i = 0; i < floors.length && rest > 0; i++, rest--) floors[i].v += 1;
-                            for (const f of floors) targets[f.key] = f.v;
-                            return targets;
+                        // Verwende gemeinsame SOLL-Berechnung (ITW-Tab)
+                        const sharedTargets = (window as any).__sharedTargets || { 
+                            targetYearMap: {}, 
+                            drivenYearMap: {},
+                            allocTargetsInMonth: {},
+                            perPersonAssignedWeightedInMonth: {},
+                            perPersonNefInMonth: {},
+                            perPersonItwInMonth: {},
+                            perPersonRtwTagNightYear: {}
                         };
-                        const targetYearMap: Record<string, number> = {};
-                        for (let mIdx = 0; mIdx < 12; mIdx++) {
-                            const mt = computeTargetsForMonth(mIdx);
-                            for (const [k, v] of Object.entries(mt)) targetYearMap[k] = (targetYearMap[k] || 0) + (v || 0);
-                        }
-                        const drivenYearMap: Record<string, number> = {};
-                        for (const p of (personnel || [])) {
-                            const key = `p_${p.id}`;
-                            let sum = 0;
-                            for (let mIdx = 0; mIdx < 12; mIdx++) {
-                                const daysInMonth = new Date(year, mIdx + 1, 0).getDate();
-                                for (let i = 1; i <= daysInMonth; i++) {
-                                    const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0,10);
-                                    const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                    const t = String(cell?.type || '');
-                                    if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) sum += 1;
-                                    else if (/^itw_row_[12]$/.test(t)) sum += 1;
-                                    else if (/^nef(\d+)?_assist$/.test(t)) sum += 2;
-                                }
-                            }
-                            drivenYearMap[key] = sum;
-                        }
-                        // Gewichtete Präsenz für aktuellen Monat (HLF‑B = round(0,75×Ai)) und Hamilton-Allokation (ITW-Ansicht)
-                        const perPersonPresenceWeightedInMonth_CUR: Record<string, number> = (() => {
-                            const map: Record<string, number> = {};
-                            for (const p of personnel || []) {
-                                if ((p as any).ue50 === 1) continue;
-                                const key = `p_${p.id}`;
-                                const raw = perPersonPresenceInMonth[key] || 0;
-                                const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
-                                map[key] = hasHLFB ? Math.round(raw * 0.75) : raw;
-                            }
-                            return map;
-                        })();
-                        const allocTargetsInMonth: Record<string, number> = (() => {
-                            const entries = (personnel || []).map(p => {
-                                const key = `p_${p.id}`;
-                                return { key, w: perPersonPresenceWeightedInMonth_CUR[key] || 0 };
-                            }).filter(e => e.w > 0);
-                            const totalW = entries.reduce((s, e) => s + e.w, 0);
-                            const res: Record<string, number> = {};
-                            if (positionsAdjInMonth <= 0 || totalW <= 0) return res;
-                            const parts = entries.map(e => ({ key: e.key, exact: (positionsAdjInMonth * e.w) / totalW }));
-                            const floors = parts.map(p => ({ key: p.key, v: Math.floor(p.exact), frac: p.exact - Math.floor(p.exact) }));
-                            let assigned = floors.reduce((s, f) => s + f.v, 0);
-                            let rest = positionsAdjInMonth - assigned;
-                            floors.sort((a, b) => b.frac - a.frac);
-                            for (let i = 0; i < floors.length && rest > 0; i++, rest--) floors[i].v += 1;
-                            for (const f of floors) res[f.key] = f.v;
-                            return res;
-                        })();
-                        // Jahres-Zählung Tag/Nacht (RTW) je Person (global über das Jahr) – für ITW-Kontrollkasten benötigt
-                        const perPersonRtwTagNightYear: Record<string, { tag: number; nacht: number }> = (() => {
-                            const map: Record<string, { tag: number; nacht: number }> = {};
-                            for (const p of (personnel || [])) {
-                                const key = `p_${p.id}`;
-                                let tagCntY = 0;
-                                let nachtCntY = 0;
-                                for (let mIdx = 0; mIdx < 12; mIdx++) {
-                                    const dim = new Date(year, mIdx + 1, 0).getDate();
-                                    for (let i = 1; i <= dim; i++) {
-                                        const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0,10);
-                                        const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                        const t = String(cell?.type || '');
-                                        if (/^rtw\d+_tag_(1|2)$/.test(t)) tagCntY += 1;
-                                        if (/^rtw\d+_nacht_(1|2)$/.test(t)) nachtCntY += 1;
-                                    }
-                                }
-                                map[key] = { tag: tagCntY, nacht: nachtCntY };
-                            }
-                            return map;
-                        })();
+                        const {
+                            targetYearMap,
+                            drivenYearMap,
+                            allocTargetsInMonth,
+                            perPersonAssignedWeightedInMonth,
+                            perPersonNefInMonth,
+                            perPersonItwInMonth,
+                            perPersonRtwTagNightYear
+                        } = sharedTargets;
                         const items = (personnel || []).map(p => {
                             const key = `p_${p.id}`;
                             const target = (allocTargetsInMonth[key] ?? 0) || '';

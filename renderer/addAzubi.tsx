@@ -1,6 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
+interface AzubiPeriod {
+  start_date: string;
+  end_date: string;
+  description?: string;
+  lehrjahr: number;
+}
+
 const AddAzubi: React.FC = () => {
   useEffect(() => {
     try { console.log('[AddAzubi] mounted. api keys:', Object.keys((window as any).api || {})); } catch {}
@@ -9,8 +16,42 @@ const AddAzubi: React.FC = () => {
   const [name, setName] = useState('');
   const [vorname, setVorname] = useState('');
   const [lehrjahr, setLehrjahr] = useState(1);
+  const [periods, setPeriods] = useState<AzubiPeriod[]>([]);
+  const [newPeriod, setNewPeriod] = useState<AzubiPeriod>({ start_date: '', end_date: '', description: '', lehrjahr: 1 });
+  const [showAddPeriod, setShowAddPeriod] = useState(false);
   const [attemptedSave, setAttemptedSave] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const handleAddPeriod = () => {
+    if (!newPeriod.start_date || !newPeriod.end_date) {
+      alert('Bitte Start- und Enddatum eingeben.');
+      return;
+    }
+    if (new Date(newPeriod.start_date) >= new Date(newPeriod.end_date)) {
+      alert('Startdatum muss vor Enddatum liegen.');
+      return;
+    }
+    
+    // Einfache Überschneidungsprüfung
+    const start = new Date(newPeriod.start_date);
+    const end = new Date(newPeriod.end_date);
+    for (const p of periods) {
+      const pStart = new Date(p.start_date);
+      const pEnd = new Date(p.end_date);
+      if (start <= pEnd && end >= pStart) {
+        alert('Zeitraum überschneidet sich mit einem existierenden Zeitraum.');
+        return;
+      }
+    }
+
+    setPeriods([...periods, { ...newPeriod, description: newPeriod.description || `${newPeriod.lehrjahr}. Lehrjahr` }].sort((a, b) => a.start_date.localeCompare(b.start_date)));
+    setNewPeriod({ start_date: '', end_date: '', description: '', lehrjahr: 1 });
+    setShowAddPeriod(false);
+  };
+
+  const removePeriod = (index: number) => {
+    setPeriods(periods.filter((_, i) => i !== index));
+  };
 
   const handleSave = async () => {
     try {
@@ -29,7 +70,7 @@ const AddAzubi: React.FC = () => {
         return;
       }
       
-      await api.addAzubi({ name, vorname, lehrjahr });
+      await api.addAzubi({ name, vorname, lehrjahr, periods });
       console.log('[AddAzubi] saved successfully');
       
       try { 
@@ -45,62 +86,54 @@ const AddAzubi: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '24px', fontFamily: 'Arial, sans-serif' }}>
+    <div style={{ padding: '24px', fontFamily: 'Arial, sans-serif', maxWidth: '600px', margin: '0 auto' }}>
       <h2 style={{ marginTop: 0, marginBottom: '24px', color: '#333' }}>Azubi hinzufügen</h2>
       
-      <div style={{ marginBottom: '16px' }}>
-        <label style={{ display: 'block', marginBottom: '6px', fontWeight: 500 }}>
-          Name *
-        </label>
-        <input
-          type="text"
-          value={name}
-          onChange={e => setName(e.target.value)}
-          placeholder="Nachname"
-          style={{
-            width: '100%',
-            padding: '10px',
-            border: attemptedSave && !name.trim() ? '2px solid #b00020' : '1px solid #ddd',
-            borderRadius: '4px',
-            fontSize: '14px',
-            boxSizing: 'border-box'
-          }}
-        />
-        {attemptedSave && !name.trim() && (
-          <div style={{ color: '#b00020', fontSize: '12px', marginTop: '4px' }}>
-            Pflichtfeld: Bitte Name eingeben.
-          </div>
-        )}
-      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+        <div>
+          <label style={{ display: 'block', marginBottom: '6px', fontWeight: 500 }}>
+            Name *
+          </label>
+          <input
+            type="text"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Nachname"
+            style={{
+              width: '100%',
+              padding: '10px',
+              border: attemptedSave && !name.trim() ? '2px solid #b00020' : '1px solid #ddd',
+              borderRadius: '4px',
+              fontSize: '14px',
+              boxSizing: 'border-box'
+            }}
+          />
+        </div>
 
-      <div style={{ marginBottom: '16px' }}>
-        <label style={{ display: 'block', marginBottom: '6px', fontWeight: 500 }}>
-          Vorname *
-        </label>
-        <input
-          type="text"
-          value={vorname}
-          onChange={e => setVorname(e.target.value)}
-          placeholder="Vorname"
-          style={{
-            width: '100%',
-            padding: '10px',
-            border: attemptedSave && !vorname.trim() ? '2px solid #b00020' : '1px solid #ddd',
-            borderRadius: '4px',
-            fontSize: '14px',
-            boxSizing: 'border-box'
-          }}
-        />
-        {attemptedSave && !vorname.trim() && (
-          <div style={{ color: '#b00020', fontSize: '12px', marginTop: '4px' }}>
-            Pflichtfeld: Bitte Vorname eingeben.
-          </div>
-        )}
+        <div>
+          <label style={{ display: 'block', marginBottom: '6px', fontWeight: 500 }}>
+            Vorname *
+          </label>
+          <input
+            type="text"
+            value={vorname}
+            onChange={e => setVorname(e.target.value)}
+            placeholder="Vorname"
+            style={{
+              width: '100%',
+              padding: '10px',
+              border: attemptedSave && !vorname.trim() ? '2px solid #b00020' : '1px solid #ddd',
+              borderRadius: '4px',
+              fontSize: '14px',
+              boxSizing: 'border-box'
+            }}
+          />
+        </div>
       </div>
 
       <div style={{ marginBottom: '24px' }}>
         <label style={{ display: 'block', marginBottom: '6px', fontWeight: 500 }}>
-          Lehrjahr *
+          Aktuelles Lehrjahr *
         </label>
         <select
           value={lehrjahr}
@@ -119,22 +152,79 @@ const AddAzubi: React.FC = () => {
           <option value={2}>2. Lehrjahr</option>
           <option value={3}>3. Lehrjahr</option>
         </select>
-        {attemptedSave && ![1,2,3].includes(lehrjahr) && (
-          <div style={{ color: '#b00020', fontSize: '12px', marginTop: '4px' }}>
-            Pflichtfeld: Lehrjahr muss 1–3 sein.
-          </div>
-        )}
       </div>
 
-      <div style={{
-        background: '#f8f9fa',
-        padding: '12px',
-        borderRadius: '4px',
-        marginBottom: '24px',
-        fontSize: '13px',
-        color: '#666'
-      }}>
-        <strong>Hinweis:</strong> Qualifikationen können nach dem Erstellen über "Bearbeiten" hinzugefügt werden.
+      <div style={{ marginBottom: '24px', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <h3 style={{ margin: 0, fontSize: '16px' }}>Zeiträume auf der Wache</h3>
+          <button 
+            onClick={() => setShowAddPeriod(true)}
+            style={{ background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', padding: '6px 12px', cursor: 'pointer', fontSize: '13px' }}
+          >
+            + Zeitraum
+          </button>
+        </div>
+
+        {periods.length === 0 ? (
+          <div style={{ color: '#666', fontStyle: 'italic', fontSize: '13px', textAlign: 'center', padding: '12px' }}>
+            Keine Zeiträume definiert.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {periods.map((p, idx) => (
+              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8f9fa', padding: '8px 12px', borderRadius: '4px', border: '1px solid #eee' }}>
+                <div>
+                  <div style={{ fontWeight: 500, fontSize: '14px' }}>
+                    {new Date(p.start_date).toLocaleDateString('de-DE')} - {new Date(p.end_date).toLocaleDateString('de-DE')}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#666' }}>
+                    {p.lehrjahr}. Lehrjahr {p.description ? `(${p.description})` : ''}
+                  </div>
+                </div>
+                <button 
+                  onClick={() => removePeriod(idx)}
+                  style={{ background: 'none', border: 'none', color: '#dc3545', cursor: 'pointer', fontSize: '18px', padding: '0 4px' }}
+                >
+                  &times;
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showAddPeriod && (
+          <div style={{ marginTop: '16px', background: '#fff', border: '1px solid #ddd', padding: '12px', borderRadius: '4px' }}>
+            <h4 style={{ margin: '0 0 12px 0', fontSize: '14px' }}>Neuer Zeitraum</h4>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px' }}>Von</label>
+                <input type="date" value={newPeriod.start_date} onChange={e => setNewPeriod({...newPeriod, start_date: e.target.value})} style={{ width: '100%', padding: '6px', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px' }}>Bis</label>
+                <input type="date" value={newPeriod.end_date} onChange={e => setNewPeriod({...newPeriod, end_date: e.target.value})} style={{ width: '100%', padding: '6px', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '12px', marginBottom: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px' }}>Lehrjahr</label>
+                <select value={newPeriod.lehrjahr} onChange={e => setNewPeriod({...newPeriod, lehrjahr: Number(e.target.value)})} style={{ width: '100%', padding: '6px', boxSizing: 'border-box' }}>
+                  <option value={1}>1.</option>
+                  <option value={2}>2.</option>
+                  <option value={3}>3.</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px' }}>Beschreibung (opt.)</label>
+                <input type="text" value={newPeriod.description || ''} onChange={e => setNewPeriod({...newPeriod, description: e.target.value})} placeholder="z.B. Block 1" style={{ width: '100%', padding: '6px', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button onClick={() => setShowAddPeriod(false)} style={{ padding: '6px 12px', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Abbrechen</button>
+              <button onClick={handleAddPeriod} style={{ padding: '6px 12px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Hinzufügen</button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: '8px' }}>

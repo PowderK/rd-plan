@@ -1005,12 +1005,15 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
 
                     // Browser-Confirm Fallback ist bereits im obigen try/catch abgedeckt
 
-                    // Altdaten für das Jahr löschen
+                    // Altdaten für das Jahr NICHT löschen, damit Einteilungen erhalten bleiben
+                    // Die Import-Funktion kümmert sich um das Überschreiben der Dienste
+                    /*
                     try {
                       await (window as any).api.clearDutyRosterYear?.(yearImportSelectedYear);
                     } catch (e) {
                       console.warn('[SettingsMenu] clearDutyRosterYear Fehler', e);
                     }
+                    */
 
                     const res = await (window as any).api.importDutyRoster(importPath, yearImportSelectedYear);
                     if (res && res.success) {

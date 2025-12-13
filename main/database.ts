@@ -656,7 +656,7 @@ export const getPersonnel = async (db: AsyncDB, includeInactive: boolean = false
 
 export const addPersonnel = async (db: AsyncDB, person: any) => {
     const { name, vorname, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, active } = person;
-    await db.run('INSERT INTO personnel (name, vorname, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [name, vorname, teilzeit, fahrzeugfuehrer ? 1 : 0, fahrzeugfuehrerHLFB ? 1 : 0, nef ? 1 : 0, itwMaschinist ? 1 : 0, itwFahrzeugfuehrer ? 1 : 0, sort ?? 0, (active === 0 || active === false) ? 0 : 1]);
+    return await db.run('INSERT INTO personnel (name, vorname, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [name, vorname, teilzeit, fahrzeugfuehrer ? 1 : 0, fahrzeugfuehrerHLFB ? 1 : 0, nef ? 1 : 0, itwMaschinist ? 1 : 0, itwFahrzeugfuehrer ? 1 : 0, sort ?? 0, (active === 0 || active === false) ? 0 : 1]);
 };
 
 export const updatePersonnel = async (db: AsyncDB, person: any) => {
@@ -880,7 +880,7 @@ export const bulkSetDutyRosterEntries = async (db: AsyncDB, entries: { personId:
 };
 
 // Bulk Import für Importe, die manuelle Bearbeitungen respektieren
-export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { personId: number, personType: string, date: string, value: string, type: string }[], respectManualEdits: boolean = true) => {
+export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { personId: number, personType: string, date: string, value: string, type: string }[], respectManualEdits: boolean = true, deleteEmpty: boolean = true) => {
     if (!Array.isArray(entries) || entries.length === 0) return { imported: 0, skipped: 0 };
     await db.run('BEGIN');
     let imported = 0;
@@ -889,6 +889,7 @@ export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { person
         for (const e of entries) {
             if (!e || !e.personId || !e.date) continue;
             
+            let isManual = false;
             if (respectManualEdits) {
                 // Prüfe ob Eintrag bereits existiert und manuell bearbeitet wurde
                 const existing = await db.get(`
@@ -897,26 +898,48 @@ export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { person
                 `, [e.personId, e.personType || 'person', e.date]);
                 
                 if (existing && existing.manual_edit === 1) {
-                    skipped++;
-                    continue; // Überspringe manuell bearbeitete Einträge
+                    isManual = true;
                 }
+            }
+            
+            if (isManual) {
+                skipped++;
+                continue; // Überspringe manuell bearbeitete Einträge
+            }
+
+            // Wenn der Wert leer ist:
+            // - Bei deleteEmpty=true (Monatsimport): Lösche den Eintrag (Sync)
+            // - Bei deleteEmpty=false (Jahresimport): Tue nichts (behalte bestehenden Eintrag)
+            if (!e.value) {
+                if (deleteEmpty) {
+                    await db.run(`
+                        DELETE FROM duty_roster 
+                        WHERE personId = ? AND personType = ? AND date = ?
+                    `, [e.personId, e.personType || 'person', e.date]);
+                    imported++;
+                }
+                // Wenn deleteEmpty=false, ignorieren wir leere Excel-Zellen -> DB-Eintrag bleibt erhalten
+                continue;
             }
             
             try {
                 await db.run(`
                     INSERT INTO duty_roster (personId, personType, date, value, type, manual_edit) VALUES (?, ?, ?, ?, ?, 0)
                     ON CONFLICT(personId, personType, date) DO UPDATE SET 
-                        value = CASE WHEN duty_roster.manual_edit = 1 THEN duty_roster.value ELSE excluded.value END,
-                        type = CASE WHEN duty_roster.manual_edit = 1 THEN duty_roster.type ELSE excluded.type END,
-                        manual_edit = CASE WHEN duty_roster.manual_edit = 1 THEN 1 ELSE 0 END
-                `, [e.personId, e.personType || 'person', e.date, e.value ?? '', e.type ?? 'text']);
+                        value = excluded.value,
+                        type = CASE 
+                            WHEN duty_roster.type LIKE 'rtw%' OR duty_roster.type LIKE 'nef%' OR duty_roster.type LIKE 'itw%' THEN duty_roster.type
+                            ELSE excluded.type 
+                        END,
+                        manual_edit = 0
+                `, [e.personId, e.personType || 'person', e.date, e.value, e.type ?? 'text']);
                 imported++;
             } catch (ie) {
                 console.warn('[DB] bulkImportDutyRosterEntries skip entry error', ie);
             }
         }
         await db.run('COMMIT');
-        console.log('[DB] bulkImportDutyRosterEntries committed', { total: entries.length, imported, skipped });
+        console.log('[DB] bulkImportDutyRosterEntries committed', { total: entries.length, imported, skipped, deleteEmpty });
         return { imported, skipped };
     } catch (e) {
         await db.run('ROLLBACK');
@@ -982,18 +1005,29 @@ export const getAzubi = async (db: AsyncDB, id: number) => {
     return azubi;
 };
 
-export const addAzubi = async (db: AsyncDB, azubi: { name: string, vorname: string, lehrjahr: number }) => {
+export const addAzubi = async (db: AsyncDB, azubi: { name: string, vorname: string, lehrjahr: number, periods?: any[] }) => {
     console.log('[DB] addAzubi', azubi);
+    let azubiId: number;
     // determine next sort index
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM azubis');
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
-        await db.run('INSERT INTO azubis (name, vorname, lehrjahr, sort) VALUES (?, ?, ?, ?)', [azubi.name, azubi.vorname, azubi.lehrjahr, next]);
+        const result = await db.run('INSERT INTO azubis (name, vorname, lehrjahr, sort) VALUES (?, ?, ?, ?)', [azubi.name, azubi.vorname, azubi.lehrjahr, next]);
+        azubiId = result.lastInsertRowid as number;
     } catch (e) {
         // fallback if something goes wrong
-        await db.run('INSERT INTO azubis (name, vorname, lehrjahr) VALUES (?, ?, ?)', [azubi.name, azubi.vorname, azubi.lehrjahr]);
+        const result = await db.run('INSERT INTO azubis (name, vorname, lehrjahr) VALUES (?, ?, ?)', [azubi.name, azubi.vorname, azubi.lehrjahr]);
+        azubiId = result.lastInsertRowid as number;
     }
-    console.log('[DB] addAzubi erfolgreich');
+
+    if (azubi.periods && Array.isArray(azubi.periods)) {
+        for (const p of azubi.periods) {
+            await db.run('INSERT INTO azubi_periods (azubi_id, start_date, end_date, description, lehrjahr) VALUES (?, ?, ?, ?, ?)', 
+                [azubiId, p.start_date, p.end_date, p.description || '', p.lehrjahr || 1]);
+        }
+    }
+    console.log('[DB] addAzubi erfolgreich, ID:', azubiId);
+    return azubiId;
 };
 
 export const updateAzubi = async (db: AsyncDB, azubi: { id: number, name: string, vorname: string, lehrjahr: number }) => {
@@ -1504,12 +1538,13 @@ export const assignSlot = async (db: AsyncDB, entry: { personId: number, personT
     const existingRow = await db.get('SELECT type FROM duty_roster WHERE personId = ? AND personType = ? AND date = ?', [entry.personId, entry.personType, entry.date]);
     
     if (existingRow) {
-        // Update existing entry, setze manual_edit auf 1 um manuelle Bearbeitung zu markieren
-        await db.run('UPDATE duty_roster SET type = ?, manual_edit = 1 WHERE personId = ? AND personType = ? AND date = ?', [entry.slotType, entry.personId, entry.personType, entry.date]);
+        // Update existing entry, aber setze manual_edit NICHT auf 1 (damit keine blaue Markierung im Dienstplan erscheint)
+        // Die Zuweisung soll unabhängig vom Dienstplan-Wert sein.
+        await db.run('UPDATE duty_roster SET type = ? WHERE personId = ? AND personType = ? AND date = ?', [entry.slotType, entry.personId, entry.personType, entry.date]);
         console.log('[DB] assignSlot updated existing entry from', existingRow.type, 'to', entry.slotType, entry);
     } else {
-        // Insert new entry mit manual_edit = 1 (manuelle Zuweisung in Einteilung)
-        await db.run('INSERT INTO duty_roster (personId, personType, date, value, type, manual_edit) VALUES (?, ?, ?, ?, ?, 1)', [entry.personId, entry.personType, entry.date, '', entry.slotType]);
+        // Insert new entry mit manual_edit = 0
+        await db.run('INSERT INTO duty_roster (personId, personType, date, value, type, manual_edit) VALUES (?, ?, ?, ?, ?, 0)', [entry.personId, entry.personType, entry.date, '', entry.slotType]);
         console.log('[DB] assignSlot created new entry', entry);
     }
     

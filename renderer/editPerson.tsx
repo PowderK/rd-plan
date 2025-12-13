@@ -226,6 +226,7 @@ const EditPerson: React.FC = () => {
   const [name, setName] = useState('');
   const [vorname, setVorname] = useState('');
   const [teilzeit, setTeilzeit] = useState(100);
+  const [sort, setSort] = useState(0);
   // Alte Qualifikations-States entfernt - jetzt über Qualifikationsperioden verwaltet
   const [qualificationPeriods, setQualificationPeriods] = useState<QualificationPeriod[]>([]);
   const [showQualifications, setShowQualifications] = useState(true);
@@ -251,6 +252,7 @@ const EditPerson: React.FC = () => {
           setName(person.name || '');
           setVorname(person.vorname || '');
           setTeilzeit(person.teilzeit ?? 100);
+          setSort(person.sort ?? 0);
         } else {
           console.error('Person not found for ID:', id);
         }
@@ -271,7 +273,7 @@ const EditPerson: React.FC = () => {
 
   const handleSave = async () => {
     // Nur noch Basisdaten speichern - Qualifikationen werden separat über Perioden verwaltet
-    await (window as any).api.updatePerson({ id, name, vorname, teilzeit });
+    await (window as any).api.updatePerson({ id, name, vorname, teilzeit, sort });
     if (window.opener) window.opener.postMessage('personnel-updated', '*');
     window.close();
   };

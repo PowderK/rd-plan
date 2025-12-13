@@ -383,7 +383,10 @@ export class RosterImporter {
                             const dutyAddr = XLSX.utils.encode_cell({ r: row, c: col });
                             const dutyCell = worksheet[dutyAddr];
                             const dutyValue = dutyCell && dutyCell.v != null ? String(dutyCell.v).trim() : '';
-                            if (!dutyValue) continue;
+                            
+                            // Wenn Jahresimport (month nicht gesetzt): Leere Zellen ignorieren (bestehende Einträge behalten)
+                            // Wenn Monatsimport (month gesetzt): Leere Zellen als Löschung interpretieren
+                            if (!dutyValue && month == null) continue;
 
                             entriesToImport.push({
                                 personId: personInfo.id,
@@ -511,9 +514,15 @@ export class RosterImporter {
                 
                 // IMMER manuelle Bearbeitungen respektieren (sowohl bei Monats- als auch bei Jahresimport)
                 // Nur Excel-Einträge überschreiben, die nicht manuell geändert wurden
-                const result = await this.dbAdapter.bulkImportDutyRosterEntries(entriesToImport, true);
-                console.log(`[RosterImporter] Import: ${result.imported} importiert, ${result.skipped} übersprungen (manuell bearbeitet)`);
-                return { success: true, message: `Dienstplan erfolgreich importiert. ${result.imported} Einträge verarbeitet, ${result.skipped} manuelle Änderungen geschützt.`, importedCount: result.imported };
+                // Jahresimport (month undefined oder null) -> deleteEmpty = false (bestehende Einträge behalten)
+                // Monatsimport (month defined) -> deleteEmpty = true (Sync, leere Felder löschen)
+                const isYearlyImport = month == null;
+                const deleteEmpty = !isYearlyImport;
+                const respectManualEdits = !isYearlyImport; // Jahresimport überschreibt auch manuelle Änderungen
+                
+                const result = await this.dbAdapter.bulkImportDutyRosterEntries(entriesToImport, respectManualEdits, deleteEmpty);
+                console.log(`[RosterImporter] Import: ${result.imported} importiert, ${result.skipped} übersprungen (manuell bearbeitet oder existierend)`);
+                return { success: true, message: `Dienstplan erfolgreich importiert. ${result.imported} Einträge verarbeitet, ${result.skipped} geschützt/übersprungen.`, importedCount: result.imported };
             } else {
                 console.warn('[RosterImporter] Keine Einträge zum Import gefunden.');
             }

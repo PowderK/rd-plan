@@ -269,9 +269,9 @@ ipcMain.handle('update-personnel-order', async (_event, order: number[]) => {
 // Alias handlers to support legacy/preload channel names used by the renderer
 ipcMain.handle('add-person', async (_event, person: any) => {
     const adapter = await ensureDatabaseAdapter();
-    await adapter.addPersonnel(person);
+    const result = await adapter.addPersonnel(person);
     BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
-    return true;
+    return { id: result.lastInsertRowid };
 });
 
 ipcMain.handle('update-person', async (_event, person: any) => {
