@@ -993,7 +993,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         })();
                         // Gewichtet gezählte Einsätze je Person im Monat:
                         // - RTW (Fahrzeugführer/Maschinist): +1 bei rtw\d+_(tag|nacht)_(1|2)
-                        // - ITW (Pos 1/2): +1 bei itw_row_[12]
+                        // - ITW (Pos 1/2): +1 bei itw_row_[12] ODER value mit auswertung='itw' (FzF/Ma)
                         // - NEF Assistent: +2 bei nef(\d+_)?assist
                         // - Keine Zählung für Azubi-Positionen (z.B. itw_row_3, nef*_azubi)
                         const perPersonAssignedWeightedInMonth: Record<string, number> = {};
@@ -1029,13 +1029,16 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             for (const iso of monthDeptIsos) {
                                 const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
                                 const t = String(cell?.type || '');
+                                const v = String(cell?.value || '').trim();
+                                const isItwShift = /^itw_row_[12]$/.test(t) || (v && auswertungByType[v] === 'itw');
+                                
                                 if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) cnt += 1;
                                 if (/^rtw\d+_tag_(1|2)$/.test(t)) tagCnt += 1;
                                 if (/^rtw\d+_nacht_(1|2)$/.test(t)) nachtCnt += 1;
-                                else if (/^itw_row_[12]$/.test(t)) cnt += 1;
+                                else if (isItwShift) cnt += 1;
                                 else if (/^nef(\d+)?_assist$/.test(t)) cnt += 2;
                                 // separate Summen für NEF/ITW
-                                if (/^itw_row_[12]$/.test(t)) itwCnt += 1;
+                                if (isItwShift) itwCnt += 1;
                                 if (/^nef(\d+)?_assist$/.test(t)) nefCnt += 2;
                             }
                             perPersonAssignedWeightedInMonth[key] = cnt;

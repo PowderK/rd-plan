@@ -1483,10 +1483,10 @@ export const clearSlotAssignments = async (db: AsyncDB) => {
 export const assignSlot = async (db: AsyncDB, entry: { personId: number, personType: string, date: string, slotType: string }) => {
     console.log('[DB] assignSlot START:', entry);
     
-    // Wenn slotType leer ist, lösche den Eintrag
+    // Wenn slotType leer ist, leere nur das type-Feld (NICHT den ganzen Eintrag löschen - value bleibt erhalten!)
     if (!entry.slotType || entry.slotType === '') {
-        await db.run('DELETE FROM duty_roster WHERE personId = ? AND personType = ? AND date = ?', [entry.personId, entry.personType, entry.date]);
-        console.log('[DB] assignSlot cleared entry', entry);
+        await db.run('UPDATE duty_roster SET type = \'\'WHERE personId = ? AND personType = ? AND date = ?', [entry.personId, entry.personType, entry.date]);
+        console.log('[DB] assignSlot cleared slot assignment (keeping value)', entry);
         return;
     }
 
