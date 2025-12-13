@@ -1,3 +1,7 @@
+## Build 515 - 2025-12-13
+
+- automated build
+
 ## Build 514 - 2025-12-13
 
 - fix: ITW-Kontrollanzeige wird sofort nach Einteilung aktualisiert
