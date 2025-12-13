@@ -2,6 +2,12 @@
 
 - automated build
 
+## Build 511 - 2025-12-13
+
+- fix: ITW-Slot-Prüfung verwendet nun t.startsWith('itw_row_') statt Regex
+  - Matcht jetzt konsistent alle 4 ITW-Slots (FzF, Ma, Azubi, Arzt)
+  - Behebt Problem dass ITW-Schichten nicht in IST-Kontrolle hochgezählt wurden
+
 ## Build 510 - 2025-12-13
 
 - fix: ITW-Soll/Ist-Zählung berücksichtigt nun alle Tage statt nur Abteilungs-Tage
