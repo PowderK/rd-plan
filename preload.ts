@@ -135,6 +135,8 @@ contextBridge.exposeInMainWorld('api', {
     setNefOccupancy: (id: number, mode: '24h'|'tag') => ipcRenderer.invoke('set-nef-occupancy', id, mode),
     openAddRtwWindow: () => ipcRenderer.send('open-add-rtw-window'),
     openAddNefWindow: () => ipcRenderer.send('open-add-nef-window'),
+    onVehiclesUpdated: (callback: () => void) => ipcRenderer.on('vehicles-updated', callback),
+    offVehiclesUpdated: (callback: () => void) => ipcRenderer.removeListener('vehicles-updated', callback),
     // Vehicle Positions
     getVehiclePositions: (vehicleType: string, vehicleId: number) => ipcRenderer.invoke('get-vehicle-positions', vehicleType, vehicleId),
     getVehiclePositionsWithQualifications: (vehicleType: string, vehicleId: number) => ipcRenderer.invoke('get-vehicle-positions-with-qualifications', vehicleType, vehicleId),

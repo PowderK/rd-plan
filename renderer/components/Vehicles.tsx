@@ -65,7 +65,7 @@ const Vehicles: React.FC = () => {
   // Listen for messages from popups (e.g. add vehicle windows)
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
-      if (event.data === 'settings-updated') {
+      if (event.data === 'settings-updated' || event.data === 'vehicles-updated') {
         try { setRtwVehicles(await (window as any).api.getRtwVehicles()); } catch {}
         try { setNefVehicles(await (window as any).api.getNefVehicles()); } catch {}
         try { setItwVehicles(await (window as any).api.getItwVehicles()); } catch {}
@@ -73,6 +73,17 @@ const Vehicles: React.FC = () => {
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  // Listen for vehicles-updated IPC event
+  useEffect(() => {
+    const onVehiclesUpdated = async () => {
+      try { setRtwVehicles(await (window as any).api.getRtwVehicles()); } catch {}
+      try { setNefVehicles(await (window as any).api.getNefVehicles()); } catch {}
+      try { setItwVehicles(await (window as any).api.getItwVehicles()); } catch {}
+    };
+    (window as any).api?.onVehiclesUpdated?.(onVehiclesUpdated);
+    return () => (window as any).api?.offVehiclesUpdated?.(onVehiclesUpdated);
   }, []);
 
   // --- Utils ---
@@ -105,9 +116,20 @@ const Vehicles: React.FC = () => {
   const onRtwRowClick = (id:number) => setSelectedRtwId(prev => prev === id ? null : id);
   const handleDeleteSelectedRtw = async () => {
     if (selectedRtwId == null) return;
-    await (window as any).api.deleteRtwVehicle(selectedRtwId);
-    setSelectedRtwId(null);
-    reloadRtw();
+    const vehicle = rtwVehicles.find(v => v.id === selectedRtwId);
+    if (!vehicle) return;
+    
+    if (!confirm(`Möchten Sie das RTW-Fahrzeug "${vehicle.name}" wirklich löschen?\n\nAlle zugehörigen Zeiträume und Positionen werden ebenfalls gelöscht.`)) {
+      return;
+    }
+    
+    try {
+      await (window as any).api.deleteRtwVehicle(selectedRtwId);
+      setSelectedRtwId(null);
+      reloadRtw();
+    } catch (error) {
+      alert(`Fehler beim Löschen: ${error}`);
+    }
   };
   const updateRtwName = (id:number, name:string) => setRtwVehicles(prev => prev.map(v => v.id === id ? { ...v, name } : v));
 
@@ -130,9 +152,20 @@ const Vehicles: React.FC = () => {
   const onNefRowClick = (id:number) => setSelectedNefId(prev => prev === id ? null : id);
   const handleDeleteSelectedNef = async () => {
     if (selectedNefId == null) return;
-    await (window as any).api.deleteNefVehicle(selectedNefId);
-    setSelectedNefId(null);
-    reloadNef();
+    const vehicle = nefVehicles.find(v => v.id === selectedNefId);
+    if (!vehicle) return;
+    
+    if (!confirm(`Möchten Sie das NEF-Fahrzeug "${vehicle.name}" wirklich löschen?\n\nAlle zugehörigen Zeiträume und Positionen werden ebenfalls gelöscht.`)) {
+      return;
+    }
+    
+    try {
+      await (window as any).api.deleteNefVehicle(selectedNefId);
+      setSelectedNefId(null);
+      reloadNef();
+    } catch (error) {
+      alert(`Fehler beim Löschen: ${error}`);
+    }
   };
   const updateNefName = (id:number, name:string) => setNefVehicles(prev => prev.map(v => v.id === id ? { ...v, name } : v));
   const updateNefOccupancy = async (id:number, mode: '24h'|'tag') => {
@@ -159,9 +192,20 @@ const Vehicles: React.FC = () => {
   const onItwRowClick = (id:number) => setSelectedItwId(prev => prev === id ? null : id);
   const handleDeleteSelectedItw = async () => {
     if (selectedItwId == null) return;
-    await (window as any).api.deleteItwVehicle(selectedItwId);
-    setSelectedItwId(null);
-    reloadItw();
+    const vehicle = itwVehicles.find(v => v.id === selectedItwId);
+    if (!vehicle) return;
+    
+    if (!confirm(`Möchten Sie das ITW-Fahrzeug "${vehicle.name}" wirklich löschen?\n\nAlle zugehörigen Zeiträume und Positionen werden ebenfalls gelöscht.`)) {
+      return;
+    }
+    
+    try {
+      await (window as any).api.deleteItwVehicle(selectedItwId);
+      setSelectedItwId(null);
+      reloadItw();
+    } catch (error) {
+      alert(`Fehler beim Löschen: ${error}`);
+    }
   };
   const updateItwName = (id:number, name:string) => setItwVehicles(prev => prev.map(v => v.id === id ? { ...v, name } : v));
 
@@ -354,7 +398,17 @@ const Vehicles: React.FC = () => {
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button onClick={addRtw}>Hinzufügen</button>
             <button onClick={startEditingRtw} disabled={rtwVehicles.length === 0}>Ändern</button>
-            {/* Löschen entfernt - Deaktivierung über Zeiträume */}
+            <button 
+              onClick={handleDeleteSelectedRtw} 
+              disabled={selectedRtwId == null}
+              style={{
+                background: selectedRtwId != null ? '#dc3545' : '#6c757d',
+                color: 'white',
+                cursor: selectedRtwId != null ? 'pointer' : 'not-allowed'
+              }}
+            >
+              Löschen
+            </button>
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -446,7 +500,17 @@ const Vehicles: React.FC = () => {
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button onClick={addNef}>Hinzufügen</button>
             <button onClick={startEditingNef} disabled={nefVehicles.length === 0}>Ändern</button>
-            {/* Löschen entfernt - Deaktivierung über Zeiträume */}
+            <button 
+              onClick={handleDeleteSelectedNef} 
+              disabled={selectedNefId == null}
+              style={{
+                background: selectedNefId != null ? '#dc3545' : '#6c757d',
+                color: 'white',
+                cursor: selectedNefId != null ? 'pointer' : 'not-allowed'
+              }}
+            >
+              Löschen
+            </button>
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -531,7 +595,17 @@ const Vehicles: React.FC = () => {
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button onClick={addItw}>Hinzufügen</button>
             <button onClick={startEditingItw} disabled={itwVehicles.length === 0}>Ändern</button>
-            {/* Löschen entfernt - Deaktivierung über Zeiträume */}
+            <button 
+              onClick={handleDeleteSelectedItw} 
+              disabled={selectedItwId == null}
+              style={{
+                background: selectedItwId != null ? '#dc3545' : '#6c757d',
+                color: 'white',
+                cursor: selectedItwId != null ? 'pointer' : 'not-allowed'
+              }}
+            >
+              Löschen
+            </button>
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
