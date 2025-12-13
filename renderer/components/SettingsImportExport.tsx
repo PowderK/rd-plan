@@ -10,6 +10,7 @@ interface SettingsImportResult {
     deptPatterns: number;
     rtwVehicles: number;
     nefVehicles: number;
+    qualificationTypes: number;
   };
   skipped: number;
   errors: string[];
@@ -66,7 +67,8 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
           itwPatterns: 0,
           deptPatterns: 0,
           rtwVehicles: 0,
-          nefVehicles: 0
+          nefVehicles: 0,
+          qualificationTypes: 0
         },
         skipped: 0,
         errors: [`Import fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}`]
@@ -170,7 +172,8 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
            result.imported.itwPatterns + 
            result.imported.deptPatterns + 
            result.imported.rtwVehicles + 
-           result.imported.nefVehicles;
+           result.imported.nefVehicles +
+           result.imported.qualificationTypes;
   };
 
   return (
@@ -238,6 +241,7 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
                 <li>Abteilungs-Schichtfolgen: {result.imported.deptPatterns}</li>
                 <li>RTW-Fahrzeuge: {result.imported.rtwVehicles}</li>
                 <li>NEF-Fahrzeuge: {result.imported.nefVehicles}</li>
+                <li>Qualifikationstypen: {result.imported.qualificationTypes}</li>
               </ul>
             </details>
 

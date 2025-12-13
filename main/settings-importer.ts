@@ -383,8 +383,10 @@ export class SettingsImporter {
 
         // Qualification Types importieren
         if (data.qualificationTypes && Array.isArray(data.qualificationTypes)) {
+          console.log(`[SettingsImporter] Importiere ${data.qualificationTypes.length} Qualifikationstypen...`);
           if (replaceExisting) {
             await this.db.run('DELETE FROM qualification_types');
+            console.log('[SettingsImporter] Bestehende Qualifikationstypen gelöscht');
           }
           
           for (const qualType of data.qualificationTypes) {
@@ -394,6 +396,7 @@ export class SettingsImporter {
                   INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, ?, ?)
                 `, [qualType.name, qualType.description || '', qualType.category, qualType.active !== false, qualType.sort || 0]);
                 result.imported.qualificationTypes++;
+                console.log(`[SettingsImporter] ✓ Qualifikation importiert: ${qualType.name} (${qualType.category})`);
               } else {
                 const existing = await this.db.get('SELECT id FROM qualification_types WHERE name = ? AND category = ?', [qualType.name, qualType.category]);
                 if (!existing) {
@@ -401,12 +404,19 @@ export class SettingsImporter {
                     INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, ?, ?)
                   `, [qualType.name, qualType.description || '', qualType.category, qualType.active !== false, qualType.sort || 0]);
                   result.imported.qualificationTypes++;
+                  console.log(`[SettingsImporter] ✓ Qualifikation importiert: ${qualType.name} (${qualType.category})`);
                 } else {
                   result.skipped++;
+                  console.log(`[SettingsImporter] ⊘ Qualifikation übersprungen (existiert): ${qualType.name}`);
                 }
               }
+            } else {
+              console.log(`[SettingsImporter] ✗ Qualifikation ungültig (fehlt name oder category):`, qualType);
             }
           }
+          console.log(`[SettingsImporter] Qualifikationstypen-Import abgeschlossen: ${result.imported.qualificationTypes} importiert`);
+        } else {
+          console.log('[SettingsImporter] Keine Qualifikationstypen in Import-Datei gefunden');
         }
 
         await this.db.run('COMMIT');
