@@ -673,8 +673,8 @@ class SQLiteAdapter implements DatabaseAdapter {
   async importPersonnelFromExcel(filePath: string, replaceExisting = false) {
     const { ExcelPersonnelImporter } = await import('./excel-importer');
     const importer = new ExcelPersonnelImporter(this.db);
-    const data = importer.parseExcelFile(filePath);
-    return await importer.importPersonnelData(data, replaceExisting);
+    const { personnel, azubis } = importer.parseExcelFile(filePath);
+    return await importer.importPersonnelData(personnel, azubis, replaceExisting);
   }
   
   async exportPersonnelToExcel(filePath: string) {

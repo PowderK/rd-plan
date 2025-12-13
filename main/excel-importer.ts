@@ -22,12 +22,21 @@ export interface PersonnelImportData {
   qualifications?: Array<{ qualType: string; startYM: string; endYM: string }>;
 }
 
+export interface AzubiImportData {
+  name: string;
+  vorname: string;
+  lehrjahr: number;
+  active?: boolean;
+  periods?: Array<{ start_date: string; end_date: string; description?: string }>;
+}
+
 export interface ImportResult {
   success: boolean;
   imported: number;
   skipped: number;
   errors: string[];
   data: PersonnelImportData[];
+  azubis?: AzubiImportData[];
 }
 
 export class ExcelPersonnelImporter {
@@ -38,20 +47,22 @@ export class ExcelPersonnelImporter {
   }
 
   /**
-   * Parst eine Excel-Datei und extrahiert Personal-Daten
+   * Parst eine Excel-Datei und extrahiert Personal-Daten UND Azubi-Daten
    * Unterstützt zwei Formate:
-   * 1. Neues Export-Format: Name, Vorname, Aktiv, [Qualifikation_Von, Qualifikation_Bis]+
-   * 2. Legacy-Format: Name, Vorname, Straße, PLZ, Stadt, Telefon, Mobil, E-Mail, Aktiv, [Qualifikationen]+
+   * 1. Neues Export-Format: Personal-Sheet + Azubis-Sheet mit Zeiträumen
+   * 2. Legacy-Format: Nur Personal-Sheet
    */
-  parseExcelFile(filePath: string): PersonnelImportData[] {
+  parseExcelFile(filePath: string): { personnel: PersonnelImportData[]; azubis: AzubiImportData[] } {
     try {
       const workbook = XLSX.readFile(filePath);
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
+      
+      // Verarbeite Personal-Sheet
+      const personnelSheetName = workbook.SheetNames[0];
+      const personnelSheet = workbook.Sheets[personnelSheetName];
       
       // Lese Header-Zeile, um Format zu erkennen
-      const headerRow = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, range: 0 })[0] as any[];
-      console.log('[ExcelImporter] Header gefunden:', headerRow);
+      const headerRow = XLSX.utils.sheet_to_json<any[]>(personnelSheet, { header: 1, range: 0 })[0] as any[];
+      console.log('[ExcelImporter] Personal Header gefunden:', headerRow);
       
       // Prüfe, ob es das neue Export-Format ist (enthält "_Von" oder "_Bis" Spalten)
       const isNewFormat = headerRow.some((h: any) => 
@@ -60,28 +71,94 @@ export class ExcelPersonnelImporter {
       
       console.log('[ExcelImporter] Format-Erkennung:', isNewFormat ? 'Neues Export-Format' : 'Legacy-Format');
       
+      let personnel: PersonnelImportData[];
       if (isNewFormat) {
         // Neues Format: Lese mit Header-Namen und extrahiere Qualifikationen
-        // Wichtig: range: 1 bedeutet "starte ab Zeile 1 (0-basiert)", aber wir wollen die Header verwenden
-        // Daher kein range angeben, sondern direkt mit den Header-Namen arbeiten
-        const data = XLSX.utils.sheet_to_json(sheet);
-        console.log(`[ExcelImporter] Gelesene Zeilen (Neues Format):`, data.length);
+        const data = XLSX.utils.sheet_to_json(personnelSheet);
+        console.log(`[ExcelImporter] Gelesene Personal-Zeilen (Neues Format):`, data.length);
         console.log(`[ExcelImporter] Erste Zeile:`, data[0]);
-        const parsed = data.map((row: any) => this.parseNewFormatRow(row, headerRow)).filter(p => p !== null) as PersonnelImportData[];
-        console.log(`[ExcelImporter] Geparste Personen:`, parsed.length);
-        return parsed;
+        personnel = data.map((row: any) => this.parseNewFormatRow(row, headerRow)).filter(p => p !== null) as PersonnelImportData[];
+        console.log(`[ExcelImporter] Geparste Personen:`, personnel.length);
       } else {
         // Legacy-Format: Feste Spalten-Reihenfolge
-        const data = XLSX.utils.sheet_to_json(sheet, { 
+        const data = XLSX.utils.sheet_to_json(personnelSheet, { 
           header: ['name', 'vorname', 'street', 'postalCode', 'city', 'phone', 'mobile', 'email', 'active', 'teilzeit', 'fahrzeugfuehrer', 'fahrzeugfuehrerHLFB', 'nef', 'itwMaschinist', 'itwFahrzeugfuehrer'],
           range: 1
         });
-        return data.map((row: any) => this.parsePersonnelRow(row)).filter(p => p !== null) as PersonnelImportData[];
+        personnel = data.map((row: any) => this.parsePersonnelRow(row)).filter(p => p !== null) as PersonnelImportData[];
       }
+      
+      // Verarbeite Azubis-Sheet (falls vorhanden)
+      let azubis: AzubiImportData[] = [];
+      if (workbook.SheetNames.includes('Azubis')) {
+        console.log('[ExcelImporter] Azubis-Sheet gefunden, verarbeite...');
+        const azubiSheet = workbook.Sheets['Azubis'];
+        azubis = this.parseAzubiSheet(azubiSheet);
+        console.log(`[ExcelImporter] ${azubis.length} Azubis geparst`);
+      }
+      
+      return { personnel, azubis };
     } catch (error) {
       console.error('[ExcelImporter] Fehler beim Lesen der Excel-Datei:', error);
       throw new Error(`Excel-Datei konnte nicht gelesen werden: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  /**
+   * Parst das Azubi-Sheet und gruppiert Zeiträume pro Azubi
+   */
+  private parseAzubiSheet(sheet: XLSX.WorkSheet): AzubiImportData[] {
+    const data = XLSX.utils.sheet_to_json(sheet);
+    console.log(`[ExcelImporter] Azubi-Zeilen gelesen:`, data.length);
+    
+    // Gruppiere nach Name/Vorname
+    const azubiMap = new Map<string, AzubiImportData>();
+    
+    for (const row of data as any[]) {
+      if (!row['Name'] || typeof row['Name'] !== 'string' || row['Name'].trim() === '') {
+        console.log(`[ExcelImporter] Überspringe Azubi-Zeile ohne Namen:`, row);
+        continue;
+      }
+      
+      const name = String(row['Name']).trim();
+      const vorname = row['Vorname'] ? String(row['Vorname']).trim() : '';
+      const key = `${name}|${vorname}`;
+      
+      // Hole oder erstelle Azubi-Eintrag
+      if (!azubiMap.has(key)) {
+        const lehrjahr = row['Lehrjahr'] ? parseInt(String(row['Lehrjahr']), 10) : 1;
+        const active = row['Aktiv'] !== undefined ? this.parseBooleanValue(row['Aktiv']) : true;
+        
+        azubiMap.set(key, {
+          name,
+          vorname,
+          lehrjahr,
+          active,
+          periods: []
+        });
+        
+        console.log(`[ExcelImporter] Neuer Azubi: ${name}, ${vorname} (Lehrjahr: ${lehrjahr})`);
+      }
+      
+      const azubi = azubiMap.get(key)!;
+      
+      // Füge Zeitraum hinzu (falls vorhanden)
+      if (row['Von'] && row['Von'].toString().trim() !== '') {
+        const start_date = String(row['Von']).trim();
+        const end_date = row['Bis'] && row['Bis'].toString().trim() !== '' ? String(row['Bis']).trim() : '';
+        const description = row['Beschreibung'] && row['Beschreibung'].toString().trim() !== '' ? String(row['Beschreibung']).trim() : '';
+        
+        azubi.periods!.push({
+          start_date,
+          end_date,
+          description
+        });
+        
+        console.log(`[ExcelImporter] Zeitraum für ${name}: ${start_date} - ${end_date} (${description})`);
+      }
+    }
+    
+    return Array.from(azubiMap.values());
   }
 
   /**
@@ -219,27 +296,31 @@ export class ExcelPersonnelImporter {
   }
 
   /**
-   * Importiert Personal-Daten in die Datenbank
+   * Importiert Personal-Daten UND Azubi-Daten in die Datenbank
    */
-  async importPersonnelData(personnelData: PersonnelImportData[], replaceExisting = false): Promise<ImportResult> {
+  async importPersonnelData(personnelData: PersonnelImportData[], azubiData: AzubiImportData[], replaceExisting = false): Promise<ImportResult> {
     const result: ImportResult = {
       success: true,
       imported: 0,
       skipped: 0,
       errors: [],
-      data: personnelData
+      data: personnelData,
+      azubis: azubiData
     };
 
     try {
       await this.db.run('BEGIN TRANSACTION');
 
-      // Wenn replaceExisting = true, lösche alle bestehenden Personal-Daten
+      // Wenn replaceExisting = true, lösche alle bestehenden Personal-Daten und Azubis
       if (replaceExisting) {
         await this.db.run('DELETE FROM qualification_periods');
         await this.db.run('DELETE FROM personnel');
-        console.log('[ExcelImporter] Bestehende Personal-Daten und Qualifikationen gelöscht');
+        await this.db.run('DELETE FROM azubi_periods');
+        await this.db.run('DELETE FROM azubis');
+        console.log('[ExcelImporter] Bestehende Personal-Daten, Qualifikationen und Azubis gelöscht');
       }
 
+      // --- PERSONAL IMPORTIEREN ---
       for (const person of personnelData) {
         try {
           // Prüfe auf Duplikate
@@ -332,6 +413,77 @@ export class ExcelPersonnelImporter {
           result.imported++;
         } catch (error) {
           const errorMsg = `Fehler bei ${person.name}, ${person.vorname}: ${error instanceof Error ? error.message : String(error)}`;
+          result.errors.push(errorMsg);
+          console.error(`[ExcelImporter] ${errorMsg}`);
+        }
+      }
+
+      // --- AZUBIS IMPORTIEREN ---
+      console.log(`[ExcelImporter] Importiere ${azubiData.length} Azubis...`);
+      for (const azubi of azubiData) {
+        try {
+          // Prüfe auf Duplikate
+          const existing = await this.db.get(
+            'SELECT id FROM azubis WHERE name = ? AND vorname = ?',
+            [azubi.name, azubi.vorname]
+          );
+
+          if (existing && !replaceExisting) {
+            console.log(`[ExcelImporter] Azubi ${azubi.name}, ${azubi.vorname} existiert bereits, überspringe`);
+            result.skipped++;
+            continue;
+          }
+
+          // Bestimme die nächste Sort-Position
+          const maxSortResult = await this.db.get('SELECT MAX(sort) as maxSort FROM azubis');
+          const nextSort = (maxSortResult?.maxSort || 0) + 1;
+
+          // Füge Azubi hinzu
+          const insertResult = await this.db.run(
+            'INSERT INTO azubis (name, vorname, lehrjahr, active, sort) VALUES (?, ?, ?, ?, ?)',
+            [
+              azubi.name,
+              azubi.vorname,
+              azubi.lehrjahr,
+              azubi.active !== false ? 1 : 0,
+              nextSort
+            ]
+          );
+
+          // Hole die ID des eingefügten Azubis
+          let azubiId: number;
+          if (insertResult.lastID) {
+            azubiId = insertResult.lastID as number;
+          } else {
+            // Fallback: Hole die ID über Name/Vorname
+            const inserted = await this.db.get(
+              'SELECT id FROM azubis WHERE name = ? AND vorname = ? ORDER BY id DESC LIMIT 1',
+              [azubi.name, azubi.vorname]
+            );
+            azubiId = inserted?.id;
+          }
+
+          console.log(`[ExcelImporter] Inserted azubi ID ${azubiId}: ${azubi.name}, ${azubi.vorname} (Lehrjahr: ${azubi.lehrjahr})`);
+
+          // Importiere Zeiträume für diesen Azubi
+          if (azubi.periods && azubi.periods.length > 0) {
+            console.log(`[ExcelImporter] Importing ${azubi.periods.length} periods for azubi ${azubi.name}`);
+            for (const period of azubi.periods) {
+              try {
+                await this.db.run(
+                  'INSERT INTO azubi_periods (azubi_id, start_date, end_date, description) VALUES (?, ?, ?, ?)',
+                  [azubiId, period.start_date, period.end_date || '', period.description || '']
+                );
+                console.log(`[ExcelImporter] ✓ Zeitraum importiert: ${period.start_date} - ${period.end_date}`);
+              } catch (error) {
+                console.error(`[ExcelImporter] ✗ Konnte Zeitraum für Azubi ${azubiId} nicht importieren:`, error);
+              }
+            }
+          }
+
+          result.imported++;
+        } catch (error) {
+          const errorMsg = `Fehler bei Azubi ${azubi.name}, ${azubi.vorname}: ${error instanceof Error ? error.message : String(error)}`;
           result.errors.push(errorMsg);
           console.error(`[ExcelImporter] ${errorMsg}`);
         }

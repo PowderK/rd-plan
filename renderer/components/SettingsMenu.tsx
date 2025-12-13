@@ -52,6 +52,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [originalYearPlannings, setOriginalYearPlannings] = useState<{ year: number; filePath: string }[] | null>(null);
   const [selectedYearPlanningIndex, setSelectedYearPlanningIndex] = useState<number | null>(null);
   const [yearImportSelectedYear, setYearImportSelectedYear] = useState<number>(year); // Jahr für Excel-Import
+  const [currentImportPath, setCurrentImportPath] = useState<string | null>(null); // Aktueller Import-Pfad für Retry-Logik
   const [doBackup, setDoBackup] = useState<boolean>(true);
   const [showRestore, setShowRestore] = useState<boolean>(false);
   const [backups, setBackups] = useState<Array<{ path: string; year: string; ym: string; timestamp: string; label: string }>>([]);
@@ -394,7 +395,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       setShowYearImportShiftTypeDialog(false);
       
       // Retry import with new shift types
-      const retryResult = await (window as any).api.importDutyRoster(rosterImportPath, yearImportPendingYear, undefined, { newShiftTypes });
+      const retryResult = await (window as any).api.importDutyRoster(currentImportPath || rosterImportPath, yearImportPendingYear, undefined, { newShiftTypes });
       
       if (retryResult && retryResult.success) {
         // Check if there are still unknown azubis
@@ -414,6 +415,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         }
         
         alert(`Dienstplan für ${yearImportPendingYear} erfolgreich importiert. Einträge: ${retryResult.importedCount ?? 'n/v'}`);
+        setCurrentImportPath(null); // Reset nach erfolgreichem Import
         try { (window as any).api.onDutyRosterUpdated?.(() => {}); } catch {}
       } else {
         alert(`Import fehlgeschlagen: ${retryResult?.message || 'Unbekannter Fehler'}`);
@@ -423,6 +425,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       setShiftTypes(await (window as any).api.getShiftTypes());
       setYearImportUnknownShiftTypes([]);
       setYearImportPendingYear(0);
+      setCurrentImportPath(null); // Reset bei Abbruch/Fehler
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Ein unbekannter Fehler ist aufgetreten.';
       alert(`Fehler beim Import: ${message}`);
@@ -433,12 +436,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     setShowYearImportShiftTypeDialog(false);
     setYearImportUnknownShiftTypes([]);
     setYearImportPendingYear(0);
+    setCurrentImportPath(null); // Reset bei Abbruch
   };
 
   const handleYearImportAzubiConfirm = async (newAzubis: Array<{name: string, vorname: string, lehrjahr: number}>) => {
     setShowYearImportAzubiDialog(false);
     
-    const retryResult = await (window as any).api.importDutyRoster(rosterImportPath, yearImportPendingYear, undefined, { newAzubis });
+    const retryResult = await (window as any).api.importDutyRoster(currentImportPath || rosterImportPath, yearImportPendingYear, undefined, { newAzubis });
     
     if (retryResult && retryResult.success) {
       // Check if there are still unknown shift types
@@ -455,6 +459,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       }
       
       alert(`Dienstplan für ${yearImportPendingYear} erfolgreich importiert. Einträge: ${retryResult.importedCount ?? 'n/v'}`);
+      setCurrentImportPath(null); // Reset nach erfolgreichem Import
       try { (window as any).api.onDutyRosterUpdated?.(() => {}); } catch {}
     } else {
       alert(`Import fehlgeschlagen: ${retryResult?.message || 'Unbekannter Fehler'}`);
@@ -462,12 +467,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     
     setYearImportUnknownAzubiNames([]);
     setYearImportPendingYear(0);
+    setCurrentImportPath(null); // Reset bei Abbruch/Fehler
   };
 
   const handleYearImportAzubiCancel = () => {
     setShowYearImportAzubiDialog(false);
     setYearImportUnknownAzubiNames([]);
     setYearImportPendingYear(0);
+    setCurrentImportPath(null); // Reset bei Abbruch
   };
 
   const handleExcelImportComplete = (result: any) => {
@@ -961,6 +968,10 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                       alert('Bitte zuerst eine Vorplanungsdatei für das Jahr ' + yearImportSelectedYear + ' hinterlegen.');
                       return;
                     }
+                    
+                    // Speichere Import-Pfad für Retry-Logik
+                    setCurrentImportPath(importPath);
+                    
                     // Warnung anzeigen: Überschreiben bestätigen
                     let proceed = true;
                     try {
@@ -1033,6 +1044,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                       }
                       
                       alert(`Dienstplan für ${yearImportSelectedYear} erfolgreich importiert. Einträge: ${res.importedCount ?? 'n/v'}`);
+                      setCurrentImportPath(null); // Reset nach erfolgreichem Import
                       try { (window as any).api.onDutyRosterUpdated?.(() => {}); } catch {}
                     } else {
                       alert(`Import fehlgeschlagen: ${res?.message || 'Unbekannter Fehler'}`);
@@ -1072,6 +1084,10 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                       alert('Bitte zuerst eine Vorplanungsdatei für das Jahr ' + yearImportSelectedYear + ' hinterlegen.');
                       return;
                     }
+                    
+                    // Speichere Import-Pfad für Retry-Logik
+                    setCurrentImportPath(importPath);
+                    
                     // Lade Vorschau
                     const prev = await (window as any).api.previewDutyRoster?.(importPath, yearImportSelectedYear);
                     if (!prev?.success) {
@@ -1694,7 +1710,10 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                   <p>Alle Namen wurden erkannt. Du kannst direkt importieren.</p>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-                  <button onClick={() => setShowImportPreview(false)}>Schließen</button>
+                  <button onClick={() => {
+                    setShowImportPreview(false);
+                    setCurrentImportPath(null); // Reset bei Abbruch
+                  }}>Schließen</button>
                   <button style={{ background: '#28a745', color: 'white' }} onClick={async () => {
                     try {
                       // Sicherheitsabfrage + optionales Backup + Clear (Jahr)
@@ -1715,15 +1734,18 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                         try { await (window as any).api.createDatabaseBackup?.({ year: Number(year) }); } catch {}
                       }
                       try { await (window as any).api.clearDutyRosterYear?.(Number(year)); } catch {}
-                      const res = await (window as any).api.importDutyRoster(rosterImportPath, Number(year), undefined, { mappings: nameMappings });
+                      const res = await (window as any).api.importDutyRoster(currentImportPath || rosterImportPath, Number(year), undefined, { mappings: nameMappings });
                       if (res?.success) {
                         alert(`Import erfolgreich. Einträge: ${res.importedCount ?? 'n/v'}`);
                         setShowImportPreview(false);
+                        setCurrentImportPath(null); // Reset nach erfolgreichem Import
                       } else {
                         alert('Import fehlgeschlagen: ' + (res?.message || 'Unbekannt'));
                       }
                     } catch (e: any) {
                       alert('Fehler beim Import: ' + (e?.message || String(e)));
+                    } finally {
+                      setCurrentImportPath(null); // Reset auch bei Fehler
                     }
                   }}>Jetzt importieren</button>
                 </div>
