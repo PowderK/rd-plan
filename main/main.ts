@@ -1639,27 +1639,37 @@ app.whenReady().then(async () => {
         console.warn('[Main] Failed to register CSP header handler', e);
     }
 
-    // Wenn noch keine DB-Konfiguration vorhanden ist, versuche globale Vorgabe zu übernehmen – sonst Setup-Assistent starten
-    if (!hasDbConfig()) {
-        let adopted = false;
-        try {
-            const globalCfgPath = getGlobalDbConfigPath();
-            if (globalCfgPath) {
-                const dir = readDbDirFromConfigFile(globalCfgPath);
-                if (dir) {
-                    const userCfgPath = getDbConfigPath();
+    // 1. Prüfe IMMER zuerst auf eine lokale Konfigurationsdatei (neben der Exe) und erzwinge deren Nutzung
+    // Das ermöglicht es, durch Ablegen einer db-config.json neben der App den Datenbank-Pfad vorzugeben (z.B. für USB-Stick)
+    try {
+        const globalCfgPath = getGlobalDbConfigPath();
+        if (globalCfgPath) {
+            const dir = readDbDirFromConfigFile(globalCfgPath);
+            if (dir) {
+                const userCfgPath = getDbConfigPath();
+                // Prüfe ob sich der Pfad unterscheidet, um unnötige Schreibvorgänge zu vermeiden
+                let currentDir = null;
+                try {
+                    if (fs.existsSync(userCfgPath)) {
+                        currentDir = readDbDirFromConfigFile(userCfgPath);
+                    }
+                } catch {}
+
+                if (currentDir !== dir) {
+                    console.log('[Main] Lokale db-config gefunden, überschreibe User-Config:', dir);
                     fs.mkdirSync(path.dirname(userCfgPath), { recursive: true });
                     fs.writeFileSync(userCfgPath, JSON.stringify({ dbDir: dir }, null, 2), 'utf-8');
-                    adopted = true;
                 }
             }
-        } catch (e) {
-            console.warn('[Main] Konnte globale db-config nicht übernehmen:', e);
         }
-        if (!adopted) {
-            openSetupWizard();
-            return;
-        }
+    } catch (e) {
+        console.warn('[Main] Fehler beim Prüfen der lokalen db-config:', e);
+    }
+
+    // 2. Wenn (jetzt) keine DB-Konfiguration vorhanden ist, Setup-Assistent starten
+    if (!hasDbConfig()) {
+        openSetupWizard();
+        return;
     }
 
     // WICHTIG: Datenbank ZUERST initialisieren, bevor Update-Prüfung
