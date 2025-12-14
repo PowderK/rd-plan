@@ -1,3 +1,7 @@
+## Build 588 - 2025-12-14
+
+- automated build
+
 ## Build 587 - 2025-12-14
 
 - automated build
