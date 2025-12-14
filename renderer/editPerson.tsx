@@ -220,6 +220,180 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
   );
 };
 
+interface ActivePeriod {
+  id: number;
+  personId: number;
+  startYM: string;
+  endYM: string;
+  description: string;
+  active: boolean;
+}
+
+interface ActivePeriodFormProps {
+  period?: ActivePeriod;
+  onSave: (period: ActivePeriod | Omit<ActivePeriod, 'id'>) => Promise<void>;
+  onCancel: () => void;
+  title: string;
+}
+
+const ActivePeriodForm: React.FC<ActivePeriodFormProps> = ({ period, onSave, onCancel, title }) => {
+  const [startYM, setStartYM] = useState(period?.startYM || '');
+  const [endYM, setEndYM] = useState(period?.endYM || '');
+  const [description, setDescription] = useState(period?.description || '');
+  // Active ist immer true, da der Zeitraum an sich die Aktivität definiert
+  const active = true;
+  const [isUnlimited, setIsUnlimited] = useState(!period?.endYM);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!startYM) {
+      alert('Bitte Start-Monat angeben.');
+      return;
+    }
+
+    const formData = {
+      ...(period?.id ? { id: period.id } : {}),
+      personId: period?.personId || 0,
+      startYM: startYM,
+      endYM: isUnlimited ? '' : endYM,
+      description,
+      active
+    };
+
+    onSave(formData as any);
+  };
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'rgba(0,0,0,0.5)',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        background: 'white',
+        padding: '24px',
+        borderRadius: '8px',
+        width: '480px',
+        maxHeight: '80vh',
+        overflow: 'auto'
+      }}>
+        <h3 style={{ marginTop: 0, marginBottom: '20px' }}>{title}</h3>
+        
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>
+              Start-Monat (YYYY-MM) *
+            </label>
+            <input
+              type="month"
+              value={startYM}
+              onChange={e => setStartYM(e.target.value)}
+              required
+              style={{
+                width: '100%',
+                padding: '8px',
+                border: '1px solid #ddd',
+                borderRadius: '4px'
+              }}
+            />
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', marginBottom: '6px' }}>
+              <input
+                type="checkbox"
+                checked={isUnlimited}
+                onChange={e => setIsUnlimited(e.target.checked)}
+                style={{ marginRight: '8px' }}
+              />
+              Unbegrenzte Gültigkeit
+            </label>
+            
+            {!isUnlimited && (
+              <>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>
+                  End-Monat (YYYY-MM)
+                </label>
+                <input
+                  type="month"
+                  value={endYM}
+                  onChange={e => setEndYM(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px'
+                  }}
+                />
+              </>
+            )}
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>
+              Beschreibung (optional)
+            </label>
+            <input
+              type="text"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="z.B. Elternzeit, Sabbatical"
+              style={{
+                width: '100%',
+                padding: '8px',
+                border: '1px solid #ddd',
+                borderRadius: '4px'
+              }}
+            />
+          </div>
+
+          <div style={{ marginBottom: '24px' }}>
+            {/* Aktiv-Checkbox entfernt, da Zeiträume implizit aktiv sind */}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+            <button
+              type="button"
+              onClick={onCancel}
+              style={{
+                background: '#6c757d',
+                color: 'white',
+                border: 'none',
+                padding: '10px 20px',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              Abbrechen
+            </button>
+            <button
+              type="submit"
+              style={{
+                background: '#007bff',
+                color: 'white',
+                border: 'none',
+                padding: '10px 20px',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              Speichern
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 const EditPerson: React.FC = () => {
   // ID aus URL-Query lesen
   const id = Number(new URLSearchParams(window.location.search).get('id'));
@@ -232,6 +406,12 @@ const EditPerson: React.FC = () => {
   const [showQualifications, setShowQualifications] = useState(true);
   const [editingQualification, setEditingQualification] = useState<QualificationPeriod | null>(null);
   const [showAddQualification, setShowAddQualification] = useState(false);
+
+  // Active Periods State
+  const [activePeriods, setActivePeriods] = useState<ActivePeriod[]>([]);
+  const [showActivePeriods, setShowActivePeriods] = useState(true);
+  const [editingActivePeriod, setEditingActivePeriod] = useState<ActivePeriod | null>(null);
+  const [showAddActivePeriod, setShowAddActivePeriod] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -262,6 +442,12 @@ const EditPerson: React.FC = () => {
         const periods = await (window as any).api.getQualificationPeriods(id);
         console.log('Loaded qualification periods:', periods);
         setQualificationPeriods(periods || []);
+
+        // Lade Aktivitätsperioden
+        console.log('Loading active periods for person ID:', id);
+        const actPeriods = await (window as any).api.getPersonnelActivePeriods(id);
+        console.log('Loaded active periods:', actPeriods);
+        setActivePeriods(actPeriods || []);
         
         console.log('editPerson data loading completed for ID:', id);
       } catch (error) {
@@ -374,6 +560,67 @@ const EditPerson: React.FC = () => {
     }
   };
 
+  // Active Periods Handlers
+  const refreshActivePeriods = async () => {
+    try {
+      const periods = await (window as any).api.getPersonnelActivePeriods(id);
+      setActivePeriods(periods || []);
+    } catch (error) {
+      console.error('Fehler beim Laden der Aktivitätsperioden:', error);
+    }
+  };
+
+  const handleAddActivePeriod = async (period: Omit<ActivePeriod, 'id'>) => {
+    try {
+      await (window as any).api.addPersonnelActivePeriod({
+        personId: id,
+        startYM: period.startYM,
+        endYM: period.endYM || null,
+        description: period.description,
+        active: period.active
+      });
+      await refreshActivePeriods();
+      setShowAddActivePeriod(false);
+    } catch (error) {
+      console.error('Fehler beim Hinzufügen der Aktivitätsperiode:', error);
+      alert('Fehler beim Hinzufügen der Aktivitätsperiode');
+    }
+  };
+
+  const handleEditActivePeriod = async (period: ActivePeriod | Omit<ActivePeriod, 'id'>) => {
+    try {
+      if ('id' in period && period.id) {
+        await (window as any).api.updatePersonnelActivePeriod(period.id, {
+          personId: id,
+          startYM: period.startYM,
+          endYM: period.endYM || null,
+          description: period.description,
+          active: period.active
+        });
+      } else {
+        console.error('Versuche ein Update ohne ID durchzuführen');
+        return;
+      }
+      await refreshActivePeriods();
+      setEditingActivePeriod(null);
+    } catch (error) {
+      console.error('Fehler beim Bearbeiten der Aktivitätsperiode:', error);
+      alert('Fehler beim Bearbeiten der Aktivitätsperiode');
+    }
+  };
+
+  const handleDeleteActivePeriod = async (periodId: number) => {
+    if (confirm('Sind Sie sicher, dass Sie diese Aktivitätsperiode löschen möchten?')) {
+      try {
+        await (window as any).api.deletePersonnelActivePeriod(periodId);
+        await refreshActivePeriods();
+      } catch (error) {
+        console.error('Fehler beim Löschen der Aktivitätsperiode:', error);
+        alert('Fehler beim Löschen der Aktivitätsperiode');
+      }
+    }
+  };
+
   return (
     <div style={{ padding: 24 }}>
       <h2>Personal ändern</h2>
@@ -385,6 +632,153 @@ const EditPerson: React.FC = () => {
       </div>
       <div style={{ marginBottom: 24 }}>
         <label>Teilzeit (%): <input type="number" value={teilzeit} min={0} max={100} onChange={e => setTeilzeit(Number(e.target.value))} /></label>
+      </div>
+      
+      {/* Aktivitätszeiträume */}
+      <div style={{ 
+        marginBottom: 24, 
+        border: '2px solid #28a745', 
+        padding: 20, 
+        borderRadius: 8, 
+        backgroundColor: '#f8f9fa' 
+      }}>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <h3 style={{ margin: 0, color: '#28a745' }}>Aktivitätszeiträume</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '12px', color: '#666' }}>
+                {activePeriods.length} Periode(n)
+              </span>
+              <button 
+                type="button" 
+                onClick={() => setShowActivePeriods(!showActivePeriods)}
+                style={{ 
+                  background: showActivePeriods ? '#dc3545' : '#28a745', 
+                  color: 'white', 
+                  border: 'none', 
+                  cursor: 'pointer', 
+                  fontSize: '12px',
+                  padding: '4px 8px',
+                  borderRadius: '4px'
+                }}
+              >
+                {showActivePeriods ? '▼ Ausblenden' : '▶ Anzeigen'}
+              </button>
+            </div>
+          </div>
+          <p style={{ margin: 0, fontSize: '13px', color: '#666', fontStyle: 'italic' }}>
+            Legen Sie fest, in welchen Zeiträumen der Mitarbeiter aktiv ist (z.B. Elternzeit, Sabbatical).
+          </p>
+        </div>
+        
+        {showActivePeriods && (
+          <div>
+            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '14px', color: '#666' }}>
+                {activePeriods.length} Aktivitätsperioden
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowAddActivePeriod(true)}
+                style={{
+                  background: '#28a745',
+                  color: 'white',
+                  border: 'none',
+                  padding: '6px 12px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px'
+                }}
+              >
+                + Hinzufügen
+              </button>
+            </div>
+
+            {activePeriods.length === 0 ? (
+              <p style={{ color: '#666', fontStyle: 'italic', textAlign: 'center', padding: '20px' }}>
+                Keine Aktivitätsperioden vorhanden (Mitarbeiter ist immer aktiv, wenn "Aktiv" gesetzt)
+              </p>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f5f5f5' }}>
+                    <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd' }}>Von</th>
+                    <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd' }}>Bis</th>
+                    <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd' }}>Beschreibung</th>
+                    <th style={{ padding: '8px', textAlign: 'center', border: '1px solid #ddd' }}>Aktiv</th>
+                    <th style={{ padding: '8px', textAlign: 'center', border: '1px solid #ddd' }}>Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activePeriods.map((period) => (
+                    <tr key={period.id}>
+                      <td style={{ padding: '8px', border: '1px solid #ddd' }}>{period.startYM}</td>
+                      <td style={{ padding: '8px', border: '1px solid #ddd' }}>{period.endYM || 'Unbegrenzt'}</td>
+                      <td style={{ padding: '8px', border: '1px solid #ddd' }}>{period.description}</td>
+                      <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>
+                        <span style={{ color: period.active ? '#28a745' : '#dc3545' }}>
+                          {period.active ? '✓' : '✗'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => setEditingActivePeriod(period)}
+                          style={{
+                            background: '#007bff',
+                            color: 'white',
+                            border: 'none',
+                            padding: '4px 8px',
+                            borderRadius: '3px',
+                            cursor: 'pointer',
+                            fontSize: '11px',
+                            marginRight: '4px'
+                          }}
+                        >
+                          Bearbeiten
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteActivePeriod(period.id)}
+                          style={{
+                            background: '#dc3545',
+                            color: 'white',
+                            border: 'none',
+                            padding: '4px 8px',
+                            borderRadius: '3px',
+                            cursor: 'pointer',
+                            fontSize: '11px'
+                          }}
+                        >
+                          Löschen
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {/* Add Active Period Form */}
+            {showAddActivePeriod && (
+              <ActivePeriodForm
+                onSave={handleAddActivePeriod}
+                onCancel={() => setShowAddActivePeriod(false)}
+                title="Neue Aktivitätsperiode"
+              />
+            )}
+
+            {/* Edit Active Period Form */}
+            {editingActivePeriod && (
+              <ActivePeriodForm
+                period={editingActivePeriod}
+                onSave={handleEditActivePeriod}
+                onCancel={() => setEditingActivePeriod(null)}
+                title="Aktivitätsperiode bearbeiten"
+              />
+            )}
+          </div>
+        )}
       </div>
       
       {/* Qualifikationen & Zeiträume - Hauptfunktion */}

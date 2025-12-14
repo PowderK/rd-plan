@@ -45,7 +45,9 @@ const EinteilungPage: React.FC = () => {
       setYear((window as any).rdPlanYear);
     }
     try { 
-      const list = await (window as any).api.getPersonnelList();
+      // Pass current year/month to filter personnel by active periods
+      const filterDate = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+      const list = await (window as any).api.getPersonnelList(false, filterDate);
       
       // Aktueller Monat im Format YYYY-MM
       const now = new Date();
@@ -169,7 +171,11 @@ const EinteilungPage: React.FC = () => {
   parsed.sort((a: { startDate: string }, b: { startDate: string }) => a.startDate.localeCompare(b.startDate));
       setDeptPatternSeqs(parsed);
     } catch {}
-  }, []);
+  }, [year, currentMonth]);
+
+  useEffect(() => {
+    loadBasics();
+  }, [loadBasics]); // Reload when loadBasics changes (which changes when year/month changes)
 
   const loadRoster = useCallback(async (targetYear?: number) => {
     try {
@@ -191,10 +197,10 @@ const EinteilungPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadBasics().then(() => loadRoster());
+    loadBasics().then(() => loadRoster(year));
     const onSettings = async () => {
       await loadBasics();
-      await loadRoster();
+      await loadRoster(year);
     };
     const onRoster = async () => { await loadRoster(); };
     const onPersonnel = async () => { await loadBasics(); await loadRoster(); };

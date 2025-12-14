@@ -349,6 +349,23 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_qualification_periods_type ON qualification_periods (qualType)`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_qualification_periods_period ON qualification_periods (startYM, endYM)`);
 
+    // --- Personnel Active Periods Tabelle ---
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS personnel_active_periods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            personId INTEGER NOT NULL,
+            startYM TEXT NOT NULL,
+            endYM TEXT,
+            description TEXT,
+            active INTEGER DEFAULT 1,
+            FOREIGN KEY (personId) REFERENCES personnel (id) ON DELETE CASCADE
+        )
+    `);
+
+    // Indexe für bessere Performance
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_personnel_active_periods_person ON personnel_active_periods (personId)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_personnel_active_periods_period ON personnel_active_periods (startYM, endYM)`);
+
     // Migration: Falls Spalte personType fehlt, hinzufügen
     const columns = await db.all("PRAGMA table_info('duty_roster')");
     if (!columns.some((col: any) => col.name === 'personType')) {
@@ -647,11 +664,62 @@ export const deleteShift = async (db: AsyncDB, id: number) => {
     await db.run('DELETE FROM shifts WHERE id = ?', [id]);
 };
 
-export const getPersonnel = async (db: AsyncDB, includeInactive: boolean = false) => {
+export const getPersonnel = async (db: AsyncDB, includeInactive: boolean = false, date?: string) => {
     if (includeInactive) {
         return await db.all('SELECT * FROM personnel ORDER BY sort ASC, id ASC');
     }
-    return await db.all('SELECT * FROM personnel WHERE COALESCE(active,1)=1 ORDER BY sort ASC, id ASC');
+    
+    // If no date is provided, use legacy behavior (active flag only)
+    if (!date) {
+        return await db.all('SELECT * FROM personnel WHERE COALESCE(active,1)=1 ORDER BY sort ASC, id ASC');
+    }
+
+    // If date is provided, we need to check periods.
+    // We fetch ALL personnel first, because someone might be active=0 but have a valid period.
+    const allPersonnel = await db.all('SELECT * FROM personnel ORDER BY sort ASC, id ASC');
+
+    let startLimit: string;
+    let endLimit: string;
+
+    if (date.length === 4) {
+        // Year mode: Active at any point in the year
+        // Period starts before or in Dec of that year AND ends after or in Jan of that year
+        startLimit = `${date}-12`;
+        endLimit = `${date}-01`;
+    } else {
+        // Month/Date mode
+        const ym = date.substring(0, 7);
+        startLimit = ym;
+        endLimit = ym;
+    }
+
+    const result = [];
+    
+    for (const p of allPersonnel) {
+        // Check if this person has ANY periods
+        const hasPeriods = await db.get('SELECT 1 FROM personnel_active_periods WHERE personId = ? LIMIT 1', [p.id]);
+        
+        if (!hasPeriods) {
+            // No periods -> fallback to active flag
+            // Treat null as 1 (active by default)
+            if (p.active !== 0 && p.active !== false) {
+                result.push(p);
+            }
+        } else {
+            // Has periods -> check if active in the target range
+            // Ignore the global 'active' flag here!
+            const isActiveInPeriod = await db.get(
+                `SELECT 1 FROM personnel_active_periods 
+                 WHERE personId = ? AND active = 1 
+                 AND startYM <= ? AND (endYM IS NULL OR endYM >= ?) LIMIT 1`,
+                [p.id, startLimit, endLimit]
+            );
+            if (isActiveInPeriod) {
+                result.push(p);
+            }
+        }
+    }
+    return result;
 };
 
 export const addPersonnel = async (db: AsyncDB, person: any) => {
@@ -1105,6 +1173,65 @@ export const updateQualificationPeriod = async (db: AsyncDB, period: {
 
 export const deleteQualificationPeriod = async (db: AsyncDB, id: number) => {
     await db.run('DELETE FROM qualification_periods WHERE id = ?', [id]);
+};
+
+// --- Personnel Active Periods Functions ---
+export const getPersonnelActivePeriods = async (db: AsyncDB, personId: number) => {
+    return await db.all('SELECT * FROM personnel_active_periods WHERE personId = ? ORDER BY startYM ASC', [personId]);
+};
+
+export const getAllPersonnelActivePeriods = async (db: AsyncDB) => {
+    return await db.all('SELECT * FROM personnel_active_periods ORDER BY personId, startYM ASC');
+};
+
+export const addPersonnelActivePeriod = async (db: AsyncDB, period: { 
+    personId: number, 
+    startYM: string, 
+    endYM?: string, 
+    description?: string,
+    active?: boolean 
+}) => {
+    console.log('[DB] addPersonnelActivePeriod', period);
+    await db.run('INSERT INTO personnel_active_periods (personId, startYM, endYM, description, active) VALUES (?, ?, ?, ?, ?)', 
+        [period.personId, period.startYM, period.endYM || null, period.description || '', period.active ? 1 : 0]);
+    console.log('[DB] addPersonnelActivePeriod erfolgreich');
+};
+
+export const updatePersonnelActivePeriod = async (db: AsyncDB, period: { 
+    id: number, 
+    personId: number, 
+    startYM: string, 
+    endYM?: string, 
+    description?: string,
+    active?: boolean 
+}) => {
+    await db.run('UPDATE personnel_active_periods SET personId = ?, startYM = ?, endYM = ?, description = ?, active = ? WHERE id = ?', 
+        [period.personId, period.startYM, period.endYM || null, period.description || '', period.active ? 1 : 0, period.id]);
+};
+
+export const deletePersonnelActivePeriod = async (db: AsyncDB, id: number) => {
+    await db.run('DELETE FROM personnel_active_periods WHERE id = ?', [id]);
+};
+
+// Helper function to check if a person is active in a given month based on periods
+export const isPersonnelActiveInMonth = async (db: AsyncDB, personId: number, yearMonth: string): Promise<boolean> => {
+    // First check if there are any periods defined for this person
+    const periods = await db.all('SELECT * FROM personnel_active_periods WHERE personId = ?', [personId]);
+    
+    // If no periods are defined, fallback to the main 'active' flag in personnel table (legacy behavior)
+    if (periods.length === 0) {
+        const person = await db.get('SELECT active FROM personnel WHERE id = ?', [personId]);
+        return person && (person.active === 1 || person.active === true);
+    }
+
+    // If periods exist, check if any active period covers the month
+    const result = await db.get(
+        `SELECT COUNT(*) as count FROM personnel_active_periods 
+         WHERE personId = ? AND active = 1 
+         AND startYM <= ? AND (endYM IS NULL OR endYM >= ?)`,
+        [personId, yearMonth, yearMonth]
+    );
+    return result && result.count > 0;
 };
 
 // Helper function to check if a person has a specific qualification in a given month
@@ -1715,6 +1842,14 @@ export const validateQualificationForShift = async (
     // Extrahiere Jahr und Monat aus Datum für Periodenprüfung
     const dateObj = new Date(date);
     const yearMonth = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Check if person is active in this month
+    const isActive = await isPersonnelActiveInMonth(db, personId, yearMonth);
+    if (!isActive) {
+        result.isValid = false;
+        result.missingQualifications.push('Person ist in diesem Zeitraum nicht aktiv');
+        return result;
+    }
     
     // Ermittle erforderliche Qualifikationen - dynamisch aus vehicle_positions wenn cellType vorhanden
     let requiredQuals: string[] = [];

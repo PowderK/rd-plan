@@ -20,6 +20,8 @@ export interface PersonnelImportData {
   itwFahrzeugfuehrer?: boolean;
   // Neue Qualifikations-Zeiträume für Export-Format
   qualifications?: Array<{ qualType: string; startYM: string; endYM: string }>;
+  // Neue Aktivitäts-Zeiträume
+  activePeriods?: Array<{ startYM: string; endYM: string; description?: string }>;
 }
 
 export interface AzubiImportData {
@@ -133,7 +135,14 @@ export class ExcelPersonnelImporter {
       
       // Hole oder erstelle Azubi-Eintrag
       if (!azubiMap.has(key)) {
-        const lehrjahr = row['Lehrjahr'] ? parseInt(String(row['Lehrjahr']), 10) : 1;
+        // Versuche Lehrjahr zu parsen, default 1
+        let lehrjahr = 1;
+        if (row['Lehrjahr']) {
+            const parsed = parseInt(String(row['Lehrjahr']), 10);
+            if (!isNaN(parsed)) {
+                lehrjahr = parsed;
+            }
+        }
         
         azubiMap.set(key, {
           name,
@@ -143,6 +152,16 @@ export class ExcelPersonnelImporter {
         });
         
         console.log(`[ExcelImporter] ✓ Neuer Azubi: ${name}, ${vorname} (Lehrjahr: ${lehrjahr})`);
+      } else {
+        // Update Lehrjahr falls in dieser Zeile vorhanden und im existierenden Eintrag nur Default (1) oder abweichend
+        const azubi = azubiMap.get(key)!;
+        if (row['Lehrjahr']) {
+            const parsed = parseInt(String(row['Lehrjahr']), 10);
+            if (!isNaN(parsed) && parsed !== azubi.lehrjahr) {
+                console.log(`[ExcelImporter] Update Lehrjahr für ${name}: ${azubi.lehrjahr} -> ${parsed}`);
+                azubi.lehrjahr = parsed;
+            }
+        }
       }
       
       const azubi = azubiMap.get(key)!;
@@ -209,7 +228,7 @@ export class ExcelPersonnelImporter {
       // Nur hinzufügen, wenn mindestens startYM vorhanden ist
       if (startYM && startYM.toString().trim() !== '') {
         const startYMStr = String(startYM).trim();
-        const endYMStr = endYM && endYM.toString().trim() !== '' ? String(endYM).trim() : '9999-12';
+        const endYMStr = endYM && endYM.toString().trim() !== '' ? String(endYM).trim() : '';
         
         qualifications.push({
           qualType,
@@ -221,12 +240,32 @@ export class ExcelPersonnelImporter {
       }
     }
 
+    // Extrahiere Aktivitäts-Zeiträume (Aktiv_Von, Aktiv_Bis, Aktiv_Beschreibung)
+    const activePeriods: Array<{ startYM: string; endYM: string; description?: string }> = [];
+    const activeStart = row['Aktiv_Von'];
+    const activeEnd = row['Aktiv_Bis'];
+    const activeDesc = row['Aktiv_Beschreibung'];
+
+    if (activeStart && activeStart.toString().trim() !== '') {
+        const startYMStr = String(activeStart).trim();
+        const endYMStr = activeEnd && activeEnd.toString().trim() !== '' ? String(activeEnd).trim() : '';
+        const descStr = activeDesc ? String(activeDesc).trim() : '';
+        
+        activePeriods.push({
+            startYM: startYMStr,
+            endYM: endYMStr,
+            description: descStr
+        });
+        console.log(`[ExcelImporter] Added active period: ${startYMStr} - ${endYMStr}`);
+    }
+
     return {
       name,
       vorname,
       active: row['Aktiv'] !== undefined ? this.parseBooleanValue(row['Aktiv']) : true,
       teilzeit,
-      qualifications: qualifications.length > 0 ? qualifications : undefined
+      qualifications: qualifications.length > 0 ? qualifications : undefined,
+      activePeriods: activePeriods.length > 0 ? activePeriods : undefined
     };
   }
 
@@ -295,7 +334,7 @@ export class ExcelPersonnelImporter {
           // Erstelle unbefristete Qualifikation ab aktuellem Monat
           await this.db.run(
             'INSERT INTO qualification_periods (personId, qualType, startYM, endYM, active) VALUES (?, ?, ?, ?, ?)',
-            [personId, mapping.qualType, currentYearMonth, '9999-12', 1]
+            [personId, mapping.qualType, currentYearMonth, '', 1]
           );
         } catch (error) {
           console.warn(`[ExcelImporter] Konnte Legacy-Qualifikation ${mapping.qualType} für Person ${personId} nicht migrieren:`, error);
@@ -323,6 +362,7 @@ export class ExcelPersonnelImporter {
       // Wenn replaceExisting = true, lösche alle bestehenden Personal-Daten und Azubis
       if (replaceExisting) {
         await this.db.run('DELETE FROM qualification_periods');
+        await this.db.run('DELETE FROM personnel_active_periods');
         await this.db.run('DELETE FROM personnel');
         await this.db.run('DELETE FROM azubi_periods');
         await this.db.run('DELETE FROM azubis');
@@ -419,6 +459,21 @@ export class ExcelPersonnelImporter {
             await this.migrateLegacyQualifications(personId, person);
           }
 
+          // Importiere Aktivitäts-Zeiträume
+          if (person.activePeriods && person.activePeriods.length > 0) {
+            console.log(`[ExcelImporter] Importing ${person.activePeriods.length} active periods for ${person.name}`);
+            for (const period of person.activePeriods) {
+                try {
+                    await this.db.run(
+                        'INSERT INTO personnel_active_periods (personId, startYM, endYM, description, active) VALUES (?, ?, ?, ?, ?)',
+                        [personId, period.startYM, period.endYM, period.description || '', 1]
+                    );
+                } catch (error) {
+                    console.error(`[ExcelImporter] ✗ Konnte Aktivitäts-Zeitraum für Person ${personId} nicht importieren:`, error);
+                }
+            }
+          }
+
           result.imported++;
         } catch (error) {
           const errorMsg = `Fehler bei ${person.name}, ${person.vorname}: ${error instanceof Error ? error.message : String(error)}`;
@@ -479,10 +534,10 @@ export class ExcelPersonnelImporter {
             for (const period of azubi.periods) {
               try {
                 await this.db.run(
-                  'INSERT INTO azubi_periods (azubi_id, start_date, end_date, description) VALUES (?, ?, ?, ?)',
-                  [azubiId, period.start_date, period.end_date || '', period.description || '']
+                  'INSERT INTO azubi_periods (azubi_id, start_date, end_date, description, lehrjahr) VALUES (?, ?, ?, ?, ?)',
+                  [azubiId, period.start_date, period.end_date || '', period.description || '', azubi.lehrjahr]
                 );
-                console.log(`[ExcelImporter] ✓ Zeitraum importiert: ${period.start_date} - ${period.end_date}`);
+                console.log(`[ExcelImporter] ✓ Zeitraum importiert: ${period.start_date} - ${period.end_date} (Lehrjahr: ${azubi.lehrjahr})`);
               } catch (error) {
                 console.error(`[ExcelImporter] ✗ Konnte Zeitraum für Azubi ${azubiId} nicht importieren:`, error);
               }
@@ -519,13 +574,13 @@ export class ExcelPersonnelImporter {
   static createTemplate(filePath: string): void {
     const templateData = [
       // Header mit neuen Feldern + Legacy-Kompatibilität
-      ['Name', 'Vorname', 'Straße', 'PLZ', 'Stadt', 'Telefon', 'Mobil', 'E-Mail', 'Aktiv', 'Teilzeit*', 'Fahrzeugführer*', 'Fahrzeugführer HLFB*', 'NEF*', 'ITW Maschinist*', 'ITW Fahrzeugführer*'],
+      ['Name', 'Vorname', 'Straße', 'PLZ', 'Stadt', 'Telefon', 'Mobil', 'E-Mail', 'Aktiv', 'Teilzeit*', 'Fahrzeugführer*', 'Fahrzeugführer HLFB*', 'NEF*', 'ITW Maschinist*', 'ITW Fahrzeugführer*', 'Aktiv_Von', 'Aktiv_Bis', 'Aktiv_Beschreibung'],
       // Beispieldaten
-      ['Mustermann', 'Max', 'Musterstraße 1', '12345', 'Musterstadt', '0123/456789', '0170/123456', 'max@beispiel.de', 'ja', 'nein', 'ja', 'nein', 'ja', 'nein', 'nein'],
-      ['Musterfrau', 'Maria', 'Beispielweg 2', '54321', 'Beispielort', '0987/654321', '0171/654321', 'maria@test.de', 'ja', 'ja', 'ja', 'ja', 'nein', 'ja', 'ja'],
-      ['Beispiel', 'Ben', '', '', '', '', '', '', '1', '0', '1', '0', '1', '0', '1'],
+      ['Mustermann', 'Max', 'Musterstraße 1', '12345', 'Musterstadt', '0123/456789', '0170/123456', 'max@beispiel.de', 'ja', 'nein', 'ja', 'nein', 'ja', 'nein', 'nein', '2025-01', '', 'Festanstellung'],
+      ['Musterfrau', 'Maria', 'Beispielweg 2', '54321', 'Beispielort', '0987/654321', '0171/654321', 'maria@test.de', 'ja', 'ja', 'ja', 'ja', 'nein', 'ja', 'ja', '2025-03', '2025-08', 'Befristet'],
+      ['Beispiel', 'Ben', '', '', '', '', '', '', '1', '0', '1', '0', '1', '0', '1', '', '', ''],
       // Hinweiszeile
-      ['', '', '', '', '', '', '', '', '', '* = Legacy-Felder (werden zu Qualifikations-Zeiträumen migriert)', '', '', '', '', '']
+      ['', '', '', '', '', '', '', '', '', '* = Legacy-Felder (werden zu Qualifikations-Zeiträumen migriert)', '', '', '', '', '', 'Format: YYYY-MM', 'Format: YYYY-MM', '']
     ];
 
     const worksheet = XLSX.utils.aoa_to_sheet(templateData);
@@ -539,7 +594,10 @@ export class ExcelPersonnelImporter {
       { width: 18 }, // Fahrzeugführer HLFB
       { width: 8 },  // NEF
       { width: 15 }, // ITW Maschinist
-      { width: 18 }  // ITW Fahrzeugführer
+      { width: 18 }, // ITW Fahrzeugführer
+      { width: 12 }, // Aktiv_Von
+      { width: 12 }, // Aktiv_Bis
+      { width: 20 }  // Aktiv_Beschreibung
     ];
 
     const workbook = XLSX.utils.book_new();
@@ -561,7 +619,7 @@ export class ExcelPersonnelImporter {
       console.log('[ExcelImporter] Available qualification types:', qualTypes.map(q => q.name));
       
       // Erstelle Header mit separaten Spalten für jede Qualifikation
-      const headers = ['Name', 'Vorname', 'Aktiv', 'Teilzeit'];
+      const headers = ['Name', 'Vorname', 'Aktiv', 'Teilzeit', 'Aktiv_Von', 'Aktiv_Bis', 'Aktiv_Beschreibung'];
       const qualHeaders: string[] = [];
       
       for (const qualType of qualTypes) {
@@ -580,6 +638,14 @@ export class ExcelPersonnelImporter {
           'SELECT qualType, startYM, endYM FROM qualification_periods WHERE personId = ? AND active = 1', 
           [person.id]
         );
+        
+        // Lade Aktivitäts-Zeiträume
+        const activePeriods = await this.db.all(
+            'SELECT startYM, endYM, description FROM personnel_active_periods WHERE personId = ? AND active = 1 ORDER BY startYM DESC LIMIT 1',
+            [person.id]
+        );
+        const activePeriod = activePeriods.length > 0 ? activePeriods[0] : null;
+
         console.log(`[ExcelImporter] All qualifications for person ${person.id}:`, allQuals);
         
         // Erstelle Zeile mit Grunddaten
@@ -587,7 +653,10 @@ export class ExcelPersonnelImporter {
           person.name,
           person.vorname || '',
           person.active ? 'ja' : 'nein',
-          person.teilzeit || 0
+          person.teilzeit || 0,
+          activePeriod ? activePeriod.startYM : '',
+          activePeriod ? (activePeriod.endYM || '') : '',
+          activePeriod ? (activePeriod.description || '') : ''
         ];
         
         // Füge für jede Qualifikation die Zeiträume hinzu
@@ -612,7 +681,10 @@ export class ExcelPersonnelImporter {
         { width: 20 }, // Name
         { width: 20 }, // Vorname
         { width: 10 }, // Aktiv
-        { width: 10 }  // Teilzeit
+        { width: 10 }, // Teilzeit
+        { width: 12 }, // Aktiv_Von
+        { width: 12 }, // Aktiv_Bis
+        { width: 20 }  // Aktiv_Beschreibung
       ];
       
       // Füge Spaltenbreiten für jede Qualifikation hinzu (Von/Bis Spalten)

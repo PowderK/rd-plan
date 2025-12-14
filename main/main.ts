@@ -225,9 +225,9 @@ ipcMain.handle('get-personnel', async (_event, includeInactive?: boolean) => {
     return await adapter.getPersonnel(!!includeInactive);
 });
 
-ipcMain.handle('get-personnel-list', async (_event, includeInactive?: boolean) => {
+ipcMain.handle('get-personnel-list', async (_event, includeInactive?: boolean, date?: string) => {
     const adapter = await ensureDatabaseAdapter();
-    return await adapter.getPersonnel(!!includeInactive);
+    return await adapter.getPersonnel(!!includeInactive, date);
 });
 
 ipcMain.handle('add-personnel', async (_event, person: any) => {
@@ -517,6 +517,45 @@ ipcMain.handle('has-qualification-in-month', async (_event, personId: number, qu
 ipcMain.handle('get-active-qualifications', async (_event, personId: number, yearMonth: string) => {
     const adapter = await ensureDatabaseAdapter();
     return await adapter.getActiveQualifications(personId, yearMonth);
+});
+
+// Personnel Active Periods handlers
+ipcMain.handle('get-personnel-active-periods', async (_event, personId: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getPersonnelActivePeriods(personId);
+});
+
+ipcMain.handle('get-all-personnel-active-periods', async () => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getAllPersonnelActivePeriods();
+});
+
+ipcMain.handle('add-personnel-active-period', async (_event, period: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addPersonnelActivePeriod(period);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('update-personnel-active-period', async (_event, id: number, period: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    // Ensure ID is passed correctly
+    period.id = id;
+    await adapter.updatePersonnelActivePeriod(period);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('delete-personnel-active-period', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deletePersonnelActivePeriod(id);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    return true;
+});
+
+ipcMain.handle('is-personnel-active-in-month', async (_event, personId: number, yearMonth: string) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.isPersonnelActiveInMonth(personId, yearMonth);
 });
 
 // Year Plannings handlers

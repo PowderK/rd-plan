@@ -46,6 +46,60 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     const [highlightedPersonKey, setHighlightedPersonKey] = useState<string | null>(null);
     // Ü50-IDs für korrekte Berechnung (analog ValuesPage)
     const [ue50Ids, setUe50Ids] = useState<Set<number>>(new Set());
+    // HLF-B Perioden für korrekte Berechnung
+    const [hlfbPeriodsByPerson, setHlfbPeriodsByPerson] = useState<Record<number, Array<{ startYM: string; endYM?: string }>>>({});
+    // Freigabe-Status pro Monat
+    const [releasedMonths, setReleasedMonths] = useState<boolean[]>(Array(12).fill(false));
+
+    useEffect(() => {
+        const loadHlfbPeriods = async () => {
+            try {
+                const hlfbQualSetting = await (window as any).api.getSetting?.('hlfb_qualification_type');
+                const hlfbQualName = String(hlfbQualSetting || 'FzF HLF B');
+                const allPeriods = await (window as any).api.getAllQualificationPeriods?.();
+                
+                const map: Record<number, Array<{ startYM: string; endYM?: string }>> = {};
+                
+                if (Array.isArray(allPeriods)) {
+                    allPeriods.forEach((p: any) => {
+                        if (p.active && p.qualType === hlfbQualName) {
+                            if (!map[p.personId]) map[p.personId] = [];
+                            map[p.personId].push({ startYM: p.startYM, endYM: p.endYM });
+                        }
+                    });
+                }
+                setHlfbPeriodsByPerson(map);
+            } catch (e) { console.warn('Failed to load HLF-B periods', e); }
+        };
+        loadHlfbPeriods();
+    }, []);
+
+    useEffect(() => {
+        const loadReleased = async () => {
+            try {
+                const status = await Promise.all(months.map(async (_, i) => {
+                    const key = `roster_released_${year}_${i}`;
+                    const val = await (window as any).api.getSetting(key);
+                    return val === '1';
+                }));
+                setReleasedMonths(status);
+            } catch (e) { console.warn('Failed to load released status', e); }
+        };
+        loadReleased();
+    }, [year]);
+
+    const toggleReleased = async () => {
+        const newVal = !releasedMonths[currentMonth];
+        const key = `roster_released_${year}_${currentMonth}`;
+        try {
+            await (window as any).api.setSetting(key, newVal ? '1' : '0');
+            setReleasedMonths(prev => {
+                const next = [...prev];
+                next[currentMonth] = newVal;
+                return next;
+            });
+        } catch (e) { console.warn('Failed to save released status', e); }
+    };
 
     useEffect(() => {
         const loadUe50 = async () => {
@@ -464,10 +518,42 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     return (
         <div key={forceUpdateCounter} style={{ padding: 12 }}>
             {/* Sub‑Header: RTW/ITW Einteilung (Monat) - jetzt oberhalb der Tabs */}
-            <div style={{ margin: '4px 0 10px 0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '4px 0 10px 0' }}>
                 <span style={{ fontSize: 18, fontWeight: 700 }}>
                     {viewMode === 'rtwnef' ? 'RTW Einteilung' : 'ITW Einteilung'} ({months[currentMonth]})
                 </span>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+                    <span style={{ fontSize: 14, color: '#666' }}>Status:</span>
+                    <div style={{ 
+                        position: 'relative', 
+                        width: 40, 
+                        height: 20, 
+                        background: releasedMonths[currentMonth] ? '#28a745' : '#dc3545', 
+                        borderRadius: 10,
+                        transition: 'background 0.3s'
+                    }}>
+                        <div style={{ 
+                            position: 'absolute', 
+                            top: 2, 
+                            left: releasedMonths[currentMonth] ? 22 : 2, 
+                            width: 16, 
+                            height: 16, 
+                            background: 'white', 
+                            borderRadius: '50%', 
+                            transition: 'left 0.3s',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                        }} />
+                    </div>
+                    <input 
+                        type="checkbox" 
+                        checked={releasedMonths[currentMonth]} 
+                        onChange={toggleReleased}
+                        style={{ display: 'none' }}
+                    />
+                    <span style={{ fontSize: 14, fontWeight: 600, color: releasedMonths[currentMonth] ? '#28a745' : '#dc3545', minWidth: 120 }}>
+                        {releasedMonths[currentMonth] ? 'Freigegeben' : 'In Bearbeitung'}
+                    </span>
+                </label>
             </div>
             {/* Monats-Tabs */}
             <div style={{ 
@@ -478,9 +564,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 flexWrap: 'wrap'
             }}>
                 {months.map((m, i) => {
-                    // RTW/NEF = rot (#dc3545), ITW = gelb (#ffc107)
-                    const accentColor = viewMode === 'rtwnef' ? '#dc3545' : '#ffc107';
-                    const hoverColor = viewMode === 'rtwnef' ? '#b02a37' : '#e0a800';
+                    // Status-Farbe: Grün wenn freigegeben, Rot wenn nicht
+                    const isReleased = releasedMonths[i];
+                    const stripeColor = isReleased ? '#28a745' : '#dc3545';
                     
                     return (
                         <button
@@ -490,10 +576,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 padding: '8px 16px',
                                 background: currentMonth === i ? '#f8f9fa' : 'transparent',
                                 border: 'none',
-                                borderBottom: currentMonth === i ? `3px solid ${accentColor}` : '3px solid transparent',
+                                borderBottom: `3px solid ${stripeColor}`,
                                 cursor: 'pointer',
                                 fontWeight: currentMonth === i ? 600 : 400,
-                                color: currentMonth === i ? accentColor : '#6b7280',
+                                color: currentMonth === i ? '#374151' : '#6b7280',
                                 transition: 'all 0.2s',
                                 fontSize: '14px'
                             }}
@@ -659,10 +745,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         azubis,
                         ue50Ids,
                         auswertungByType,
-                        { rtw: rtwVehicles, nef: nefVehicles },
+                        { 
+                            rtw: rtwVehicles, 
+                            nef: nefVehicles.map(n => ({ ...n, occupancyMode: n.occupancy_mode })) 
+                        },
                         { rtwActs: rtwActivations, nefActs: nefActivations },
                         department,
-                        deptPatternSeqs || []
+                        deptPatternSeqs || [],
+                        hlfbPeriodsByPerson
                     );
 
                     // 3. Map Targets to MonthTabs format
@@ -692,6 +782,63 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
 
                     // Helper to get cell from local or global roster
                     const getCell = (key: string, iso: string) => (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
+
+                    // Berechne kumulative Soll/Ist-Werte bis zum aktuellen Monat (einschließlich)
+                    const targetCumulativeMap: Record<string, number> = {};
+                    const drivenCumulativeMap: Record<string, number> = {};
+                    
+                    for (const p of personnel) {
+                        const key = `p_${p.id}`;
+                        const t = targetsByPersonId[p.id] || Array(12).fill(0);
+                        
+                        // Summiere Soll-Schichten von Januar bis aktuellen Monat (einschließlich)
+                        let cumTarget = 0;
+                        for (let m = 0; m <= currentMonth; m++) {
+                            cumTarget += t[m];
+                        }
+                        targetCumulativeMap[key] = cumTarget;
+                        
+                        // Summiere Ist-Schichten von Januar bis aktuellen Monat (einschließlich)
+                        // Verwende die gleiche Logik wie bei der monatlichen Zählung (RTW/NEF nur an Abteilungstagen)
+                        let cumDriven = 0;
+                        for (let mIdx = 0; mIdx <= currentMonth; mIdx++) {
+                            const dim = new Date(year, mIdx + 1, 0).getDate();
+                            
+                            // Ermittle Abteilungstage für diesen Monat
+                            const deptDays: string[] = [];
+                            for (let i = 1; i <= dim; i++) {
+                                const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0,10);
+                                const seqs = [...(deptPatternSeqs || [])].sort((a,b) => a.startDate.localeCompare(b.startDate));
+                                let active = seqs[0];
+                                for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
+                                const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
+                                const cur = new Date(iso + 'T00:00:00Z');
+                                const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000*60*60*24));
+                                const pat = active?.pattern || [];
+                                const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
+                                if (depDay && String(department) === depDay) deptDays.push(iso);
+                            }
+                            
+                            // Zähle RTW/NEF nur an Abteilungstagen
+                            for (const iso of deptDays) {
+                                const cell = getCell(key, iso);
+                                const t = String(cell?.type || '');
+                                if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) cumDriven += 1;
+                                else if (/^nef(\d+)?_assist$/.test(t)) cumDriven += 2;
+                            }
+                            
+                            // ITW zählt an allen Tagen des Monats
+                            for (let i = 1; i <= dim; i++) {
+                                const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0,10);
+                                const cell = getCell(key, iso);
+                                const t = String(cell?.type || '');
+                                if (t.startsWith('itw_row_')) {
+                                    cumDriven += 1;
+                                }
+                            }
+                        }
+                        drivenCumulativeMap[key] = cumDriven;
+                    }
 
                     for (const p of (personnel || [])) {
                         const key = `p_${p.id}`;
@@ -750,13 +897,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             if (/^rtw\d+_nacht_(1|2)$/.test(t)) nachtCntM += 1;
                             else if (/^nef(\d+)?_assist$/.test(t)) { cntM += 2; nefCntM += 2; }
                         }
-                        // ITW counts (all days)
+                        // ITW counts (all days) - zählt sowohl für cntM als auch für itwCntM
                         for (const iso of allMonthDays) {
                             const cell = getCell(key, iso);
                             const t = String(cell?.type || '');
+                            
+                            // Zähle ITW-Schichten wenn diese Person eingeteilt ist
                             if (t.startsWith('itw_row_')) {
-                                cntM += 1;
-                                itwCntM += 1;
+                                cntM += 1; // Zählt für Gesamtanzeige "Ist"
+                                itwCntM += 1; // Zählt für ITW-Spalte
                             }
                         }
                         perPersonAssignedWeightedInMonth[key] = cntM;
@@ -772,7 +921,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         perPersonAssignedWeightedInMonth,
                         perPersonNefInMonth,
                         perPersonItwInMonth,
-                        perPersonRtwTagNightYear
+                        perPersonRtwTagNightYear,
+                        targetCumulativeMap,
+                        drivenCumulativeMap
                     };
                 };
                 
@@ -1064,7 +1215,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             perPersonAssignedWeightedInMonth,
                             perPersonNefInMonth,
                             perPersonItwInMonth,
-                            perPersonRtwTagNightYear
+                            perPersonRtwTagNightYear,
+                            targetCumulativeMap,
+                            drivenCumulativeMap
                         } = (window as any).__sharedTargets || {};
 
                         const items = (personnel || []).map(p => {
@@ -1080,10 +1233,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 const dy = drivenYearMap[key] || 0;
                                 return ty - dy;
                             })();
+                            // Kumulative Differenz bis aktuellen Monat
+                            const cumTarget = targetCumulativeMap?.[key] || 0;
+                            const cumDriven = drivenCumulativeMap?.[key] || 0;
+                            const cumDiff = cumTarget - cumDriven;
                             const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
                             const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                             const ue50 = (p as any).ue50 === 1;
-                            return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, teilzeit, hlfb, ue50 } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, teilzeit: number, hlfb: boolean, ue50: boolean };
+                            return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, cumDiff, teilzeit, hlfb, ue50 } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, cumDiff: number, teilzeit: number, hlfb: boolean, ue50: boolean };
                         });
                         // Farbliche Hervorhebung: nur Personen mit Monats-Soll > 0 berücksichtigen, Rest (Jahr) auf 100%-Äquivalent normalisieren
                         const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
@@ -1189,7 +1346,56 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                             >
                                                 {it.name}
                                             </span>
-                                            <span className={styles.sidebarVal}>{(it.target === '' ? '–' : it.target) + ' | ' + it.count}</span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                <span className={styles.sidebarVal}>{(it.target === '' ? '–' : it.target) + ' | ' + it.count}</span>
+                                                {/* Waage-Anzeige für kumulative Differenz */}
+                                                <div style={{ position: 'relative', width: 40, height: 8, background: '#eef2f7', borderRadius: 4 }}>
+                                                    <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1', zIndex: 1 }} />
+                                                    {(() => {
+                                                        const diff = it.cumDiff;
+                                                        // cumDiff = cumTarget - cumDriven
+                                                        // Negativ = zu wenig Ist eingeteilt (Soll < Ist, Überdeckung) → grün, nach rechts
+                                                        // Positiv = zu viel Soll (Soll > Ist, Unterdeckung) → rot, nach links
+                                                        const isNegative = diff < 0;
+                                                        const absVal = Math.abs(diff);
+                                                        // Maximale Balkenbreite = 50% (= 20px bei 40px Container)
+                                                        const maxVal = 5; // Skalierung: 5 Schichten = 100% der Balkenhälfte
+                                                        const percentage = Math.min(1, absVal / maxVal);
+                                                        const width = percentage * 50; // 50% des Containers
+                                                        
+                                                        if (diff > 0) {
+                                                            // Roter Balken nach links (Unterdeckung: Soll > Ist, zu wenig eingeteilt)
+                                                            return (
+                                                                <div style={{ 
+                                                                    position: 'absolute', 
+                                                                    right: '50%', 
+                                                                    width: `${width}%`, 
+                                                                    top: 0, 
+                                                                    bottom: 0, 
+                                                                    background: '#ef4444', 
+                                                                    borderTopLeftRadius: 4, 
+                                                                    borderBottomLeftRadius: 4 
+                                                                }} />
+                                                            );
+                                                        } else if (diff < 0) {
+                                                            // Grüner Balken nach rechts (Überdeckung: Ist > Soll, zu viel eingeteilt)
+                                                            return (
+                                                                <div style={{ 
+                                                                    position: 'absolute', 
+                                                                    left: '50%', 
+                                                                    width: `${width}%`, 
+                                                                    top: 0, 
+                                                                    bottom: 0, 
+                                                                    background: '#34c759', 
+                                                                    borderTopRightRadius: 4, 
+                                                                    borderBottomRightRadius: 4 
+                                                                }} />
+                                                            );
+                                                        }
+                                                        return null; // diff === 0: kein Balken
+                                                    })()}
+                                                </div>
+                                            </div>
                                             <span className={styles.sidebarVal}>{it.nef}</span>
                                             <span className={styles.sidebarVal}>{it.itw}</span>
                                                 {!it.ue50 && <span className={styles.sidebarVal} style={restStyle}>{Number.isFinite(it.rest) ? it.rest : '–'}</span>}
@@ -1447,7 +1653,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             perPersonAssignedWeightedInMonth,
                             perPersonNefInMonth,
                             perPersonItwInMonth,
-                            perPersonRtwTagNightYear
+                            perPersonRtwTagNightYear,
+                            targetCumulativeMap,
+                            drivenCumulativeMap
                         } = sharedTargets;
                         const items = (personnel || []).map(p => {
                             const key = `p_${p.id}`;
@@ -1461,10 +1669,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 const dy = drivenYearMap[key] || 0;
                                 return ty - dy;
                             })();
+                            const cumTarget = targetCumulativeMap?.[key] || 0;
+                            const cumDriven = drivenCumulativeMap?.[key] || 0;
+                            const cumDiff = cumTarget - cumDriven;
                             const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
                             const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                             const ue50 = (p as any).ue50 === 1;
-                            return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, teilzeit, hlfb, ue50 } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, teilzeit: number, hlfb: boolean, ue50: boolean };
+                            return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, cumDiff, teilzeit, hlfb, ue50 } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, cumDiff: number, teilzeit: number, hlfb: boolean, ue50: boolean };
                         });
                         const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
                         const eligible = itemsWithIndex.filter(it => typeof it.target === 'number' && (it.target as number) > 0);
@@ -1563,7 +1774,51 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                 >
                                                     {it.name}
                                                 </span>
-                                                <span className={styles.sidebarVal}>{(it.target === '' ? '–' : it.target) + ' | ' + it.count}</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                    <span className={styles.sidebarVal}>{(it.target === '' ? '–' : it.target) + ' | ' + it.count}</span>
+                                                    {/* Waage-Anzeige für kumulative Differenz */}
+                                                    <div style={{ position: 'relative', width: 40, height: 8, background: '#eef2f7', borderRadius: 4 }}>
+                                                        <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1', zIndex: 1 }} />
+                                                        {(() => {
+                                                            const diff = it.cumDiff;
+                                                            const absVal = Math.abs(diff);
+                                                            const maxVal = 5;
+                                                            const percentage = Math.min(1, absVal / maxVal);
+                                                            const width = percentage * 50;
+                                                            
+                                                            if (diff > 0) {
+                                                                // Roter Balken nach links (Unterdeckung: Soll > Ist)
+                                                                return (
+                                                                    <div style={{ 
+                                                                        position: 'absolute', 
+                                                                        right: '50%', 
+                                                                        width: `${width}%`, 
+                                                                        top: 0, 
+                                                                        bottom: 0, 
+                                                                        background: '#ef4444', 
+                                                                        borderTopLeftRadius: 4, 
+                                                                        borderBottomLeftRadius: 4 
+                                                                    }} />
+                                                                );
+                                                            } else if (diff < 0) {
+                                                                // Grüner Balken nach rechts (Überdeckung: Ist > Soll)
+                                                                return (
+                                                                    <div style={{ 
+                                                                        position: 'absolute', 
+                                                                        left: '50%', 
+                                                                        width: `${width}%`, 
+                                                                        top: 0, 
+                                                                        bottom: 0, 
+                                                                        background: '#34c759', 
+                                                                        borderTopRightRadius: 4, 
+                                                                        borderBottomRightRadius: 4 
+                                                                    }} />
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
+                                                    </div>
+                                                </div>
                                                 <span className={styles.sidebarVal}>{it.nef}</span>
                                                 <span className={styles.sidebarVal}>{it.itw}</span>
                                                 {!it.ue50 && <span className={styles.sidebarVal} style={restStyle}>{Number.isFinite(it.rest) ? it.rest : '–'}</span>}

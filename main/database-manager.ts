@@ -15,7 +15,7 @@ export interface DatabaseConfig {
 }
 
 export interface DatabaseAdapter {
-  getPersonnel(includeInactive?: boolean): Promise<any[]>;
+  getPersonnel(includeInactive?: boolean, date?: string): Promise<any[]>;
   setPersonnelActive(id: number, active: boolean): Promise<void>;
   getPersonById(id: number): Promise<any | null>;
   addPersonnel(person: any): Promise<any>;
@@ -51,6 +51,14 @@ export interface DatabaseAdapter {
   hasQualificationInMonth(personId: number, qualType: string, yearMonth: string): Promise<boolean>;
   getActiveQualifications(personId: number, yearMonth: string): Promise<any[]>;
   validateQualificationForShift(personId: number, shiftValue: string, date: string, cellType?: string): Promise<any>;
+
+  // Personnel Active Periods
+  getPersonnelActivePeriods(personId: number): Promise<any[]>;
+  getAllPersonnelActivePeriods(): Promise<any[]>;
+  addPersonnelActivePeriod(period: any): Promise<void>;
+  updatePersonnelActivePeriod(period: any): Promise<void>;
+  deletePersonnelActivePeriod(id: number): Promise<void>;
+  isPersonnelActiveInMonth(personId: number, yearMonth: string): Promise<boolean>;
   
   // Qualification Types Management
   getQualificationTypes(activeOnly?: boolean): Promise<any[]>;
@@ -170,9 +178,9 @@ export interface DatabaseAdapter {
 class SQLiteAdapter implements DatabaseAdapter {
   constructor(private db: AsyncDB) {}
   
-  async getPersonnel(includeInactive?: boolean) {
+  async getPersonnel(includeInactive?: boolean, date?: string) {
     const { getPersonnel } = await import('./database');
-    return getPersonnel(this.db, !!includeInactive);
+    return getPersonnel(this.db, !!includeInactive, date);
   }
   async setPersonnelActive(id: number, active: boolean) {
     const { setPersonnelActive } = await import('./database');
@@ -309,6 +317,37 @@ class SQLiteAdapter implements DatabaseAdapter {
   async validateQualificationForShift(personId: number, shiftValue: string, date: string, cellType?: string) {
     const { validateQualificationForShift } = await import('./database');
     return validateQualificationForShift(this.db, personId, shiftValue, date, cellType);
+  }
+
+  // Personnel Active Periods
+  async getPersonnelActivePeriods(personId: number) {
+    const { getPersonnelActivePeriods } = await import('./database');
+    return getPersonnelActivePeriods(this.db, personId);
+  }
+  
+  async getAllPersonnelActivePeriods() {
+    const { getAllPersonnelActivePeriods } = await import('./database');
+    return getAllPersonnelActivePeriods(this.db);
+  }
+  
+  async addPersonnelActivePeriod(period: any) {
+    const { addPersonnelActivePeriod } = await import('./database');
+    return addPersonnelActivePeriod(this.db, period);
+  }
+  
+  async updatePersonnelActivePeriod(period: any) {
+    const { updatePersonnelActivePeriod } = await import('./database');
+    return updatePersonnelActivePeriod(this.db, period);
+  }
+  
+  async deletePersonnelActivePeriod(id: number) {
+    const { deletePersonnelActivePeriod } = await import('./database');
+    return deletePersonnelActivePeriod(this.db, id);
+  }
+
+  async isPersonnelActiveInMonth(personId: number, yearMonth: string) {
+    const { isPersonnelActiveInMonth } = await import('./database');
+    return isPersonnelActiveInMonth(this.db, personId, yearMonth);
   }
 
   async getQualificationTypes(activeOnly?: boolean) {
@@ -1136,7 +1175,82 @@ export class DatabaseManager {
         );
 
         CREATE INDEX IF NOT EXISTS idx_itw_vehicle_periods_vehicle ON itw_vehicle_periods (vehicleId);
+
+        CREATE TABLE IF NOT EXISTS qualification_types (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT,
+            category TEXT,
+            active INTEGER DEFAULT 1,
+            sort INTEGER DEFAULT 0,
+            excludeFromStats INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS qualification_periods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            personId INTEGER NOT NULL,
+            qualType TEXT NOT NULL,
+            startYM TEXT NOT NULL,
+            endYM TEXT,
+            active INTEGER DEFAULT 1,
+            FOREIGN KEY (personId) REFERENCES personnel (id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_qualification_periods_person ON qualification_periods (personId);
+        CREATE INDEX IF NOT EXISTS idx_qualification_periods_type ON qualification_periods (qualType);
+        CREATE INDEX IF NOT EXISTS idx_qualification_periods_period ON qualification_periods (startYM, endYM);
+
+        CREATE TABLE IF NOT EXISTS personnel_active_periods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            personId INTEGER NOT NULL,
+            startYM TEXT NOT NULL,
+            endYM TEXT,
+            description TEXT,
+            active INTEGER DEFAULT 1,
+            FOREIGN KEY (personId) REFERENCES personnel (id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_personnel_active_periods_person ON personnel_active_periods (personId);
+        CREATE INDEX IF NOT EXISTS idx_personnel_active_periods_period ON personnel_active_periods (startYM, endYM);
+
+        CREATE TABLE IF NOT EXISTS vehicle_positions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vehicleType TEXT NOT NULL,
+            vehicleId INTEGER NOT NULL,
+            positionName TEXT NOT NULL,
+            qualificationTypeId INTEGER,
+            sort INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (qualificationTypeId) REFERENCES qualification_types(id) ON DELETE SET NULL,
+            UNIQUE(vehicleType, vehicleId, positionName)
+        );
+        CREATE INDEX IF NOT EXISTS idx_vehicle_positions_vehicle ON vehicle_positions (vehicleType, vehicleId);
+        CREATE INDEX IF NOT EXISTS idx_vehicle_positions_qual ON vehicle_positions (qualificationTypeId);
     `);
+
+    // Initialize default qualification types if empty
+    try {
+        const count = await db.get('SELECT COUNT(*) as count FROM qualification_types');
+        if (count && count.count === 0) {
+            const defaultQualifications = [
+                { name: 'Fahrzeugführer', description: 'Grundausbildung Fahrzeugführer', category: 'Fahrzeugführung', sort: 1 },
+                { name: 'Fahrzeugführer HLF-B', description: 'Hilfeleistungslöschfahrzeug B', category: 'Fahrzeugführung', sort: 2 },
+                { name: 'NEF', description: 'Notarzteinsatzfahrzeug', category: 'Notfall', sort: 3 },
+                { name: 'ITW Maschinist', description: 'Intensivtransportwagen Maschinist', category: 'Transport', sort: 4 },
+                { name: 'ITW Fahrzeugführer', description: 'Intensivtransportwagen Fahrzeugführer', category: 'Transport', sort: 5 },
+                { name: 'Atemschutz', description: 'Atemschutzgeräteträger', category: 'Sicherheit', sort: 6 },
+                { name: 'Höhenrettung', description: 'Höhenrettung und Abseilmaßnahmen', category: 'Rettung', sort: 7 },
+                { name: 'Technische Hilfeleistung', description: 'Technische Hilfeleistung bei Unfällen', category: 'Technik', sort: 8 }
+            ];
+
+            for (const qual of defaultQualifications) {
+                await db.run(
+                    'INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, 1, ?)',
+                    [qual.name, qual.description, qual.category, qual.sort]
+                );
+            }
+            console.log('[DatabaseManager] Initialized default qualification types');
+        }
+    } catch (e) {
+        console.warn('[DatabaseManager] Error initializing qualification types:', e);
+    }
     
     console.log('[DatabaseManager] SQLite schema initialized');
     // --- Lightweight migrations to ensure columns exist ---

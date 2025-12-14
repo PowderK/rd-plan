@@ -44,7 +44,7 @@ contextBridge.exposeInMainWorld('api', {
     openAddPersonWindow: () => ipcRenderer.send('open-add-person-window'),
     openEditPersonWindow: (id: number) => ipcRenderer.send('open-edit-person-window', id),
     openConfirmDeleteWindow: (id: number, type: string = 'person') => ipcRenderer.send('open-confirm-delete-window', id, type),
-    getPersonnelList: (includeInactive?: boolean) => ipcRenderer.invoke('get-personnel-list', includeInactive === true),
+    getPersonnelList: (includeInactive?: boolean, date?: string) => ipcRenderer.invoke('get-personnel-list', includeInactive === true, date),
     addPerson: (person: any) => ipcRenderer.invoke('add-person', person),
     updatePerson: (person: any) => ipcRenderer.invoke('update-person', person),
     deletePerson: (id: number) => ipcRenderer.invoke('delete-person', id),
@@ -90,6 +90,14 @@ contextBridge.exposeInMainWorld('api', {
     hasQualificationInMonth: (personId: number, qualType: string, yearMonth: string) => ipcRenderer.invoke('has-qualification-in-month', personId, qualType, yearMonth),
     validateQualificationForShift: (personId: number, shiftValue: string, date: string, cellType?: string) => ipcRenderer.invoke('validate-qualification-for-shift', personId, shiftValue, date, cellType),
     getActiveQualifications: (personId: number, yearMonth: string) => ipcRenderer.invoke('get-active-qualifications', personId, yearMonth),
+    
+    // Personnel Active Periods
+    getPersonnelActivePeriods: (personId: number) => ipcRenderer.invoke('get-personnel-active-periods', personId),
+    getAllPersonnelActivePeriods: () => ipcRenderer.invoke('get-all-personnel-active-periods'),
+    addPersonnelActivePeriod: (period: any) => ipcRenderer.invoke('add-personnel-active-period', period),
+    updatePersonnelActivePeriod: (id: number, period: any) => ipcRenderer.invoke('update-personnel-active-period', id, period),
+    deletePersonnelActivePeriod: (id: number) => ipcRenderer.invoke('delete-personnel-active-period', id),
+    isPersonnelActiveInMonth: (personId: number, yearMonth: string) => ipcRenderer.invoke('is-personnel-active-in-month', personId, yearMonth),
     
     // Qualification Types Management  
     getQualificationTypes: (activeOnly?: boolean) => ipcRenderer.invoke('get-qualification-types', activeOnly),

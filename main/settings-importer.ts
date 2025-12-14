@@ -21,6 +21,8 @@ export interface SettingsExportData {
   rtwVehiclePeriods: Array<{ id: number; vehicleId: number; startYM: string; endYM: string | null; active: boolean }>;
   nefVehiclePeriods: Array<{ id: number; vehicleId: number; startYM: string; endYM: string | null; active: boolean }>;
   itwVehiclePeriods: Array<{ id: number; vehicleId: number; startYM: string; endYM: string | null; active: boolean }>;
+  personnelActivePeriods: Array<{ id: number; personId: number; startYM: string; endYM: string | null; description: string; active: boolean }>;
+  qualificationPeriods: Array<{ id: number; personId: number; qualType: string; startYM: string; endYM: string | null; active: boolean }>;
 }
 
 export interface SettingsImportResult {
@@ -39,6 +41,8 @@ export interface SettingsImportResult {
     rtwVehiclePeriods: number;
     nefVehiclePeriods: number;
     itwVehiclePeriods: number;
+    personnelActivePeriods: number;
+    qualificationPeriods: number;
   };
   skipped: number;
   errors: string[];
@@ -67,6 +71,8 @@ export class SettingsImporter {
       const rtwVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM rtw_vehicle_periods ORDER BY vehicleId, startYM');
       const nefVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM nef_vehicle_periods ORDER BY vehicleId, startYM');
       const itwVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM itw_vehicle_periods ORDER BY vehicleId, startYM');
+      const personnelActivePeriods = await this.db.all('SELECT id, personId, startYM, endYM, description, active FROM personnel_active_periods ORDER BY personId, startYM');
+      const qualificationPeriods = await this.db.all('SELECT id, personId, qualType, startYM, endYM, active FROM qualification_periods ORDER BY personId, qualType, startYM');
 
       const exportData: SettingsExportData = {
         metadata: {
@@ -86,7 +92,9 @@ export class SettingsImporter {
         vehiclePositions: vehiclePositions || [],
         rtwVehiclePeriods: rtwVehiclePeriods || [],
         nefVehiclePeriods: nefVehiclePeriods || [],
-        itwVehiclePeriods: itwVehiclePeriods || []
+        itwVehiclePeriods: itwVehiclePeriods || [],
+        personnelActivePeriods: personnelActivePeriods || [],
+        qualificationPeriods: qualificationPeriods || []
       };
 
       // Als JSON speichern
@@ -117,6 +125,8 @@ export class SettingsImporter {
       const rtwVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM rtw_vehicle_periods ORDER BY vehicleId, startYM');
       const nefVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM nef_vehicle_periods ORDER BY vehicleId, startYM');
       const itwVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM itw_vehicle_periods ORDER BY vehicleId, startYM');
+      const personnelActivePeriods = await this.db.all('SELECT id, personId, startYM, endYM, description, active FROM personnel_active_periods ORDER BY personId, startYM');
+      const qualificationPeriods = await this.db.all('SELECT id, personId, qualType, startYM, endYM, active FROM qualification_periods ORDER BY personId, qualType, startYM');
 
       // Erstelle Workbook
       const wb = XLSX.utils.book_new();
@@ -260,6 +270,26 @@ export class SettingsImporter {
         XLSX.utils.book_append_sheet(wb, itwPWs, 'ITW-Zeiträume');
       }
 
+      // PersonnelActivePeriods-Sheet
+      if (personnelActivePeriods && personnelActivePeriods.length > 0) {
+        const papData = [
+          ['ID', 'PersonID', 'StartYM', 'EndYM', 'Beschreibung', 'Aktiv'],
+          ...personnelActivePeriods.map(p => [p.id, p.personId, p.startYM, p.endYM || '', p.description || '', p.active ? 'Ja' : 'Nein'])
+        ];
+        const papWs = XLSX.utils.aoa_to_sheet(papData);
+        XLSX.utils.book_append_sheet(wb, papWs, 'Personal-Aktivitätszeiträume');
+      }
+
+      // QualificationPeriods-Sheet
+      if (qualificationPeriods && qualificationPeriods.length > 0) {
+        const qpData = [
+          ['ID', 'PersonID', 'Qualifikation', 'StartYM', 'EndYM', 'Aktiv'],
+          ...qualificationPeriods.map(p => [p.id, p.personId, p.qualType, p.startYM, p.endYM || '', p.active ? 'Ja' : 'Nein'])
+        ];
+        const qpWs = XLSX.utils.aoa_to_sheet(qpData);
+        XLSX.utils.book_append_sheet(wb, qpWs, 'Qualifikations-Zeiträume');
+      }
+
       // Speichere Excel-Datei
       XLSX.writeFile(wb, filePath);
       console.log('[SettingsImporter] Settings exported to Excel:', filePath);
@@ -288,10 +318,20 @@ export class SettingsImporter {
         vehiclePositions: 0,
         rtwVehiclePeriods: 0,
         nefVehiclePeriods: 0,
-        itwVehiclePeriods: 0
+        itwVehiclePeriods: 0,
+        personnelActivePeriods: 0,
+        qualificationPeriods: 0
       },
       skipped: 0,
       errors: []
+    };
+
+    // ID-Mappings für Referenzen (OldID -> NewID)
+    const idMappings = {
+      rtwVehicles: new Map<number, number>(),
+      nefVehicles: new Map<number, number>(),
+      itwVehicles: new Map<number, number>(),
+      qualificationTypes: new Map<number, number>()
     };
 
     try {
@@ -413,21 +453,28 @@ export class SettingsImporter {
           
           for (const vehicle of data.rtwVehicles) {
             if (vehicle.name) {
+              let newId: number | undefined;
               if (replaceExisting) {
-                await this.db.run(`
+                const res = await this.db.run(`
                   INSERT INTO rtw_vehicles (name, sort, archived_year) VALUES (?, ?, ?)
                 `, [vehicle.name, vehicle.sort || 0, vehicle.archived_year || null]);
+                newId = Number(res.lastInsertRowid);
                 result.imported.rtwVehicles++;
               } else {
                 const existing = await this.db.get('SELECT id FROM rtw_vehicles WHERE name = ?', [vehicle.name]);
                 if (!existing) {
-                  await this.db.run(`
+                  const res = await this.db.run(`
                     INSERT INTO rtw_vehicles (name, sort, archived_year) VALUES (?, ?, ?)
                   `, [vehicle.name, vehicle.sort || 0, vehicle.archived_year || null]);
+                  newId = Number(res.lastInsertRowid);
                   result.imported.rtwVehicles++;
                 } else {
+                  newId = existing.id;
                   result.skipped++;
                 }
+              }
+              if (newId && vehicle.id) {
+                idMappings.rtwVehicles.set(vehicle.id, newId);
               }
             }
           }
@@ -441,21 +488,28 @@ export class SettingsImporter {
           
           for (const vehicle of data.nefVehicles) {
             if (vehicle.name) {
+              let newId: number | undefined;
               if (replaceExisting) {
-                await this.db.run(`
+                const res = await this.db.run(`
                   INSERT INTO nef_vehicles (name, sort, archived_year, occupancy_mode) VALUES (?, ?, ?, ?)
                 `, [vehicle.name, vehicle.sort || 0, vehicle.archived_year || null, vehicle.occupancy_mode || '24h']);
+                newId = Number(res.lastInsertRowid);
                 result.imported.nefVehicles++;
               } else {
                 const existing = await this.db.get('SELECT id FROM nef_vehicles WHERE name = ?', [vehicle.name]);
                 if (!existing) {
-                  await this.db.run(`
+                  const res = await this.db.run(`
                     INSERT INTO nef_vehicles (name, sort, archived_year, occupancy_mode) VALUES (?, ?, ?, ?)
                   `, [vehicle.name, vehicle.sort || 0, vehicle.archived_year || null, vehicle.occupancy_mode || '24h']);
+                  newId = Number(res.lastInsertRowid);
                   result.imported.nefVehicles++;
                 } else {
+                  newId = existing.id;
                   result.skipped++;
                 }
+              }
+              if (newId && vehicle.id) {
+                idMappings.nefVehicles.set(vehicle.id, newId);
               }
             }
           }
@@ -469,21 +523,28 @@ export class SettingsImporter {
           
           for (const vehicle of data.itwVehicles) {
             if (vehicle.name) {
+              let newId: number | undefined;
               if (replaceExisting) {
-                await this.db.run(`
+                const res = await this.db.run(`
                   INSERT INTO itw_vehicles (name, sort) VALUES (?, ?)
                 `, [vehicle.name, vehicle.sort || 0]);
+                newId = Number(res.lastInsertRowid);
                 result.imported.itwVehicles++;
               } else {
                 const existing = await this.db.get('SELECT id FROM itw_vehicles WHERE name = ?', [vehicle.name]);
                 if (!existing) {
-                  await this.db.run(`
+                  const res = await this.db.run(`
                     INSERT INTO itw_vehicles (name, sort) VALUES (?, ?)
                   `, [vehicle.name, vehicle.sort || 0]);
+                  newId = Number(res.lastInsertRowid);
                   result.imported.itwVehicles++;
                 } else {
+                  newId = existing.id;
                   result.skipped++;
                 }
+              }
+              if (newId && vehicle.id) {
+                idMappings.itwVehicles.set(vehicle.id, newId);
               }
             }
           }
@@ -499,24 +560,31 @@ export class SettingsImporter {
           
           for (const qualType of data.qualificationTypes) {
             if (qualType.name && qualType.category) {
+              let newId: number | undefined;
               if (replaceExisting) {
-                await this.db.run(`
+                const res = await this.db.run(`
                   INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, ?, ?)
-                `, [qualType.name, qualType.description || '', qualType.category, qualType.active !== false, qualType.sort || 0]);
+                `, [qualType.name, qualType.description || '', qualType.category, qualType.active !== false ? 1 : 0, qualType.sort || 0]);
+                newId = Number(res.lastInsertRowid);
                 result.imported.qualificationTypes++;
                 console.log(`[SettingsImporter] ✓ Qualifikation importiert: ${qualType.name} (${qualType.category})`);
               } else {
                 const existing = await this.db.get('SELECT id FROM qualification_types WHERE name = ? AND category = ?', [qualType.name, qualType.category]);
                 if (!existing) {
-                  await this.db.run(`
+                  const res = await this.db.run(`
                     INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, ?, ?)
-                  `, [qualType.name, qualType.description || '', qualType.category, qualType.active !== false, qualType.sort || 0]);
+                  `, [qualType.name, qualType.description || '', qualType.category, qualType.active !== false ? 1 : 0, qualType.sort || 0]);
+                  newId = Number(res.lastInsertRowid);
                   result.imported.qualificationTypes++;
                   console.log(`[SettingsImporter] ✓ Qualifikation importiert: ${qualType.name} (${qualType.category})`);
                 } else {
+                  newId = existing.id;
                   result.skipped++;
                   console.log(`[SettingsImporter] ⊘ Qualifikation übersprungen (existiert): ${qualType.name}`);
                 }
+              }
+              if (newId && qualType.id) {
+                idMappings.qualificationTypes.set(qualType.id, newId);
               }
             } else {
               console.log(`[SettingsImporter] ✗ Qualifikation ungültig (fehlt name oder category):`, qualType);
@@ -535,17 +603,29 @@ export class SettingsImporter {
           
           for (const vp of data.vehiclePositions) {
             if (vp.vehicleType && vp.vehicleId && vp.positionName) {
+              // Resolve Vehicle ID
+              let mappedVehicleId = vp.vehicleId;
+              if (vp.vehicleType === 'rtw') mappedVehicleId = idMappings.rtwVehicles.get(vp.vehicleId) || vp.vehicleId;
+              else if (vp.vehicleType === 'nef') mappedVehicleId = idMappings.nefVehicles.get(vp.vehicleId) || vp.vehicleId;
+              else if (vp.vehicleType === 'itw') mappedVehicleId = idMappings.itwVehicles.get(vp.vehicleId) || vp.vehicleId;
+
+              // Resolve Qualification ID
+              let mappedQualId = vp.qualificationTypeId;
+              if (vp.qualificationTypeId) {
+                 mappedQualId = idMappings.qualificationTypes.get(vp.qualificationTypeId) || vp.qualificationTypeId;
+              }
+
               if (replaceExisting) {
                 await this.db.run(`
                   INSERT INTO vehicle_positions (vehicleType, vehicleId, positionName, qualificationTypeId, sort) VALUES (?, ?, ?, ?, ?)
-                `, [vp.vehicleType, vp.vehicleId, vp.positionName, vp.qualificationTypeId || null, vp.sort || 0]);
+                `, [vp.vehicleType, mappedVehicleId, vp.positionName, mappedQualId || null, vp.sort || 0]);
                 result.imported.vehiclePositions++;
               } else {
-                const existing = await this.db.get('SELECT id FROM vehicle_positions WHERE vehicleType = ? AND vehicleId = ? AND positionName = ?', [vp.vehicleType, vp.vehicleId, vp.positionName]);
+                const existing = await this.db.get('SELECT id FROM vehicle_positions WHERE vehicleType = ? AND vehicleId = ? AND positionName = ?', [vp.vehicleType, mappedVehicleId, vp.positionName]);
                 if (!existing) {
                   await this.db.run(`
                     INSERT INTO vehicle_positions (vehicleType, vehicleId, positionName, qualificationTypeId, sort) VALUES (?, ?, ?, ?, ?)
-                  `, [vp.vehicleType, vp.vehicleId, vp.positionName, vp.qualificationTypeId || null, vp.sort || 0]);
+                  `, [vp.vehicleType, mappedVehicleId, vp.positionName, mappedQualId || null, vp.sort || 0]);
                   result.imported.vehiclePositions++;
                 } else {
                   result.skipped++;
@@ -563,19 +643,21 @@ export class SettingsImporter {
           
           for (const p of data.rtwVehiclePeriods) {
             if (p.vehicleId && p.startYM) {
+              const mappedVehicleId = idMappings.rtwVehicles.get(p.vehicleId) || p.vehicleId;
+
               if (replaceExisting) {
                 await this.db.run(`
                   INSERT INTO rtw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, ?, ?)
-                `, [p.vehicleId, p.startYM, p.endYM || null, p.active !== false]);
+                `, [mappedVehicleId, p.startYM, p.endYM || null, p.active !== false ? 1 : 0]);
                 result.imported.rtwVehiclePeriods++;
               } else {
                 // Check for duplicate period? Maybe just insert if not exact match?
                 // For simplicity, check if same vehicle and startYM exists
-                const existing = await this.db.get('SELECT id FROM rtw_vehicle_periods WHERE vehicleId = ? AND startYM = ?', [p.vehicleId, p.startYM]);
+                const existing = await this.db.get('SELECT id FROM rtw_vehicle_periods WHERE vehicleId = ? AND startYM = ?', [mappedVehicleId, p.startYM]);
                 if (!existing) {
                   await this.db.run(`
                     INSERT INTO rtw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, ?, ?)
-                  `, [p.vehicleId, p.startYM, p.endYM || null, p.active !== false]);
+                  `, [mappedVehicleId, p.startYM, p.endYM || null, p.active !== false ? 1 : 0]);
                   result.imported.rtwVehiclePeriods++;
                 } else {
                   result.skipped++;
@@ -593,17 +675,19 @@ export class SettingsImporter {
           
           for (const p of data.nefVehiclePeriods) {
             if (p.vehicleId && p.startYM) {
+              const mappedVehicleId = idMappings.nefVehicles.get(p.vehicleId) || p.vehicleId;
+
               if (replaceExisting) {
                 await this.db.run(`
                   INSERT INTO nef_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, ?, ?)
-                `, [p.vehicleId, p.startYM, p.endYM || null, p.active !== false]);
+                `, [mappedVehicleId, p.startYM, p.endYM || null, p.active !== false ? 1 : 0]);
                 result.imported.nefVehiclePeriods++;
               } else {
-                const existing = await this.db.get('SELECT id FROM nef_vehicle_periods WHERE vehicleId = ? AND startYM = ?', [p.vehicleId, p.startYM]);
+                const existing = await this.db.get('SELECT id FROM nef_vehicle_periods WHERE vehicleId = ? AND startYM = ?', [mappedVehicleId, p.startYM]);
                 if (!existing) {
                   await this.db.run(`
                     INSERT INTO nef_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, ?, ?)
-                  `, [p.vehicleId, p.startYM, p.endYM || null, p.active !== false]);
+                  `, [mappedVehicleId, p.startYM, p.endYM || null, p.active !== false ? 1 : 0]);
                   result.imported.nefVehiclePeriods++;
                 } else {
                   result.skipped++;
@@ -621,18 +705,76 @@ export class SettingsImporter {
           
           for (const p of data.itwVehiclePeriods) {
             if (p.vehicleId && p.startYM) {
+              const mappedVehicleId = idMappings.itwVehicles.get(p.vehicleId) || p.vehicleId;
+
               if (replaceExisting) {
                 await this.db.run(`
                   INSERT INTO itw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, ?, ?)
-                `, [p.vehicleId, p.startYM, p.endYM || null, p.active !== false]);
+                `, [mappedVehicleId, p.startYM, p.endYM || null, p.active !== false ? 1 : 0]);
                 result.imported.itwVehiclePeriods++;
               } else {
-                const existing = await this.db.get('SELECT id FROM itw_vehicle_periods WHERE vehicleId = ? AND startYM = ?', [p.vehicleId, p.startYM]);
+                const existing = await this.db.get('SELECT id FROM itw_vehicle_periods WHERE vehicleId = ? AND startYM = ?', [mappedVehicleId, p.startYM]);
                 if (!existing) {
                   await this.db.run(`
                     INSERT INTO itw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, ?, ?)
-                  `, [p.vehicleId, p.startYM, p.endYM || null, p.active !== false]);
+                  `, [mappedVehicleId, p.startYM, p.endYM || null, p.active !== false ? 1 : 0]);
                   result.imported.itwVehiclePeriods++;
+                } else {
+                  result.skipped++;
+                }
+              }
+            }
+          }
+        }
+
+        // PersonnelActivePeriods importieren
+        if (data.personnelActivePeriods && Array.isArray(data.personnelActivePeriods)) {
+          if (replaceExisting) {
+            await this.db.run('DELETE FROM personnel_active_periods');
+          }
+          
+          for (const p of data.personnelActivePeriods) {
+            if (p.personId && p.startYM) {
+              if (replaceExisting) {
+                await this.db.run(`
+                  INSERT INTO personnel_active_periods (personId, startYM, endYM, description, active) VALUES (?, ?, ?, ?, ?)
+                `, [p.personId, p.startYM, p.endYM || null, p.description || '', p.active !== false ? 1 : 0]);
+                result.imported.personnelActivePeriods++;
+              } else {
+                const existing = await this.db.get('SELECT id FROM personnel_active_periods WHERE personId = ? AND startYM = ?', [p.personId, p.startYM]);
+                if (!existing) {
+                  await this.db.run(`
+                    INSERT INTO personnel_active_periods (personId, startYM, endYM, description, active) VALUES (?, ?, ?, ?, ?)
+                  `, [p.personId, p.startYM, p.endYM || null, p.description || '', p.active !== false ? 1 : 0]);
+                  result.imported.personnelActivePeriods++;
+                } else {
+                  result.skipped++;
+                }
+              }
+            }
+          }
+        }
+
+        // QualificationPeriods importieren
+        if (data.qualificationPeriods && Array.isArray(data.qualificationPeriods)) {
+          if (replaceExisting) {
+            await this.db.run('DELETE FROM qualification_periods');
+          }
+          
+          for (const p of data.qualificationPeriods) {
+            if (p.personId && p.qualType && p.startYM) {
+              if (replaceExisting) {
+                await this.db.run(`
+                  INSERT INTO qualification_periods (personId, qualType, startYM, endYM, active) VALUES (?, ?, ?, ?, ?)
+                `, [p.personId, p.qualType, p.startYM, p.endYM || null, p.active !== false ? 1 : 0]);
+                result.imported.qualificationPeriods++;
+              } else {
+                const existing = await this.db.get('SELECT id FROM qualification_periods WHERE personId = ? AND qualType = ? AND startYM = ?', [p.personId, p.qualType, p.startYM]);
+                if (!existing) {
+                  await this.db.run(`
+                    INSERT INTO qualification_periods (personId, qualType, startYM, endYM, active) VALUES (?, ?, ?, ?, ?)
+                  `, [p.personId, p.qualType, p.startYM, p.endYM || null, p.active !== false ? 1 : 0]);
+                  result.imported.qualificationPeriods++;
                 } else {
                   result.skipped++;
                 }
@@ -716,6 +858,12 @@ export class SettingsImporter {
         ],
         itwVehiclePeriods: [
           { id: 1, vehicleId: 1, startYM: '2025-01', endYM: null, active: true }
+        ],
+        personnelActivePeriods: [
+          { id: 1, personId: 1, startYM: '2025-01', endYM: null, description: 'Festanstellung', active: true }
+        ],
+        qualificationPeriods: [
+          { id: 1, personId: 1, qualType: 'Rettungssanitäter', startYM: '2025-01', endYM: null, active: true }
         ]
       };
 

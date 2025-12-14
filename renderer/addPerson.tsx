@@ -254,6 +254,20 @@ const AddPerson: React.FC = () => {
         itwFahrzeugfuehrer: false
       });
 
+      // Automatisch Aktivitätszeitraum ab aktuellem Monat erstellen
+      if (result && result.id) {
+        const now = new Date();
+        const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        
+        await (window as any).api.addPersonnelActivePeriod({
+          personId: result.id,
+          startYM: currentYM,
+          endYM: null,
+          description: 'Erstellung',
+          active: true
+        });
+      }
+
       // Qualifikationen hinzufügen (falls die API die personId zurückgibt)
       if (result && result.id && qualifications.length > 0) {
         for (const qual of qualifications) {

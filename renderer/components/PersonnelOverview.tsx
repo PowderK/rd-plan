@@ -527,6 +527,15 @@ interface QualificationPeriod {
   active: boolean;
 }
 
+interface ActivePeriod {
+  id: number;
+  personId: number;
+  startYM: string;
+  endYM: string;
+  description: string;
+  active: boolean;
+}
+
 const PersonnelOverview: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'stammpersonal' | 'azubis' | 'ärzte'>('stammpersonal');
   const [personnel, setPersonnel] = useState<Person[]>([]);
@@ -535,6 +544,7 @@ const PersonnelOverview: React.FC = () => {
   const [showPeriodManager, setShowPeriodManager] = useState(false);
   const [selectedAzubiForPeriods, setSelectedAzubiForPeriods] = useState<Azubi | null>(null);
   const [qualificationPeriods, setQualificationPeriods] = useState<Record<number, QualificationPeriod[]>>({});
+  const [activePeriods, setActivePeriods] = useState<Record<number, ActivePeriod[]>>({});
   const [itws, setItws] = useState<ItwDoctor[]>([]);
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [draggedAzubiId, setDraggedAzubiId] = useState<number | null>(null);
@@ -558,10 +568,29 @@ const PersonnelOverview: React.FC = () => {
 
   const loadPersonnel = useCallback(async () => {
     setLoading(true);
-    const list = await (window as any).api.getPersonnelList(showInactive);
+    // Wenn inaktive angezeigt werden sollen: includeInactive=true, date egal
+    // Wenn inaktive ausgeblendet werden sollen: includeInactive=false, date=Aktuelles Jahr
+    const currentYear = new Date().getFullYear().toString();
+    const list = await (window as any).api.getPersonnelList(showInactive, showInactive ? undefined : currentYear);
     setPersonnel(list);
     setLoading(false);
   }, [showInactive]);
+
+  const loadActivePeriods = useCallback(async () => {
+    try {
+      const allPeriods = await (window as any).api.getAllPersonnelActivePeriods();
+      const periodsByPerson: Record<number, ActivePeriod[]> = {};
+      allPeriods.forEach((period: ActivePeriod) => {
+        if (!periodsByPerson[period.personId]) {
+          periodsByPerson[period.personId] = [];
+        }
+        periodsByPerson[period.personId].push(period);
+      });
+      setActivePeriods(periodsByPerson);
+    } catch (error) {
+      console.error('Fehler beim Laden der Aktivitätsperioden:', error);
+    }
+  }, []);
 
   const loadAzubis = useCallback(async () => {
     const list = await (window as any).api.getAzubiList();
@@ -604,12 +633,14 @@ const PersonnelOverview: React.FC = () => {
     loadAzubis();
     loadItws();
     loadQualificationPeriods();
+    loadActivePeriods();
     const handler = (_event: any) => {
       console.log('[Renderer] personnel-updated Event empfangen');
       loadPersonnel();
       loadAzubis();
       loadItws();
       loadQualificationPeriods();
+      loadActivePeriods();
     };
     (window as any).api.onPersonnelUpdated?.(handler);
     // subscribe to azubi broadcasts from main
@@ -766,7 +797,21 @@ const PersonnelOverview: React.FC = () => {
   const handleItwRowClick = (id: number) => setSelectedItwId(id === selectedItwId ? null : id);
   const handleDeleteSelectedItw = () => { if (selectedItwId == null) return; (window as any).api.openConfirmDeleteWindow(selectedItwId, 'itw'); };
 
+  const isPersonActive = (p: Person) => {
+    const periods = activePeriods[p.id];
+    if (periods && periods.length > 0) {
+      const currentYM = new Date().toISOString().slice(0, 7);
+      return periods.some(per => 
+        per.active && 
+        per.startYM <= currentYM && 
+        (!per.endYM || per.endYM >= currentYM)
+      );
+    }
+    return !!(p.active ?? 1);
+  };
 
+  const activePersonnel = personnel.filter(p => isPersonActive(p));
+  const inactivePersonnel = personnel.filter(p => !isPersonActive(p));
 
   return (
     <div style={{ padding: 24 }}>
@@ -834,7 +879,8 @@ const PersonnelOverview: React.FC = () => {
           <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Inaktive anzeigen
         </label>
       </div>
-      {/* Stammpersonal: Buttons unter der Tabelle */}
+      
+      {/* Aktives Personal Tabelle */}
       <table className={styles.table}>
         <thead>
           <tr className={styles.thead}>
@@ -846,11 +892,10 @@ const PersonnelOverview: React.FC = () => {
           </tr>
         </thead>
         <tbody className={styles.tbody}>
-          {personnel.map(person => {
+          {activePersonnel.map(person => {
             const selected = person.id === selectedPersonId;
             const isOver = dragContext === 'person' && dragOverId === person.id;
             const rowClass = [styles.row, selected ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
-            const inactive = !(person.active ?? 1);
             return (
               <tr
                 key={person.id}
@@ -861,7 +906,7 @@ const PersonnelOverview: React.FC = () => {
                 onDrop={() => onDrop(person.id)}
                 onClick={() => handleRowClick(person.id)}
                 className={rowClass}
-                style={{ cursor: 'move', opacity: inactive ? 0.6 : 1 }}
+                style={{ cursor: 'move' }}
               >
                 <td>
                   {person.name}
@@ -874,10 +919,10 @@ const PersonnelOverview: React.FC = () => {
                 <td>{person.vorname}</td>
                 <td className={styles.checkboxCell}>
                   <span style={{ 
-                    color: (person.active ?? 1) ? '#28a745' : '#dc3545',
+                    color: '#28a745',
                     fontSize: '16px'
                   }}>
-                    {(person.active ?? 1) ? '✓' : '✗'}
+                    ✓
                   </span>
                 </td>
                 <td className={styles.center} style={{ fontSize: '11px', padding: '4px' }}>
@@ -942,14 +987,118 @@ const PersonnelOverview: React.FC = () => {
             );
           })}
         </tbody>
-  </table>
-  {/* Aktionen unter der Stammpersonal-Tabelle */}
-  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-    <button onClick={() => (window as any).api.openAddPersonWindow()}>
-      Hinzufügen
-    </button>
-  </div>
-  </div>
+      </table>
+
+      {/* Inaktives Personal Tabelle */}
+      {showInactive && inactivePersonnel.length > 0 && (
+        <div style={{ marginTop: '32px' }}>
+          <h4 style={{ color: '#666', marginBottom: '8px', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>Inaktives Personal</h4>
+          <table className={styles.table} style={{ opacity: 0.7, backgroundColor: '#f9f9f9' }}>
+            <thead>
+              <tr className={styles.thead} style={{ background: '#eee', color: '#666' }}>
+                <th>Name</th>
+                <th>Vorname</th>
+                <th className={styles.checkboxCell}>Aktiv</th>
+                <th style={{ width: 120 }} className={styles.center}>Qualifikationen</th>
+                <th style={{ width: 100 }} className={styles.center}>Aktionen</th>
+              </tr>
+            </thead>
+            <tbody className={styles.tbody}>
+              {inactivePersonnel.map(person => {
+                const selected = person.id === selectedPersonId;
+                const rowClass = [styles.row, selected ? styles.selected : ''].filter(Boolean).join(' ');
+                return (
+                  <tr
+                    key={person.id}
+                    onClick={() => handleRowClick(person.id)}
+                    className={rowClass}
+                    style={{ color: '#666' }}
+                  >
+                    <td>
+                      {person.name}
+                      {person.teilzeit && person.teilzeit < 100 && (
+                        <span style={{ fontSize: '11px', color: '#999', marginLeft: '8px' }}>
+                          ({person.teilzeit}%)
+                        </span>
+                      )}
+                    </td>
+                    <td>{person.vorname}</td>
+                    <td className={styles.checkboxCell}>
+                      <span style={{ 
+                        color: '#dc3545',
+                        fontSize: '16px'
+                      }}>
+                        ✗
+                      </span>
+                    </td>
+                    <td className={styles.center} style={{ fontSize: '11px', padding: '4px' }}>
+                      {qualificationPeriods[person.id] && qualificationPeriods[person.id].length > 0 ? (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                          {qualificationPeriods[person.id]
+                            .filter(q => q.active)
+                            .slice(0, 3)
+                            .map((qual, idx) => (
+                              <span
+                                key={idx}
+                                style={{
+                                  background: '#6c757d',
+                                  color: 'white',
+                                  padding: '2px 6px',
+                                  borderRadius: '3px',
+                                  fontSize: '10px',
+                                  whiteSpace: 'nowrap'
+                                }}
+                                title={`${qual.qualType}: ${qual.startYM} - ${qual.endYM || 'unbegrenzt'}`}
+                              >
+                                {qual.qualType === 'Fahrzeugführer' ? 'FzF' :
+                                 qual.qualType === 'Fahrzeugführer HLF-B' ? 'HLF' :
+                                 qual.qualType === 'ITW Maschinist' ? 'ITW-Ma' :
+                                 qual.qualType === 'ITW Fahrzeugführer' ? 'ITW-FzF' :
+                                 qual.qualType.substring(0, 4)}
+                              </span>
+                            ))}
+                        </div>
+                      ) : (
+                        <span style={{ color: '#ccc', fontSize: '10px' }}>Keine</span>
+                      )}
+                    </td>
+                    <td className={styles.center}>
+                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            (window as any).api.openEditPersonWindow(person.id);
+                          }}
+                          style={{
+                            background: '#6c757d',
+                            color: 'white',
+                            border: 'none',
+                            padding: '4px 8px',
+                            borderRadius: '3px',
+                            cursor: 'pointer',
+                            fontSize: '11px'
+                          }}
+                          title="Person bearbeiten"
+                        >
+                          ✏️
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Aktionen unter der Stammpersonal-Tabelle */}
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <button onClick={() => (window as any).api.openAddPersonWindow()}>
+          Hinzufügen
+        </button>
+      </div>
+      </div>
       )}
       
       {/* Azubis Tab */}
