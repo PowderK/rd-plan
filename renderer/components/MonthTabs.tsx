@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { calculateTargets } from '../utils/calculation';
 import styles from './MonthTabs.module.css';
@@ -48,6 +48,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     const [ue50Ids, setUe50Ids] = useState<Set<number>>(new Set());
     // HLF-B Perioden für korrekte Berechnung
     const [hlfbPeriodsByPerson, setHlfbPeriodsByPerson] = useState<Record<number, Array<{ startYM: string; endYM?: string }>>>({});
+    // Performance: Debouncing für Roster-Updates
+    const [updateTimeout, setUpdateTimeout] = useState<NodeJS.Timeout | null>(null);
     // Freigabe-Status pro Monat
     const [releasedMonths, setReleasedMonths] = useState<boolean[]>(Array(12).fill(false));
 
@@ -364,14 +366,22 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
         })();
     }, [year]);
 
-    const getDutyCodeForDate = (key: string, date: string): string => {
+    // Cleanup effect für Debounce-Timeout
+    useEffect(() => {
+        return () => {
+            if (updateTimeout) clearTimeout(updateTimeout);
+        };
+    }, [updateTimeout]);
+
+    const getDutyCodeForDate = useCallback((key: string, date: string): string => {
         try {
             const vLocal = (localRoster as any)?.[key]?.[date]?.value;
             const vGlobal = (roster as any)?.[key]?.[date]?.value;
             return (vLocal ?? vGlobal ?? '') as string;
         } catch { return ''; }
-    };
-    const allowedByAuswertung = (code: string, desired: 'tag'|'nacht'|'24h'|'any'): boolean => {
+    }, [localRoster, roster]);
+    
+    const allowedByAuswertung = useCallback((code: string, desired: 'tag'|'nacht'|'24h'|'any'): boolean => {
         // Wenn kein Dienstcode vorhanden ist, ist die Person nicht verfügbar
         if (!code || code.trim() === '') {
             return false;
@@ -389,8 +399,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
         if (desired === 'nacht') return (evalMode === 'nacht' || evalMode === '24h');
         if (desired === '24h') return evalMode === '24h';
         return false;
-    };
-    const getAssignedValueFor = (date: string, slotId: string): string => {
+    }, [auswertungByType]);
+    
+    const getAssignedValueFor = useCallback((date: string, slotId: string): string => {
         const mergedKeys = Array.from(new Set([...(Object.keys(localRoster || {})), ...(Object.keys(roster || {}))]));
         let foundMatch = false;
         for (const key of mergedKeys) {
@@ -409,7 +420,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
             console.log('[MonthTabs] No assignment found for', { date, slotId, rosterKeys: mergedKeys.length });
         }
         return '';
-    };
+    }, [localRoster, roster]);
     const findPersonLabelByValue = (val: string) => {
         if (!val) return '';
         try {
@@ -431,7 +442,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
         return val;
     };
 
-    const handleAssign = async (date: string, dayIdx: number, value: string, slotId?: string) => {
+    const handleAssign = useCallback(async (date: string, dayIdx: number, value: string, slotId?: string) => {
         if (!value) return;
         const [t, idStr] = value.split(':');
         const pid = Number(idStr);
@@ -472,25 +483,28 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
             // Force UI update
             setForceUpdateCounter(prev => prev + 1);
             
-            // 3. Backend-Call (async)
-            await (window as any).api.assignSlot({ personId: pid, personType: ptype, date, slotType: slotId || '' });
-            console.log('[MonthTabs] handleAssign API call completed');
+            // Debounced Backend-Call
+            if (updateTimeout) clearTimeout(updateTimeout);
             
-            // 4. Sofort Roster neu laden damit Kontrollkasten aktualisiert wird
-            if (onRosterChanged) onRosterChanged();
+            const timeout = setTimeout(async () => {
+                await (window as any).api.assignSlot({ personId: pid, personType: ptype, date, slotType: slotId || '' });
+                console.log('[MonthTabs] handleAssign API call completed');
+                
+                if (onRosterChanged) onRosterChanged();
+                
+                setTimeout(() => setIsUpdating(false), 100);
+            }, 300); // 300ms Debounce
             
-            // 5. Kurze Verzögerung, dann Parent-Updates wieder erlauben
-            setTimeout(() => {
-                setIsUpdating(false);
-            }, 100);
+            setUpdateTimeout(timeout);
             
             if (onEntryAssigned) onEntryAssigned(key, date, (localRoster[key]?.[date]?.value || ''), slotId || '');
             
             console.log('[MonthTabs] handleAssign COMPLETED');
         } catch (e) {
             console.warn('[MonthTabs] handleAssign failed', e);
+            setIsUpdating(false);
         }
-    };
+    }, [localRoster, updateTimeout, onRosterChanged, onEntryAssigned]);
     const clearAssignedForDate = async (slotId: string, date: string) => {
         const currentVal = getAssignedValueFor(date, slotId);
         if (!currentVal) return;

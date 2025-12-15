@@ -301,6 +301,10 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         )
     `);
 
+    // Performance-Indizes für duty_roster (wichtig für Netzwerklaufwerke)
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_duty_roster_date_person ON duty_roster (date, personId, personType)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_duty_roster_type ON duty_roster (type) WHERE type != ''`);
+
     await db.exec(`
         CREATE TABLE IF NOT EXISTS azubis (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
