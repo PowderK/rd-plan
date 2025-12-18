@@ -247,6 +247,18 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       })();
     }, [year]);
 
+    // Wenn Vorplanungen geladen/geändert werden und yearImportSelectedYear nicht in der Liste ist,
+    // setze es auf das erste verfügbare Jahr oder das aktuelle Jahr
+    useEffect(() => {
+      if (yearPlannings.length > 0) {
+        const hasSelectedYear = yearPlannings.some(yp => yp.year === yearImportSelectedYear);
+        if (!hasSelectedYear) {
+          // Setze auf das erste Jahr in der Liste (meist das aktuellste)
+          setYearImportSelectedYear(yearPlannings[0].year);
+        }
+      }
+    }, [yearPlannings]);
+
   // ShiftTypes: Verhalten wie bei Personal/Fahrzeuge (Auswahl, Ändern, Speichern/Abbrechen, Hinzufügen als leere Zeile)
   const startEditingShiftTypes = () => {
     setOriginalShiftTypes(JSON.parse(JSON.stringify(shiftTypes)));

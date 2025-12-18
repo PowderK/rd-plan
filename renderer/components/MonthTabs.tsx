@@ -186,13 +186,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 const types = await (window as any).api.getShiftTypes();
                 setShiftTypes(types || []);
                 const map: Record<string, 'off'|'tag'|'nacht'|'24h'|'itw'> = {};
-                console.log('[MonthTabs] Loading shift types:', types);
                 for (const t of (types || [])) {
                     const v = await (window as any).api.getSetting(`auswertung_${t.code}`);
-                    console.log(`[MonthTabs] Loaded auswertung for ${t.code}:`, v);
                     map[t.code] = (v || 'off') as any;
                 }
-                console.log('[MonthTabs] Final auswertungByType:', map);
                 setAuswertungByType(map);
             } catch (e) {
                 console.error('[MonthTabs] Error loading shift types:', e);
@@ -264,6 +261,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
         return () => { (window as any).api?.offSettingsUpdated?.(onSettingsUpdated); };
     }, []);
 
+    // Synchronisiere currentMonth mit window-Objekt für Dienstplan
+    useEffect(() => {
+        (window as any).rdPlanMonth = currentMonth;
+        window.dispatchEvent(new CustomEvent('rdplan-month-changed', { detail: { month: currentMonth } }));
+    }, [currentMonth]);
+
     // Intelligenter Sync: Nur updaten, wenn sich wirklich was geändert hat UND wir nicht gerade lokal updaten
     useEffect(() => {
         if (!roster || isUpdating) return; // Skip während lokaler Updates
@@ -275,7 +278,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                           newKeys.some(key => JSON.stringify(localRoster[key]) !== JSON.stringify(roster[key]));
         
         if (hasChanged) {
-            console.log('[MonthTabs] Syncing roster from parent - significant changes detected');
             setLocalRoster({ ...roster });
         }
     }, [roster, localRoster, isUpdating]);
@@ -415,10 +417,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 return `p:${key}`;
             }
         }
-        // Debug: Log wenn nichts gefunden wurde für RTW Fahrzeugführer
-        if (!foundMatch && slotId.includes('_1') && (slotId.startsWith('rtw') || slotId.startsWith('nef'))) {
-            console.log('[MonthTabs] No assignment found for', { date, slotId, rosterKeys: mergedKeys.length });
-        }
         return '';
     }, [localRoster, roster]);
     const findPersonLabelByValue = (val: string) => {
@@ -448,8 +446,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
         const pid = Number(idStr);
         const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : 'person');
         try {
-            console.log('[MonthTabs] handleAssign START:', { date, value, slotId, pid, ptype });
-            
             // 1. Blockiere Parent-Updates während unseres lokalen Updates
             setIsUpdating(true);
             
@@ -463,7 +459,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 if (slotId) {
                     Object.keys(newState).forEach(personKey => {
                         if (personKey !== key && newState[personKey][date]?.type === slotId) {
-                            console.log('[MonthTabs] Optimistically removing', personKey, 'from slot', slotId);
                             newState[personKey] = {
                                 ...newState[personKey],
                                 [date]: { ...(newState[personKey][date] || {}), type: '' }
@@ -488,7 +483,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
             
             const timeout = setTimeout(async () => {
                 await (window as any).api.assignSlot({ personId: pid, personType: ptype, date, slotType: slotId || '' });
-                console.log('[MonthTabs] handleAssign API call completed');
                 
                 if (onRosterChanged) onRosterChanged();
                 
@@ -498,10 +492,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
             setUpdateTimeout(timeout);
             
             if (onEntryAssigned) onEntryAssigned(key, date, (localRoster[key]?.[date]?.value || ''), slotId || '');
-            
-            console.log('[MonthTabs] handleAssign COMPLETED');
         } catch (e) {
-            console.warn('[MonthTabs] handleAssign failed', e);
             setIsUpdating(false);
         }
     }, [localRoster, updateTimeout, onRosterChanged, onEntryAssigned]);
@@ -525,14 +516,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
             if (onEntryAssigned) onEntryAssigned(key, date, (localRoster[key]?.[date]?.value || ''), '');
             if (onRosterChanged) onRosterChanged();
         } catch (e) {
-            console.warn('[MonthTabs] clearAssignedForDate failed', e);
+            // Silently ignore errors
         }
     };
 
     return (
         <div key={forceUpdateCounter} style={{ padding: 12 }}>
-            {/* Sub‑Header: RTW/ITW Einteilung (Monat) - jetzt oberhalb der Tabs */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '4px 0 10px 0' }}>
+            {/* Sub‑Header: RTW/ITW Einteilung (Monat) - sticky mit z-index 12 */}
+            <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between', 
+                margin: '4px 0 10px 0',
+                position: 'sticky',
+                top: 0,
+                background: 'var(--bg)',
+                zIndex: 12,
+                paddingTop: 4,
+                paddingBottom: 4
+            }}>
                 <span style={{ fontSize: 18, fontWeight: 700 }}>
                     {viewMode === 'rtwnef' ? 'RTW Einteilung' : 'ITW Einteilung'} ({months[currentMonth]})
                 </span>
@@ -569,13 +571,19 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                     </span>
                 </label>
             </div>
-            {/* Monats-Tabs */}
+            {/* Monats-Tabs - sticky mit z-index 11 */}
             <div style={{ 
                 display: 'flex', 
                 gap: '4px', 
                 borderBottom: '1px solid #e5e7eb',
                 marginBottom: '16px',
-                flexWrap: 'wrap'
+                flexWrap: 'wrap',
+                position: 'sticky',
+                top: 52,
+                background: 'var(--bg)',
+                zIndex: 11,
+                paddingTop: 4,
+                paddingBottom: 4
             }}>
                 {months.map((m, i) => {
                     // Status-Farbe: Grün wenn freigegeben, Rot wenn nicht
@@ -585,7 +593,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                     return (
                         <button
                             key={i}
-                            onClick={() => onMonthChange(i)}
+                            onClick={() => {
+                                onMonthChange(i);
+                                // Informiere andere Komponenten über Monatsänderung
+                                (window as any).rdPlanMonth = i;
+                                window.dispatchEvent(new CustomEvent('rdplan-month-changed', { detail: { month: i } }));
+                            }}
                             style={{
                                 padding: '8px 16px',
                                 background: currentMonth === i ? '#f8f9fa' : 'transparent',
@@ -615,13 +628,19 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                     );
                 })}
             </div>
-            {/* Ansichts-Umschalter */}
+            {/* Ansichts-Umschalter (RTW/NEF + ITW) - sticky mit z-index 10 */}
             <div style={{ 
                 display: 'flex', 
                 gap: '4px', 
                 borderBottom: '1px solid #e5e7eb',
                 marginBottom: '16px',
-                marginTop: '8px'
+                marginTop: '8px',
+                position: 'sticky',
+                top: 116,
+                background: 'var(--bg)',
+                zIndex: 10,
+                paddingTop: 4,
+                paddingBottom: 4
             }}>
                 {(() => {
                     // Prüfe ob die hervorgehobene Person im jeweils anderen Tab Einteilungen hat
@@ -878,14 +897,16 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         drivenYearMap[key] = sumDrivenY;
                         perPersonRtwTagNightYear[key] = { tag: tagCntY, nacht: nachtCntY };
 
-                        // Monthly Stats
+                        // Monthly Stats (aktueller Monat für Soll/Ist)
                         let cntM = 0;
                         let tagCntM = 0;
                         let nachtCntM = 0;
-                        let nefCntM = 0;
-                        let itwCntM = 0;
+                        
+                        // NEF und ITW Stats für das GESAMTE JAHR
+                        let nefCntYear = 0;
+                        let itwCntYear = 0;
 
-                        // Filter days where department is active
+                        // Filter days where department is active (aktueller Monat)
                         const monthDeptIsos: string[] = (() => {
                             const list: string[] = [];
                             for (let i = 1; i <= daysInMonth; i++) {
@@ -909,23 +930,54 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) cntM += 1;
                             if (/^rtw\d+_tag_(1|2)$/.test(t)) tagCntM += 1;
                             if (/^rtw\d+_nacht_(1|2)$/.test(t)) nachtCntM += 1;
-                            else if (/^nef(\d+)?_assist$/.test(t)) { cntM += 2; nefCntM += 2; }
+                            else if (/^nef(\d+)?_assist$/.test(t)) cntM += 2;
                         }
-                        // ITW counts (all days) - zählt sowohl für cntM als auch für itwCntM
+                        // ITW counts (aktueller Monat) - zählt für cntM
                         for (const iso of allMonthDays) {
                             const cell = getCell(key, iso);
                             const t = String(cell?.type || '');
-                            
-                            // Zähle ITW-Schichten wenn diese Person eingeteilt ist
                             if (t.startsWith('itw_row_')) {
-                                cntM += 1; // Zählt für Gesamtanzeige "Ist"
-                                itwCntM += 1; // Zählt für ITW-Spalte
+                                cntM += 1;
                             }
                         }
+                        
+                        // NEF und ITW für GESAMTES JAHR zählen
+                        for (let mIdx = 0; mIdx < 12; mIdx++) {
+                            const dim = new Date(year, mIdx + 1, 0).getDate();
+                            
+                            // NEF an Abteilungstagen
+                            for (let i = 1; i <= dim; i++) {
+                                const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0,10);
+                                // Prüfe ob Abteilungstag
+                                const seqs = [...(deptPatternSeqs || [])].sort((a,b) => a.startDate.localeCompare(b.startDate));
+                                let active = seqs[0];
+                                for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
+                                const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
+                                const cur = new Date(iso + 'T00:00:00Z');
+                                const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000*60*60*24));
+                                const pat = active?.pattern || [];
+                                const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
+                                
+                                if (depDay && String(department) === depDay) {
+                                    const cell = getCell(key, iso);
+                                    const t = String(cell?.type || '');
+                                    if (/^nef(\d+)?_assist$/.test(t)) nefCntYear += 2;
+                                }
+                            }
+                            
+                            // ITW an allen Tagen
+                            for (let i = 1; i <= dim; i++) {
+                                const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0,10);
+                                const cell = getCell(key, iso);
+                                const t = String(cell?.type || '');
+                                if (t.startsWith('itw_row_')) itwCntYear += 1;
+                            }
+                        }
+                        
                         perPersonAssignedWeightedInMonth[key] = cntM;
                         perPersonRtwTagNightInMonth[key] = { tag: tagCntM, nacht: nachtCntM };
-                        perPersonNefInMonth[key] = nefCntM;
-                        perPersonItwInMonth[key] = itwCntM;
+                        perPersonNefInMonth[key] = nefCntYear;  // Jetzt Jahressumme
+                        perPersonItwInMonth[key] = itwCntYear;  // Jetzt Jahressumme
                     }
                     
                     return { 
@@ -954,19 +1006,59 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const clearAssignedForSlot = async (slotId: string) => clearAssignedForDate(slotId, d.date);
                         const isFirstDay = days.length > 0 && days[0].date === d.date;
                         
-                        // Debug: Log roster structure für ersten Tag
-                        if (isFirstDay) {
-                            console.log('[MonthTabs DEBUG] First day:', d.date);
-                            console.log('[MonthTabs DEBUG] Personnel count:', personnel.length);
-                            console.log('[MonthTabs DEBUG] Roster keys:', Object.keys(roster || {}).length);
-                            console.log('[MonthTabs DEBUG] Sample roster entry:', roster ? roster[Object.keys(roster)[0]] : 'none');
-                            console.log('[MonthTabs DEBUG] Personnel sample:', personnel.slice(0, 3).map(p => ({
-                                name: p.name,
-                                fahrzeugfuehrer: p.fahrzeugfuehrer,
-                                typeof_fzf: typeof p.fahrzeugfuehrer
-                            })));
-                            console.log('[MonthTabs DEBUG] Personnel with fahrzeugfuehrer:', personnel.filter(p => p.fahrzeugfuehrer).map(p => p.name));
-                            console.log('[MonthTabs DEBUG] auswertungByType:', auswertungByType);
+                        // Prüfe ob hervorgehobene Person an diesem Tag eingeteilt oder verfügbar ist
+                        let dayHighlightColor: string | undefined = undefined;
+                        if (highlightedPersonKey) {
+                            const personId = highlightedPersonKey.replace('p_', '');
+                            const personValue = `p:${personId}`;
+                            
+                            // Prüfe alle Slots an diesem Tag
+                            let isAssigned = false;
+                            let isAvailable = false;
+                            
+                            // RTW Slots prüfen
+                            for (let rIdx = 0; rIdx < (rtwVehicles || []).length; rIdx++) {
+                                const slots = [
+                                    `rtw${rIdx + 1}_tag_1`, `rtw${rIdx + 1}_nacht_1`,
+                                    `rtw${rIdx + 1}_tag_2`, `rtw${rIdx + 1}_nacht_2`
+                                ];
+                                for (const slotId of slots) {
+                                    const value = getAssignedValueFor(d.date, slotId);
+                                    if (value === personValue) {
+                                        isAssigned = true;
+                                        break;
+                                    }
+                                }
+                                if (isAssigned) break;
+                            }
+                            
+                            // NEF Slots prüfen
+                            if (!isAssigned) {
+                                for (let nIdx = 0; nIdx < (nefVehicles || []).length; nIdx++) {
+                                    const slotId = `nef${nIdx + 1}_assist`;
+                                    const value = getAssignedValueFor(d.date, slotId);
+                                    if (value === personValue) {
+                                        isAssigned = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            
+                            // Wenn nicht eingeteilt, prüfe ob verfügbar
+                            if (!isAssigned) {
+                                const dutyCode = getDutyCodeFor(highlightedPersonKey);
+                                if (dutyCode && dutyCode.trim() !== '') {
+                                    const evalMode = auswertungByType[dutyCode];
+                                    if (evalMode && evalMode !== 'off') {
+                                        isAvailable = true;
+                                    }
+                                }
+                            }
+                            
+                            // Nur grün markieren wenn verfügbar (nicht eingeteilt)
+                            if (isAvailable) {
+                                dayHighlightColor = '#e8f5e9'; // Grün: verfügbar
+                            }
                         }
                         
                         return (
@@ -975,7 +1067,19 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                                     const dt = new Date(d.date + 'T00:00:00');
                                                                     const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }); // DD.MM
                                                                     return (
-                                                                        <div style={{ position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 2, textAlign: 'left', fontWeight: 600, marginBottom: 6, padding: '2px 0' }}>
+                                                                        <div style={{ 
+                                                                            position: 'sticky', 
+                                                                            top: 0, 
+                                                                            background: dayHighlightColor || 'var(--bg)', 
+                                                                            zIndex: 2, 
+                                                                            textAlign: 'left', 
+                                                                            fontWeight: 600, 
+                                                                            marginBottom: 6, 
+                                                                            padding: '2px 0',
+                                                                            borderRadius: dayHighlightColor ? 4 : 0,
+                                                                            paddingLeft: dayHighlightColor ? 6 : 0,
+                                                                            paddingRight: dayHighlightColor ? 6 : 0
+                                                                        }}>
                                                                             {label} <small style={{ fontWeight: 400 }}>({d.weekday})</small>
                                                                         </div>
                                                                     );
@@ -1001,31 +1105,21 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                     const slotId = `rtw${rIdx + 1}_tag_1`;
                                                     const value = getAssignedValue(slotId);
                                                     
-                                                    // Debug: Zeige alle relevanten Daten für ERSTEN Tag
-                                                    if (d.dayOfMonth === 1) {
-                                                        console.log(`[MonthTabs Debug ${d.date}] Filtering personnel for RTW${rIdx + 1} Tag FzF slot`);
-                                                        console.log(`  - Total personnel: ${personnel.length}`);
-                                                        console.log(`  - auswertungByType:`, auswertungByType);
-                                                    }
-                                                    
                                                     const optionsP = personnel
                                                         .filter(p => {
-                                                            const hasQual = p.fahrzeugfuehrer === 1;
+                                                            const hasQual = p.fahrzeugfuehrer;
                                                             const dutyCode = getDutyCodeFor(`p_${p.id}`);
                                                             const allowed = allowedByAuswertung(dutyCode, 'tag');
-                                                            
-                                                            // Debug für ersten Tag
-                                                            if (d.dayOfMonth === 1 && hasQual) {
-                                                                console.log(`  - ${p.name}: dutyCode="${dutyCode}", evalMode="${auswertungByType[dutyCode] || 'undefined'}", allowed=${allowed}`);
-                                                            }
-                                                            
                                                             return allowed && hasQual;
                                                         })
                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                     const renderOptions = value && !optionsP.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
-                                                    const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
-                                                    const highlightStyle = isHighlighted ? { background: '#ffebee', fontWeight: 600 } : undefined; // Dezentes Rot für Tag
+                                                    
+                                                    // Prüfe ob hervorgehobene Person eingeteilt ist (rot)
+                                                    const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                    const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
+                                                    
                                                     return (
                                                         <select 
                                                             className={styles.select} 
@@ -1042,12 +1136,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                     const slotId = `rtw${rIdx + 1}_nacht_1`;
                                                     const value = getAssignedValue(slotId);
                                                     const optionsP = personnel
-                                                        .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && p.fahrzeugfuehrer === 1)
+                                                        .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && p.fahrzeugfuehrer)
                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                     const renderOptions = value && !optionsP.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
-                                                    const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
-                                                    const highlightStyle = isHighlighted ? { background: '#e3f2fd', fontWeight: 600 } : undefined; // Dezentes Blau für Nacht
+                                                    
+                                                    // Prüfe ob hervorgehobene Person eingeteilt ist (blau)
+                                                    const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                    const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
+                                                    
                                                     return (
                                                         <select 
                                                             className={styles.select} 
@@ -1073,8 +1170,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                     const options = [...optionsP, ...optionsA];
                                                     const renderOptions = value && !options.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...options] : options;
-                                                    const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
-                                                    const highlightStyle = isHighlighted ? { background: '#ffebee', fontWeight: 600 } : undefined; // Dezentes Rot für Tag
+                                                    
+                                                    const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                    const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
+                                                    
                                                     return (
                                                         <select className={styles.select} value={value}
                                                             style={highlightStyle}
@@ -1097,8 +1196,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                     const options = [...optionsP, ...optionsA];
                                                     const renderOptions = value && !options.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...options] : options;
-                                                    const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
-                                                    const highlightStyle = isHighlighted ? { background: '#e3f2fd', fontWeight: 600 } : undefined; // Dezentes Blau für Nacht
+                                                    
+                                                    const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                    const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
+                                                    
                                                     return (
                                                         <select className={styles.select} value={value}
                                                             style={highlightStyle}
@@ -1173,12 +1274,22 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                         return v;
                                                     })();
                                                     const optionsP = personnel
-                                                        .filter(p => p.nef === 1 && allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'any'))
+                                                        .filter(p => {
+                                                            if (!p.nef) return false;
+                                                            const dutyCode = getDutyCodeFor(`p_${p.id}`);
+                                                            const evalMode = auswertungByType[dutyCode];
+                                                            // Nur Personen die an diesem Tag tatsächlich im aktiven Dienst sind (nicht 'off', nicht leer, nicht undefined)
+                                                            if (!dutyCode || dutyCode.trim() === '') return false;
+                                                            if (!evalMode || evalMode === 'off') return false;
+                                                            return true;
+                                                        })
                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                     const renderOptions = value && !optionsP.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
-                                                    const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
-                                                    const highlightStyle = isHighlighted ? { background: '#ffebee', fontWeight: 600 } : undefined; // Dezentes Rot für Tag/24h
+                                                    
+                                                    const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                    const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
+                                                    
                                                     return (
                                                         <select className={styles.select} value={value}
                                                             style={highlightStyle}
@@ -1198,7 +1309,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                         return v;
                                                     })();
                                                     const optionsA = azubis
-                                                        .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'any'))
+                                                        .filter(a => {
+                                                            const dutyCode = getDutyCodeFor(`a_${a.id}`);
+                                                            const evalMode = auswertungByType[dutyCode];
+                                                            // Nur Azubis die an diesem Tag tatsächlich im aktiven Dienst sind (nicht 'off', nicht leer, nicht undefined)
+                                                            if (!dutyCode || dutyCode.trim() === '') return false;
+                                                            if (!evalMode || evalMode === 'off') return false;
+                                                            return true;
+                                                        })
                                                         .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
                                                     const renderOptions = value && !optionsA.some(o => o.value === value)
                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsA] : optionsA;
@@ -1414,30 +1532,73 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                             <span className={styles.sidebarVal}>{it.itw}</span>
                                                 {!it.ue50 && <span className={styles.sidebarVal} style={restStyle}>{Number.isFinite(it.rest) ? it.rest : '–'}</span>}
                                                 {it.ue50 && <span className={styles.sidebarVal}>–</span>}
-                                            {/* Zweiteilige Balkenanzeige: links Nacht (blau), rechts Tag (orange) - nur wenn nicht Ü50 */}
+                                            {/* Zweiteilige Balkenanzeige: Überschuss Tag/Nacht - nur wenn nicht Ü50 */}
                                                 {!it.ue50 && <div style={{ gridColumn: '1 / span 6', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                                                 <div style={{ position: 'relative', width: 100, height: 8, background: '#eef2f7', borderRadius: 4 }}>
-                                                    <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1' }} />
+                                                    <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1', zIndex: 1 }} />
                                                     {(() => {
-                                                        const total = (it.tag || 0) + (it.nacht || 0);
-                                                        const lp = total > 0 ? Math.min(1, (it.nacht || 0) / total) : 0;
-                                                        const rp = total > 0 ? Math.min(1, (it.tag || 0) / total) : 0;
-                                                        const leftW = lp * 50; // px, da Container 100px breit
-                                                        const rightW = rp * 50;
-                                                        return (
-                                                            <>
-                                                                <div style={{ position: 'absolute', right: '50%', width: `${lp * 50}%`, top: 0, bottom: 0, background: '#60a5fa', borderTopLeftRadius: 4, borderBottomLeftRadius: 4 }} />
-                                                                <div style={{ position: 'absolute', left: '50%', width: `${rp * 50}%`, top: 0, bottom: 0, background: '#fb923c', borderTopRightRadius: 4, borderBottomRightRadius: 4 }} />
-                                                                {leftW >= 18 && (
-                                                                    <div style={{ position: 'absolute', left: `${lp * 25}%`, top: '50%', transform: 'translate(-50%, -50%)', fontSize: 9, color: '#ffffff', textShadow: '0 0 2px rgba(0,0,0,0.6)', fontWeight: 600 }}>{it.nacht}</div>
-                                                                )}
-                                                                {rightW >= 18 && (
-                                                                    <div style={{ position: 'absolute', left: `${50 + rp * 25}%`, top: '50%', transform: 'translate(-50%, -50%)', fontSize: 9, color: '#ffffff', textShadow: '0 0 2px rgba(0,0,0,0.6)', fontWeight: 600 }}>{it.tag}</div>
-                                                                )}
-                                                            </>
-                                                        );
+                                                        const tagCount = it.tag || 0;
+                                                        const nachtCount = it.nacht || 0;
+                                                        const diff = tagCount - nachtCount;
+                                                        
+                                                        if (diff === 0) {
+                                                            // Gleich viele Tag und Nacht → kein Balken
+                                                            return null;
+                                                        }
+                                                        
+                                                        // Maximale Balkenbreite = 50% (= 50px bei 100px Container)
+                                                        const maxVal = 5; // Skalierung: 5 Schichten Differenz = 100% der Balkenhälfte
+                                                        const percentage = Math.min(1, Math.abs(diff) / maxVal);
+                                                        const width = percentage * 50; // 50% des Containers
+                                                        
+                                                        if (diff > 0) {
+                                                            // Mehr Tag als Nacht → orangener Balken nach rechts
+                                                            return (
+                                                                <>
+                                                                    <div style={{ 
+                                                                        position: 'absolute', 
+                                                                        left: '50%', 
+                                                                        width: `${width}%`, 
+                                                                        top: 0, 
+                                                                        bottom: 0, 
+                                                                        background: '#fb923c', 
+                                                                        borderTopRightRadius: 4, 
+                                                                        borderBottomRightRadius: 4 
+                                                                    }} />
+                                                                    {width >= 18 && (
+                                                                        <div style={{ position: 'absolute', left: `${50 + width / 2}%`, top: '50%', transform: 'translate(-50%, -50%)', fontSize: 9, color: '#ffffff', textShadow: '0 0 2px rgba(0,0,0,0.6)', fontWeight: 600 }}>+{diff}</div>
+                                                                    )}
+                                                                </>
+                                                            );
+                                                        } else {
+                                                            // Mehr Nacht als Tag → blauer Balken nach links
+                                                            return (
+                                                                <>
+                                                                    <div style={{ 
+                                                                        position: 'absolute', 
+                                                                        right: '50%', 
+                                                                        width: `${width}%`, 
+                                                                        top: 0, 
+                                                                        bottom: 0, 
+                                                                        background: '#60a5fa', 
+                                                                        borderTopLeftRadius: 4, 
+                                                                        borderBottomLeftRadius: 4 
+                                                                    }} />
+                                                                    {width >= 18 && (
+                                                                        <div style={{ position: 'absolute', left: `${50 - width / 2}%`, top: '50%', transform: 'translate(-50%, -50%)', fontSize: 9, color: '#ffffff', textShadow: '0 0 2px rgba(0,0,0,0.6)', fontWeight: 600 }}>{diff}</div>
+                                                                    )}
+                                                                </>
+                                                            );
+                                                        }
                                                     })()}
                                                 </div>
+                                                <span style={{ fontSize: 11, color: '#64748b' }}>
+                                                    Tag {it.tag || 0} • Nacht {it.nacht || 0}
+                                                </span>
+                                            </div>}
+
+                                            {/* Kontrollbalken: verbleibende Anwesenheit vs. Rest */}
+                                            {!it.ue50 && <div style={{ gridColumn: '1 / span 6', display: 'flex', alignItems: 'center', gap: 10 }}>
                                                 {(() => {
                                                     const pres = presenceRemainingByPerson[it.key] || 0;
                                                     const assigned = assignedRemainingByPerson[it.key] || 0;
@@ -1574,7 +1735,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                     .filter(p => {
                                         const key = `p_${p.id}`;
                                         // Qualifikation: Rolle 1 benötigt Fahrzeuführer, Rolle 2 allgemeines Personal
-                                        const qualified = (role === 1) ? (p.fahrzeugfuehrer === 1) : true;
+                                        const qualified = (role === 1) ? p.fahrzeugfuehrer : true;
                                         // Dienstplan: Nur mit ITW-Schichtcode am Tag zulassen
                                         const onItw = isOnItwDuty(key, date);
                                         return qualified && onItw;
@@ -1591,8 +1752,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 const label = findPersonLabelByValue(value);
                                 options = [{ value, label }, ...options];
                             }
-                            const isHighlighted = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
-                            const highlightStyle = isHighlighted ? { background: '#ffebee', fontWeight: 600 } : undefined; // Dezentes Rot für Tag
+                            
+                            const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                            const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
+                            
                             return (
                                 <select className={styles.select} value={value}
                                     style={highlightStyle}
@@ -1610,10 +1773,42 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 {rackDays.map((d2) => {
                                     const dd = new Date(d2.date + 'T00:00:00Z');
                                     const label = dd.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                                    
+                                    // Prüfe ob hervorgehobene Person an diesem ITW-Tag eingeteilt oder verfügbar ist
+                                    let dayHighlightColor: string | undefined = undefined;
+                                    if (highlightedPersonKey) {
+                                        const personId = highlightedPersonKey.replace('p_', '');
+                                        const personValue = `p:${personId}`;
+                                        
+                                        let isAssigned = false;
+                                        const itwSlots = ['itw_row_1', 'itw_row_2'];
+                                        for (const slotId of itwSlots) {
+                                            const value = getAssignedValueFor(d2.date, slotId);
+                                            if (value === personValue) {
+                                                isAssigned = true;
+                                                break;
+                                            }
+                                        }
+                                        
+                                        // Wenn nicht eingeteilt, prüfe ob verfügbar (ITW-Dienst)
+                                        if (!isAssigned) {
+                                            const dutyCode = getDutyCodeForDate(highlightedPersonKey, d2.date);
+                                            if (dutyCode && auswertungByType[dutyCode] === 'itw') {
+                                                dayHighlightColor = '#e8f5e9'; // Grün: verfügbar
+                                            }
+                                        }
+                                        // Rot-Markierung entfernt - Dropdowns zeigen bereits Einteilung
+                                    }
+                                    
                                     return (
                                         <div key={`itw_card_${d2.date}`} className={styles.itwCardWrap}>
                                             {/* Datum (DD.MM) + Wochentag und gelbe Trennlinie über dem ITW-Kasten */}
-                                            <div className={styles.itwCardHeader}>{label} <small style={{ fontWeight: 400, color: 'var(--muted)' }}>({d2.weekday})</small></div>
+                                            <div className={styles.itwCardHeader} style={{ 
+                                                background: dayHighlightColor,
+                                                borderRadius: dayHighlightColor ? 4 : 0,
+                                                paddingLeft: dayHighlightColor ? 6 : undefined,
+                                                paddingRight: dayHighlightColor ? 6 : undefined
+                                            }}>{label} <small style={{ fontWeight: 400, color: 'var(--muted)' }}>({d2.weekday})</small></div>
                                             <div className={styles.itwDivider} />
                                             <div className={styles.itwCard}>
                                                 <div className={styles.itwRow}><div className={styles.itwRoleLabel}>FzF</div>{renderItwSelect(d2.date, 1)}</div>

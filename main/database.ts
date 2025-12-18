@@ -1297,18 +1297,32 @@ export const getRtwVehicles = async (db: AsyncDB, year?: number) => {
     return await db.all('SELECT * FROM rtw_vehicles WHERE archived_year IS NULL ORDER BY sort ASC, id ASC');
 };
 export const addRtwVehicle = async (db: AsyncDB, v: { name: string }) => {
-    let vehicleId: number;
+    let vehicleId: number | undefined;
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM rtw_vehicles');
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
         const result = await db.run('INSERT INTO rtw_vehicles (name, sort) VALUES (?, ?)', [v.name, next]);
-        vehicleId = result.lastID;
+        console.log('[DB] addRtwVehicle result:', result, 'lastInsertRowid:', result.lastInsertRowid, 'type:', typeof result.lastInsertRowid);
+        vehicleId = Number(result.lastInsertRowid);
     } catch (e) {
+        console.log('[DB] addRtwVehicle fallback to INSERT without sort, error was:', e);
         const result = await db.run('INSERT INTO rtw_vehicles (name) VALUES (?)', [v.name]);
-        vehicleId = result.lastID;
+        console.log('[DB] addRtwVehicle fallback result:', result, 'lastInsertRowid:', result.lastInsertRowid);
+        vehicleId = Number(result.lastInsertRowid);
     }
+    
+    if (!vehicleId || isNaN(vehicleId)) {
+        throw new Error(`Failed to create RTW vehicle: no vehicleId returned (got: ${vehicleId})`);
+    }
+    
     // Initialisiere Standard-Positionen
     await initializeDefaultVehiclePositions(db, 'rtw', vehicleId);
+    
+    // Erstelle automatisch eine Periode ab aktuellem Monat (unbegrenzt)
+    const now = new Date();
+    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    await db.run('INSERT INTO rtw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, NULL, 1)', 
+        [vehicleId, currentYM]);
 };
 export const updateRtwVehicle = async (db: AsyncDB, v: { id: number, name: string }) => {
     await db.run('UPDATE rtw_vehicles SET name = ? WHERE id = ?', [v.name, v.id]);
@@ -1340,18 +1354,29 @@ export const getItwVehicles = async (db: AsyncDB, year?: number) => {
     return await db.all('SELECT * FROM itw_vehicles WHERE archived_year IS NULL ORDER BY sort ASC, id ASC');
 };
 export const addItwVehicle = async (db: AsyncDB, v: { name: string }) => {
-    let vehicleId: number;
+    let vehicleId: number | undefined;
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM itw_vehicles');
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
         const result = await db.run('INSERT INTO itw_vehicles (name, sort) VALUES (?, ?)', [v.name, next]);
-        vehicleId = result.lastID;
+        vehicleId = Number(result.lastInsertRowid);
     } catch (e) {
         const result = await db.run('INSERT INTO itw_vehicles (name) VALUES (?)', [v.name]);
-        vehicleId = result.lastID;
+        vehicleId = Number(result.lastInsertRowid);
     }
+    
+    if (!vehicleId || isNaN(vehicleId)) {
+        throw new Error('Failed to create ITW vehicle: no vehicleId returned');
+    }
+    
     // Initialisiere Standard-Positionen
     await initializeDefaultVehiclePositions(db, 'itw', vehicleId);
+    
+    // Erstelle automatisch eine Periode ab aktuellem Monat (unbegrenzt)
+    const now = new Date();
+    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    await db.run('INSERT INTO itw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, NULL, 1)', 
+        [vehicleId, currentYM]);
 };
 export const updateItwVehicle = async (db: AsyncDB, v: { id: number, name: string }) => {
     await db.run('UPDATE itw_vehicles SET name = ? WHERE id = ?', [v.name, v.id]);
@@ -1367,20 +1392,31 @@ export const updateItwVehicleOrder = async (db: AsyncDB, order: number[]) => {
 };
 
 export const addNefVehicle = async (db: AsyncDB, v: { name: string, occupancyMode?: '24h' | 'tag' }) => {
-    let vehicleId: number;
+    let vehicleId: number | undefined;
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM nef_vehicles');
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
         const result = await db.run('INSERT INTO nef_vehicles (name, sort, occupancy_mode) VALUES (?, ?, ?)', 
             [v.name, next, v.occupancyMode === 'tag' ? 'tag' : '24h']);
-        vehicleId = result.lastID;
+        vehicleId = result.lastInsertRowid as number;
     } catch (e) {
         const result = await db.run('INSERT INTO nef_vehicles (name, occupancy_mode) VALUES (?, ?)', 
             [v.name, v.occupancyMode === 'tag' ? 'tag' : '24h']);
-        vehicleId = result.lastID;
+        vehicleId = result.lastInsertRowid as number;
     }
+    
+    if (!vehicleId) {
+        throw new Error('Failed to create NEF vehicle: no vehicleId returned');
+    }
+    
     // Initialisiere Standard-Positionen
     await initializeDefaultVehiclePositions(db, 'nef', vehicleId);
+    
+    // Erstelle automatisch eine Periode ab aktuellem Monat (unbegrenzt)
+    const now = new Date();
+    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    await db.run('INSERT INTO nef_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, NULL, 1)', 
+        [vehicleId, currentYM]);
 };
 export const updateNefVehicle = async (db: AsyncDB, v: { id: number, name: string, occupancyMode?: '24h' | 'tag' }) => {
     if (v.occupancyMode) {
@@ -1932,14 +1968,13 @@ export const initializeQualificationTypesTable = async (db: AsyncDB) => {
     const count = await db.get('SELECT COUNT(*) as count FROM qualification_types');
     if (count.count === 0) {
         const defaultQualifications = [
-            { name: 'Fahrzeugführer', description: 'Grundausbildung Fahrzeugführer', category: 'Fahrzeugführung', sort: 1 },
-            { name: 'Fahrzeugführer HLF-B', description: 'Hilfeleistungslöschfahrzeug B', category: 'Fahrzeugführung', sort: 2 },
-            { name: 'NEF', description: 'Notarzteinsatzfahrzeug', category: 'Notfall', sort: 3 },
-            { name: 'ITW Maschinist', description: 'Intensivtransportwagen Maschinist', category: 'Transport', sort: 4 },
-            { name: 'ITW Fahrzeugführer', description: 'Intensivtransportwagen Fahrzeugführer', category: 'Transport', sort: 5 },
-            { name: 'Atemschutz', description: 'Atemschutzgeräteträger', category: 'Sicherheit', sort: 6 },
-            { name: 'Höhenrettung', description: 'Höhenrettung und Abseilmaßnahmen', category: 'Rettung', sort: 7 },
-            { name: 'Technische Hilfeleistung', description: 'Technische Hilfeleistung bei Unfällen', category: 'Technik', sort: 8 }
+            { name: 'RTW Fahrzeugführer', description: 'Fahrzeugführer Rettungswagen', category: 'Fahrzeugführung', sort: 1 },
+            { name: 'HLF-B Fahrzeugführer', description: 'Hilfeleistungslöschfahrzeug B', category: 'Fahrzeugführung', sort: 2 },
+            { name: 'NEF Assistent', description: 'Notarzteinsatzfahrzeug Assistent', category: 'Notfall', sort: 3 },
+            { name: 'ITW Maschinist', description: 'Maschinist Intensivtransportwagen', category: 'Transport', sort: 4 },
+            { name: 'ITW Fahrzeugführer', description: 'Fahrzeugführer Intensivtransportwagen', category: 'Fahrzeugführung', sort: 5 },
+            { name: 'Ü50', description: 'Über 50 Jahre', category: 'Sonstiges', sort: 6 },
+            { name: 'Leitender PAL', description: 'Leitender Praxisanleiter', category: 'Leitung', sort: 7 }
         ];
 
         for (const qual of defaultQualifications) {
@@ -2192,13 +2227,13 @@ export const initializeDefaultVehiclePositions = async (
     switch (vehicleType) {
         case 'rtw':
             positions = [
-                { positionName: 'Fahrzeugführer', qualificationTypeId: findQualId('Fahrzeugführer'), sort: 0 },
+                { positionName: 'Fahrzeugführer', qualificationTypeId: findQualId('RTW Fahrzeugführer'), sort: 0 },
                 { positionName: 'Maschinist', qualificationTypeId: null, sort: 1 }
             ];
             break;
         case 'nef':
             positions = [
-                { positionName: 'Assistent', qualificationTypeId: findQualId('NEF'), sort: 0 }
+                { positionName: 'Assistent', qualificationTypeId: findQualId('NEF Assistent'), sort: 0 }
             ];
             break;
         case 'itw':

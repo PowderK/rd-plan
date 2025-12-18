@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
 // ImportMonthDialog entfällt für direkten Monatsimport
 import ImportTable from './ImportTable';
@@ -93,6 +93,7 @@ const DutyRoster: React.FC = () => {
   const [personnel, setPersonnel] = useState<Person[]>([]);
   const [year, setYear] = useState<number>((window as any).rdPlanYear || new Date().getFullYear());
   const [yearPlannings, setYearPlannings] = useState<{ year: number; filePath: string }[]>([]);
+  const monthButtonsRef = useRef<{ [key: number]: HTMLButtonElement | null }>({});
   const [shiftTypes, setShiftTypes] = useState<{ id: number, code: string, description: string }[]>([]);
   const [customDropdownValues, setCustomDropdownValues] = useState<string[]>([]);
   const [department, setDepartment] = useState<number>(1);
@@ -374,12 +375,14 @@ const DutyRoster: React.FC = () => {
 
   // Monatsweise Ansicht: ausgewählter Monat und Tage
   const [currentMonth, setCurrentMonth] = useState<number>(() => {
-    // Restore from window if available, otherwise use current month or January based on year
-    if ((window as any).rdPlanMonth !== undefined) {
+    // Priorisiere den Monat aus der Einteilung (rdPlanMonth)
+    if ((window as any).rdPlanMonth !== undefined && typeof (window as any).rdPlanMonth === 'number') {
+      console.log('[DutyRoster] Initializing with month from Einteilung:', (window as any).rdPlanMonth);
       return (window as any).rdPlanMonth;
     }
-    const currentYear = new Date().getFullYear();
-    return year === currentYear ? new Date().getMonth() : 0;
+    // Fallback: Januar (0) - nicht aktueller Monat, um Verwirrung zu vermeiden
+    console.log('[DutyRoster] No month from Einteilung, defaulting to Januar (0)');
+    return 0;
   });
   
   // Speichere currentMonth im window-Objekt
@@ -387,7 +390,33 @@ const DutyRoster: React.FC = () => {
     (window as any).rdPlanMonth = currentMonth;
   }, [currentMonth]);
   
-  // Synchronisiere Jahr mit window-Objekt für Header und springe zum passenden Monat NUR bei Jahr-Änderung
+  // Lausche auf Monatsänderungen aus der Einteilung
+  useEffect(() => {
+    const handleMonthChange = () => {
+      const einteilungMonth = (window as any).rdPlanMonth;
+      if (einteilungMonth !== undefined && typeof einteilungMonth === 'number' && einteilungMonth !== currentMonth) {
+        setCurrentMonth(einteilungMonth);
+      }
+    };
+    
+    // Event-Listener für explizite Monatsänderungen
+    window.addEventListener('rdplan-month-changed', handleMonthChange);
+    
+    // Intervall-Check als Fallback (falls kein Event gefeuert wird)
+    const interval = setInterval(() => {
+      const einteilungMonth = (window as any).rdPlanMonth;
+      if (einteilungMonth !== undefined && typeof einteilungMonth === 'number' && einteilungMonth !== currentMonth) {
+        setCurrentMonth(einteilungMonth);
+      }
+    }, 500);
+    
+    return () => {
+      window.removeEventListener('rdplan-month-changed', handleMonthChange);
+      clearInterval(interval);
+    };
+  }, [currentMonth]);
+  
+  // Synchronisiere Jahr mit window-Objekt für Header
   useEffect(() => {
     // Teile Jahr mit anderen Komponenten
     (window as any).rdPlanYear = year;
@@ -403,13 +432,7 @@ const DutyRoster: React.FC = () => {
       }
     })();
     
-    // Wenn aktuelles Jahr: springe zum aktuellen Monat, sonst Januar (nur wenn Jahr wirklich geändert wurde)
-    const currentYear = new Date().getFullYear();
-    if (year === currentYear) {
-      setCurrentMonth(new Date().getMonth());
-    } else {
-      setCurrentMonth(0); // Januar
-    }
+    // NICHT automatisch Monat ändern - respektiere rdPlanMonth aus Einteilung
   }, [year]);
 
   // Filter azubis based on active periods for current month OR having roster entries in the year
@@ -972,8 +995,17 @@ const DutyRoster: React.FC = () => {
     }
   };
 
+  // Auto-scroll zum aktiven Monat beim Laden
+  useEffect(() => {
+    if (monthButtonsRef.current[currentMonth]) {
+      setTimeout(() => {
+        monthButtonsRef.current[currentMonth]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }, 100);
+    }
+  }, [currentMonth]);
+
   return (
-    <div style={{ overflowX: 'auto', padding: 16 }}>
+    <div style={{ position: 'relative', padding: 16, height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <h2 style={{ margin: 0, marginRight: 'auto' }}>Dienstplan</h2>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1002,6 +1034,12 @@ const DutyRoster: React.FC = () => {
       </div>
       {/* Monats-Tabs */}
       <div style={{ 
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
+        background: 'var(--bg)',
+        paddingTop: '8px',
+        paddingBottom: '8px',
         display: 'flex', 
         gap: '4px', 
         borderBottom: '1px solid #e5e7eb',
@@ -1011,6 +1049,7 @@ const DutyRoster: React.FC = () => {
         {months.map((m, i) => (
           <button
             key={i}
+            ref={el => monthButtonsRef.current[i] = el}
             onClick={() => setCurrentMonth(i)}
             style={{
               padding: '8px 16px',
@@ -1046,20 +1085,51 @@ const DutyRoster: React.FC = () => {
         </button>
         <span style={{fontSize: 12, color: '#555'}}>Importiert den aktuellen Monat aus der in den Einstellungen hinterlegten Excel-Datei.</span>
       </div>
+      {/* Horizontaler Scrollbalken oben */}
+      <div 
+        id="top-scroller" 
+        style={{ 
+          position: 'sticky', 
+          top: '60px', 
+          zIndex: 9, 
+          overflowX: 'auto', 
+          overflowY: 'hidden',
+          height: '20px',
+          background: 'var(--bg)',
+          borderBottom: '1px solid #e5e7eb'
+        }}
+        onScroll={(e) => {
+          const bottomScroller = document.getElementById('table-wrapper');
+          if (bottomScroller) {
+            bottomScroller.scrollLeft = e.currentTarget.scrollLeft;
+          }
+        }}
+      >
+        <div style={{ width: Math.max(800, days.length * 90), height: '1px' }}></div>
+      </div>
+      {/* Table Wrapper für Scroll-Synchronisation */}
+      <div 
+        id="table-wrapper"
+        style={{ overflowX: 'auto', overflowY: 'auto', flex: 1 }}
+        onScroll={(e) => {
+          const topScroller = document.getElementById('top-scroller');
+          if (topScroller) {
+            topScroller.scrollLeft = e.currentTarget.scrollLeft;
+          }
+        }}
+      >
       <table style={{ borderCollapse: 'collapse', minWidth: Math.max(800, days.length * 90) }}>
-        <thead style={{ position: 'sticky', top: 0, zIndex: 3, background: 'var(--bg)' }}>
+        <thead style={{ position: 'sticky', top: 0, zIndex: 5, background: 'var(--bg)' }}>
           <tr>
-            <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 4, border: '1px solid var(--line)', minWidth: nameColWidth }}>{'Name'}</th>
+            <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid var(--line)', minWidth: nameColWidth }}>{'Name'}</th>
             <th style={{ border: '1px solid var(--line)', minWidth: 50, whiteSpace: 'nowrap' }}>24h</th>
             <th style={{ border: '1px solid var(--line)', minWidth: 50, whiteSpace: 'nowrap' }}>IW</th>
-            <th style={{ border: '1px solid var(--line)', minWidth: 70, whiteSpace: 'nowrap' }}>Soll RTW</th>
             {days.map((d, i) => (
               <th key={i} style={{ border: '1px solid var(--line)', whiteSpace: 'nowrap' }}>{d.date}</th>
             ))}
           </tr>
           <tr>
-            <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 4, border: '1px solid var(--line)', minWidth: nameColWidth }}> </th>
-            <th style={{ border: '1px solid var(--line)' }}> </th>
+            <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid var(--line)', minWidth: nameColWidth }}> </th>
             <th style={{ border: '1px solid var(--line)' }}> </th>
             <th style={{ border: '1px solid var(--line)' }}> </th>
             {days.map((d, i) => (
@@ -1067,8 +1137,7 @@ const DutyRoster: React.FC = () => {
             ))}
           </tr>
           <tr>
-            <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 4, border: '1px solid var(--line)', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>Schichtfolge</th>
-            <th style={{ border: '1px solid var(--line)' }} />
+            <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid var(--line)', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>Schichtfolge</th>
             <th style={{ border: '1px solid var(--line)' }} />
             <th style={{ border: '1px solid var(--line)' }} />
             {days.map((d, i) => {
@@ -1092,10 +1161,9 @@ const DutyRoster: React.FC = () => {
           {itwEnabled && (
             <>
               <tr>
-                <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 4, border: '1px solid var(--line)', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--text)', fontSize: 13 }}>
+                <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid var(--line)', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--text)', fontSize: 13 }}>
                   Abteilung: {department}
                 </th>
-                <th style={{ border: '1px solid var(--line)' }} />
                 <th style={{ border: '1px solid var(--line)' }} />
                 <th style={{ border: '1px solid var(--line)' }} />
                 {days.map((_, i) => (
@@ -1103,8 +1171,7 @@ const DutyRoster: React.FC = () => {
                 ))}
               </tr>
               <tr>
-                <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 4, border: '1px solid var(--line)', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>ITW</th>
-                <th style={{ border: '1px solid var(--line)' }} />
+                <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid var(--line)', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>ITW</th>
                 <th style={{ border: '1px solid var(--line)' }} />
                 <th style={{ border: '1px solid var(--line)' }} />
                 {days.map((_, i) => {
@@ -1126,7 +1193,7 @@ const DutyRoster: React.FC = () => {
             return [
               isFirstAzubi ? (
                 <tr key="azubi-separator">
-                  <td colSpan={days.length + 4} style={{ background: '#e0e0e0', fontWeight: 'bold', textAlign: 'left', border: '1px solid #bbb' }}>
+                  <td colSpan={days.length + 3} style={{ background: '#e0e0e0', fontWeight: 'bold', textAlign: 'left', border: '1px solid #bbb' }}>
                     Azubis
                   </td>
                 </tr>
@@ -1162,32 +1229,6 @@ const DutyRoster: React.FC = () => {
                           if (t.startsWith('itw_') || (raw && auswertungByType[raw] === 'itw')) count++;
                         }
                         return count;
-                      })()
-                    ) : ''}
-                  </td>
-                  <td style={{ border: '1px solid var(--line)', textAlign: 'center', minWidth: 70 }}>
-                    {!person.isAzubi ? (
-                      (() => {
-                        const key = getStateKey(person);
-                        // Präsenz-Tage (Auswertung ≠ 'off') als Basis
-                        let presence = 0;
-                        for (const d of days) {
-                          const raw = (roster[key]?.[d.iso]?.value || '').trim();
-                          if (raw && (auswertungByType[raw] || 'off') !== 'off') presence++;
-                        }
-                        // Qualifikation HLF-B Fahrzeugführer -> 75% wirken auf Präsenz
-                        const base = personnel.find(p => p.id === person.origId);
-                        const hasHLFB = (base && (base as any).fahrzeugfuehrerHLFB === 1);
-                        if (hasHLFB && presence > 0) {
-                          presence = presence * 0.75;
-                        }
-                        // Verhältnis der Gesamtlast pro Kopf
-                        // statt 24h+ITW‑Mittel nutzen wir die durchschnittliche Präsenz als Bezugsgröße
-                        const mw = avgPresenceInMonth;
-                        const spp = shiftsPerPersonInMonth;
-                        if (mw <= 0 || spp <= 0 || presence <= 0) return '';
-                        const target = Math.round((spp / mw) * presence);
-                        return target;
                       })()
                     ) : ''}
                   </td>
@@ -1261,6 +1302,7 @@ const DutyRoster: React.FC = () => {
           })}
         </tbody>
       </table>
+      </div>
   {/* Tabellen 'Diensttage Abteilung 1 (2025)' entfernt */}
       {showImportTable && importTableMonth !== null && (
         <div style={{

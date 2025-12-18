@@ -7,9 +7,14 @@ const AddNef: React.FC = () => {
   const handleSave = async () => {
     const n = name.trim();
     if (!n) return;
-    await (window as any).api.addNefVehicle({ name: n });
-    if (window.opener) window.opener.postMessage('settings-updated', '*');
-    window.close();
+    try {
+      await (window as any).api.addNefVehicle({ name: n });
+      if (window.opener) window.opener.postMessage('settings-updated', '*');
+      window.close();
+    } catch (e) {
+      console.error('Failed to add NEF:', e);
+      alert('Fehler beim Anlegen des NEF: ' + (e instanceof Error ? e.message : String(e)));
+    }
   };
 
   return (

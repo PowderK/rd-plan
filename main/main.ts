@@ -59,7 +59,36 @@ function readDbDirFromConfigFile(cfgPath: string): string | null {
 }
 
 function hasDbConfig(): boolean {
-    try { return fs.existsSync(getDbConfigPath()); } catch { return false; }
+    try {
+        const configPath = getDbConfigPath();
+        if (fs.existsSync(configPath)) {
+            return true;
+        }
+        
+        // Automatisch Standard-Konfiguration erstellen, wenn nicht vorhanden
+        console.log('[Main] Keine db-config.json gefunden, erstelle Standard-Konfiguration...');
+        const defaultDbDir = suggestDefaultDbDir();
+        const userData = app.getPath('userData');
+        
+        try {
+            fs.mkdirSync(userData, { recursive: true });
+            fs.writeFileSync(configPath, JSON.stringify({ dbDir: defaultDbDir }, null, 2), 'utf-8');
+            console.log('[Main] Standard db-config.json erstellt:', configPath, '-> dbDir:', defaultDbDir);
+            
+            // Auch die globale Konfiguration erstellen (neben der Exe)
+            const result = writeGlobalDbConfig(defaultDbDir);
+            if (result.success) {
+                console.log('[Main] Globale db-config.json erstellt:', result.path);
+            }
+            
+            return true;
+        } catch (e) {
+            console.error('[Main] Fehler beim Erstellen der db-config.json:', e);
+            return false;
+        }
+    } catch {
+        return false;
+    }
 }
 
 function writeGlobalDbConfig(dbDir: string): { success: boolean; path?: string; message?: string } {
@@ -1389,34 +1418,31 @@ ipcMain.handle('set-db-dir', async (_event, targetDir: string) => {
         if (!targetDir || typeof targetDir !== 'string') throw new Error('Ungültiges Zielverzeichnis');
         const userData = app.getPath('userData');
         const cfgPath = path.join(userData, 'db-config.json');
-        // ensure dir exists
+        
+        // Ensure target directory exists
         try { fs.mkdirSync(targetDir, { recursive: true }); } catch {}
         try { fs.accessSync(targetDir, fs.constants.W_OK); } catch { throw new Error('Kein Schreibzugriff auf das Zielverzeichnis'); }
-        // copy current DB if exists
-        let src: string | null = null;
-        try {
-            const mgr = getDatabaseManager();
-            const diag = mgr.getDiagnostics?.() || {};
-            if (diag?.chosenDbPath && fs.existsSync(diag.chosenDbPath)) src = String(diag.chosenDbPath);
-        } catch {}
-        if (src) {
-            const dest = path.join(targetDir, 'rd-plan.db');
-            try { fs.copyFileSync(src, dest); } catch (e) { console.warn('[Main] copy DB failed', e); }
-        }
-        // write config
+        
+        // NICHT kopieren! Alte DB bleibt am alten Speicherort.
+        // Wenn am neuen Speicherort keine DB existiert → wird beim Neustart neu angelegt
+        // Wenn dort bereits eine DB existiert → wird diese verwendet
+        
+        // Write local config (db-config.json in userData)
         try {
             fs.writeFileSync(cfgPath, JSON.stringify({ dbDir: targetDir }, null, 2), 'utf-8');
         } catch (e) {
             throw new Error('Konfiguration konnte nicht geschrieben werden');
         }
-        // Best Effort: globale Konfiguration ebenfalls aktualisieren
+        
+        // Write global config (db-config.json next to executable)
         try {
             const res = writeGlobalDbConfig(targetDir);
             if (!res.success) console.warn('[Main] writeGlobalDbConfig failed:', res.message);
         } catch (e) {
             console.warn('[Main] writeGlobalDbConfig threw:', e);
         }
-        // relaunch app
+        
+        // Relaunch app to use new database location
         app.relaunch();
         app.exit(0);
         return { success: true };
