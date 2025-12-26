@@ -1,3 +1,7 @@
+## Build 673 - 2025-12-26
+
+- automated build
+
 ## Build 672 - 2025-12-18
 
 - automated build
