@@ -1,3 +1,7 @@
+## Build 678 - 2026-01-04
+
+- automated build
+
 ## Build 677 - 2025-12-26
 
 - automated build
