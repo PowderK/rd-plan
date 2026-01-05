@@ -40,9 +40,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
     const [isUpdating, setIsUpdating] = useState(false); // Verhindert Race-Conditions während Updates
     const [holidays, setHolidays] = useState<Set<string>>(new Set());
-    // Zusätzliche ITW-Tage außerhalb der Schichtfolge (nur UI-state für aktuellen Monat)
-    const [itwExtraDays, setItwExtraDays] = useState<Set<string>>(new Set());
-    const [itwExtraInput, setItwExtraInput] = useState<string>('');
     // Hervorgehobene Person aus Kontrollkasten
     const [highlightedPersonKey, setHighlightedPersonKey] = useState<string | null>(null);
     // Ü50-IDs für korrekte Berechnung (analog ValuesPage)
@@ -351,12 +348,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
         };
         loadActs();
     }, [year]);
-
-    // Bei Monatswechsel lokale Extra-Tage zurücksetzen
-    useEffect(() => {
-        setItwExtraDays(new Set());
-        setItwExtraInput('');
-    }, [currentMonth, year]);
 
     // Feiertage bei Jahreswechsel neu laden
     useEffect(() => {
@@ -1364,7 +1355,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             const rest = (() => {
                                 const ty = targetYearMap[key] || 0;
                                 const dy = drivenYearMap[key] || 0;
-                                return ty - dy;
+                                return dy - ty;
                             })();
                             // Kumulative Differenz bis aktuellen Monat
                             const cumTarget = targetCumulativeMap?.[key] || 0;
@@ -1385,14 +1376,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const minNR = normRests.length ? Math.min(...normRests) : 0;
                         const maxNR = normRests.length ? Math.max(...normRests) : 0;
                         const mixColor = (t: number) => {
-                            // t in [0,1]: 0 = grün (wenig Rest), 1 = rot (viel Rest)
+                            // t in [0,1]: 0 = rot (negativ/noch nicht genug gefahren), 0.5 = gelb (ausgeglichen), 1 = grün (positiv/mehr gefahren als Soll)
                             const clamp = (x: number) => Math.max(0, Math.min(1, x));
                             const tt = clamp(t);
                             const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
-                            const r = Math.round(lerp(34, 239, tt));   // 34c55e -> ef4444
-                            const g = Math.round(lerp(197, 68, tt));
-                            const b = Math.round(lerp(94, 68, tt));
-                            return { r, g, b };
+                            if (tt < 0.5) {
+                                // Rot -> Gelb (0 bis 0.5)
+                                const factor = tt * 2;
+                                const r = 239; // ef4444 rot konstant
+                                const g = Math.round(lerp(68, 234, factor)); // ef4444 -> eab308 (gelb)
+                                const b = Math.round(lerp(68, 8, factor));
+                                return { r, g, b };
+                            } else {
+                                // Gelb -> Grün (0.5 bis 1)
+                                const factor = (tt - 0.5) * 2;
+                                const r = Math.round(lerp(234, 34, factor)); // eab308 -> 34c55e (grün)
+                                const g = Math.round(lerp(179, 197, factor));
+                                const b = Math.round(lerp(8, 94, factor));
+                                return { r, g, b };
+                            }
                         };
                         // Restliches Jahr: ISO-Daten sammeln (ab aktuellem Monat bis Dezember)
                         const restYearIsos: string[] = (() => {
@@ -1563,18 +1565,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 }
                             }
                         } catch {}
-                        // Manuell hinzugefügte Zusatz-Tage (bereits gefiltert auf Monat)
-                        const extras = Array.from(itwExtraDays || []);
-                        // Union aus tatsächlichen ITW-Tagen und manuell hinzugefügten Tagen bilden und aufsteigend sortieren
+                        // Union aus tatsächlichen ITW-Tagen bilden und aufsteigend sortieren
                         const daysSet = new Map<string, { date: string; weekday: string; day: number; dayOfYear: number }>();
                         for (const iso of assignedItwDates) {
-                            if (!daysSet.has(iso)) {
-                                const local = new Date(year, currentMonth, Number(iso.slice(8,10)));
-                                const weekday = local.toLocaleDateString('de-DE', { weekday: 'short' });
-                                daysSet.set(iso, { date: iso, weekday, day: Number(iso.slice(8,10)), dayOfYear: 0 });
-                            }
-                        }
-                        for (const iso of extras) {
                             if (!daysSet.has(iso)) {
                                 const local = new Date(year, currentMonth, Number(iso.slice(8,10)));
                                 const weekday = local.toLocaleDateString('de-DE', { weekday: 'short' });
@@ -1682,25 +1675,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             </div>
                         ));
                             })()}
-                            {/* Zusatz-Funktion: ITW-Tage außerhalb der Schichtfolge hinzufügen (unter den Karten) */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
-                                <label style={{ fontSize: 13, color: '#555' }}>Zusatz-Tag:</label>
-                                <input
-                                  type="date"
-                                  value={itwExtraInput}
-                                  onChange={e => setItwExtraInput(e.target.value)}
-                                />
-                                <button onClick={() => {
-                                    if (!itwExtraInput) return;
-                                    // Nur Tage des aktuellen Monats zulassen
-                                    const d = new Date(itwExtraInput + 'T00:00:00Z');
-                                    if (d.getUTCFullYear() !== year || d.getUTCMonth() !== currentMonth) return;
-                                    // Feiertage weiterhin aussparen (ITW entfällt)
-                                    if (holidays.has(itwExtraInput)) return;
-                                    setItwExtraDays(prev => new Set([...Array.from(prev), itwExtraInput]));
-                                }}>Tag hinzufügen</button>
-                                <span style={{ fontSize: 12, color: '#666' }}>Für Ersatzbesetzungen außerhalb der IW-Folge.</span>
-                            </div>
                         </div>
                     </div>
                     {(() => {
@@ -1736,7 +1710,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             const rest = (() => {
                                 const ty = targetYearMap[key] || 0;
                                 const dy = drivenYearMap[key] || 0;
-                                return ty - dy;
+                                return dy - ty;
                             })();
                             const cumTarget = targetCumulativeMap?.[key] || 0;
                             const cumDriven = drivenCumulativeMap?.[key] || 0;
@@ -1755,13 +1729,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const minNR = normRests.length ? Math.min(...normRests) : 0;
                         const maxNR = normRests.length ? Math.max(...normRests) : 0;
                         const mixColor = (t: number) => {
+                            // t in [0,1]: 0 = rot (negativ/noch nicht genug gefahren), 0.5 = gelb (ausgeglichen), 1 = grün (positiv/mehr gefahren als Soll)
                             const clamp = (x: number) => Math.max(0, Math.min(1, x));
                             const tt = clamp(t);
                             const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
-                            const r = Math.round(lerp(34, 239, tt));
-                            const g = Math.round(lerp(197, 68, tt));
-                            const b = Math.round(lerp(94, 68, tt));
-                            return { r, g, b };
+                            if (tt < 0.5) {
+                                // Rot -> Gelb (0 bis 0.5)
+                                const factor = tt * 2;
+                                const r = 239; // ef4444 rot konstant
+                                const g = Math.round(lerp(68, 234, factor)); // ef4444 -> eab308 (gelb)
+                                const b = Math.round(lerp(68, 8, factor));
+                                return { r, g, b };
+                            } else {
+                                // Gelb -> Grün (0.5 bis 1)
+                                const factor = (tt - 0.5) * 2;
+                                const r = Math.round(lerp(234, 34, factor)); // eab308 -> 34c55e (grün)
+                                const g = Math.round(lerp(179, 197, factor));
+                                const b = Math.round(lerp(8, 94, factor));
+                                return { r, g, b };
+                            }
                         };
                         // Restliches Jahr (ab aktuellem Monat) berechnen – Anwesenheit und bereits eingeteilte Schichten
                         const restYearIsos: string[] = (() => {

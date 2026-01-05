@@ -3,15 +3,15 @@ import styles from './MonthTabs.module.css';
 
 // Grid-Layout-Konstanten
 const GRID_CONFIG = {
-  columns: 'minmax(80px, auto) 55px 24px 24px 40px 72px',
-  gap: 5,
-  marginBottom: 1,
+  columns: 'minmax(80px, auto) 55px 20px 20px 40px 72px',
+  gap: 8,
+  marginBottom: 6,
 };
 
 const WAAGE_CONFIG = {
   width: 48,
-  height: 5,
-  gap: 1,
+  height: 8,
+  gap: 3,
 };
 
 interface KontrollkastenItem {
@@ -72,11 +72,11 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
           borderBottom: '1px solid #e5e7eb',
         }}
       >
-        <span style={{ textAlign: 'right' }}>Name</span>
-        <span style={{ textAlign: 'center' }}>Soll | Ist</span>
-        <span style={{ textAlign: 'center' }}>NEF</span>
-        <span style={{ textAlign: 'center' }}>ITW</span>
-        <span style={{ textAlign: 'center' }}>Gesamt</span>
+        <span style={{ textAlign: 'right', paddingRight: 4 }}>Name</span>
+        <span style={{ textAlign: 'center', paddingRight: 4 }}>Soll | Ist</span>
+        <span style={{ textAlign: 'center', paddingRight: 4 }}>NEF</span>
+        <span style={{ textAlign: 'center', paddingRight: 4 }}>ITW</span>
+        <span style={{ textAlign: 'center', paddingRight: 4 }}>Gesamt</span>
         <span style={{ textAlign: 'center' }}>T/N | Rest</span>
       </div>
 
@@ -117,40 +117,42 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                   textDecoration: highlightedPersonKey === it.key ? 'underline' : undefined,
                   whiteSpace: 'nowrap',
                   textAlign: 'right',
+                  borderRight: '1px solid #e5e7eb',
+                  paddingRight: 4,
                 }}
               >
                 {it.name}
               </span>
 
               {/* Soll/Ist mit Waage */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, borderRight: '1px solid #e5e7eb', paddingRight: 4 }}>
                 <span className={styles.sidebarVal} style={{ fontSize: 11 }}>
                   {(it.target === '' ? '–' : it.target) + ' | ' + it.count}
                 </span>
-                {renderPresenceMeter(it.presenceRemainingByPerson ?? 0, 5)}
+                {renderPresenceMeter(it.cumDiff, 5)}
               </div>
 
               {/* NEF */}
-              <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11 }}>
+              <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4 }}>
                 {it.nef}
               </span>
 
               {/* ITW */}
-              <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11 }}>
+              <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4 }}>
                 {it.itw}
               </span>
 
               {/* Gesamt */}
               {!it.ue50 && (
-                <span className={styles.sidebarVal} style={{ ...restStyle, textAlign: 'center', fontSize: 11 }}>
+                <span className={styles.sidebarVal} style={{ ...restStyle, textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4 }}>
                   {Number.isFinite(it.rest) ? it.rest : '–'}
                 </span>
               )}
-              {it.ue50 && <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11 }}>–</span>}
+              {it.ue50 && <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4 }}>–</span>}
 
               {/* Tag/Nacht Waage und Rest V untereinander */}
               {!it.ue50 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: WAAGE_CONFIG.gap }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: WAAGE_CONFIG.gap, alignItems: 'center' }}>
                   {/* Tag/Nacht Waage */}
                   <div
                     style={{
@@ -175,41 +177,46 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                     {(() => {
                       const tagCount = it.tag || 0;
                       const nachtCount = it.nacht || 0;
-                      const total = tagCount + nachtCount;
+                      const diff = tagCount - nachtCount;
 
-                      if (total === 0) return null;
+                      if (diff === 0 && tagCount === 0 && nachtCount === 0) return null;
 
-                      const lp = Math.min(1, nachtCount / total);
-                      const rp = Math.min(1, tagCount / total);
+                      const maxVal = 5;
+                      const percentage = Math.min(1, Math.abs(diff) / maxVal);
+                      const width = percentage * 50;
 
                       return (
                         <>
-                          {/* Nacht (links) - Blau */}
-                          <div
-                            style={{
-                              position: 'absolute',
-                              right: '50%',
-                              width: `${lp * 50}%`,
-                              top: 0,
-                              bottom: 0,
-                              background: '#3b82f6',
-                              borderTopLeftRadius: 3,
-                              borderBottomLeftRadius: 3,
-                            }}
-                          />
-                          {/* Tag (rechts) - Rot */}
-                          <div
-                            style={{
-                              position: 'absolute',
-                              left: '50%',
-                              width: `${rp * 50}%`,
-                              top: 0,
-                              bottom: 0,
-                              background: '#ef4444',
-                              borderTopRightRadius: 3,
-                              borderBottomRightRadius: 3,
-                            }}
-                          />
+                          {/* Wenn mehr Tag-Schichten: Balken nach rechts (rot) */}
+                          {diff > 0 && (
+                            <div
+                              style={{
+                                position: 'absolute',
+                                left: '50%',
+                                width: `${width}%`,
+                                top: 0,
+                                bottom: 0,
+                                background: '#ef4444',
+                                borderTopRightRadius: 3,
+                                borderBottomRightRadius: 3,
+                              }}
+                            />
+                          )}
+                          {/* Wenn mehr Nacht-Schichten: Balken nach links (blau) */}
+                          {diff < 0 && (
+                            <div
+                              style={{
+                                position: 'absolute',
+                                right: '50%',
+                                width: `${width}%`,
+                                top: 0,
+                                bottom: 0,
+                                background: '#3b82f6',
+                                borderTopLeftRadius: 3,
+                                borderBottomLeftRadius: 3,
+                              }}
+                            />
+                          )}
                           <div
                             style={{
                               position: 'absolute',
@@ -222,7 +229,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                               fontWeight: 600,
                             }}
                           >
-                            {tagCount} • {nachtCount}
+                            {nachtCount} • {tagCount}
                           </div>
                         </>
                       );

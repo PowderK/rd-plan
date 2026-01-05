@@ -69,6 +69,7 @@
   text-align: center;
   box-sizing: border-box;
   padding: 0 6px;
+  background: var(--bg);
 }
 
 /* Neue Tabellen-Layouts für RTW/NEF-Ansicht */
@@ -83,6 +84,7 @@
   margin-bottom: 8px;
   min-width: 320px;
   background: var(--bg);
+  border-right: 2px solid #ef4444; 
 }
 .nefTable {
   display: grid;
@@ -91,9 +93,11 @@
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
+  margin-right: 8px;
   margin-bottom: 8px;
   min-width: 220px;
   background: var(--bg);
+  border-right: 2px solid #ef4444; 
 }
 .tableHead {
   font-size: 11px;
@@ -169,6 +173,8 @@
   flex-direction: column;
   gap: 6px;
   background: var(--bg);
+  border-right: 2px solid #f59e0b;
+  margin-right: 8px;
 }
 .itwCardHeader {
   font-size: inherit;
@@ -212,6 +218,7 @@
   max-height: calc(100vh - 16px);
   overflow: auto;
   background: var(--bg);
+  width: 360px;
 }
 .sidebarTitle {
   font-weight: 700;
