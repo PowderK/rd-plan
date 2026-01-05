@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { calculateTargets } from '../utils/calculation';
 import styles from './MonthTabs.module.css';
+import { Kontrollkasten } from './Kontrollkasten';
 
 interface MonthTabsProps {
     currentMonth: number;
@@ -1441,198 +1442,57 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             <aside className={styles.sidebar}>
                                 <div className={styles.sidebarTitle}>Kontrolle</div>
                                 <div className={styles.sidebarSub}></div>
-                                <div className={styles.sidebarList}>
-                                    {/* Header-Zeile über den Werten, zentriert */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto auto', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 12, color: '#374151', marginBottom: 4 }}>
-                                        <span></span>
-                                        <span style={{ textAlign: 'center' }}>Soll | Ist</span>
-                                        <span style={{ textAlign: 'center' }}>NEF</span>
-                                        <span style={{ textAlign: 'center' }}>ITW</span>
-                                        <span style={{ textAlign: 'center' }}>Gesamt</span>
-                                        <span></span>
-                                    </div>
-                                    {items.map((it, idx) => {
-                                        // Hervorhebung nur für Personen mit Monats-Soll > 0 und nur am Rest-Wert anzeigen
-                                        const isEligible = (typeof it.target === 'number' && (it.target as number) > 0);
-                                        let restStyle: React.CSSProperties | undefined = undefined;
-                                        if (isEligible && (maxNR > minNR)) {
-                                            const fte = Math.max(0.01, (it.teilzeit || 100) / 100);
-                                            const normRest = it.rest / fte;
-                                            const t = (normRest - minNR) / (maxNR - minNR);
-                                            const col = mixColor(t);
-                                            const bg = `rgba(${col.r}, ${col.g}, ${col.b}, 0.18)`;
-                                            const border = `1px solid rgba(${col.r}, ${col.g}, ${col.b}, 0.35)`;
-                                            restStyle = { background: bg, borderRadius: 4, border, padding: '0 6px' };
-                                        }
-                                        return (
-                                            <div key={idx} className={styles.sidebarItem} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto auto', alignItems: 'center', gap: 8 }}>
-                                            <span 
-                                                className={styles.sidebarName} 
-                                                onClick={() => setHighlightedPersonKey(highlightedPersonKey === it.key ? null : it.key)}
-                                                style={{ 
-                                                    color: it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : undefined,
-                                                    cursor: 'pointer',
-                                                    fontWeight: highlightedPersonKey === it.key ? 700 : undefined,
-                                                    textDecoration: highlightedPersonKey === it.key ? 'underline' : undefined
-                                                }}
-                                            >
-                                                {it.name}
-                                            </span>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                <span className={styles.sidebarVal}>{(it.target === '' ? '–' : it.target) + ' | ' + it.count}</span>
-                                                {/* Waage-Anzeige für kumulative Differenz */}
-                                                <div style={{ position: 'relative', width: 40, height: 8, background: '#eef2f7', borderRadius: 4 }}>
-                                                    <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1', zIndex: 1 }} />
-                                                    {(() => {
-                                                        const diff = it.cumDiff;
-                                                        // cumDiff = cumTarget - cumDriven
-                                                        // Negativ = zu wenig Ist eingeteilt (Soll < Ist, Überdeckung) → grün, nach rechts
-                                                        // Positiv = zu viel Soll (Soll > Ist, Unterdeckung) → rot, nach links
-                                                        const isNegative = diff < 0;
-                                                        const absVal = Math.abs(diff);
-                                                        // Maximale Balkenbreite = 50% (= 20px bei 40px Container)
-                                                        const maxVal = 5; // Skalierung: 5 Schichten = 100% der Balkenhälfte
-                                                        const percentage = Math.min(1, absVal / maxVal);
-                                                        const width = percentage * 50; // 50% des Containers
-                                                        
-                                                        if (diff > 0) {
-                                                            // Roter Balken nach links (Unterdeckung: Soll > Ist, zu wenig eingeteilt)
-                                                            return (
-                                                                <div style={{ 
-                                                                    position: 'absolute', 
-                                                                    right: '50%', 
-                                                                    width: `${width}%`, 
-                                                                    top: 0, 
-                                                                    bottom: 0, 
-                                                                    background: '#ef4444', 
-                                                                    borderTopLeftRadius: 4, 
-                                                                    borderBottomLeftRadius: 4 
-                                                                }} />
-                                                            );
-                                                        } else if (diff < 0) {
-                                                            // Grüner Balken nach rechts (Überdeckung: Ist > Soll, zu viel eingeteilt)
-                                                            return (
-                                                                <div style={{ 
-                                                                    position: 'absolute', 
-                                                                    left: '50%', 
-                                                                    width: `${width}%`, 
-                                                                    top: 0, 
-                                                                    bottom: 0, 
-                                                                    background: '#34c759', 
-                                                                    borderTopRightRadius: 4, 
-                                                                    borderBottomRightRadius: 4 
-                                                                }} />
-                                                            );
-                                                        }
-                                                        return null; // diff === 0: kein Balken
-                                                    })()}
-                                                </div>
-                                            </div>
-                                            <span className={styles.sidebarVal}>{it.nef}</span>
-                                            <span className={styles.sidebarVal}>{it.itw}</span>
-                                                {!it.ue50 && <span className={styles.sidebarVal} style={restStyle}>{Number.isFinite(it.rest) ? it.rest : '–'}</span>}
-                                                {it.ue50 && <span className={styles.sidebarVal}>–</span>}
-                                            {/* Zweiteilige Balkenanzeige: Überschuss Tag/Nacht - nur wenn nicht Ü50 */}
-                                                {!it.ue50 && <div style={{ gridColumn: '1 / span 6', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                                                <div style={{ position: 'relative', width: 100, height: 8, background: '#eef2f7', borderRadius: 4 }}>
-                                                    <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1', zIndex: 1 }} />
-                                                    {(() => {
-                                                        const tagCount = it.tag || 0;
-                                                        const nachtCount = it.nacht || 0;
-                                                        const diff = tagCount - nachtCount;
-                                                        
-                                                        if (diff === 0) {
-                                                            // Gleich viele Tag und Nacht → kein Balken
-                                                            return null;
-                                                        }
-                                                        
-                                                        // Maximale Balkenbreite = 50% (= 50px bei 100px Container)
-                                                        const maxVal = 5; // Skalierung: 5 Schichten Differenz = 100% der Balkenhälfte
-                                                        const percentage = Math.min(1, Math.abs(diff) / maxVal);
-                                                        const width = percentage * 50; // 50% des Containers
-                                                        
-                                                        if (diff > 0) {
-                                                            // Mehr Tag als Nacht → orangener Balken nach rechts
-                                                            return (
-                                                                <>
-                                                                    <div style={{ 
-                                                                        position: 'absolute', 
-                                                                        left: '50%', 
-                                                                        width: `${width}%`, 
-                                                                        top: 0, 
-                                                                        bottom: 0, 
-                                                                        background: '#fb923c', 
-                                                                        borderTopRightRadius: 4, 
-                                                                        borderBottomRightRadius: 4 
-                                                                    }} />
-                                                                    {width >= 18 && (
-                                                                        <div style={{ position: 'absolute', left: `${50 + width / 2}%`, top: '50%', transform: 'translate(-50%, -50%)', fontSize: 9, color: '#ffffff', textShadow: '0 0 2px rgba(0,0,0,0.6)', fontWeight: 600 }}>+{diff}</div>
-                                                                    )}
-                                                                </>
-                                                            );
-                                                        } else {
-                                                            // Mehr Nacht als Tag → blauer Balken nach links
-                                                            return (
-                                                                <>
-                                                                    <div style={{ 
-                                                                        position: 'absolute', 
-                                                                        right: '50%', 
-                                                                        width: `${width}%`, 
-                                                                        top: 0, 
-                                                                        bottom: 0, 
-                                                                        background: '#60a5fa', 
-                                                                        borderTopLeftRadius: 4, 
-                                                                        borderBottomLeftRadius: 4 
-                                                                    }} />
-                                                                    {width >= 18 && (
-                                                                        <div style={{ position: 'absolute', left: `${50 - width / 2}%`, top: '50%', transform: 'translate(-50%, -50%)', fontSize: 9, color: '#ffffff', textShadow: '0 0 2px rgba(0,0,0,0.6)', fontWeight: 600 }}>{diff}</div>
-                                                                    )}
-                                                                </>
-                                                            );
-                                                        }
-                                                    })()}
-                                                </div>
-                                                <span style={{ fontSize: 11, color: '#64748b' }}>
-                                                    Tag {it.tag || 0} • Nacht {it.nacht || 0}
-                                                </span>
-                                            </div>}
-
-                                            {/* Kontrollbalken: verbleibende Anwesenheit vs. Rest */}
-                                            {!it.ue50 && <div style={{ gridColumn: '1 / span 6', display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                {(() => {
-                                                    const pres = presenceRemainingByPerson[it.key] || 0;
-                                                    const assigned = assignedRemainingByPerson[it.key] || 0;
-                                                    const remain = Math.max(0, pres - assigned);
-                                                    const frac = pres > 0 ? Math.min(1, remain / pres) : 0;
-                                                    // Harte Schwellwerte für die Färbung:
-                                                    // - Rot (#ef4444), wenn verbleibende Anwesenheit < verbleibendes Jahres-Soll (Unterdeckung)
-                                                    // - Gelb (#f59e0b), wenn der positive Puffer ≤ 20% des verbleibenden Solls ist
-                                                    // - Grün (#34c759), wenn der Puffer > 20% des verbleibenden Solls ist
-                                                    const needed = Math.max(0, Number(it.rest || 0));
-                                                    let barColor = '#34c759';
-                                                    if (needed > 0) {
-                                                        if (remain < needed) {
-                                                            barColor = '#ef4444';
-                                                        } else {
-                                                            const diff = remain - needed; // >= 0
-                                                            const threshold = 0.2 * needed;
-                                                            barColor = (diff <= threshold) ? '#f59e0b' : '#34c759';
-                                                        }
-                                                    }
+                                <Kontrollkasten
+                                    items={items}
+                                    highlightedPersonKey={highlightedPersonKey}
+                                    setHighlightedPersonKey={setHighlightedPersonKey}
+                                    mixColor={mixColor}
+                                    minNR={minNR}
+                                    maxNR={maxNR}
+                                    presenceRemainingByPerson={presenceRemainingByPerson}
+                                    assignedRemainingByPerson={assignedRemainingByPerson}
+                                    renderPresenceMeter={(value: number, height: number) => (
+                                        <div style={{ position: 'relative', width: 45, height, background: '#eef2f7', borderRadius: 3 }}>
+                                            <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1', zIndex: 1 }} />
+                                            {(() => {
+                                                const diff = value;
+                                                const absVal = Math.abs(diff);
+                                                const maxVal = 5;
+                                                const percentage = Math.min(1, absVal / maxVal);
+                                                const width = percentage * 50;
+                                                
+                                                if (diff > 0) {
                                                     return (
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                            <div style={{ position: 'relative', width: 80, height: 8, background: '#eef2f7', borderRadius: 4 }}>
-                                                                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${frac * 100}%`, background: barColor, borderRadius: 5 }} />
-                                                                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#111827' }}>{remain}</div>
-                                                            </div>
-                                                        </div>
+                                                        <div style={{ 
+                                                            position: 'absolute', 
+                                                            right: '50%', 
+                                                            width: `${width}%`, 
+                                                            top: 0, 
+                                                            bottom: 0, 
+                                                            background: '#ef4444', 
+                                                            borderTopLeftRadius: 3, 
+                                                            borderBottomLeftRadius: 3 
+                                                        }} />
                                                     );
-                                                })()}
-                                                </div>}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+                                                } else if (diff < 0) {
+                                                    return (
+                                                        <div style={{ 
+                                                            position: 'absolute', 
+                                                            left: '50%', 
+                                                            width: `${width}%`, 
+                                                            top: 0, 
+                                                            bottom: 0, 
+                                                            background: '#34c759', 
+                                                            borderTopRightRadius: 3, 
+                                                            borderBottomRightRadius: 3 
+                                                        }} />
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
+                                        </div>
+                                    )}
+                                />
                             </aside>
                         );
                         const target = (typeof document !== 'undefined') ? document.getElementById('einteilung-right-sidebar') : null;
@@ -1948,144 +1808,57 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             <aside className={styles.sidebar}>
                                 <div className={styles.sidebarTitle}>Kontrolle</div>
                                 <div className={styles.sidebarSub}></div>
-                                <div className={styles.sidebarList}>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto auto', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 12, color: '#374151', marginBottom: 4 }}>
-                                        <span></span>
-                                        <span style={{ textAlign: 'center' }}>Soll | Ist</span>
-                                        <span style={{ textAlign: 'center' }}>NEF</span>
-                                        <span style={{ textAlign: 'center' }}>ITW</span>
-                                        <span style={{ textAlign: 'center' }}>Gesamt</span>
-                                        <span></span>
-                                    </div>
-                                    {items.map((it, idx) => {
-                                        const isEligible = (typeof it.target === 'number' && (it.target as number) > 0);
-                                        let restStyle: React.CSSProperties | undefined = undefined;
-                                        if (isEligible && (maxNR > minNR)) {
-                                            const fte = Math.max(0.01, (it.teilzeit || 100) / 100);
-                                            const normRest = it.rest / fte;
-                                            const t = (normRest - minNR) / (maxNR - minNR);
-                                            const col = mixColor(t);
-                                            const bg = `rgba(${col.r}, ${col.g}, ${col.b}, 0.18)`;
-                                            const border = `1px solid rgba(${col.r}, ${col.g}, ${col.b}, 0.35)`;
-                                            restStyle = { background: bg, borderRadius: 4, border, padding: '0 6px' };
-                                        }
-                                        return (
-                                            <div key={idx} className={styles.sidebarItem} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto auto', alignItems: 'center', gap: 8 }}>
-                                                <span 
-                                                    className={styles.sidebarName} 
-                                                    onClick={() => setHighlightedPersonKey(highlightedPersonKey === it.key ? null : it.key)}
-                                                    style={{ 
-                                                        color: it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : undefined,
-                                                        cursor: 'pointer',
-                                                        fontWeight: highlightedPersonKey === it.key ? 700 : undefined,
-                                                        textDecoration: highlightedPersonKey === it.key ? 'underline' : undefined
-                                                    }}
-                                                >
-                                                    {it.name}
-                                                </span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                    <span className={styles.sidebarVal}>{(it.target === '' ? '–' : it.target) + ' | ' + it.count}</span>
-                                                    {/* Waage-Anzeige für kumulative Differenz */}
-                                                    <div style={{ position: 'relative', width: 40, height: 8, background: '#eef2f7', borderRadius: 4 }}>
-                                                        <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1', zIndex: 1 }} />
-                                                        {(() => {
-                                                            const diff = it.cumDiff;
-                                                            const absVal = Math.abs(diff);
-                                                            const maxVal = 5;
-                                                            const percentage = Math.min(1, absVal / maxVal);
-                                                            const width = percentage * 50;
-                                                            
-                                                            if (diff > 0) {
-                                                                // Roter Balken nach links (Unterdeckung: Soll > Ist)
-                                                                return (
-                                                                    <div style={{ 
-                                                                        position: 'absolute', 
-                                                                        right: '50%', 
-                                                                        width: `${width}%`, 
-                                                                        top: 0, 
-                                                                        bottom: 0, 
-                                                                        background: '#ef4444', 
-                                                                        borderTopLeftRadius: 4, 
-                                                                        borderBottomLeftRadius: 4 
-                                                                    }} />
-                                                                );
-                                                            } else if (diff < 0) {
-                                                                // Grüner Balken nach rechts (Überdeckung: Ist > Soll)
-                                                                return (
-                                                                    <div style={{ 
-                                                                        position: 'absolute', 
-                                                                        left: '50%', 
-                                                                        width: `${width}%`, 
-                                                                        top: 0, 
-                                                                        bottom: 0, 
-                                                                        background: '#34c759', 
-                                                                        borderTopRightRadius: 4, 
-                                                                        borderBottomRightRadius: 4 
-                                                                    }} />
-                                                                );
-                                                            }
-                                                            return null;
-                                                        })()}
-                                                    </div>
-                                                </div>
-                                                <span className={styles.sidebarVal}>{it.nef}</span>
-                                                <span className={styles.sidebarVal}>{it.itw}</span>
-                                                {!it.ue50 && <span className={styles.sidebarVal} style={restStyle}>{Number.isFinite(it.rest) ? it.rest : '–'}</span>}
-                                                {it.ue50 && <span className={styles.sidebarVal}>–</span>}
-                                                {!it.ue50 && <div style={{ gridColumn: '1 / span 6', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                <Kontrollkasten
+                                    items={items}
+                                    highlightedPersonKey={highlightedPersonKey}
+                                    setHighlightedPersonKey={setHighlightedPersonKey}
+                                    mixColor={mixColor}
+                                    minNR={minNR}
+                                    maxNR={maxNR}
+                                    presenceRemainingByPerson={presenceRemainingByPerson}
+                                    assignedRemainingByPerson={assignedRemainingByPerson}
+                                    renderPresenceMeter={(value: number, height: number) => (
+                                        <div style={{ position: 'relative', width: 45, height, background: '#eef2f7', borderRadius: 3 }}>
+                                            <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1', zIndex: 1 }} />
+                                            {(() => {
+                                                const diff = value;
+                                                const absVal = Math.abs(diff);
+                                                const maxVal = 5;
+                                                const percentage = Math.min(1, absVal / maxVal);
+                                                const width = percentage * 50;
                                                 
-                                                    <div style={{ position: 'relative', width: 100, height: 8, background: '#eef2f7', borderRadius: 4 }}>
-                                                        <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1' }} />
-                                                        {(() => {
-                                                            const total = (it.tag || 0) + (it.nacht || 0);
-                                                            const lp = total > 0 ? Math.min(1, (it.nacht || 0) / total) : 0;
-                                                            const rp = total > 0 ? Math.min(1, (it.tag || 0) / total) : 0;
-                                                            const leftW = lp * 50;
-                                                            const rightW = rp * 50;
-                                                            return (
-                                                                <>
-                                                                    <div style={{ position: 'absolute', right: '50%', width: `${lp * 50}%`, top: 0, bottom: 0, background: '#60a5fa', borderTopLeftRadius: 4, borderBottomLeftRadius: 4 }} />
-                                                                    <div style={{ position: 'absolute', left: '50%', width: `${rp * 50}%`, top: 0, bottom: 0, background: '#fb923c', borderTopRightRadius: 4, borderBottomRightRadius: 4 }} />
-                                                                    {leftW >= 18 && (
-                                                                        <div style={{ position: 'absolute', left: `${lp * 25}%`, top: '50%', transform: 'translate(-50%, -50%)', fontSize: 9, color: '#ffffff', textShadow: '0 0 2px rgba(0,0,0,0.6)', fontWeight: 600 }}>{it.nacht}</div>
-                                                                    )}
-                                                                    {rightW >= 18 && (
-                                                                        <div style={{ position: 'absolute', left: `${50 + rp * 25}%`, top: '50%', transform: 'translate(-50%, -50%)', fontSize: 9, color: '#ffffff', textShadow: '0 0 2px rgba(0,0,0,0.6)', fontWeight: 600 }}>{it.tag}</div>
-                                                                    )}
-                                                                </>
-                                                            );
-                                                        })()}
-                                                    </div>
-                                                    {(() => {
-                                                        const pres = presenceRemainingByPerson[it.key] || 0;
-                                                        const assigned = assignedRemainingByPerson[it.key] || 0;
-                                                        const remain = Math.max(0, pres - assigned);
-                                                        const frac = pres > 0 ? Math.min(1, remain / pres) : 0;
-                                                        const needed = Math.max(0, Number(it.rest || 0));
-                                                        let barColor = '#34c759';
-                                                        if (needed > 0) {
-                                                            if (remain < needed) {
-                                                                barColor = '#ef4444';
-                                                            } else {
-                                                                const diff = remain - needed; // >= 0
-                                                                const threshold = 0.2 * needed;
-                                                                barColor = (diff <= threshold) ? '#f59e0b' : '#34c759';
-                                                            }
-                                                        }
-                                                        return (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                                <div style={{ position: 'relative', width: 80, height: 8, background: '#eef2f7', borderRadius: 4 }}>
-                                                                    <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${frac * 100}%`, background: barColor, borderRadius: 5 }} />
-                                                                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#111827' }}>{remain}</div>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })()}
-                                                </div>}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+                                                if (diff > 0) {
+                                                    return (
+                                                        <div style={{ 
+                                                            position: 'absolute', 
+                                                            right: '50%', 
+                                                            width: `${width}%`, 
+                                                            top: 0, 
+                                                            bottom: 0, 
+                                                            background: '#ef4444', 
+                                                            borderTopLeftRadius: 3, 
+                                                            borderBottomLeftRadius: 3 
+                                                        }} />
+                                                    );
+                                                } else if (diff < 0) {
+                                                    return (
+                                                        <div style={{ 
+                                                            position: 'absolute', 
+                                                            left: '50%', 
+                                                            width: `${width}%`, 
+                                                            top: 0, 
+                                                            bottom: 0, 
+                                                            background: '#34c759', 
+                                                            borderTopRightRadius: 3, 
+                                                            borderBottomRightRadius: 3 
+                                                        }} />
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
+                                        </div>
+                                    )}
+                                />
                             </aside>
                         );
                         const target = (typeof document !== 'undefined') ? document.getElementById('einteilung-right-sidebar') : null;

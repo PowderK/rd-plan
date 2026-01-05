@@ -226,14 +226,10 @@
 .sidebarList {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
 }
 .sidebarItem {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  border-bottom: 1px dashed var(--line);
-  padding: 4px 0;
+  /* Grid layout is defined inline */
 }
 .sidebarName {
   font-size: 12px;

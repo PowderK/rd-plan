@@ -229,7 +229,7 @@ const EinteilungPage: React.FC = () => {
       style={{
         padding: 8,
         display: 'grid',
-        gridTemplateColumns: '1fr 260px',
+        gridTemplateColumns: '1fr 300px',
         gap: 12,
         alignItems: 'start'
       }}

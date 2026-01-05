@@ -1273,6 +1273,10 @@ export class DatabaseManager {
     return this.adapter;
   }
   
+  isInitialized(): boolean {
+    return this.adapter !== null;
+  }
+  
   getConfig(): DatabaseConfig {
     return this.config;
   }
@@ -1397,7 +1401,7 @@ export class DatabaseManager {
 let globalDatabaseManager: DatabaseManager | null = null;
 
 export async function initializeDatabaseManager(config?: DatabaseConfig): Promise<DatabaseAdapter> {
-  if (globalDatabaseManager) {
+  if (globalDatabaseManager && globalDatabaseManager.isInitialized()) {
     return globalDatabaseManager.getAdapter();
   }
   
