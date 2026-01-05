@@ -98,6 +98,19 @@
       color: rgba(255, 255, 255, 0.8);
       font-size: 12px;
     }
+
+    .username {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 14px;
+      font-weight: 500;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 8px 16px;
+      border-radius: 20px;
+      backdrop-filter: blur(10px);
+    }
   </style>
 </head>
 <body>
@@ -109,8 +122,36 @@
     <div class="spinner"></div>
   </div>
   <div class="version">Version 1.0.1 RC</div>
+  <div class="username" id="username">Lädt...</div>
   
   <script>
+    // Debug-Ausgaben
+    console.log('[Splash] Script gestartet');
+    console.log('[Splash] window.api vorhanden?', !!window.api);
+    console.log('[Splash] window.api.getSystemUsername vorhanden?', !!(window.api && window.api.getSystemUsername));
+    
+    // Benutzername auslesen (falls API verfügbar ist)
+    (async () => {
+      try {
+        console.log('[Splash] Versuche Benutzername auszulesen...');
+        if (window.api && window.api.getSystemUsername) {
+          const username = await window.api.getSystemUsername();
+          console.log('[Splash] Benutzername erhalten:', username);
+          const usernameEl = document.getElementById('username');
+          if (usernameEl && username) {
+            usernameEl.textContent = `Benutzer: ${username}`;
+            console.log('[Splash] Benutzername angezeigt');
+          } else {
+            console.warn('[Splash] Element oder Benutzername fehlt', { usernameEl, username });
+          }
+        } else {
+          console.warn('[Splash] API nicht verfügbar');
+        }
+      } catch (e) {
+        console.error('[Splash] Fehler beim Auslesen des Benutzernamens:', e);
+      }
+    })();
+
     // Wechsle nach 5.29 Sekunden vom animierten GIF zum statischen Bild
     setTimeout(() => {
       const logo = document.querySelector('.logo');

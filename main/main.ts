@@ -2,6 +2,8 @@ import { app, BrowserWindow, ipcMain, dialog, session, nativeImage } from 'elect
 import path from 'path';
 import url from 'url';
 import fs from 'fs';
+import os from 'os';
+import { execSync } from 'child_process';
 import { initializeDatabaseManager, DatabaseAdapter, createDatabaseBackup, listDatabaseBackups, getSummaryForBackup, restoreDatabaseFromBackup, previewDutyRosterImport, getDatabaseManager } from './database-manager';
 import { getUpdateManager, getCurrentVersion, performUpdate } from './update-manager';
 
@@ -222,7 +224,8 @@ function createSplashScreen() {
         icon: path.join(__dirname, '../media/Icon.icns'),
         webPreferences: {
             nodeIntegration: false,
-            contextIsolation: true
+            contextIsolation: true,
+            preload: path.join(__dirname, 'preload.js')
         }
     });
 
@@ -235,6 +238,20 @@ function createSplashScreen() {
 }
 
 // (instrumentation removed) global startup logging and handlers were removed
+
+// System Info handlers
+ipcMain.handle('get-system-username', async () => {
+    try {
+        console.log('[Main] get-system-username aufgerufen');
+        // Verwende whoami-Befehl (funktioniert auf Windows, macOS und Linux)
+        const username = execSync('whoami', { encoding: 'utf-8' }).trim();
+        console.log('[Main] Benutzername ausgelesen:', username);
+        return username;
+    } catch (e) {
+        console.error('[Main] Fehler beim Auslesen des Benutzernamens:', e);
+        return 'Unbekannt';
+    }
+});
 
 // Settings handlers
 ipcMain.handle('get-setting', async (_event, key: string) => {

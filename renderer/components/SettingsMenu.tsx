@@ -87,6 +87,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   
   const [showYearImportAzubiDialog, setShowYearImportAzubiDialog] = useState(false);
   const [yearImportUnknownAzubiNames, setYearImportUnknownAzubiNames] = useState<string[]>([]);
+  // System Info
+  const [systemUsername, setSystemUsername] = useState<string>('Lädt...');
 
     useEffect(() => {
         (async () => {
@@ -98,6 +100,15 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
             // year bleibt auf aktuellem Jahr (für Feiertage-Anzeige)
             const rosterPath = await (window as any).api.getSetting('rosterImportPath');
             if (rosterPath) setRosterImportPath(rosterPath);
+            
+            // Benutzername laden
+            try {
+              const username = await (window as any).api.getSystemUsername();
+              setSystemUsername(username || 'Unbekannt');
+            } catch (e) {
+              console.error('Fehler beim Laden des Benutzernamens:', e);
+              setSystemUsername('Fehler beim Laden');
+            }
             
             // Lade jahresspezifische Vorplanungen
             try {
@@ -566,6 +577,17 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
             {/* KATEGORIE: ALLGEMEIN */}
             {activeCategory === 'general' && (
               <div>
+            {/* System-Informationen */}
+            <div style={{ marginBottom: 16, padding: 12, background: '#f8f9fa', borderRadius: 8 }}>
+              <h3 style={{ marginTop: 0 }}>System-Informationen</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8, fontSize: 14 }}>
+                <div style={{ fontWeight: 600 }}>Benutzername:</div>
+                <div><code>{systemUsername}</code></div>
+                <div style={{ fontWeight: 600 }}>Betriebssystem:</div>
+                <div>{navigator.platform}</div>
+              </div>
+            </div>
+            
             <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
               <button onClick={async () => {
                 try {
