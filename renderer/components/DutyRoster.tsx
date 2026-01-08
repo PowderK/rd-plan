@@ -1089,112 +1089,110 @@ const DutyRoster: React.FC = () => {
   }, [currentMonth]);
 
   return (
-    <div style={{ position: 'relative', padding: 16, height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <h2 style={{ margin: 0, marginRight: 'auto' }}>Dienstplan</h2>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          Jahr:
-          <select
-            value={year}
-            onChange={e => setYear(Number(e.target.value))}
-            style={{ 
-              padding: '6px 10px',
-              fontSize: 14,
-              borderRadius: 6,
-              border: '1px solid #bbb',
-              background: '#fff',
-              cursor: 'pointer'
-            }}
-          >
-            {yearPlannings.length > 0 ? (
-              yearPlannings.map(yp => (
-                <option key={yp.year} value={yp.year}>{yp.year}</option>
-              ))
-            ) : (
-              <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>
-            )}
-          </select>
-        </label>
-      </div>
-      {/* Monats-Tabs */}
-      <div style={{ 
-        position: 'sticky',
-        top: 0,
-        zIndex: 10,
-        background: 'var(--bg)',
-        paddingTop: '8px',
-        paddingBottom: '8px',
-        display: 'flex', 
-        gap: '4px', 
-        borderBottom: '1px solid #e5e7eb',
-        marginBottom: '16px',
-        flexWrap: 'wrap'
-      }}>
-        {months.map((m, i) => (
-          <button
-            key={i}
-            ref={el => monthButtonsRef.current[i] = el}
-            onClick={() => setCurrentMonth(i)}
-            style={{
-              padding: '8px 16px',
-              background: currentMonth === i ? '#f8f9fa' : 'transparent',
-              border: 'none',
-              borderBottom: currentMonth === i ? '3px solid #0ea5e9' : '3px solid transparent',
-              cursor: 'pointer',
-              fontWeight: currentMonth === i ? 600 : 400,
-              color: currentMonth === i ? '#0ea5e9' : '#6b7280',
-              transition: 'all 0.2s',
-              fontSize: '14px'
-            }}
-            onMouseEnter={(e) => {
-              if (currentMonth !== i) {
-                e.currentTarget.style.background = '#f3f4f6';
-                e.currentTarget.style.color = '#374151';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (currentMonth !== i) {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = '#6b7280';
-              }
-            }}
-          >
-            {m}
-          </button>
-        ))}
-      </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-        <button onClick={handleImport}>
-          Import Monat (Excel)
-        </button>
-        <span style={{fontSize: 12, color: '#555'}}>Importiert den aktuellen Monat aus der in den Einstellungen hinterlegten Excel-Datei.</span>
-      </div>
-      {/* Horizontaler Scrollbalken oben */}
-      <div 
-        id="top-scroller" 
-        style={{ 
-          position: 'sticky', 
-          top: '60px', 
-          zIndex: 9, 
-          overflowX: 'auto', 
-          overflowY: 'hidden',
-          height: '20px',
+    <div style={{ position: 'relative', padding: 16, height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxSizing: 'border-box' }}>
+      {/* Header-Bereich mit fester Größe */}
+      <div style={{ flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <h2 style={{ margin: 0, marginRight: 'auto' }}>Dienstplan</h2>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            Jahr:
+            <select
+              value={year}
+              onChange={e => setYear(Number(e.target.value))}
+              style={{ 
+                padding: '6px 10px',
+                fontSize: 14,
+                borderRadius: 6,
+                border: '1px solid #bbb',
+                background: '#fff',
+                cursor: 'pointer'
+              }}
+            >
+              {yearPlannings.length > 0 ? (
+                yearPlannings.map(yp => (
+                  <option key={yp.year} value={yp.year}>{yp.year}</option>
+                ))
+              ) : (
+                <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>
+              )}
+            </select>
+          </label>
+        </div>
+        {/* Monats-Tabs */}
+        <div style={{ 
           background: 'var(--bg)',
-          borderBottom: '1px solid #e5e7eb'
-        }}
-        onScroll={(e) => {
-          const bottomScroller = document.getElementById('table-wrapper');
-          if (bottomScroller) {
-            bottomScroller.scrollLeft = e.currentTarget.scrollLeft;
-          }
-        }}
-      >
-        <div style={{ width: Math.max(800, days.length * 30), height: '1px' }}></div>
+          paddingTop: '8px',
+          paddingBottom: '8px',
+          display: 'flex', 
+          gap: '4px', 
+          borderBottom: '1px solid #e5e7eb',
+          marginBottom: '16px',
+          flexWrap: 'wrap'
+        }}>
+          {months.map((m, i) => (
+            <button
+              key={i}
+              ref={el => monthButtonsRef.current[i] = el}
+              onClick={() => setCurrentMonth(i)}
+              style={{
+                padding: '8px 16px',
+                background: currentMonth === i ? '#f8f9fa' : 'transparent',
+                border: 'none',
+                borderBottom: currentMonth === i ? '3px solid #0ea5e9' : '3px solid transparent',
+                cursor: 'pointer',
+                fontWeight: currentMonth === i ? 600 : 400,
+                color: currentMonth === i ? '#0ea5e9' : '#6b7280',
+                transition: 'all 0.2s',
+                fontSize: '14px'
+              }}
+              onMouseEnter={(e) => {
+                if (currentMonth !== i) {
+                  e.currentTarget.style.background = '#f3f4f6';
+                  e.currentTarget.style.color = '#374151';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (currentMonth !== i) {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = '#6b7280';
+                }
+              }}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+          <button onClick={handleImport}>
+            Import Monat (Excel)
+          </button>
+          <span style={{fontSize: 12, color: '#555'}}>Importiert den aktuellen Monat aus der in den Einstellungen hinterlegten Excel-Datei.</span>
+        </div>
+        {/* Horizontaler Scrollbalken oben */}
+        <div 
+          id="top-scroller" 
+          style={{ 
+            overflowX: 'auto', 
+            overflowY: 'hidden',
+            height: '20px',
+            background: 'var(--bg)',
+            borderBottom: '1px solid #e5e7eb',
+            marginBottom: '4px'
+          }}
+          onScroll={(e) => {
+            const bottomScroller = document.getElementById('table-wrapper');
+            if (bottomScroller) {
+              bottomScroller.scrollLeft = e.currentTarget.scrollLeft;
+            }
+          }}
+        >
+          <div style={{ width: Math.max(800, days.length * 40), height: '1px' }}></div>
+        </div>
       </div>
       {/* Table Wrapper für Scroll-Synchronisation */}
       <div 
         id="table-wrapper"
-        style={{ overflowX: 'auto', overflowY: 'auto', flex: 1 }}
+        style={{ overflowX: 'auto', overflowY: 'auto', flex: 1, minHeight: 0 }}
         onScroll={(e) => {
           const topScroller = document.getElementById('top-scroller');
           if (topScroller) {
