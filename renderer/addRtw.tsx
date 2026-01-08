@@ -12,7 +12,7 @@ const AddRtw: React.FC = () => {
       if (window.opener) window.opener.postMessage('settings-updated', '*');
       window.close();
     } catch (e) {
-      console.error('Failed to add RTW:', e);
+      // console.error('Failed to add RTW:', e);
       alert('Fehler beim Anlegen des RTW: ' + (e instanceof Error ? e.message : String(e)));
     }
   };

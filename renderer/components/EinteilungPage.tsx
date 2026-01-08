@@ -99,10 +99,10 @@ const EinteilungPage: React.FC = () => {
       nefQualifications.add('NEF');
       nefQualifications.add('NA');
       
-      console.log('[EinteilungPage] Erkannte RTW-Qualifikationen:', Array.from(rtwQualifications));
-      console.log('[EinteilungPage] Erkannte NEF-Qualifikationen:', Array.from(nefQualifications));
-      console.log('[EinteilungPage] HLFB-Qualifikation:', hlfbQualName);
-      console.log('[EinteilungPage] Ü50-Qualifikation:', ue50QualName);
+      // console.log('[EinteilungPage] Erkannte RTW-Qualifikationen:', Array.from(rtwQualifications));
+      // console.log('[EinteilungPage] Erkannte NEF-Qualifikationen:', Array.from(nefQualifications));
+      // console.log('[EinteilungPage] HLFB-Qualifikation:', hlfbQualName);
+      // console.log('[EinteilungPage] Ü50-Qualifikation:', ue50QualName);
       
       // Für jede Person die Qualifikationen aus qualification_periods laden
       const enrichedList = await Promise.all((list || []).map(async (person: any) => {
@@ -180,11 +180,11 @@ const EinteilungPage: React.FC = () => {
   const loadRoster = useCallback(async (targetYear?: number) => {
     try {
       const settingsYear = await (window as any).api.getSetting('year');
-      console.log('[DEBUG EinteilungPage] loadRoster called, targetYear:', targetYear, 'settingsYear:', settingsYear, 'state year:', year);
+      // console.log('[DEBUG EinteilungPage] loadRoster called, targetYear:', targetYear, 'settingsYear:', settingsYear, 'state year:', year);
       const y = typeof targetYear === 'number' ? targetYear : Number(settingsYear || new Date().getFullYear());
-      console.log('[DEBUG EinteilungPage] Loading roster for year:', y);
+      // console.log('[DEBUG EinteilungPage] Loading roster for year:', y);
       const entries = await (window as any).api.getDutyRoster(y);
-      console.log('[DEBUG EinteilungPage] Loaded', entries?.length, 'roster entries for year', y);
+      // console.log('[DEBUG EinteilungPage] Loaded', entries?.length, 'roster entries for year', y);
       const map: RosterState = {};
       (entries || []).forEach((e: any) => {
         if (!e || !e.date) return;

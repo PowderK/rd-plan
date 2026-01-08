@@ -19,16 +19,16 @@ export interface PersonnelImportData {
   itwMaschinist?: boolean;
   itwFahrzeugfuehrer?: boolean;
   // Neue Qualifikations-Zeiträume für Export-Format
-  qualifications?: Array<{ qualType: string; startYM: string; endYM: string }>;
+  qualifications?: Array<{ qualType: string; startYM: string; endYM: string | null }>;
   // Neue Aktivitäts-Zeiträume
-  activePeriods?: Array<{ startYM: string; endYM: string; description?: string }>;
+  activePeriods?: Array<{ startYM: string; endYM: string | null; description?: string }>;
 }
 
 export interface AzubiImportData {
   name: string;
   vorname: string;
   lehrjahr: number;
-  periods?: Array<{ start_date: string; end_date: string; description?: string }>;
+  periods?: Array<{ start_date: string; end_date: string | null; description?: string }>;
 }
 
 export interface ImportResult {
@@ -169,12 +169,12 @@ export class ExcelPersonnelImporter {
       // Füge Zeitraum hinzu (falls vorhanden)
       if (row['Von'] && row['Von'].toString().trim() !== '') {
         const start_date = String(row['Von']).trim();
-        const end_date = row['Bis'] && row['Bis'].toString().trim() !== '' ? String(row['Bis']).trim() : '';
+        const end_date = row['Bis'] && row['Bis'].toString().trim() !== '' ? String(row['Bis']).trim() : null;
         const description = row['Beschreibung'] && row['Beschreibung'].toString().trim() !== '' ? String(row['Beschreibung']).trim() : '';
         
         azubi.periods!.push({
           start_date,
-          end_date,
+          end_date: end_date as any,
           description
         });
         
@@ -228,12 +228,12 @@ export class ExcelPersonnelImporter {
       // Nur hinzufügen, wenn mindestens startYM vorhanden ist
       if (startYM && startYM.toString().trim() !== '') {
         const startYMStr = String(startYM).trim();
-        const endYMStr = endYM && endYM.toString().trim() !== '' ? String(endYM).trim() : '';
+        const endYMStr = endYM && endYM.toString().trim() !== '' ? String(endYM).trim() : null;
         
         qualifications.push({
           qualType,
           startYM: startYMStr,
-          endYM: endYMStr
+          endYM: endYMStr as any
         });
         
         console.log(`[ExcelImporter] Added qualification: ${qualType}, ${startYMStr} - ${endYMStr}`);
@@ -248,12 +248,12 @@ export class ExcelPersonnelImporter {
 
     if (activeStart && activeStart.toString().trim() !== '') {
         const startYMStr = String(activeStart).trim();
-        const endYMStr = activeEnd && activeEnd.toString().trim() !== '' ? String(activeEnd).trim() : '';
+        const endYMStr = activeEnd && activeEnd.toString().trim() !== '' ? String(activeEnd).trim() : null;
         const descStr = activeDesc ? String(activeDesc).trim() : '';
         
         activePeriods.push({
             startYM: startYMStr,
-            endYM: endYMStr,
+            endYM: endYMStr as any,
             description: descStr
         });
         console.log(`[ExcelImporter] Added active period: ${startYMStr} - ${endYMStr}`);
@@ -535,9 +535,9 @@ export class ExcelPersonnelImporter {
               try {
                 await this.db.run(
                   'INSERT INTO azubi_periods (azubi_id, start_date, end_date, description, lehrjahr) VALUES (?, ?, ?, ?, ?)',
-                  [azubiId, period.start_date, period.end_date || '', period.description || '', azubi.lehrjahr]
+                  [azubiId, period.start_date, period.end_date || null, period.description || '', azubi.lehrjahr]
                 );
-                console.log(`[ExcelImporter] ✓ Zeitraum importiert: ${period.start_date} - ${period.end_date} (Lehrjahr: ${azubi.lehrjahr})`);
+                console.log(`[ExcelImporter] ✓ Zeitraum importiert: ${period.start_date} - ${period.end_date || 'offen'} (Lehrjahr: ${azubi.lehrjahr})`);
               } catch (error) {
                 console.error(`[ExcelImporter] ✗ Konnte Zeitraum für Azubi ${azubiId} nicht importieren:`, error);
               }
@@ -721,7 +721,7 @@ export class ExcelPersonnelImporter {
               azubi.vorname || '',
               azubi.lehrjahr,
               period.start_date,
-              period.end_date,
+              period.end_date || '', // null = unbegrenzt -> leerer String in Excel
               period.description || ''
             ]);
           }

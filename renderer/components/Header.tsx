@@ -35,7 +35,7 @@ const Header: React.FC<HeaderProps> = ({ rescueStation, department, year }) => {
       else { document.documentElement.removeAttribute('data-theme'); setIsDark(false); }
     } catch {}
     try {
-      console.log('[Header] img src preview:', (headerPngUrl && typeof headerPngUrl === 'string') ? headerPngUrl.slice(0, 128) : String(headerPngUrl));
+      // console.log('[Header] img src preview:', (headerPngUrl && typeof headerPngUrl === 'string') ? headerPngUrl.slice(0, 128) : String(headerPngUrl));
     } catch {}
   }, []);
 

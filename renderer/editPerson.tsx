@@ -34,7 +34,7 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
         const activeTypes = types.filter((t: any) => t.active).map((t: any) => t.name);
         setQualificationTypes(activeTypes);
       } catch (error) {
-        console.error('Failed to load qualification types:', error);
+        // console.error('Failed to load qualification types:', error);
         // Fallback zu hardcodierten Typen falls API fehlt
         setQualificationTypes([
           'Fahrzeugführer',
@@ -415,18 +415,18 @@ const EditPerson: React.FC = () => {
 
   useEffect(() => {
     if (!id) {
-      console.error('No person ID provided to editPerson');
+      // console.error('No person ID provided to editPerson');
       return;
     }
     
-    console.log('editPerson useEffect triggered for ID:', id);
+    // console.log('editPerson useEffect triggered for ID:', id);
     
     (async () => {
       try {
         // Lade Personendaten
-        console.log('Loading person data for ID:', id);
+        // console.log('Loading person data for ID:', id);
         const person = await (window as any).api.getPerson(id);
-        console.log('Person data loaded:', person);
+        // console.log('Person data loaded:', person);
         
         if (person) {
           setName(person.name || '');
@@ -434,24 +434,24 @@ const EditPerson: React.FC = () => {
           setTeilzeit(person.teilzeit ?? 100);
           setSort(person.sort ?? 0);
         } else {
-          console.error('Person not found for ID:', id);
+          // console.error('Person not found for ID:', id);
         }
         
         // Lade Qualifikationsperioden
-        console.log('Loading qualification periods for person ID:', id);
+        // console.log('Loading qualification periods for person ID:', id);
         const periods = await (window as any).api.getQualificationPeriods(id);
-        console.log('Loaded qualification periods:', periods);
+        // console.log('Loaded qualification periods:', periods);
         setQualificationPeriods(periods || []);
 
         // Lade Aktivitätsperioden
-        console.log('Loading active periods for person ID:', id);
+        // console.log('Loading active periods for person ID:', id);
         const actPeriods = await (window as any).api.getPersonnelActivePeriods(id);
-        console.log('Loaded active periods:', actPeriods);
+        // console.log('Loaded active periods:', actPeriods);
         setActivePeriods(actPeriods || []);
         
-        console.log('editPerson data loading completed for ID:', id);
+        // console.log('editPerson data loading completed for ID:', id);
       } catch (error) {
-        console.error('Error in editPerson useEffect:', error);
+        // console.error('Error in editPerson useEffect:', error);
         alert('Fehler beim Laden der Personendaten: ' + (error as Error).message);
       }
     })();
@@ -474,7 +474,7 @@ const EditPerson: React.FC = () => {
       if (window.opener) window.opener.postMessage('personnel-updated', '*');
       window.close();
     } catch (error) {
-      console.error('Fehler beim Löschen der Person:', error);
+      // console.error('Fehler beim Löschen der Person:', error);
       alert('Fehler beim Löschen der Person!');
     }
   };
@@ -484,7 +484,7 @@ const EditPerson: React.FC = () => {
       const periods = await (window as any).api.getQualificationPeriods(id);
       setQualificationPeriods(periods || []);
     } catch (error) {
-      console.error('Fehler beim Laden der Qualifikationsperioden:', error);
+      // console.error('Fehler beim Laden der Qualifikationsperioden:', error);
     }
   };
 
@@ -510,7 +510,7 @@ const EditPerson: React.FC = () => {
       await refreshQualificationPeriods();
       setShowAddQualification(false);
     } catch (error) {
-      console.error('Fehler beim Hinzufügen der Qualifikationsperiode:', error);
+      // console.error('Fehler beim Hinzufügen der Qualifikationsperiode:', error);
       alert('Fehler beim Hinzufügen der Qualifikationsperiode');
     }
   };
@@ -537,13 +537,13 @@ const EditPerson: React.FC = () => {
           active: qualification.active
         });
       } else {
-        console.error('Versuche ein Update ohne ID durchzuführen');
+        // console.error('Versuche ein Update ohne ID durchzuführen');
         return;
       }
       await refreshQualificationPeriods();
       setEditingQualification(null);
     } catch (error) {
-      console.error('Fehler beim Bearbeiten der Qualifikationsperiode:', error);
+      // console.error('Fehler beim Bearbeiten der Qualifikationsperiode:', error);
       alert('Fehler beim Bearbeiten der Qualifikationsperiode');
     }
   };
@@ -554,7 +554,7 @@ const EditPerson: React.FC = () => {
         await (window as any).api.deleteQualificationPeriod(qualificationId);
         await refreshQualificationPeriods();
       } catch (error) {
-        console.error('Fehler beim Löschen der Qualifikationsperiode:', error);
+        // console.error('Fehler beim Löschen der Qualifikationsperiode:', error);
         alert('Fehler beim Löschen der Qualifikationsperiode');
       }
     }
@@ -566,7 +566,7 @@ const EditPerson: React.FC = () => {
       const periods = await (window as any).api.getPersonnelActivePeriods(id);
       setActivePeriods(periods || []);
     } catch (error) {
-      console.error('Fehler beim Laden der Aktivitätsperioden:', error);
+      // console.error('Fehler beim Laden der Aktivitätsperioden:', error);
     }
   };
 
@@ -582,7 +582,7 @@ const EditPerson: React.FC = () => {
       await refreshActivePeriods();
       setShowAddActivePeriod(false);
     } catch (error) {
-      console.error('Fehler beim Hinzufügen der Aktivitätsperiode:', error);
+      // console.error('Fehler beim Hinzufügen der Aktivitätsperiode:', error);
       alert('Fehler beim Hinzufügen der Aktivitätsperiode');
     }
   };
@@ -598,13 +598,13 @@ const EditPerson: React.FC = () => {
           active: period.active
         });
       } else {
-        console.error('Versuche ein Update ohne ID durchzuführen');
+        // console.error('Versuche ein Update ohne ID durchzuführen');
         return;
       }
       await refreshActivePeriods();
       setEditingActivePeriod(null);
     } catch (error) {
-      console.error('Fehler beim Bearbeiten der Aktivitätsperiode:', error);
+      // console.error('Fehler beim Bearbeiten der Aktivitätsperiode:', error);
       alert('Fehler beim Bearbeiten der Aktivitätsperiode');
     }
   };
@@ -615,7 +615,7 @@ const EditPerson: React.FC = () => {
         await (window as any).api.deletePersonnelActivePeriod(periodId);
         await refreshActivePeriods();
       } catch (error) {
-        console.error('Fehler beim Löschen der Aktivitätsperiode:', error);
+        // console.error('Fehler beim Löschen der Aktivitätsperiode:', error);
         alert('Fehler beim Löschen der Aktivitätsperiode');
       }
     }

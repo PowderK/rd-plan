@@ -21,7 +21,7 @@
         }
       }
     } catch (e){
-      console.error('[setup] loadDefaults failed', e);
+      // console.error('[setup] loadDefaults failed', e);
     }
   }
 
@@ -41,7 +41,7 @@
         if (input) input.value = res.filePaths[0];
       }
     } catch (e){
-      console.error('[setup] chooseDir failed', e);
+      // console.error('[setup] chooseDir failed', e);
       setStatus(`<span class="err">Ordnerauswahl fehlgeschlagen: ${e?.message || 'Unbekannt'}</span>`);
     }
   }
@@ -65,7 +65,7 @@
         if (saveBtn) saveBtn.disabled = true;
       }
     } catch (e){
-      console.error('[setup] testDir failed', e);
+      // console.error('[setup] testDir failed', e);
     }
   }
 
@@ -81,7 +81,7 @@
         setStatus(`<span class="ok">Konfiguration gespeichert, Anwendung startet neu…</span>`);
       }
     } catch (e){
-      console.error('[setup] saveAndRelaunch failed', e);
+      // console.error('[setup] saveAndRelaunch failed', e);
     }
   }
 

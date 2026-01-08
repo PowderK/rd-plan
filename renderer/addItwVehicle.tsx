@@ -12,7 +12,7 @@ const AddItwVehicle: React.FC = () => {
       if (window.opener) window.opener.postMessage('settings-updated', '*');
       window.close();
     } catch (e) {
-      console.error('Failed to add ITW Vehicle:', e);
+      // console.error('Failed to add ITW Vehicle:', e);
       alert('Fehler beim Anlegen des ITW: ' + (e instanceof Error ? e.message : String(e)));
     }
   };

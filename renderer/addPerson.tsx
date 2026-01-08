@@ -31,7 +31,7 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
         const activeTypes = types.filter((t: any) => t.active).map((t: any) => t.name);
         setQualificationTypes(activeTypes);
       } catch (error) {
-        console.error('Failed to load qualification types:', error);
+        // console.error('Failed to load qualification types:', error);
         setQualificationTypes([
           'Fahrzeugführer',
           'Fahrzeugführer HLF-B',
@@ -281,7 +281,7 @@ const AddPerson: React.FC = () => {
       if (window.opener) window.opener.postMessage('personnel-updated', '*');
       window.close();
     } catch (error) {
-      console.error('Fehler beim Hinzufügen der Person:', error);
+      // console.error('Fehler beim Hinzufügen der Person:', error);
       alert('Fehler beim Speichern!');
     }
   };

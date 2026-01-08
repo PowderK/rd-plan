@@ -24,7 +24,7 @@ export interface DatabaseAdapter {
   updatePersonnelOrder(order: number[]): Promise<void>;
   
   getDutyRoster(year: number): Promise<any[]>;
-  setDutyRosterEntry(entry: any): Promise<void>;
+  setDutyRosterEntry(entry: any): Promise<{ success: boolean; warning?: string; vehicleAssignment?: string }>;
   bulkSetDutyRosterEntries(entries: any[]): Promise<number>;
   bulkImportDutyRosterEntries(entries: any[], respectManualEdits?: boolean, deleteEmpty?: boolean): Promise<{ imported: number, skipped: number }>;
   

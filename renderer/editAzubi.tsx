@@ -38,7 +38,7 @@ const EditAzubi: React.FC = () => {
           }
         }
       } catch (error) {
-        console.error('Fehler beim Laden des Azubis:', error);
+        // console.error('Fehler beim Laden des Azubis:', error);
       }
     };
 
@@ -140,7 +140,7 @@ const EditAzubi: React.FC = () => {
       setAzubiPeriods(updatedPeriods);
       setNewPeriod({ start_date: '', end_date: '', description: '', lehrjahr: 1 });
     } catch (error) {
-      console.error('Fehler beim Hinzufügen des Zeitraums:', error);
+      // console.error('Fehler beim Hinzufügen des Zeitraums:', error);
       alert('Fehler beim Hinzufügen des Zeitraums!');
     }
   };
@@ -220,7 +220,7 @@ const EditAzubi: React.FC = () => {
       setAzubiPeriods(updatedPeriods);
       setEditingPeriod(null);
     } catch (error) {
-      console.error('Fehler beim Bearbeiten des Zeitraums:', error);
+      // console.error('Fehler beim Bearbeiten des Zeitraums:', error);
       alert('Fehler beim Bearbeiten des Zeitraums!');
     }
   };
@@ -243,7 +243,7 @@ const EditAzubi: React.FC = () => {
         setAzubiPeriods(updatedPeriods);
       }
     } catch (error) {
-      console.error('Fehler beim Löschen des Zeitraums:', error);
+      // console.error('Fehler beim Löschen des Zeitraums:', error);
       alert('Fehler beim Löschen des Zeitraums!');
     }
   };

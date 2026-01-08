@@ -12,7 +12,7 @@ const AddItw: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const handleSave = async () => {
     try {
-      console.log('[AddItw] save clicked');
+      // console.log('[AddItw] save clicked');
       setAttemptedSave(true);
       if (!name.trim() || !vorname.trim()) {
         alert('Bitte alle Pflichtfelder ausfüllen: Name und Vorname.');
@@ -25,7 +25,7 @@ const AddItw: React.FC = () => {
         return;
       }
       await api.addItwDoctor({ name, vorname });
-      console.log('[AddItw] saved successfully');
+      // console.log('[AddItw] saved successfully');
       try { if (window.opener) window.opener.postMessage('itw-updated', '*'); } catch {}
       window.close();
     } catch (e: any) {

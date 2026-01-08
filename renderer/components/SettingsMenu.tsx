@@ -106,7 +106,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               const username = await (window as any).api.getSystemUsername();
               setSystemUsername(username || 'Unbekannt');
             } catch (e) {
-              console.error('Fehler beim Laden des Benutzernamens:', e);
+              // console.error('Fehler beim Laden des Benutzernamens:', e);
               setSystemUsername('Fehler beim Laden');
             }
             
@@ -117,7 +117,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                 setYearPlannings(plannings.map((p: any) => ({ year: Number(p.year), filePath: String(p.filePath) })));
               }
             } catch (e) {
-              console.error('Failed to load year plannings:', e);
+              // console.error('Failed to load year plannings:', e);
             }
             
             const types = await (window as any).api.getShiftTypes();
@@ -176,7 +176,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               const qualTypes = await (window as any).api.getQualificationTypes();
               setQualificationTypes(qualTypes || []);
             } catch (e) {
-              console.error('Failed to load qualification types:', e);
+              // console.error('Failed to load qualification types:', e);
             }
             
             // Load HLFB qualification type setting
@@ -184,7 +184,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               const hlfbQual = await (window as any).api.getSetting('hlfb_qualification_type');
               if (hlfbQual) setHlfbQualificationType(String(hlfbQual));
             } catch (e) {
-              console.error('Failed to load HLFB qualification type:', e);
+              // console.error('Failed to load HLFB qualification type:', e);
             }
             
             // Load Ü50 qualification type setting
@@ -192,7 +192,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               const ue50Qual = await (window as any).api.getSetting('ue50_qualification_type');
               if (ue50Qual) setUe50QualificationType(String(ue50Qual));
             } catch (e) {
-              console.error('Failed to load Ü50 qualification type:', e);
+              // console.error('Failed to load Ü50 qualification type:', e);
             }
             
             setShiftTypesLoading(false);
@@ -332,7 +332,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       const fresh = await (window as any).api.getShiftTypes();
       setShiftTypes(fresh);
     } catch (e) {
-      console.warn('[SettingsMenu] saveEditingShiftTypes Fehler', e);
+      // console.warn('[SettingsMenu] saveEditingShiftTypes Fehler', e);
     }
   };
   const addShiftTypeRow = () => {
@@ -386,13 +386,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         }
       }
       
-      console.log('Qualifikationen gespeichert!');
+      // console.log('Qualifikationen gespeichert!');
       alert('Qualifikationen gespeichert!');
       setEditingQualificationTypes(false);
       setSelectedQualificationTypeId(null);
       setOriginalQualificationTypes(null);
     } catch (err) {
-      console.error('Fehler beim Speichern:', err);
+      // console.error('Fehler beim Speichern:', err);
       alert('Fehler beim Speichern: ' + (err as Error).message);
     } finally {
       setLoading(false);
@@ -400,7 +400,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   };
 
   const handleSettingsImportComplete = (result: any) => {
-    console.log('Settings-Import abgeschlossen:', result);
+    // console.log('Settings-Import abgeschlossen:', result);
     // Daten neu laden nach Import durch Seiten-Reload
     if (result.success) {
       const total = result.imported.settings + result.imported.shiftTypes + result.imported.holidays + 
@@ -501,7 +501,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   };
 
   const handleExcelImportComplete = (result: any) => {
-    console.log('Excel-Import abgeschlossen:', result);
+    // console.log('Excel-Import abgeschlossen:', result);
     if (result.success) {
       alert(`Import erfolgreich! ${result.imported} Personen importiert, ${result.skipped} übersprungen.`);
     }
@@ -981,21 +981,21 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                     // Versuche jahresspezifische Vorplanungsdatei zu laden
                     let importPath = null;
                     try {
-                      console.log('[Import] Lade Vorplanung für Jahr:', yearImportSelectedYear);
+                      // console.log('[Import] Lade Vorplanung für Jahr:', yearImportSelectedYear);
                       const yearPlanning = await (window as any).api.getYearPlanningForYear?.(yearImportSelectedYear);
-                      console.log('[Import] Geladene Vorplanung:', yearPlanning);
+                      // console.log('[Import] Geladene Vorplanung:', yearPlanning);
                       if (yearPlanning?.filePath) {
                         importPath = yearPlanning.filePath;
-                        console.log('[Import] Verwende jahresspezifische Datei:', importPath);
+                        // console.log('[Import] Verwende jahresspezifische Datei:', importPath);
                       }
                     } catch (e) {
-                      console.warn('Fehler beim Laden der jahresspezifischen Vorplanung:', e);
+                      // console.warn('Fehler beim Laden der jahresspezifischen Vorplanung:', e);
                     }
                     
                     // Fallback: alte rosterImportPath Einstellung
                     if (!importPath) {
                       importPath = rosterImportPath;
-                      console.log('[Import] Fallback auf rosterImportPath:', importPath);
+                      // console.log('[Import] Fallback auf rosterImportPath:', importPath);
                     }
                     
                     if (!importPath) {
@@ -1033,7 +1033,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                         if (!r?.success) console.warn('[SettingsMenu] Backup fehlgeschlagen:', r?.message);
                         else console.log('[SettingsMenu] Backup erstellt unter:', r.dir);
                       } catch (e) {
-                        console.warn('[SettingsMenu] Backup Fehler', e);
+                        // console.warn('[SettingsMenu] Backup Fehler', e);
                       }
                     }
 
@@ -1045,7 +1045,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                     try {
                       await (window as any).api.clearDutyRosterYear?.(yearImportSelectedYear);
                     } catch (e) {
-                      console.warn('[SettingsMenu] clearDutyRosterYear Fehler', e);
+                      // console.warn('[SettingsMenu] clearDutyRosterYear Fehler', e);
                     }
                     */
 
@@ -1100,21 +1100,21 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                     // Versuche jahresspezifische Vorplanungsdatei zu laden
                     let importPath = null;
                     try {
-                      console.log('[Vorschau] Lade Vorplanung für Jahr:', yearImportSelectedYear);
+                      // console.log('[Vorschau] Lade Vorplanung für Jahr:', yearImportSelectedYear);
                       const yearPlanning = await (window as any).api.getYearPlanningForYear?.(yearImportSelectedYear);
-                      console.log('[Vorschau] Geladene Vorplanung:', yearPlanning);
+                      // console.log('[Vorschau] Geladene Vorplanung:', yearPlanning);
                       if (yearPlanning?.filePath) {
                         importPath = yearPlanning.filePath;
-                        console.log('[Vorschau] Verwende jahresspezifische Datei:', importPath);
+                        // console.log('[Vorschau] Verwende jahresspezifische Datei:', importPath);
                       }
                     } catch (e) {
-                      console.warn('Fehler beim Laden der jahresspezifischen Vorplanung:', e);
+                      // console.warn('Fehler beim Laden der jahresspezifischen Vorplanung:', e);
                     }
                     
                     // Fallback: alte rosterImportPath Einstellung
                     if (!importPath) {
                       importPath = rosterImportPath;
-                      console.log('[Vorschau] Fallback auf rosterImportPath:', importPath);
+                      // console.log('[Vorschau] Fallback auf rosterImportPath:', importPath);
                     }
                     
                     if (!importPath) {

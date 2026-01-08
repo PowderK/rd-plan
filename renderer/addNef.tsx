@@ -12,7 +12,7 @@ const AddNef: React.FC = () => {
       if (window.opener) window.opener.postMessage('settings-updated', '*');
       window.close();
     } catch (e) {
-      console.error('Failed to add NEF:', e);
+      // console.error('Failed to add NEF:', e);
       alert('Fehler beim Anlegen des NEF: ' + (e instanceof Error ? e.message : String(e)));
     }
   };

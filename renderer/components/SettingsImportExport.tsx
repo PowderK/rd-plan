@@ -58,7 +58,7 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
       }
 
     } catch (error) {
-      console.error('Settings Import-Fehler:', error);
+      // console.error('Settings Import-Fehler:', error);
       setResult({
         success: false,
         imported: {
@@ -101,7 +101,7 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
       alert('JSON-Export erfolgreich abgeschlossen!');
 
     } catch (error) {
-      console.error('Settings Export-Fehler:', error);
+      // console.error('Settings Export-Fehler:', error);
       setImporting(false);
       alert(`JSON-Export fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -130,7 +130,7 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
       alert('Excel-Export erfolgreich abgeschlossen!');
 
     } catch (error) {
-      console.error('Settings Export-Fehler:', error);
+      // console.error('Settings Export-Fehler:', error);
       setImporting(false);
       alert(`Excel-Export fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -160,7 +160,7 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
       alert('Vorlage erfolgreich erstellt!');
 
     } catch (error) {
-      console.error('Template-Fehler:', error);
+      // console.error('Template-Fehler:', error);
       setImporting(false);
       alert(`Vorlage-Erstellung fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}`);
     }

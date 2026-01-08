@@ -55,7 +55,7 @@ const AddAzubi: React.FC = () => {
 
   const handleSave = async () => {
     try {
-      console.log('[AddAzubi] save clicked');
+      // console.log('[AddAzubi] save clicked');
       setAttemptedSave(true);
       
       if (!name.trim() || !vorname.trim() || ![1,2,3].includes(lehrjahr)) {
@@ -71,7 +71,7 @@ const AddAzubi: React.FC = () => {
       }
       
       await api.addAzubi({ name, vorname, lehrjahr, periods });
-      console.log('[AddAzubi] saved successfully');
+      // console.log('[AddAzubi] saved successfully');
       
       try { 
         if (window.opener) window.opener.postMessage('azubis-updated', '*'); 

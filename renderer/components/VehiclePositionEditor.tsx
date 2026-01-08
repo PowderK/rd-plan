@@ -51,7 +51,7 @@ export const VehiclePositionEditor: React.FC<VehiclePositionEditorProps> = ({
             const quals = await (window as any).api.getQualificationTypes();
             setQualificationTypes(quals.filter((q: QualificationType) => q.active));
         } catch (e) {
-            console.warn('[VehiclePositionEditor] loadData error:', e);
+            // console.warn('[VehiclePositionEditor] loadData error:', e);
         }
     };
 
@@ -111,7 +111,7 @@ export const VehiclePositionEditor: React.FC<VehiclePositionEditorProps> = ({
             setSelectedPositionId(null);
             await loadData();
         } catch (e) {
-            console.warn('[VehiclePositionEditor] saveEditing error:', e);
+            // console.warn('[VehiclePositionEditor] saveEditing error:', e);
         }
     };
 
@@ -142,7 +142,7 @@ export const VehiclePositionEditor: React.FC<VehiclePositionEditorProps> = ({
                 setSelectedPositionId(null);
                 await loadData();
             } catch (e) {
-                console.warn('[VehiclePositionEditor] deleteSelectedPosition error:', e);
+                // console.warn('[VehiclePositionEditor] deleteSelectedPosition error:', e);
             }
         } else {
             // Im Bearbeitungsmodus: aus Liste entfernen
@@ -218,7 +218,7 @@ export const VehiclePositionEditor: React.FC<VehiclePositionEditorProps> = ({
                 await (window as any).api.updateVehiclePositionOrder(withNewSort.map(p => p.id));
                 await loadData();
             } catch (e) {
-                console.warn('[VehiclePositionEditor] onDrop error:', e);
+                // console.warn('[VehiclePositionEditor] onDrop error:', e);
             }
         }
     };

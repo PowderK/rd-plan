@@ -21,8 +21,6 @@ export interface SettingsExportData {
   rtwVehiclePeriods: Array<{ id: number; vehicleId: number; startYM: string; endYM: string | null; active: boolean }>;
   nefVehiclePeriods: Array<{ id: number; vehicleId: number; startYM: string; endYM: string | null; active: boolean }>;
   itwVehiclePeriods: Array<{ id: number; vehicleId: number; startYM: string; endYM: string | null; active: boolean }>;
-  personnelActivePeriods: Array<{ id: number; personId: number; startYM: string; endYM: string | null; description: string; active: boolean }>;
-  qualificationPeriods: Array<{ id: number; personId: number; qualType: string; startYM: string; endYM: string | null; active: boolean }>;
 }
 
 export interface SettingsImportResult {
@@ -41,8 +39,6 @@ export interface SettingsImportResult {
     rtwVehiclePeriods: number;
     nefVehiclePeriods: number;
     itwVehiclePeriods: number;
-    personnelActivePeriods: number;
-    qualificationPeriods: number;
   };
   skipped: number;
   errors: string[];
@@ -71,8 +67,6 @@ export class SettingsImporter {
       const rtwVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM rtw_vehicle_periods ORDER BY vehicleId, startYM');
       const nefVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM nef_vehicle_periods ORDER BY vehicleId, startYM');
       const itwVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM itw_vehicle_periods ORDER BY vehicleId, startYM');
-      const personnelActivePeriods = await this.db.all('SELECT id, personId, startYM, endYM, description, active FROM personnel_active_periods ORDER BY personId, startYM');
-      const qualificationPeriods = await this.db.all('SELECT id, personId, qualType, startYM, endYM, active FROM qualification_periods ORDER BY personId, qualType, startYM');
 
       const exportData: SettingsExportData = {
         metadata: {
@@ -92,9 +86,7 @@ export class SettingsImporter {
         vehiclePositions: vehiclePositions || [],
         rtwVehiclePeriods: rtwVehiclePeriods || [],
         nefVehiclePeriods: nefVehiclePeriods || [],
-        itwVehiclePeriods: itwVehiclePeriods || [],
-        personnelActivePeriods: personnelActivePeriods || [],
-        qualificationPeriods: qualificationPeriods || []
+        itwVehiclePeriods: itwVehiclePeriods || []
       };
 
       // Als JSON speichern
@@ -318,9 +310,7 @@ export class SettingsImporter {
         vehiclePositions: 0,
         rtwVehiclePeriods: 0,
         nefVehiclePeriods: 0,
-        itwVehiclePeriods: 0,
-        personnelActivePeriods: 0,
-        qualificationPeriods: 0
+        itwVehiclePeriods: 0
       },
       skipped: 0,
       errors: []
@@ -569,7 +559,7 @@ export class SettingsImporter {
                 result.imported.qualificationTypes++;
                 console.log(`[SettingsImporter] ✓ Qualifikation importiert: ${qualType.name} (${qualType.category})`);
               } else {
-                const existing = await this.db.get('SELECT id FROM qualification_types WHERE name = ? AND category = ?', [qualType.name, qualType.category]);
+                const existing = await this.db.get('SELECT id FROM qualification_types WHERE name = ?', [qualType.name]);
                 if (!existing) {
                   const res = await this.db.run(`
                     INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, ?, ?)
@@ -727,62 +717,6 @@ export class SettingsImporter {
           }
         }
 
-        // PersonnelActivePeriods importieren
-        if (data.personnelActivePeriods && Array.isArray(data.personnelActivePeriods)) {
-          if (replaceExisting) {
-            await this.db.run('DELETE FROM personnel_active_periods');
-          }
-          
-          for (const p of data.personnelActivePeriods) {
-            if (p.personId && p.startYM) {
-              if (replaceExisting) {
-                await this.db.run(`
-                  INSERT INTO personnel_active_periods (personId, startYM, endYM, description, active) VALUES (?, ?, ?, ?, ?)
-                `, [p.personId, p.startYM, p.endYM || null, p.description || '', p.active !== false ? 1 : 0]);
-                result.imported.personnelActivePeriods++;
-              } else {
-                const existing = await this.db.get('SELECT id FROM personnel_active_periods WHERE personId = ? AND startYM = ?', [p.personId, p.startYM]);
-                if (!existing) {
-                  await this.db.run(`
-                    INSERT INTO personnel_active_periods (personId, startYM, endYM, description, active) VALUES (?, ?, ?, ?, ?)
-                  `, [p.personId, p.startYM, p.endYM || null, p.description || '', p.active !== false ? 1 : 0]);
-                  result.imported.personnelActivePeriods++;
-                } else {
-                  result.skipped++;
-                }
-              }
-            }
-          }
-        }
-
-        // QualificationPeriods importieren
-        if (data.qualificationPeriods && Array.isArray(data.qualificationPeriods)) {
-          if (replaceExisting) {
-            await this.db.run('DELETE FROM qualification_periods');
-          }
-          
-          for (const p of data.qualificationPeriods) {
-            if (p.personId && p.qualType && p.startYM) {
-              if (replaceExisting) {
-                await this.db.run(`
-                  INSERT INTO qualification_periods (personId, qualType, startYM, endYM, active) VALUES (?, ?, ?, ?, ?)
-                `, [p.personId, p.qualType, p.startYM, p.endYM || null, p.active !== false ? 1 : 0]);
-                result.imported.qualificationPeriods++;
-              } else {
-                const existing = await this.db.get('SELECT id FROM qualification_periods WHERE personId = ? AND qualType = ? AND startYM = ?', [p.personId, p.qualType, p.startYM]);
-                if (!existing) {
-                  await this.db.run(`
-                    INSERT INTO qualification_periods (personId, qualType, startYM, endYM, active) VALUES (?, ?, ?, ?, ?)
-                  `, [p.personId, p.qualType, p.startYM, p.endYM || null, p.active !== false ? 1 : 0]);
-                  result.imported.qualificationPeriods++;
-                } else {
-                  result.skipped++;
-                }
-              }
-            }
-          }
-        }
-
         await this.db.run('COMMIT');
         result.success = true;
         console.log('[SettingsImporter] Settings imported successfully:', result);
@@ -858,12 +792,6 @@ export class SettingsImporter {
         ],
         itwVehiclePeriods: [
           { id: 1, vehicleId: 1, startYM: '2025-01', endYM: null, active: true }
-        ],
-        personnelActivePeriods: [
-          { id: 1, personId: 1, startYM: '2025-01', endYM: null, description: 'Festanstellung', active: true }
-        ],
-        qualificationPeriods: [
-          { id: 1, personId: 1, qualType: 'Rettungssanitäter', startYM: '2025-01', endYM: null, active: true }
         ]
       };
 

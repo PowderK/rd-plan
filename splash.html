@@ -66,6 +66,8 @@
       font-weight: 500;
       margin-bottom: 20px;
       animation: pulse 1.5s ease-in-out infinite;
+      min-height: 27px; /* Verhindert Springen */
+      text-align: center;
     }
 
     @keyframes pulse {
@@ -75,6 +77,14 @@
       50% {
         opacity: 0.6;
       }
+    }
+    
+    .loading-details {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 14px;
+      margin-top: 10px;
+      text-align: center;
+      min-height: 21px; /* Verhindert Springen */
     }
 
     .spinner {
@@ -99,18 +109,7 @@
       font-size: 12px;
     }
 
-    .username {
-      position: absolute;
-      top: 20px;
-      right: 20px;
-      color: rgba(255, 255, 255, 0.9);
-      font-size: 14px;
-      font-weight: 500;
-      background: rgba(255, 255, 255, 0.1);
-      padding: 8px 16px;
-      border-radius: 20px;
-      backdrop-filter: blur(10px);
-    }
+
   </style>
 </head>
 <body>
@@ -118,39 +117,27 @@
     <div class="logo-container">
       <img src="media/RD-Plan Logo.gif" alt="RD-Plan Logo" class="logo">
     </div>
-    <div class="loading-text">RD-Plan wird geladen...</div>
+    <div class="loading-text" id="loading-text">RD-Plan wird geladen...</div>
+    <div class="loading-details" id="loading-details"></div>
     <div class="spinner"></div>
   </div>
-  <div class="version">Version 1.0.1 RC</div>
-  <div class="username" id="username">Lädt...</div>
+  <div class="version">Version 1.0.2 RC</div>
   
   <script>
-    // Debug-Ausgaben
-    console.log('[Splash] Script gestartet');
-    console.log('[Splash] window.api vorhanden?', !!window.api);
-    console.log('[Splash] window.api.getSystemUsername vorhanden?', !!(window.api && window.api.getSystemUsername));
-    
-    // Benutzername auslesen (falls API verfügbar ist)
-    (async () => {
-      try {
-        console.log('[Splash] Versuche Benutzername auszulesen...');
-        if (window.api && window.api.getSystemUsername) {
-          const username = await window.api.getSystemUsername();
-          console.log('[Splash] Benutzername erhalten:', username);
-          const usernameEl = document.getElementById('username');
-          if (usernameEl && username) {
-            usernameEl.textContent = `Benutzer: ${username}`;
-            console.log('[Splash] Benutzername angezeigt');
-          } else {
-            console.warn('[Splash] Element oder Benutzername fehlt', { usernameEl, username });
-          }
-        } else {
-          console.warn('[Splash] API nicht verfügbar');
+    // Status-Updates empfangen
+    if (window.electronAPI && window.electronAPI.on) {
+      window.electronAPI.on('splash-status', (data) => {
+        const loadingText = document.getElementById('loading-text');
+        const loadingDetails = document.getElementById('loading-details');
+        
+        if (loadingText && data.message) {
+          loadingText.textContent = data.message;
         }
-      } catch (e) {
-        console.error('[Splash] Fehler beim Auslesen des Benutzernamens:', e);
-      }
-    })();
+        if (loadingDetails && data.details) {
+          loadingDetails.textContent = data.details;
+        }
+      });
+    }
 
     // Wechsle nach 5.29 Sekunden vom animierten GIF zum statischen Bild
     setTimeout(() => {

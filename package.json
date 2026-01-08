@@ -13,10 +13,12 @@
     "start": "electron .",
     "dev": "electron . --dev",
     "dist": "electron-builder --win --x64",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "perf": "npm run build && node test-performance.js",
+    "perf:compare": "node compare-performance.js"
   },
   "dependencies": {
-    "better-sqlite3": "^11.8.1",
+    "better-sqlite3": "^11.10.0",
     "pg": "^8.13.1",
     "pg-connection-string": "^2.7.0",
     "react": "^18.0.0",

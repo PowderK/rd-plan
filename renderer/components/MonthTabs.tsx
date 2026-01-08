@@ -190,7 +190,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 }
                 setAuswertungByType(map);
             } catch (e) {
-                console.error('[MonthTabs] Error loading shift types:', e);
+                // console.error('[MonthTabs] Error loading shift types:', e);
             }
             try {
                 const docs = await (window as any).api.getItwDoctors?.();

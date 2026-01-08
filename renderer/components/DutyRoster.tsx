@@ -50,8 +50,8 @@ const months = ['Januar','Februar','März','April','Mai','Juni','Juli','August',
 // Helper function to check if azubi is active on a specific date
 const isAzubiActiveOnDate = (azubiPeriods: any[], checkDate: string): boolean => {
   if (!azubiPeriods || azubiPeriods.length === 0) {
-    // No periods defined = always active (backward compatibility)
-    return true;
+    // No periods defined = not active (must have explicit period)
+    return false;
   }
   
   const check = new Date(checkDate);
@@ -64,8 +64,9 @@ const isAzubiActiveOnDate = (azubiPeriods: any[], checkDate: string): boolean =>
 
 // Helper function to filter azubis based on their active periods for a specific month
 const filterActiveAzubisForMonth = (azubis: any[], allPeriods: any[], year: number, month: number): any[] => {
+  // Azubis müssen einen aktiven Zeitraum haben, um angezeigt zu werden
   if (!allPeriods || allPeriods.length === 0) {
-    return azubis; // No periods defined = all azubis active
+    return []; // No periods defined globally = no azubis active
   }
   
   // Check if azubi is active at any point during the month
@@ -76,7 +77,7 @@ const filterActiveAzubisForMonth = (azubis: any[], allPeriods: any[], year: numb
     const azubiPeriods = allPeriods.filter(p => p.azubi_id === azubi.id);
     
     if (azubiPeriods.length === 0) {
-      return true; // No periods = always active
+      return false; // No periods = not active (must have explicit period)
     }
     
     return azubiPeriods.some(period => {
@@ -126,6 +127,9 @@ const DutyRoster: React.FC = () => {
   // New ShiftType Dialog States
   const [showNewShiftTypeDialog, setShowNewShiftTypeDialog] = useState(false);
   const [unknownShiftTypes, setUnknownShiftTypes] = useState<string[]>([]);
+  // Azubi Period Dialog States
+  const [showAzubiPeriodDialog, setShowAzubiPeriodDialog] = useState(false);
+  const [azubisWithoutPeriod, setAzubisWithoutPeriod] = useState<Array<{azubiId: number, azubiName: string, importDateRange: {start: string, end: string}}>>([]);
   const [pendingImportYear, setPendingImportYear] = useState<number>(0);
   const [pendingImportMonth, setPendingImportMonth] = useState<number | undefined>(undefined);
   // Fahrzeuge und Aktivierungen für Positions-Berechnungen
@@ -151,13 +155,13 @@ const DutyRoster: React.FC = () => {
           setYearPlannings(plannings.map((p: any) => ({ year: Number(p.year), filePath: String(p.filePath) })));
         }
       } catch (e) {
-        console.error('Failed to load year plannings:', e);
+        // console.error('Failed to load year plannings:', e);
       }
       
       // Lade das Jahr aus den Settings für initialen Daten-Load
       const y = await (window as any).api.getSetting('year');
       const yearToUse = Number(y) || year;
-      console.log('[DEBUG] Initial load, year from settings:', y, 'using:', yearToUse, 'state year:', year);
+      // console.log('[DEBUG] Initial load, year from settings:', y, 'using:', yearToUse, 'state year:', year);
       
   const types = await (window as any).api.getShiftTypes();
   setShiftTypes(types);
@@ -247,9 +251,9 @@ const DutyRoster: React.FC = () => {
     } catch {}
       // Dienstplan-Einträge laden
       const entries = await (window as any).api.getDutyRoster(yearToUse);
-      console.log('[Renderer] getDutyRoster fetched', Array.isArray(entries) ? entries.length : typeof entries, 'entries for year', yearToUse);
+      // console.log('[Renderer] getDutyRoster fetched', Array.isArray(entries) ? entries.length : typeof entries, 'entries for year', yearToUse);
       if (Array.isArray(entries) && entries.length > 0) {
-        console.log('[Renderer] sample entry[0]=', entries[0]);
+        // console.log('[Renderer] sample entry[0]=', entries[0]);
       }
       // ITW-Tage bestimmen: jedes Datum, an dem mindestens ein ITW-Dienst eingetragen ist
       try {
@@ -298,12 +302,12 @@ const DutyRoster: React.FC = () => {
         if (!rosterObj[key]) rosterObj[key] = {};
         rosterObj[key][iso] = { value: entry.value, type: String(entry.type || ''), manualEdit: !!entry.manual_edit };
       });
-      console.log('[Renderer] constructed rosterObj keys=', Object.keys(rosterObj).slice(0,20), 'total=', Object.keys(rosterObj).length);
+      // console.log('[Renderer] constructed rosterObj keys=', Object.keys(rosterObj).slice(0,20), 'total=', Object.keys(rosterObj).length);
       setRoster(rosterObj);
       
       // Aktualisiere Year-State falls das geladene Jahr vom initialen State abweicht
       if (yearToUse !== year) {
-        console.log('[DEBUG] Updating year state from', year, 'to', yearToUse);
+        // console.log('[DEBUG] Updating year state from', year, 'to', yearToUse);
         setYear(yearToUse);
       }
     })();
@@ -377,11 +381,11 @@ const DutyRoster: React.FC = () => {
   const [currentMonth, setCurrentMonth] = useState<number>(() => {
     // Priorisiere den Monat aus der Einteilung (rdPlanMonth)
     if ((window as any).rdPlanMonth !== undefined && typeof (window as any).rdPlanMonth === 'number') {
-      console.log('[DutyRoster] Initializing with month from Einteilung:', (window as any).rdPlanMonth);
+      // console.log('[DutyRoster] Initializing with month from Einteilung:', (window as any).rdPlanMonth);
       return (window as any).rdPlanMonth;
     }
     // Fallback: Januar (0) - nicht aktueller Monat, um Verwirrung zu vermeiden
-    console.log('[DutyRoster] No month from Einteilung, defaulting to Januar (0)');
+    // console.log('[DutyRoster] No month from Einteilung, defaulting to Januar (0)');
     return 0;
   });
   
@@ -426,44 +430,25 @@ const DutyRoster: React.FC = () => {
     (async () => {
       try {
         await (window as any).api.setSetting('year', String(year));
-        console.log('[DEBUG] Year saved to settings:', year);
+        // console.log('[DEBUG] Year saved to settings:', year);
       } catch (err) {
-        console.error('[DEBUG] Failed to save year to settings:', err);
+        // console.error('[DEBUG] Failed to save year to settings:', err);
       }
     })();
     
     // NICHT automatisch Monat ändern - respektiere rdPlanMonth aus Einteilung
   }, [year]);
 
-  // Filter azubis based on active periods for current month OR having roster entries in the year
+  // Filter azubis based on active periods for current month (only show azubis with valid period)
   useEffect(() => {
-    console.log('[DEBUG] filteredAzubis useEffect triggered, roster keys:', Object.keys(roster).length, 'azubis:', azubis.length, 'year:', year, 'month:', currentMonth);
+    // console.log('[DEBUG] filteredAzubis useEffect triggered, azubis:', azubis.length, 'year:', year, 'month:', currentMonth);
     const filtered = filterActiveAzubisForMonth(azubis, azubiPeriods, year, currentMonth + 1);
-    
-    // Zusätzlich: Azubis hinzufügen, die Dienstplan-Einträge im aktuellen Jahr haben
-    const azubiIdsWithEntries = new Set<number>();
-    Object.keys(roster).forEach(key => {
-      if (key.startsWith('a_')) {
-        const azubiId = parseInt(key.substring(2));
-        if (!isNaN(azubiId)) {
-          azubiIdsWithEntries.add(azubiId);
-        }
-      }
-    });
-    
-    console.log('[DEBUG] azubiIdsWithEntries:', Array.from(azubiIdsWithEntries), 'filtered from periods:', filtered.length);
-    
-    // Füge Azubis hinzu, die nicht in filtered sind, aber Einträge haben
-    const additionalAzubis = azubis.filter(azubi => 
-      azubiIdsWithEntries.has(azubi.id) && !filtered.some(f => f.id === azubi.id)
-    );
-    
-    console.log('[DEBUG] additionalAzubis:', additionalAzubis.length, 'total filteredAzubis:', filtered.length + additionalAzubis.length);
-    setFilteredAzubis([...filtered, ...additionalAzubis]);
-  }, [azubis, azubiPeriods, year, currentMonth, roster]);
+    // console.log('[DEBUG] filtered azubis with active period:', filtered.length);
+    setFilteredAzubis(filtered);
+  }, [azubis, azubiPeriods, year, currentMonth]);
   const days = getDaysInMonthView(year, currentMonth);
   // Debug: Zeige die ersten 5 Tage im Jahr
-  console.log('[DEBUG] days[0-4]:', days.slice(0,5));
+  // console.log('[DEBUG] days[0-4]:', days.slice(0,5));
 
   // Kombiniere Personal und Azubis für die Dienstplan-Tabelle
   type Row = { id: string; origId: number; name: string; vorname: string; isAzubi: boolean; lehrjahr?: number };
@@ -522,13 +507,24 @@ const DutyRoster: React.FC = () => {
     try {
       const retryResult = await (window as any).api.importDutyRoster(pendingImportPath, year, currentMonth, { newAzubis });
       if (retryResult.success) {
-        alert(`Import erfolgreich: ${retryResult.importedCount} Einträge wurden verarbeitet. ${newAzubis.length} neue Azubis wurden angelegt.`);
+        let message = `Import erfolgreich: ${retryResult.importedCount} Einträge wurden verarbeitet. ${newAzubis.length} neue Azubis wurden angelegt.`;
+        
+        // Check for availability conflicts
+        if (retryResult.availabilityConflicts && retryResult.availabilityConflicts.length > 0) {
+          const conflictList = retryResult.availabilityConflicts.map((c: any) => 
+            `${c.personName} am ${c.date}: Schichtart "${c.dutyRosterValue}" (nicht verfügbar), aber eingeteilt auf "${c.einteilungValue}"`
+          ).join('\n');
+          
+          message += `\n\n⚠️ WARNUNG: ${retryResult.availabilityConflicts.length} Verfügbarkeitskonflikt(e) gefunden:\n\n${conflictList}\n\nBitte prüfen Sie die Einteilungen!`;
+        }
+        
+        alert(message);
         await reloadRoster();
       } else {
         alert(`Import fehlgeschlagen: ${retryResult.message}`);
       }
     } catch (error) {
-      console.error('Fehler beim erneuten Import:', error);
+      // console.error('Fehler beim erneuten Import:', error);
       alert('Fehler beim Import.');
     }
     setShowNewAzubiDialog(false);
@@ -536,6 +532,37 @@ const DutyRoster: React.FC = () => {
 
   const handleCancelNewAzubis = () => {
     setShowNewAzubiDialog(false);
+  };
+
+  const handleAdjustAzubiPeriods = async (adjustments: Array<{azubiId: number, startDate: string, endDate: string, description: string, lehrjahr: number}>) => {
+    try {
+      const retryResult = await (window as any).api.importDutyRoster(pendingImportPath, pendingImportYear, pendingImportMonth, { azubiPeriodAdjustments: adjustments });
+      if (retryResult.success) {
+        let message = `Import erfolgreich: ${retryResult.importedCount} Einträge wurden verarbeitet. ${adjustments.length} Azubi-Zeiträume wurden angepasst.`;
+        
+        // Check for availability conflicts
+        if (retryResult.availabilityConflicts && retryResult.availabilityConflicts.length > 0) {
+          const conflictList = retryResult.availabilityConflicts.map((c: any) => 
+            `${c.personName} am ${c.date}: Schichtart "${c.dutyRosterValue}" (nicht verfügbar), aber eingeteilt auf "${c.einteilungValue}"`
+          ).join('\n');
+          
+          message += `\n\n⚠️ WARNUNG: ${retryResult.availabilityConflicts.length} Verfügbarkeitskonflikt(e) gefunden:\n\n${conflictList}\n\nBitte prüfen Sie die Einteilungen!`;
+        }
+        
+        alert(message);
+        await reloadRoster();
+      } else {
+        alert(`Import fehlgeschlagen: ${retryResult.message}`);
+      }
+    } catch (error) {
+      // console.error('Fehler beim erneuten Import:', error);
+      alert('Fehler beim Import.');
+    }
+    setShowAzubiPeriodDialog(false);
+  };
+
+  const handleCancelAzubiPeriodDialog = () => {
+    setShowAzubiPeriodDialog(false);
   };
 
   // New ShiftType Dialog Handlers
@@ -554,18 +581,40 @@ const DutyRoster: React.FC = () => {
             setUnknownAzubiNames(retryResult.unknownAzubis);
             // Keep the same pending import parameters
           } else {
-            alert(`Import erfolgreich: ${retryResult.importedCount} Einträge wurden verarbeitet. ${newShiftTypes.length} neue Dienstarten wurden angelegt.`);
+            let message = `Import erfolgreich: ${retryResult.importedCount} Einträge wurden verarbeitet. ${newShiftTypes.length} neue Dienstarten wurden angelegt.`;
+            
+            // Check for availability conflicts
+            if (retryResult.availabilityConflicts && retryResult.availabilityConflicts.length > 0) {
+              const conflictList = retryResult.availabilityConflicts.map((c: any) => 
+                `${c.personName} am ${c.date}: Schichtart "${c.dutyRosterValue}" (nicht verfügbar), aber eingeteilt auf "${c.einteilungValue}"`
+              ).join('\n');
+              
+              message += `\n\n⚠️ WARNUNG: ${retryResult.availabilityConflicts.length} Verfügbarkeitskonflikt(e) gefunden:\n\n${conflictList}\n\nBitte prüfen Sie die Einteilungen!`;
+            }
+            
+            alert(message);
             await reloadRoster();
           }
         } else {
-          alert(`Import erfolgreich: ${retryResult.importedCount} Einträge wurden verarbeitet. ${newShiftTypes.length} neue Dienstarten wurden angelegt.`);
+          let message = `Import erfolgreich: ${retryResult.importedCount} Einträge wurden verarbeitet. ${newShiftTypes.length} neue Dienstarten wurden angelegt.`;
+          
+          // Check for availability conflicts
+          if (retryResult.availabilityConflicts && retryResult.availabilityConflicts.length > 0) {
+            const conflictList = retryResult.availabilityConflicts.map((c: any) => 
+              `${c.personName} am ${c.date}: Schichtart "${c.dutyRosterValue}" (nicht verfügbar), aber eingeteilt auf "${c.einteilungValue}"`
+            ).join('\n');
+            
+            message += `\n\n⚠️ WARNUNG: ${retryResult.availabilityConflicts.length} Verfügbarkeitskonflikt(e) gefunden:\n\n${conflictList}\n\nBitte prüfen Sie die Einteilungen!`;
+          }
+          
+          alert(message);
           await reloadRoster();
         }
       } else {
         alert(`Import fehlgeschlagen: ${retryResult.message}`);
       }
     } catch (error) {
-      console.error('Fehler beim erneuten Import:', error);
+      // console.error('Fehler beim erneuten Import:', error);
       alert('Fehler beim Import.');
     }
     setShowNewShiftTypeDialog(false);
@@ -585,7 +634,7 @@ const DutyRoster: React.FC = () => {
         rosterImportPath = yearPlanning.filePath;
       }
     } catch (e) {
-      console.warn('Fehler beim Laden der jahresspezifischen Vorplanung:', e);
+      // console.warn('Fehler beim Laden der jahresspezifischen Vorplanung:', e);
     }
     
     // Fallback: alte rosterImportPath Einstellung
@@ -620,6 +669,17 @@ const DutyRoster: React.FC = () => {
                 return;
             }
             
+            // Check if azubis without valid periods were found
+            if (result.azubisWithoutPeriod && result.azubisWithoutPeriod.length > 0) {
+                // Show dialog to adjust periods
+                setShowAzubiPeriodDialog(true);
+                setAzubisWithoutPeriod(result.azubisWithoutPeriod);
+                setPendingImportPath(rosterImportPath);
+                setPendingImportYear(year);
+                setPendingImportMonth(currentMonth);
+                return;
+            }
+            
             // Check if unknown azubis were found
             if (result.unknownAzubis && result.unknownAzubis.length > 0) {
                 const createNewAzubis = window.confirm(
@@ -637,7 +697,18 @@ const DutyRoster: React.FC = () => {
                 return;
             }
             
-            alert(`Import erfolgreich: ${result.importedCount} Einträge wurden verarbeitet.`);
+            // Check for availability conflicts (person assigned to vehicle but marked as unavailable)
+            let message = `Import erfolgreich: ${result.importedCount} Einträge wurden verarbeitet.`;
+            
+            if (result.availabilityConflicts && result.availabilityConflicts.length > 0) {
+                const conflictList = result.availabilityConflicts.map((c: any) => 
+                    `${c.personName} am ${c.date}: Schichtart "${c.dutyRosterValue}" (nicht verfügbar), aber eingeteilt auf "${c.einteilungValue}"`
+                ).join('\n');
+                
+                message += `\n\n⚠️ WARNUNG: ${result.availabilityConflicts.length} Verfügbarkeitskonflikt(e) gefunden:\n\n${conflictList}\n\nBitte prüfen Sie die Einteilungen!`;
+            }
+            
+            alert(message);
             await reloadRoster();
         } else {
             alert(`Import fehlgeschlagen: ${result.message}`);
@@ -680,7 +751,7 @@ const DutyRoster: React.FC = () => {
         await (window as any).api.bulkSetDutyRoster(entries);
       }
     } catch (e) {
-      console.warn('[DutyRoster] Monatsimport Fehler', e);
+      // console.warn('[DutyRoster] Monatsimport Fehler', e);
     } finally {
       setShowImportTable(false);
       setImportTableMonth(null);
@@ -701,9 +772,9 @@ const DutyRoster: React.FC = () => {
     // Hole Dienstplan-Einträge für das lokal ausgewählte Jahr (nicht globales Setting)
     const yUse = typeof yearOverride === 'number' ? yearOverride : year;
     const entries = await (window as any).api.getDutyRoster(yUse);
-    console.log('[Renderer] reloadRoster getDutyRoster fetched', Array.isArray(entries) ? entries.length : typeof entries, 'entries');
+    // console.log('[Renderer] reloadRoster getDutyRoster fetched', Array.isArray(entries) ? entries.length : typeof entries, 'entries');
     if (Array.isArray(entries) && entries.length > 0) {
-      console.log('[Renderer] reloadRoster sample entry[0]=', entries[0]);
+      // console.log('[Renderer] reloadRoster sample entry[0]=', entries[0]);
     }
     // ITW-Tage neu berechnen (mind. ein ITW-Dienst am Tag)
     try {
@@ -753,7 +824,7 @@ const DutyRoster: React.FC = () => {
         rosterObj[key][iso] = { value: entry.value, type: String(entry.type || ''), manualEdit: !!entry.manual_edit };
       }
     });
-      console.log('[Renderer] reloadRoster constructed rosterObj keys=', Object.keys(rosterObj).slice(0,20), 'total=', Object.keys(rosterObj).length);
+      // console.log('[Renderer] reloadRoster constructed rosterObj keys=', Object.keys(rosterObj).slice(0,20), 'total=', Object.keys(rosterObj).length);
     
     // Force React re-render durch Erstellen eines neuen Objekts
     setRoster({ ...rosterObj });
@@ -800,7 +871,7 @@ const DutyRoster: React.FC = () => {
   }, [year]);
 
   // KPI-Hilfswerte für aktuellen Monat berechnen
-  console.log('[DEBUG] KPI calculation start, roster keys:', Object.keys(roster).length, 'personnel:', personnel.length, 'filteredAzubis:', filteredAzubis.length);
+  // console.log('[DEBUG] KPI calculation start, roster keys:', Object.keys(roster).length, 'personnel:', personnel.length, 'filteredAzubis:', filteredAzubis.length);
   const monthIndex = currentMonth;
   const deptShiftsInMonth = (() => {
     let cnt = 0;
@@ -870,7 +941,7 @@ const DutyRoster: React.FC = () => {
         sum += hasHLFB ? 0.75 : 1;
       }
     }
-    console.log('[DEBUG] activePersonnelInMonth:', sum, 'from', personnel.length, 'personnel');
+    // console.log('[DEBUG] activePersonnelInMonth:', sum, 'from', personnel.length, 'personnel');
     return sum;
   })();
 
@@ -952,46 +1023,59 @@ const DutyRoster: React.FC = () => {
   // ISO-Datum aus der Monatsansicht
   const date = days[dayIdx]?.iso;
     if (dayIdx === 0) {
-      console.log('[DEBUG] 1.1. Eintrag:', { personId, origId, personType, date, value, type });
+      // console.log('[DEBUG] 1.1. Eintrag:', { personId, origId, personType, date, value, type });
     }
 
-    // Qualifikations-Validierung für nicht-leere Werte und nur für Personen (nicht Azubis)
-    if (value && value.trim() !== '' && personType === 'person' && origId) {
+    // VERFÜGBARKEITSPRÜFUNG: Ist die Person auf einem Fahrzeug eingeteilt, aber als nicht verfügbar markiert?
+    if (value && value.trim() !== '' && origId) {
       try {
         // Hole cellType aus dem aktuellen roster-Eintrag (z.B. "rtw1_tag_1")
         const cellType = roster[personId]?.[date]?.type || undefined;
-        const validation = await (window as any).api.validateQualificationForShift(origId, value, date, cellType);
         
-        if (!validation.isValid) {
-          const missingQuals = validation.missingQualifications.join(', ');
-          const message = `⚠️ Fehlende Qualifikationen für "${value}": ${missingQuals}\n\nTrotzdem zuordnen?`;
+        // Prüfe nur, wenn Person auf Fahrzeug eingeteilt ist
+        if (cellType && (cellType.startsWith('rtw') || cellType.startsWith('nef') || cellType.startsWith('itw'))) {
+          console.log('[DutyRoster] Verfügbarkeitsprüfung: Person ist auf Fahrzeug eingeteilt:', { cellType, value });
           
-          if (!confirm(message)) {
-            return; // Abbruch der Zuordnung
+          // Prüfe, ob die neue Dienstart "nicht verfügbar" bedeutet
+          const shiftTypes = await (window as any).api.getShiftTypes();
+          const shiftType = shiftTypes.find((st: any) => st.code === value);
+          
+          if (shiftType) {
+            const auswertung = await (window as any).api.getSetting(`auswertung_${shiftType.code}`);
+            
+            console.log('[DutyRoster] Dienstart Auswertung:', { code: shiftType.code, auswertung });
+            
+            // 'off' = nicht verfügbar (Urlaub, Krank, Frei, etc.)
+            if (!auswertung || auswertung === 'off') {
+              const confirmChange = confirm(
+                `⚠️ WARNUNG: Verfügbarkeitskonflikt!\n\n` +
+                `Person ist auf "${cellType}" eingeteilt, aber Dienstart "${value}" bedeutet "nicht verfügbar".\n\n` +
+                `Möchten Sie die Änderung trotzdem durchführen?\n\n` +
+                `Hinweis: Dies könnte zu Besetzungsproblemen führen.`
+              );
+              
+              if (!confirmChange) {
+                return; // Abbruch der Änderung
+              }
+            }
           }
         }
-
-        // Zeige Warnungen an (abgelaufene Qualifikationen)
-        if (validation.warnings && validation.warnings.length > 0) {
-          const warnings = validation.warnings.join('\n');
-          alert(`⚠️ Warnungen:\n${warnings}`);
-        }
       } catch (err) {
-        console.error('Fehler bei Qualifikations-Validierung:', err);
+        console.error('Fehler bei Verfügbarkeitsprüfung:', err);
         // Bei Validierungsfehlern trotzdem fortfahren
       }
     }
 
     const entry = { personId: origId, personType, date, value, type };
-    console.log('[Renderer] setDutyRosterEntry SEND', entry);
+    // console.log('[Renderer] setDutyRosterEntry SEND', entry);
     try {
       await (window as any).api.setDutyRosterEntry(entry);
-      console.log('[Renderer] setDutyRosterEntry OK', entry);
-      console.log('[Renderer] handleCellChange triggering reloadRoster...');
+      // console.log('[Renderer] setDutyRosterEntry OK', entry);
+      // console.log('[Renderer] handleCellChange triggering reloadRoster...');
       await reloadRoster();
-      console.log('[Renderer] handleCellChange reloadRoster completed');
+      // console.log('[Renderer] handleCellChange reloadRoster completed');
     } catch (err) {
-      console.error('[Renderer] setDutyRosterEntry ERROR', err, entry);
+      // console.error('[Renderer] setDutyRosterEntry ERROR', err, entry);
     }
   };
 
@@ -1105,7 +1189,7 @@ const DutyRoster: React.FC = () => {
           }
         }}
       >
-        <div style={{ width: Math.max(800, days.length * 90), height: '1px' }}></div>
+        <div style={{ width: Math.max(800, days.length * 30), height: '1px' }}></div>
       </div>
       {/* Table Wrapper für Scroll-Synchronisation */}
       <div 
@@ -1118,28 +1202,28 @@ const DutyRoster: React.FC = () => {
           }
         }}
       >
-      <table style={{ borderCollapse: 'collapse', minWidth: Math.max(800, days.length * 90) }}>
-        <thead style={{ position: 'sticky', top: 0, zIndex: 5, background: 'var(--bg)' }}>
+      <table style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: Math.max(800, days.length * 40) }}>
+        <thead style={{ position: 'sticky', top: 0, zIndex: 5, background: 'var(--bg)', boxShadow: '0 2px 0 0 #d0d0d0' }}>
           <tr>
-            <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid var(--line)', minWidth: nameColWidth }}>{'Name'}</th>
-            <th style={{ border: '1px solid var(--line)', minWidth: 50, whiteSpace: 'nowrap' }}>24h</th>
-            <th style={{ border: '1px solid var(--line)', minWidth: 50, whiteSpace: 'nowrap' }}>IW</th>
+            <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid #d0d0d0', minWidth: nameColWidth }}>{'Name'}</th>
+            <th style={{ border: '1px solid #d0d0d0', minWidth: 40, whiteSpace: 'nowrap', background: 'var(--bg)' }}>24h</th>
+            <th style={{ border: '1px solid #d0d0d0', minWidth: 40, whiteSpace: 'nowrap', background: 'var(--bg)' }}>IW</th>
             {days.map((d, i) => (
-              <th key={i} style={{ border: '1px solid var(--line)', whiteSpace: 'nowrap' }}>{d.date}</th>
+              <th key={i} style={{ border: '1px solid #d0d0d0', whiteSpace: 'nowrap', background: 'var(--bg)' }}>{d.date}</th>
             ))}
           </tr>
           <tr>
-            <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid var(--line)', minWidth: nameColWidth }}> </th>
-            <th style={{ border: '1px solid var(--line)' }}> </th>
-            <th style={{ border: '1px solid var(--line)' }}> </th>
+            <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid #d0d0d0', minWidth: nameColWidth }}> </th>
+            <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }}> </th>
+            <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }}> </th>
             {days.map((d, i) => (
-              <th key={i} style={{ border: '1px solid var(--line)', whiteSpace: 'nowrap' }}>{d.weekday}</th>
+              <th key={i} style={{ border: '1px solid #d0d0d0', whiteSpace: 'nowrap', background: 'var(--bg)' }}>{d.weekday}</th>
             ))}
           </tr>
           <tr>
-            <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid var(--line)', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>Schichtfolge</th>
-            <th style={{ border: '1px solid var(--line)' }} />
-            <th style={{ border: '1px solid var(--line)' }} />
+            <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid #d0d0d0', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>Schichtfolge</th>
+            <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
+            <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
             {days.map((d, i) => {
               // Dept day via deptPatternSeqs gültig-ab + 21er Modulo
               const iso = d.iso;
@@ -1152,7 +1236,7 @@ const DutyRoster: React.FC = () => {
               const pat = active?.pattern || [];
               const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
               return (
-                <th key={i} style={{ border: '1px solid var(--line)', fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>
+                <th key={i} style={{ border: '1px solid #d0d0d0', fontWeight: 'normal', color: 'var(--muted)', fontSize: 13, background: 'var(--bg)' }}>
                   {depDay}
                 </th>
               );
@@ -1161,23 +1245,23 @@ const DutyRoster: React.FC = () => {
           {itwEnabled && (
             <>
               <tr>
-                <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid var(--line)', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--text)', fontSize: 13 }}>
+                <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid #d0d0d0', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--text)', fontSize: 13 }}>
                   Abteilung: {department}
                 </th>
-                <th style={{ border: '1px solid var(--line)' }} />
-                <th style={{ border: '1px solid var(--line)' }} />
+                <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
+                <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
                 {days.map((_, i) => (
-                  <th key={`dept_${i}`} style={{ border: '1px solid var(--line)' }} />
+                  <th key={`dept_${i}`} style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
                 ))}
               </tr>
               <tr>
-                <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid var(--line)', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>ITW</th>
-                <th style={{ border: '1px solid var(--line)' }} />
-                <th style={{ border: '1px solid var(--line)' }} />
+                <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid #d0d0d0', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>ITW</th>
+                <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
+                <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
                 {days.map((_, i) => {
                   const showIW = isIwDay(i);
                   return (
-                    <th key={`itw_${i}`} style={{ border: '1px solid var(--line)', fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>
+                    <th key={`itw_${i}`} style={{ border: '1px solid #d0d0d0', fontWeight: 'normal', color: 'var(--muted)', fontSize: 13, background: 'var(--bg)' }}>
                       {showIW ? 'IW' : ''}
                     </th>
                   );
@@ -1193,17 +1277,17 @@ const DutyRoster: React.FC = () => {
             return [
               isFirstAzubi ? (
                 <tr key="azubi-separator">
-                  <td colSpan={days.length + 3} style={{ background: '#e0e0e0', fontWeight: 'bold', textAlign: 'left', border: '1px solid #bbb' }}>
+                  <td colSpan={days.length + 3} style={{ background: '#e0e0e0', fontWeight: 'bold', textAlign: 'left', border: '1px solid #d0d0d0' }}>
                     Azubis
                   </td>
                 </tr>
               ) : null,
               (
                 <tr key={person.id} style={{ background: rowIdx % 2 === 1 ? 'var(--hover)' : undefined }}>
-                  <td style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 1, border: '1px solid var(--line)', fontStyle: person.isAzubi ? 'italic' : undefined, color: (!person.isAzubi && !!(personnel.find(p => p.id === person.origId)?.fahrzeugfuehrerHLFB)) ? '#1565c0' : undefined }}>
+                  <td style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 1, border: '1px solid #d0d0d0', fontStyle: person.isAzubi ? 'italic' : undefined, color: (!person.isAzubi && !!(personnel.find(p => p.id === person.origId)?.fahrzeugfuehrerHLFB)) ? '#1565c0' : undefined }}>
                     {person.name}{person.isAzubi && person.lehrjahr !== undefined ? ` (Azubi, ${person.lehrjahr}. Lj.)` : ''}
                   </td>
-                  <td style={{ border: '1px solid var(--line)', textAlign: 'center', minWidth: 50 }}>
+                  <td style={{ border: '1px solid #d0d0d0', textAlign: 'center', minWidth: 30 }}>
                     {!person.isAzubi ? (
                       (() => {
                         const key = getStateKey(person);
@@ -1218,7 +1302,7 @@ const DutyRoster: React.FC = () => {
                       })()
                     ) : ''}
                   </td>
-                  <td style={{ border: '1px solid var(--line)', textAlign: 'center', minWidth: 50 }}>
+                  <td style={{ border: '1px solid #d0d0d0', textAlign: 'center', minWidth: 40 }}>
                     {!person.isAzubi ? (
                       (() => {
                         const key = getStateKey(person);
@@ -1243,19 +1327,12 @@ const DutyRoster: React.FC = () => {
                     
                     // Debug: Log wenn manuelle Bearbeitung erkannt wird
                     if (isManualEdit && code) {
-                      console.log('[DEBUG] Rendering manual edit:', { 
-                        person: person.name, 
-                        dayIdx, 
-                        iso, 
-                        code, 
-                        isManualEdit,
-                        cell
-                      });
+                      // console.log('[DEBUG] Rendering manual edit:', { person: person.name, dayIdx, iso, code, isManualEdit, cell });
                     }
                     const cellStyle = { 
-                      minWidth: 90, 
+                      minWidth: 40, 
                       cursor: 'pointer', 
-                      border: '1px solid var(--line)', 
+                      border: '1px solid #d0d0d0', 
                       whiteSpace: 'nowrap', 
                       background: bgTint,
                       ...(isManualEdit ? { borderLeft: '4px solid #1976d2' } : {})
@@ -1264,7 +1341,7 @@ const DutyRoster: React.FC = () => {
                       <td key={dayIdx} style={cellStyle}
                           onClick={() => {
                             if (!isEditing) {
-                              console.log('[DEBUG] Zellenklick:', { dayIdx, iso: days[dayIdx].iso, date: days[dayIdx].date });
+                              // console.log('[DEBUG] Zellenklick:', { dayIdx, iso: days[dayIdx].iso, date: days[dayIdx].date });
                               startEdit(getStateKey(person), dayIdx);
                             }
                           }}>
@@ -1337,6 +1414,15 @@ const DutyRoster: React.FC = () => {
           unknownShiftTypes={unknownShiftTypes}
           onConfirm={handleCreateNewShiftTypes}
           onCancel={handleCancelNewShiftTypes}
+        />
+      )}
+
+      {/* Azubi Period Dialog */}
+      {showAzubiPeriodDialog && (
+        <AzubiPeriodDialog
+          azubisWithoutPeriod={azubisWithoutPeriod}
+          onConfirm={handleAdjustAzubiPeriods}
+          onCancel={handleCancelAzubiPeriodDialog}
         />
       )}
 
@@ -1541,6 +1627,132 @@ const NewAzubiDialog: React.FC<NewAzubiDialogProps> = ({ unknownNames, onConfirm
             style={{ padding: '8px 16px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px' }}
           >
             Azubis anlegen und Import fortsetzen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Azubi Period Dialog Component
+interface AzubiPeriodDialogProps {
+  azubisWithoutPeriod: Array<{azubiId: number, azubiName: string, importDateRange: {start: string, end: string}}>;
+  onConfirm: (adjustments: Array<{azubiId: number, startDate: string, endDate: string, description: string, lehrjahr: number}>) => void;
+  onCancel: () => void;
+}
+
+const AzubiPeriodDialog: React.FC<AzubiPeriodDialogProps> = ({ azubisWithoutPeriod, onConfirm, onCancel }) => {
+  const [adjustments, setAdjustments] = useState<Array<{azubiId: number, startDate: string, endDate: string, description: string, lehrjahr: number}>>(() => {
+    return azubisWithoutPeriod.map(azubi => ({
+      azubiId: azubi.azubiId,
+      startDate: azubi.importDateRange.start,
+      endDate: azubi.importDateRange.end,
+      description: 'Automatisch durch Import erstellt',
+      lehrjahr: 1
+    }));
+  });
+
+  const handleStartDateChange = (index: number, value: string) => {
+    const newData = [...adjustments];
+    newData[index].startDate = value;
+    setAdjustments(newData);
+  };
+
+  const handleEndDateChange = (index: number, value: string) => {
+    const newData = [...adjustments];
+    newData[index].endDate = value;
+    setAdjustments(newData);
+  };
+
+  const handleDescriptionChange = (index: number, value: string) => {
+    const newData = [...adjustments];
+    newData[index].description = value;
+    setAdjustments(newData);
+  };
+
+  const handleLehrjahrChange = (index: number, value: string) => {
+    const newData = [...adjustments];
+    newData[index].lehrjahr = parseInt(value) || 1;
+    setAdjustments(newData);
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+      background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }}>
+      <div style={{
+        background: 'white', padding: '20px', borderRadius: '8px', minWidth: '600px', maxWidth: '800px', maxHeight: '80vh', overflow: 'auto'
+      }}>
+        <h3>Azubi-Zeiträume korrigieren</h3>
+        <p>Folgende Azubis haben keinen aktiven Zeitraum für den Importzeitraum. Bitte korrigieren Sie die Zeiträume:</p>
+        
+        {azubisWithoutPeriod.map((azubi, index) => (
+          <div key={index} style={{ marginBottom: '20px', border: '1px solid #ddd', padding: '15px', borderRadius: '4px' }}>
+            <div><strong>Azubi:</strong> {azubi.azubiName}</div>
+            <div><strong>Import-Zeitraum:</strong> {azubi.importDateRange.start} bis {azubi.importDateRange.end}</div>
+            
+            <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div>
+                <label style={{ display: 'inline-block', width: '120px' }}>Startdatum: </label>
+                <input 
+                  type="date" 
+                  value={adjustments[index].startDate} 
+                  onChange={(e) => handleStartDateChange(index, e.target.value)}
+                  style={{ padding: '4px', width: '150px' }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ display: 'inline-block', width: '120px' }}>Enddatum: </label>
+                <input 
+                  type="date" 
+                  value={adjustments[index].endDate} 
+                  onChange={(e) => handleEndDateChange(index, e.target.value)}
+                  style={{ padding: '4px', width: '150px' }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ display: 'inline-block', width: '120px' }}>Lehrjahr: </label>
+                <select 
+                  value={adjustments[index].lehrjahr} 
+                  onChange={(e) => handleLehrjahrChange(index, e.target.value)}
+                  style={{ padding: '4px' }}
+                >
+                  <option value={1}>1</option>
+                  <option value={2}>2</option>
+                  <option value={3}>3</option>
+                  <option value={4}>4</option>
+                </select>
+              </div>
+              
+              <div>
+                <label style={{ display: 'inline-block', width: '120px' }}>Beschreibung: </label>
+                <input 
+                  type="text" 
+                  value={adjustments[index].description} 
+                  onChange={(e) => handleDescriptionChange(index, e.target.value)}
+                  style={{ padding: '4px', width: '300px' }}
+                  placeholder="z.B. Ausbildungsabschnitt 1"
+                />
+              </div>
+            </div>
+          </div>
+        ))}
+        
+        <div style={{ marginTop: '20px', textAlign: 'right' }}>
+          <button 
+            onClick={onCancel}
+            style={{ marginRight: '10px', padding: '8px 16px' }}
+          >
+            Abbrechen
+          </button>
+          <button 
+            onClick={() => onConfirm(adjustments)}
+            style={{ padding: '8px 16px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px' }}
+          >
+            Zeiträume anlegen und Import fortsetzen
           </button>
         </div>
       </div>

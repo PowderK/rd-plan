@@ -32,6 +32,22 @@ let vehiclesWindow: BrowserWindow | null = null;
 let addRtwWindow: BrowserWindow | null = null;
 let addNefWindow: BrowserWindow | null = null;
 
+// Debouncing für duty-roster-Updates (verhindert zu viele Broadcasts bei schnellen Änderungen)
+let dutyRosterUpdateTimeout: NodeJS.Timeout | null = null;
+function notifyDutyRosterUpdate() {
+    if (dutyRosterUpdateTimeout) {
+        clearTimeout(dutyRosterUpdateTimeout);
+    }
+    dutyRosterUpdateTimeout = setTimeout(() => {
+        BrowserWindow.getAllWindows().forEach(w => { 
+            try { 
+                w.webContents.send('duty-roster-updated'); 
+            } catch {} 
+        });
+        dutyRosterUpdateTimeout = null;
+    }, 300); // 300ms Debounce
+}
+
 // --- Setup helpers ---
 function getDbConfigPath() {
     const userData = app.getPath('userData');
@@ -68,24 +84,18 @@ function hasDbConfig(): boolean {
         }
         
         // Automatisch Standard-Konfiguration erstellen, wenn nicht vorhanden
-        console.log('[Main] Keine db-config.json gefunden, erstelle Standard-Konfiguration...');
         const defaultDbDir = suggestDefaultDbDir();
         const userData = app.getPath('userData');
         
         try {
             fs.mkdirSync(userData, { recursive: true });
             fs.writeFileSync(configPath, JSON.stringify({ dbDir: defaultDbDir }, null, 2), 'utf-8');
-            console.log('[Main] Standard db-config.json erstellt:', configPath, '-> dbDir:', defaultDbDir);
             
             // Auch die globale Konfiguration erstellen (neben der Exe)
             const result = writeGlobalDbConfig(defaultDbDir);
-            if (result.success) {
-                console.log('[Main] Globale db-config.json erstellt:', result.path);
-            }
             
             return true;
         } catch (e) {
-            console.error('[Main] Fehler beim Erstellen der db-config.json:', e);
             return false;
         }
     } catch {
@@ -144,11 +154,7 @@ async function ensureDatabaseAdapter(): Promise<DatabaseAdapter> {
 ipcMain.on('renderer-log', (_event, { level, args }) => {
     try {
         const payload = Array.isArray(args) ? args.join(' ') : String(args);
-        if (level === 'error') console.error(`[Renderer] ${payload}`);
-        else if (level === 'warn') console.warn(`[Renderer] ${payload}`);
-        else console.log(`[Renderer] ${payload}`);
     } catch (e) {
-        console.log('[Renderer] <log parse error>');
     }
 });
 
@@ -156,13 +162,13 @@ ipcMain.on('renderer-log', (_event, { level, args }) => {
 ipcMain.handle('clear-duty-roster-year', async (_event, year: number) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.clearDutyRosterForYear(year);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('duty-roster-updated'); } catch {} });
+    notifyDutyRosterUpdate();
     return true;
 });
 ipcMain.handle('clear-duty-roster-month', async (_event, year: number, month: number) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.clearDutyRosterForMonth(year, month);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('duty-roster-updated'); } catch {} });
+    notifyDutyRosterUpdate();
     return true;
 });
 
@@ -225,7 +231,7 @@ function createSplashScreen() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            preload: path.join(__dirname, 'preload.js')
+            preload: path.join(__dirname, '../preload.js')
         }
     });
 
@@ -237,18 +243,22 @@ function createSplashScreen() {
     });
 }
 
+// Hilfsfunktion für Splash Screen Updates
+function updateSplashStatus(message: string, details?: string) {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.webContents.send('splash-status', { message, details });
+    }
+}
+
 // (instrumentation removed) global startup logging and handlers were removed
 
 // System Info handlers
 ipcMain.handle('get-system-username', async () => {
     try {
-        console.log('[Main] get-system-username aufgerufen');
         // Verwende whoami-Befehl (funktioniert auf Windows, macOS und Linux)
         const username = execSync('whoami', { encoding: 'utf-8' }).trim();
-        console.log('[Main] Benutzername ausgelesen:', username);
         return username;
     } catch (e) {
-        console.error('[Main] Fehler beim Auslesen des Benutzernamens:', e);
         return 'Unbekannt';
     }
 });
@@ -377,15 +387,15 @@ ipcMain.handle('get-duty-roster', async (_event, year: number) => {
 
 ipcMain.handle('set-duty-roster-entry', async (_event, entry: any) => {
     const adapter = await ensureDatabaseAdapter();
-    await adapter.setDutyRosterEntry(entry);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('duty-roster-updated'); } catch {} });
-    return true;
+    const result = await adapter.setDutyRosterEntry(entry);
+    notifyDutyRosterUpdate();
+    return result;
 });
 
 ipcMain.handle('bulk-set-duty-roster-entries', async (_event, entries: any[]) => {
     const adapter = await ensureDatabaseAdapter();
     const result = await adapter.bulkSetDutyRosterEntries(entries);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('duty-roster-updated'); } catch {} });
+    notifyDutyRosterUpdate();
     return result;
 });
 
@@ -393,21 +403,21 @@ ipcMain.handle('bulk-set-duty-roster-entries', async (_event, entries: any[]) =>
 ipcMain.handle('bulk-set-duty-roster', async (_event, entries: any[]) => {
     const adapter = await ensureDatabaseAdapter();
     const result = await adapter.bulkSetDutyRosterEntries(entries);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('duty-roster-updated'); } catch {} });
+    notifyDutyRosterUpdate();
     return result;
 });
 
 ipcMain.handle('clear-slot-assignments', async () => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.clearSlotAssignments();
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('duty-roster-updated'); } catch {} });
+    notifyDutyRosterUpdate();
     return true;
 });
 
 ipcMain.handle('assign-slot', async (_event, entry: { personId: number, personType: string, date: string, slotType: string }) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.assignSlot(entry);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('duty-roster-updated'); } catch {} });
+    notifyDutyRosterUpdate();
     return true;
 });
 
@@ -516,10 +526,8 @@ ipcMain.handle('delete-qualification-period', async (_event, id: number) => {
 });
 
 ipcMain.handle('validate-qualification-for-shift', async (_event, personId: number, shiftValue: string, date: string, cellType?: string) => {
-    console.log('[IPC] validate-qualification-for-shift called:', { personId, shiftValue, date, cellType });
     const adapter = await ensureDatabaseAdapter();
     const result = await adapter.validateQualificationForShift(personId, shiftValue, date, cellType);
-    console.log('[IPC] validate-qualification-for-shift result:', result);
     return result;
 });
 
@@ -536,9 +544,7 @@ ipcMain.handle('add-qualification-type', async (_event, qualType: any) => {
 });
 
 ipcMain.handle('update-qualification-type', async (_event, id: number, qualType: any) => {
-    console.log('[DEBUG] update-qualification-type called with id:', id, 'qualType:', qualType);
     const mergedQualType = { ...qualType, id };
-    console.log('[DEBUG] merged qualType:', mergedQualType);
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateQualificationType(mergedQualType);
     return true;
@@ -1059,9 +1065,7 @@ ipcMain.handle('finalize-setup', async (_e, dir: string) => {
         // zusätzlich globale Konfiguration neben der EXE/PORTABLE_EXECUTABLE_DIR schreiben (Best Effort)
         try {
             const res = writeGlobalDbConfig(dir);
-            if (!res.success) console.warn('[Main] writeGlobalDbConfig failed:', res.message);
         } catch (e) {
-            console.warn('[Main] writeGlobalDbConfig threw:', e);
         }
         app.relaunch();
         app.exit(0);
@@ -1083,7 +1087,6 @@ ipcMain.handle('create-database-backup', async (_event, opts?: { year?: number; 
         const dir = await createDatabaseBackup(opts);
         return { success: true, dir };
     } catch (e: any) {
-        console.error('[Main] Backup error', e);
         return { success: false, message: e?.message || String(e) };
     }
 });
@@ -1113,7 +1116,6 @@ ipcMain.handle('get-database-summary', async (_event, year?: number, month?: num
             }
         };
     } catch (e: any) {
-        console.error('[Main] get-database-summary error', e);
         return { success: false, message: e?.message || String(e) };
     }
 });
@@ -1124,7 +1126,6 @@ ipcMain.handle('list-backups', async (_event, limit?: number) => {
         const list = await listDatabaseBackups(limit);
         return { success: true, list };
     } catch (e: any) {
-        console.error('[Main] list-backups error', e);
         return { success: false, message: e?.message || String(e) };
     }
 });
@@ -1134,7 +1135,6 @@ ipcMain.handle('get-backup-summary', async (_event, backupDir: string, year?: nu
         const counts = await getSummaryForBackup(backupDir, year, month);
         return { success: true, counts };
     } catch (e: any) {
-        console.error('[Main] get-backup-summary error', e);
         return { success: false, message: e?.message || String(e) };
     }
 });
@@ -1147,7 +1147,6 @@ ipcMain.handle('restore-backup', async (_event, backupDir: string) => {
         app.exit(0);
         return { success: true };
     } catch (e: any) {
-        console.error('[Main] restore-backup error', e);
         return { success: false, message: e?.message || String(e) };
     }
 });
@@ -1158,7 +1157,6 @@ ipcMain.handle('get-current-version', async () => {
         const versionInfo = await getCurrentVersion();
         return { success: true, versionInfo };
     } catch (e: any) {
-        console.error('[Main] get-current-version error', e);
         return { success: false, message: e?.message || String(e) };
     }
 });
@@ -1169,7 +1167,6 @@ ipcMain.handle('create-manual-backup', async (_event, label: string) => {
         const backupPath = await updateMgr.createManualBackup(label);
         return { success: true, backupPath };
     } catch (e: any) {
-        console.error('[Main] create-manual-backup error', e);
         return { success: false, message: e?.message || String(e) };
     }
 });
@@ -1188,7 +1185,6 @@ ipcMain.handle('check-for-updates', async () => {
             appVersion
         };
     } catch (e: any) {
-        console.error('[Main] check-for-updates error', e);
         return { success: false, message: e?.message || String(e) };
     }
 });
@@ -1198,7 +1194,6 @@ ipcMain.handle('perform-manual-update', async () => {
         const result = await performUpdate();
         return result;
     } catch (e: any) {
-        console.error('[Main] perform-manual-update error', e);
         return { success: false, message: e?.message || String(e) };
     }
 });
@@ -1207,10 +1202,8 @@ ipcMain.handle('perform-manual-update', async () => {
 // Settings Import/Export handlers
 ipcMain.handle('import-settings-json', async (_event, filePath: string, replaceExisting: boolean = false) => {
     try {
-        console.log('[Main] Settings JSON import started:', { filePath, replaceExisting });
         const adapter = await ensureDatabaseAdapter();
         const result = await adapter.importSettingsFromJson(filePath, replaceExisting);
-        console.log('[Main] Settings JSON import completed:', result);
         
         // Notify all windows about settings update
         BrowserWindow.getAllWindows().forEach(w => {
@@ -1219,46 +1212,36 @@ ipcMain.handle('import-settings-json', async (_event, filePath: string, replaceE
         
         return result;
     } catch (error) {
-        console.error('[Main] Settings JSON import error:', error);
         throw error;
     }
 });
 
 ipcMain.handle('export-settings-json', async (_event, filePath: string) => {
     try {
-        console.log('[Main] Settings JSON export started:', filePath);
         const adapter = await ensureDatabaseAdapter();
         await adapter.exportSettingsToJson(filePath);
-        console.log('[Main] Settings JSON export completed');
         return { success: true };
     } catch (error) {
-        console.error('[Main] Settings JSON export error:', error);
         throw error;
     }
 });
 
 ipcMain.handle('export-settings-excel', async (_event, filePath: string) => {
     try {
-        console.log('[Main] Settings Excel export started:', filePath);
         const adapter = await ensureDatabaseAdapter();
         await adapter.exportSettingsToExcel(filePath);
-        console.log('[Main] Settings Excel export completed');
         return { success: true };
     } catch (error) {
-        console.error('[Main] Settings Excel export error:', error);
         throw error;
     }
 });
 
 ipcMain.handle('create-settings-template', async (_event, filePath: string) => {
     try {
-        console.log('[Main] Settings template creation started:', filePath);
         const adapter = await ensureDatabaseAdapter();
         await adapter.createSettingsTemplate(filePath);
-        console.log('[Main] Settings template creation completed');
         return { success: true };
     } catch (error) {
-        console.error('[Main] Settings template creation error:', error);
         throw error;
     }
 });
@@ -1266,10 +1249,8 @@ ipcMain.handle('create-settings-template', async (_event, filePath: string) => {
 // Roster Import handler
 ipcMain.handle('import-duty-roster', async (_event, filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number> }) => {
     try {
-        console.log('[Main] Duty roster import started:', { filePath, year, month });
         const adapter = await ensureDatabaseAdapter();
         const result = await adapter.importDutyRoster(filePath, year, month, options);
-        console.log('[Main] Duty roster import completed:', result);
         
         if (result.success) {
             // Notify all windows about the update
@@ -1280,7 +1261,6 @@ ipcMain.handle('import-duty-roster', async (_event, filePath: string, year: numb
         
         return result;
     } catch (error) {
-        console.error('[Main] Duty roster import error:', error);
         const message = error instanceof Error ? error.message : 'Ein unbekannter Fehler ist aufgetreten.';
         return { success: false, message: `Fehler beim Import: ${message}`, importedCount: 0 };
     }
@@ -1292,7 +1272,6 @@ ipcMain.handle('preview-duty-roster-import', async (_event, filePath: string, ye
         const result = await previewDutyRosterImport(filePath, year, month);
         return result;
     } catch (error) {
-        console.error('[Main] preview-duty-roster-import error:', error);
         const message = error instanceof Error ? error.message : 'Ein unbekannter Fehler ist aufgetreten.';
         return { success: false, message };
     }
@@ -1454,9 +1433,7 @@ ipcMain.handle('set-db-dir', async (_event, targetDir: string) => {
         // Write global config (db-config.json next to executable)
         try {
             const res = writeGlobalDbConfig(targetDir);
-            if (!res.success) console.warn('[Main] writeGlobalDbConfig failed:', res.message);
         } catch (e) {
-            console.warn('[Main] writeGlobalDbConfig threw:', e);
         }
         
         // Relaunch app to use new database location
@@ -1679,12 +1656,18 @@ app.whenReady().then(async () => {
             callback({ responseHeaders });
         });
     } catch (e) {
-        console.warn('[Main] Failed to register CSP header handler', e);
+        // Fehler ignorieren
     }
 
     // 1. Prüfe IMMER zuerst auf eine lokale Konfigurationsdatei (neben der Exe) und erzwinge deren Nutzung
     // Das ermöglicht es, durch Ablegen einer db-config.json neben der App den Datenbank-Pfad vorzugeben (z.B. für USB-Stick)
+    
+    // Splash Screen SOFORT anzeigen (bevor Netzwerk-Zugriffe starten)
+    createSplashScreen();
+    updateSplashStatus('RD-Plan wird gestartet...', 'Initialisierung...');
+    
     try {
+        updateSplashStatus('Konfiguration wird geladen...', 'Prüfe Datenbank-Pfad...');
         const globalCfgPath = getGlobalDbConfigPath();
         if (globalCfgPath) {
             const dir = readDbDirFromConfigFile(globalCfgPath);
@@ -1699,14 +1682,13 @@ app.whenReady().then(async () => {
                 } catch {}
 
                 if (currentDir !== dir) {
-                    console.log('[Main] Lokale db-config gefunden, überschreibe User-Config:', dir);
                     fs.mkdirSync(path.dirname(userCfgPath), { recursive: true });
                     fs.writeFileSync(userCfgPath, JSON.stringify({ dbDir: dir }, null, 2), 'utf-8');
                 }
             }
         }
     } catch (e) {
-        console.warn('[Main] Fehler beim Prüfen der lokalen db-config:', e);
+        // Fehler ignorieren
     }
 
     // 2. Wenn (jetzt) keine DB-Konfiguration vorhanden ist, Setup-Assistent starten
@@ -1715,42 +1697,33 @@ app.whenReady().then(async () => {
         return;
     }
 
-    // WICHTIG: Datenbank ZUERST initialisieren, bevor Update-Prüfung
+    // WICHTIG: Datenbank initialisieren (kann bei Netzlaufwerk langsam sein)
+    updateSplashStatus('Datenbank wird geladen...', 'Dies kann bei Netzlaufwerken etwas dauern...');
     await ensureDatabaseAdapter();
-
-    // Splash Screen anzeigen
-    createSplashScreen();
 
     // Update-Prüfung und automatisches Update mit Backup
     try {
+        updateSplashStatus('Prüfe auf Updates...', 'Versionsprüfung läuft...');
         const updateMgr = getUpdateManager();
         const needsUpdate = await updateMgr.needsUpdate();
         
         if (needsUpdate) {
-            console.log('[Main] Update erforderlich - starte Update-Prozess...');
+            updateSplashStatus('Update wird installiert...', 'Bitte warten...');
             const result = await performUpdate();
             
             if (result.success) {
-                console.log('[Main] Update erfolgreich:', result.message);
-                if (result.backupPath) {
-                    console.log('[Main] Backup erstellt unter:', result.backupPath);
-                }
             } else {
-                console.error('[Main] Update fehlgeschlagen:', result.message);
-                // Bei kritischem Fehler: Warnung anzeigen
                 dialog.showErrorBox(
                     'Update-Fehler',
                     `Das Update konnte nicht durchgeführt werden:\n\n${result.message}\n\nDie Anwendung wird mit der vorherigen Version gestartet.`
                 );
             }
-        } else {
-            console.log('[Main] Keine Updates erforderlich');
         }
     } catch (error: any) {
-        console.error('[Main] Fehler bei Update-Prüfung:', error);
         // Bei Fehler: Weiter mit normaler Initialisierung
     }
 
+    updateSplashStatus('Hauptfenster wird vorbereitet...', 'Fast fertig...');
     await createWindow();
 });
 
