@@ -48,7 +48,7 @@ const ExcelImport: React.FC<ExcelImportProps> = ({ onImportComplete, onClose }) 
       }
 
     } catch (error) {
-      console.error('Import-Fehler:', error);
+      // console.error('Import-Fehler:', error);
       setResult({
         success: false,
         imported: 0,
@@ -82,7 +82,7 @@ const ExcelImport: React.FC<ExcelImportProps> = ({ onImportComplete, onClose }) 
       alert('Export erfolgreich abgeschlossen!');
 
     } catch (error) {
-      console.error('Export-Fehler:', error);
+      // console.error('Export-Fehler:', error);
       setImporting(false);
       alert(`Export fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -111,7 +111,7 @@ const ExcelImport: React.FC<ExcelImportProps> = ({ onImportComplete, onClose }) 
       alert('Vorlage erfolgreich erstellt!');
 
     } catch (error) {
-      console.error('Template-Fehler:', error);
+      // console.error('Template-Fehler:', error);
       setImporting(false);
       alert(`Vorlage-Erstellung fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}`);
     }

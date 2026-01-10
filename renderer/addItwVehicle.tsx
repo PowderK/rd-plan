@@ -7,9 +7,14 @@ const AddItwVehicle: React.FC = () => {
   const handleSave = async () => {
     const n = name.trim();
     if (!n) return;
-    await (window as any).api.addItwVehicle({ name: n });
-    if (window.opener) window.opener.postMessage('settings-updated', '*');
-    window.close();
+    try {
+      await (window as any).api.addItwVehicle({ name: n });
+      if (window.opener) window.opener.postMessage('settings-updated', '*');
+      window.close();
+    } catch (e) {
+      // console.error('Failed to add ITW Vehicle:', e);
+      alert('Fehler beim Anlegen des ITW: ' + (e instanceof Error ? e.message : String(e)));
+    }
   };
 
   return (

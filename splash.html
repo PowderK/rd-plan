@@ -66,6 +66,8 @@
       font-weight: 500;
       margin-bottom: 20px;
       animation: pulse 1.5s ease-in-out infinite;
+      min-height: 27px; /* Verhindert Springen */
+      text-align: center;
     }
 
     @keyframes pulse {
@@ -75,6 +77,14 @@
       50% {
         opacity: 0.6;
       }
+    }
+    
+    .loading-details {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 14px;
+      margin-top: 10px;
+      text-align: center;
+      min-height: 21px; /* Verhindert Springen */
     }
 
     .spinner {
@@ -98,6 +108,8 @@
       color: rgba(255, 255, 255, 0.8);
       font-size: 12px;
     }
+
+
   </style>
 </head>
 <body>
@@ -105,12 +117,28 @@
     <div class="logo-container">
       <img src="media/RD-Plan Logo.gif" alt="RD-Plan Logo" class="logo">
     </div>
-    <div class="loading-text">RD-Plan wird geladen...</div>
+    <div class="loading-text" id="loading-text">RD-Plan wird geladen...</div>
+    <div class="loading-details" id="loading-details"></div>
     <div class="spinner"></div>
   </div>
-  <div class="version">Version 0.2.0-beta.1</div>
+  <div class="version">Version 1.0.2 RC</div>
   
   <script>
+    // Status-Updates empfangen
+    if (window.electronAPI && window.electronAPI.on) {
+      window.electronAPI.on('splash-status', (data) => {
+        const loadingText = document.getElementById('loading-text');
+        const loadingDetails = document.getElementById('loading-details');
+        
+        if (loadingText && data.message) {
+          loadingText.textContent = data.message;
+        }
+        if (loadingDetails && data.details) {
+          loadingDetails.textContent = data.details;
+        }
+      });
+    }
+
     // Wechsle nach 5.29 Sekunden vom animierten GIF zum statischen Bild
     setTimeout(() => {
       const logo = document.querySelector('.logo');

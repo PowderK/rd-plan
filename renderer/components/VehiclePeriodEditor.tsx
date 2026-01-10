@@ -44,7 +44,7 @@ export const VehiclePeriodForm: React.FC<VehiclePeriodFormProps> = ({
       active: active
     };
 
-    console.log('[VehiclePeriodForm] Saving period:', formData);
+    // console.log('[VehiclePeriodForm] Saving period:', formData);
     onSave(formData as any);
   };
 
@@ -200,7 +200,7 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
       }
       setPeriods(data || []);
     } catch (error) {
-      console.error('Failed to load vehicle periods:', error);
+      // console.error('Failed to load vehicle periods:', error);
     }
   };
 
@@ -233,7 +233,7 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
       }
       await loadPeriods();
     } catch (error) {
-      console.error('Failed to delete period:', error);
+      // console.error('Failed to delete period:', error);
       alert('Fehler beim Löschen des Zeitraums.');
     }
   };
@@ -264,7 +264,7 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
       setEditingPeriod(undefined);
       await loadPeriods();
     } catch (error) {
-      console.error('Failed to save period:', error);
+      // console.error('Failed to save period:', error);
       alert('Fehler beim Speichern des Zeitraums.');
     }
   };

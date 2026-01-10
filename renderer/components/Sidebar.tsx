@@ -21,6 +21,13 @@ function emitNavigate(view: NavKey) {
 
 const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 	const [collapsed, setCollapsed] = useState(false);
+	
+	// Emit collapse state changes
+	const toggleCollapse = () => {
+		const newState = !collapsed;
+		setCollapsed(newState);
+		window.dispatchEvent(new CustomEvent('sidebar-collapsed', { detail: { collapsed: newState } }));
+	};
 	const Icon = ({ path, viewBox = '0 0 24 24' }: { path: string; viewBox?: string }) => (
 		<svg aria-hidden width={18} height={18} viewBox={viewBox} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ minWidth: 18 }}>
 			<path d={path} />
@@ -76,7 +83,7 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 				{/* Scrollbarer Inhaltsbereich */}
 				<div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto', paddingBottom: 64 }}>
 					<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-					<button onClick={() => setCollapsed(v => !v)} title={collapsed ? 'Aufklappen' : 'Einklappen'} style={{ ...itemStyle, padding: 6, width: collapsed ? 40 : 32 }}>
+					<button onClick={toggleCollapse} title={collapsed ? 'Aufklappen' : 'Einklappen'} style={{ ...itemStyle, padding: 6, width: collapsed ? 40 : 32 }}>
 						<span aria-hidden>{collapsed ? '›' : '‹'}</span>
 					</button>
 					</div>

@@ -82,8 +82,158 @@ interface RosterEntry {
     type: string; // 'text' for duty roster entries
 }
 
+interface AvailabilityConflict {
+    personName: string;
+    date: string;
+    dutyRosterValue: string;
+    einteilungValue: string;
+}
+
 export class RosterImporter {
     constructor(private dbAdapter: DatabaseAdapter) {}
+
+    // Prüft Verfügbarkeit: Sammelt Konflikte zwischen Dienstplan (duty roster) und Einteilung (fahrzeugzuweisung)
+    // Konflikt = Person hat Fahrzeugzuweisung (type), aber neue Schichtart bedeutet nicht verfügbar (auswertung = 'off')
+    private async checkAvailabilityConflicts(
+        entriesToImport: RosterEntry[]
+    ): Promise<AvailabilityConflict[]> {
+        const conflicts: AvailabilityConflict[] = [];
+        
+        // Hole alle Personen für Namensauflösung
+        const personnel = await this.dbAdapter.getPersonnel();
+        const azubis = await this.dbAdapter.getAzubiList();
+        const personMap = new Map<string, string>();
+        
+        for (const p of personnel) {
+            personMap.set(`person_${p.id}`, `${p.name}, ${p.vorname}`);
+        }
+        for (const a of azubis) {
+            personMap.set(`azubi_${a.id}`, `${a.name}, ${a.vorname}`);
+        }
+        
+        // Hole Auswertungs-Einstellungen für alle Schichtarten
+        const shiftTypes = await this.dbAdapter.getShiftTypes();
+        const auswertungMap = new Map<string, string>();
+        for (const st of shiftTypes) {
+            const auswertung = await this.dbAdapter.getSetting(`auswertung_${st.code}`);
+            // 'off' = nicht verfügbar (Urlaub, Krank, Frei, etc.)
+            // 'tag', 'nacht', '24h', 'itw' = verfügbar (Arbeitsschichten)
+            auswertungMap.set(st.code, auswertung || 'off');
+        }
+        
+        // Extrahiere alle betroffenen Jahre aus den zu importierenden Einträgen
+        const years = new Set<number>();
+        for (const entry of entriesToImport) {
+            const year = parseInt(entry.date.split('-')[0], 10);
+            if (!isNaN(year)) years.add(year);
+        }
+        
+        // Hole bestehende Fahrzeugzuweisungen (duty_roster entries mit type = 'rtw%', 'nef%', 'itw%')
+        const vehicleAssignments = new Map<string, string>(); // key: "personType_personId_date" -> vehicle assignment (type)
+        for (const year of years) {
+            const dutyRoster = await this.dbAdapter.getDutyRoster(year);
+            for (const entry of dutyRoster) {
+                // Nur Einträge mit Fahrzeugzuweisung berücksichtigen
+                if (entry.type && (entry.type.startsWith('rtw') || entry.type.startsWith('nef') || entry.type.startsWith('itw'))) {
+                    const key = `${entry.personType}_${entry.personId}_${entry.date}`;
+                    vehicleAssignments.set(key, entry.type);
+                }
+            }
+        }
+        
+        // Prüfe Import-Einträge: Gibt es eine Fahrzeugzuweisung UND ist die neue Schichtart nicht verfügbar?
+        for (const entry of entriesToImport) {
+            const key = `${entry.personType}_${entry.personId}_${entry.date}`;
+            const vehicleAssignment = vehicleAssignments.get(key);
+            
+            // Konflikt: Person hat Fahrzeugzuweisung ABER neue Schichtart bedeutet nicht verfügbar
+            if (vehicleAssignment) {
+                const auswertung = auswertungMap.get(entry.value.trim());
+                
+                // Wenn auswertung = 'off' oder nicht definiert → Person nicht verfügbar
+                if (!auswertung || auswertung === 'off') {
+                    const personName = personMap.get(`${entry.personType}_${entry.personId}`) || `ID ${entry.personId}`;
+                    conflicts.push({
+                        personName,
+                        date: entry.date,
+                        dutyRosterValue: entry.value.trim(), // Neue Schichtart aus Import (z.B. "K" für Krank)
+                        einteilungValue: vehicleAssignment // Fahrzeugzuweisung (z.B. "rtw1_tag_1")
+                    });
+                }
+            }
+        }
+        
+        console.log(`[RosterImporter] Verfügbarkeitsprüfung: ${conflicts.length} Konflikte gefunden (Fahrzeugzuweisung vs. nicht verfügbare Schichtart)`);
+        return conflicts;
+    }
+
+    // Prüft, ob Azubis im Import einen gültigen Zeitraum haben
+    private async checkAzubiPeriods(
+        entriesToImport: RosterEntry[],
+        year: number,
+        month?: number
+    ): Promise<Array<{ azubiId: number; azubiName: string; importDateRange: { start: string; end: string } }>> {
+        const azubisWithoutPeriod: Array<{ azubiId: number; azubiName: string; importDateRange: { start: string; end: string } }> = [];
+        
+        // Hole alle Azubis
+        const azubis = await this.dbAdapter.getAzubiList();
+        const azubiMap = new Map<number, { id: number; name: string; vorname: string }>();
+        for (const a of azubis) {
+            azubiMap.set(a.id, a);
+        }
+        
+        // Hole alle Azubi-Zeiträume
+        const allPeriods = await this.dbAdapter.getAllAzubiPeriods();
+        const periodsByAzubi = new Map<number, Array<{ start_date: string; end_date: string }>>();
+        for (const period of allPeriods) {
+            if (!periodsByAzubi.has(period.azubi_id)) {
+                periodsByAzubi.set(period.azubi_id, []);
+            }
+            periodsByAzubi.get(period.azubi_id)!.push({
+                start_date: period.start_date,
+                end_date: period.end_date
+            });
+        }
+        
+        // Sammle Azubi-Einträge und deren Datumsbereich
+        const azubiImportData = new Map<number, Set<string>>();
+        for (const entry of entriesToImport) {
+            if (entry.personType === 'azubi') {
+                if (!azubiImportData.has(entry.personId)) {
+                    azubiImportData.set(entry.personId, new Set());
+                }
+                azubiImportData.get(entry.personId)!.add(entry.date);
+            }
+        }
+        
+        // Prüfe jeden Azubi im Import
+        for (const [azubiId, dates] of azubiImportData.entries()) {
+            const azubi = azubiMap.get(azubiId);
+            if (!azubi) continue;
+            
+            const sortedDates = Array.from(dates).sort();
+            const importStart = sortedDates[0];
+            const importEnd = sortedDates[sortedDates.length - 1];
+            
+            // Prüfe, ob es einen überlappenden Zeitraum gibt
+            const periods = periodsByAzubi.get(azubiId) || [];
+            const hasValidPeriod = periods.some(period => {
+                // Zeitraum überlappt wenn: period.start <= importEnd && period.end >= importStart
+                return period.start_date <= importEnd && period.end_date >= importStart;
+            });
+            
+            if (!hasValidPeriod) {
+                azubisWithoutPeriod.push({
+                    azubiId,
+                    azubiName: `${azubi.name}, ${azubi.vorname}`,
+                    importDateRange: { start: importStart, end: importEnd }
+                });
+            }
+        }
+        
+        console.log(`[RosterImporter] Azubi-Zeitraum-Prüfung: ${azubisWithoutPeriod.length} Azubis ohne gültigen Zeitraum gefunden`);
+        return azubisWithoutPeriod;
+    }
 
     // Sammelt unbekannte Dienstarten aus allen Dienst-Einträgen
     private async collectUnknownShiftTypes(
@@ -255,7 +405,25 @@ export class RosterImporter {
             return { success: false, total: 0, matched: 0, unmatchedNames: [], overwrites: 0, message: msg };
         }
     }
-    public async importDutyRoster(filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number>; newAzubis?: Array<{name: string, vorname: string, lehrjahr: number}>; newShiftTypes?: Array<{code: string, description: string, color: string, auswertung: string}> }): Promise<{success: boolean, message: string, importedCount: number, unknownAzubis?: string[], unknownShiftTypes?: string[]}> {
+    public async importDutyRoster(
+        filePath: string, 
+        year: number, 
+        month?: number, 
+        options?: { 
+            mappings?: Record<string, number>; 
+            newAzubis?: Array<{name: string, vorname: string, lehrjahr: number}>; 
+            newShiftTypes?: Array<{code: string, description: string, color: string, auswertung: string}>;
+            azubiPeriodAdjustments?: Array<{azubiId: number, startDate: string, endDate: string, description?: string, lehrjahr: number}>;
+        }
+    ): Promise<{
+        success: boolean, 
+        message: string, 
+        importedCount: number, 
+        unknownAzubis?: string[], 
+        unknownShiftTypes?: string[], 
+        availabilityConflicts?: AvailabilityConflict[],
+        azubisWithoutPeriod?: Array<{ azubiId: number; azubiName: string; importDateRange: { start: string; end: string } }>
+    }> {
         try {
             const workbook = XLSX.readFile(filePath);
             const sheetNames = workbook.SheetNames;
@@ -510,6 +678,36 @@ export class RosterImporter {
                     }
                 }
 
+                // Prüfe Azubi-Zeiträume
+                console.log(`[RosterImporter] Prüfe Azubi-Zeiträume...`);
+                const azubisWithoutPeriod = await this.checkAzubiPeriods(entriesToImport, year, month);
+                
+                if (azubisWithoutPeriod.length > 0) {
+                    // Wenn Azubis ohne gültigen Zeitraum gefunden wurden, Dialog anzeigen
+                    if (options?.azubiPeriodAdjustments) {
+                        // User hat bereits entschieden, Zeiträume anzupassen
+                        console.log('[RosterImporter] Passe Azubi-Zeiträume an:', options.azubiPeriodAdjustments);
+                        for (const adjustment of options.azubiPeriodAdjustments) {
+                            await this.dbAdapter.addAzubiPeriod({
+                                azubi_id: adjustment.azubiId,
+                                start_date: adjustment.startDate,
+                                end_date: adjustment.endDate,
+                                description: adjustment.description || 'Automatisch durch Import hinzugefügt',
+                                lehrjahr: adjustment.lehrjahr
+                            });
+                        }
+                    } else {
+                        // Zeige Dialog mit Azubis ohne gültigen Zeitraum
+                        console.log('[RosterImporter] Gefundene Azubis ohne gültigen Zeitraum:', azubisWithoutPeriod);
+                        return {
+                            success: true,
+                            message: `Azubis ohne gültigen Zeitraum gefunden: ${azubisWithoutPeriod.map(a => a.azubiName).join(', ')}`,
+                            importedCount: 0,
+                            azubisWithoutPeriod: azubisWithoutPeriod
+                        };
+                    }
+                }
+
                 console.log(`[RosterImporter] Schreibe ${entriesToImport.length} Einträge in duty_roster.`);
                 
                 // IMMER manuelle Bearbeitungen respektieren (sowohl bei Monats- als auch bei Jahresimport)
@@ -520,9 +718,19 @@ export class RosterImporter {
                 const deleteEmpty = !isYearlyImport;
                 const respectManualEdits = !isYearlyImport; // Jahresimport überschreibt auch manuelle Änderungen
                 
+                // Prüfe Verfügbarkeitskonflikte VOR dem Import
+                const availabilityConflicts = await this.checkAvailabilityConflicts(entriesToImport);
+                
                 const result = await this.dbAdapter.bulkImportDutyRosterEntries(entriesToImport, respectManualEdits, deleteEmpty);
                 console.log(`[RosterImporter] Import: ${result.imported} importiert, ${result.skipped} übersprungen (manuell bearbeitet oder existierend)`);
-                return { success: true, message: `Dienstplan erfolgreich importiert. ${result.imported} Einträge verarbeitet, ${result.skipped} geschützt/übersprungen.`, importedCount: result.imported };
+                
+                // Rückgabe mit Konflikten
+                return { 
+                    success: true, 
+                    message: `Dienstplan erfolgreich importiert. ${result.imported} Einträge verarbeitet, ${result.skipped} geschützt/übersprungen.`, 
+                    importedCount: result.imported,
+                    availabilityConflicts: availabilityConflicts.length > 0 ? availabilityConflicts : undefined
+                };
             } else {
                 console.warn('[RosterImporter] Keine Einträge zum Import gefunden.');
             }

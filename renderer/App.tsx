@@ -22,6 +22,7 @@ const App: React.FC = () => {
                 const [activeView, setActiveView] = useState<'einteilung'|'dienstplan'|'werte'|'personal'|'fahrzeuge'|'einstellungen'>(
             'einteilung'
         );
+    const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
 
     async function loadHeaderInfo() {
         try {
@@ -103,8 +104,20 @@ const App: React.FC = () => {
             }
         }, [activeView]);
 
+        // Reagiere auf Sidebar Collapse Events
+        useEffect(() => {
+            const handler = (e: Event) => {
+                const ce = e as CustomEvent;
+                if (typeof ce.detail?.collapsed === 'boolean') {
+                    setSidebarCollapsed(ce.detail.collapsed);
+                }
+            };
+            window.addEventListener('sidebar-collapsed', handler as EventListener);
+            return () => window.removeEventListener('sidebar-collapsed', handler as EventListener);
+        }, []);
+
         return (
-            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gridTemplateRows: 'auto 1fr auto', height: '100vh' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: `${sidebarCollapsed ? '56px' : '200px'} 1fr`, gridTemplateRows: 'auto 1fr auto', height: '100vh', transition: 'grid-template-columns 0.15s' }}>
                 <div style={{ gridRow: 1, gridColumn: '1 / span 2' }}>
                     <Header rescueStation={rescueStation} department={department} year={year} />
                 </div>

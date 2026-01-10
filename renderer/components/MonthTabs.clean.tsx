@@ -65,7 +65,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
       const key = `${ptype === 'person' ? 'p' : 'a'}_${pid}`;
       setLocalRoster(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [dayIdx]: { value: 'V', type: 'dropdown' } } }));
     } catch (err) {
-      console.error('Fehler beim Speichern', err);
+      // console.error('Fehler beim Speichern', err);
     }
   };
 

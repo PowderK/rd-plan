@@ -15,7 +15,7 @@ interface BodyProps {
 }
 
 const Body: React.FC<BodyProps & { onRosterChanged?: () => void; onEntryAssigned?: (key: string, date: string, value: string, type: string) => void }> = ({ currentMonth, onMonthChange, personnel, azubis, roster, year, shiftPattern, deptPatternSeqs, onRosterChanged, onEntryAssigned }) => {
-    console.log('[Body] Render', { currentMonth, year, rosterKeys: Object.keys(roster) });
+    // console.log('[Body] Render', { currentMonth, year, rosterKeys: Object.keys(roster) });
     return (
         <div className="body-container">
             <div className="month-tabs">

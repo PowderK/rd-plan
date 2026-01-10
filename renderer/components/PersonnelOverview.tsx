@@ -23,7 +23,7 @@ const removedPersonEditModal = () => {
       onSave();
       onClose();
     } catch (error) {
-      console.error('Fehler beim Speichern der Person:', error);
+      // console.error('Fehler beim Speichern der Person:', error);
       alert('Fehler beim Speichern!');
     }
   };
@@ -211,7 +211,7 @@ const removedAzubiEditModal = () => {
       onSave();
       onClose();
     } catch (error) {
-      console.error('Fehler beim Speichern des Azubis:', error);
+      // console.error('Fehler beim Speichern des Azubis:', error);
       alert('Fehler beim Speichern!');
     }
   };
@@ -294,7 +294,7 @@ const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ 
         const azubiPeriods = await (window as any).api.getAzubiPeriods(azubi.id);
         setPeriods(azubiPeriods);
       } catch (error) {
-        console.error('Fehler beim Laden der Zeiträume:', error);
+        // console.error('Fehler beim Laden der Zeiträume:', error);
       }
     };
     loadPeriods();
@@ -325,7 +325,7 @@ const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ 
       setPeriods(updatedPeriods);
       setNewPeriod({ start_date: '', end_date: '', description: '' });
     } catch (error) {
-      console.error('Fehler beim Hinzufügen des Zeitraums:', error);
+      // console.error('Fehler beim Hinzufügen des Zeitraums:', error);
       alert('Fehler beim Hinzufügen des Zeitraums!');
     } finally {
       setLoading(false);
@@ -345,7 +345,7 @@ const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ 
       const updatedPeriods = await (window as any).api.getAzubiPeriods(azubi.id);
       setPeriods(updatedPeriods);
     } catch (error) {
-      console.error('Fehler beim Löschen des Zeitraums:', error);
+      // console.error('Fehler beim Löschen des Zeitraums:', error);
       alert('Fehler beim Löschen des Zeitraums!');
     } finally {
       setLoading(false);
@@ -588,7 +588,7 @@ const PersonnelOverview: React.FC = () => {
       });
       setActivePeriods(periodsByPerson);
     } catch (error) {
-      console.error('Fehler beim Laden der Aktivitätsperioden:', error);
+      // console.error('Fehler beim Laden der Aktivitätsperioden:', error);
     }
   }, []);
 
@@ -619,7 +619,7 @@ const PersonnelOverview: React.FC = () => {
       });
       setQualificationPeriods(periodsByPerson);
     } catch (error) {
-      console.error('Fehler beim Laden der Qualifikationsperioden:', error);
+      // console.error('Fehler beim Laden der Qualifikationsperioden:', error);
     }
   }, []);
 
@@ -635,7 +635,7 @@ const PersonnelOverview: React.FC = () => {
     loadQualificationPeriods();
     loadActivePeriods();
     const handler = (_event: any) => {
-      console.log('[Renderer] personnel-updated Event empfangen');
+      // console.log('[Renderer] personnel-updated Event empfangen');
       loadPersonnel();
       loadAzubis();
       loadItws();
@@ -645,26 +645,26 @@ const PersonnelOverview: React.FC = () => {
     (window as any).api.onPersonnelUpdated?.(handler);
     // subscribe to azubi broadcasts from main
     const azubiHandler = (_event: any) => {
-      console.log('[Renderer] azubis-updated Event empfangen');
+      // console.log('[Renderer] azubis-updated Event empfangen');
       loadAzubis();
       loadQualificationPeriods();
     };
     (window as any).api.onAzubisUpdated?.(azubiHandler);
     const itwHandler = (_event: any) => {
-      console.log('[Renderer] itw-updated Event empfangen');
+      // console.log('[Renderer] itw-updated Event empfangen');
       loadItws();
     };
     (window as any).api.onItwUpdated?.(itwHandler);
     // postMessage-Listener für Popups
     const messageHandler = (event: MessageEvent) => {
       if (event.data === 'personnel-updated') {
-        console.log('[Renderer] personnel-updated via postMessage empfangen');
+        // console.log('[Renderer] personnel-updated via postMessage empfangen');
         loadPersonnel();
       } else if (event.data === 'azubis-updated') {
-        console.log('[Renderer] azubis-updated via postMessage empfangen');
+        // console.log('[Renderer] azubis-updated via postMessage empfangen');
         loadAzubis();
       } else if (event.data === 'itw-updated') {
-        console.log('[Renderer] itw-updated via postMessage empfangen');
+        // console.log('[Renderer] itw-updated via postMessage empfangen');
         loadItws();
       }
     };

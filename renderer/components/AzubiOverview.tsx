@@ -22,7 +22,7 @@ const AzubiEditModal: React.FC<{ azubi: Azubi; onClose: () => void; onSave: () =
       onSave();
       onClose();
     } catch (error) {
-      console.error('Fehler beim Speichern des Azubis:', error);
+      // console.error('Fehler beim Speichern des Azubis:', error);
       alert('Fehler beim Speichern!');
     }
   };
