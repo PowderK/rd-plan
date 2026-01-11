@@ -1,3 +1,7 @@
+## Build 824 - 2026-01-11
+
+- automated build
+
 ## Build 823 - 2026-01-11
 
 - automated build
