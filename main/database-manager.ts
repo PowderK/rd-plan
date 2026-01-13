@@ -1019,6 +1019,17 @@ export class DatabaseManager {
         console.log('[DatabaseManager] Adding lehrjahr to azubi_periods');
         await db.exec("ALTER TABLE azubi_periods ADD COLUMN lehrjahr INTEGER DEFAULT 1");
     }
+    
+    // Migration: add 'personnelNumber' and 'roleId' columns to personnel if missing
+    const personnelCols = await db.all("PRAGMA table_info('personnel')");
+    if (!personnelCols.some((c: any) => c.name === 'personnelNumber')) {
+        console.log('[DatabaseManager] Adding personnelNumber to personnel');
+        await db.exec("ALTER TABLE personnel ADD COLUMN personnelNumber TEXT");
+    }
+    if (!personnelCols.some((c: any) => c.name === 'roleId')) {
+        console.log('[DatabaseManager] Adding roleId to personnel');
+        await db.exec("ALTER TABLE personnel ADD COLUMN roleId INTEGER");
+    }
   }
   
   private async initializeSQLiteSchema(db: AsyncDB) {

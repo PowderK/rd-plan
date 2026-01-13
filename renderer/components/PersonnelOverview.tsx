@@ -506,6 +506,8 @@ interface Person {
   phone?: string;
   mobile?: string;
   email?: string;
+  roleId?: number;
+  personnelNumber?: string;
 }
 
 interface Azubi { id: number; name: string; vorname: string; lehrjahr: number }
@@ -563,6 +565,9 @@ const PersonnelOverview: React.FC = () => {
   const [originalItws, setOriginalItws] = useState<ItwDoctor[] | null>(null);
 
   const [showInactive, setShowInactive] = useState(false);
+  
+  // Rollen für Dropdown
+  const [roles, setRoles] = useState<{ id: number; name: string }[]>([]);
   
   // Modal States entfernt - nutzt direkt openEditPersonWindow für alle
 
@@ -628,12 +633,25 @@ const PersonnelOverview: React.FC = () => {
     setItws(list);
   }, []);
 
+  const loadRoles = useCallback(async () => {
+    try {
+      const rolesData = await (window as any).api.getSetting('roles');
+      if (rolesData) {
+        const parsedRoles = JSON.parse(rolesData);
+        setRoles(Array.isArray(parsedRoles) ? parsedRoles.map((r: any) => ({ id: r.id, name: r.name })) : []);
+      }
+    } catch (e) {
+      // console.error('Fehler beim Laden der Rollen:', e);
+    }
+  }, []);
+
   useEffect(() => {
     loadPersonnel();
     loadAzubis();
     loadItws();
     loadQualificationPeriods();
     loadActivePeriods();
+    loadRoles();
     const handler = (_event: any) => {
       // console.log('[Renderer] personnel-updated Event empfangen');
       loadPersonnel();

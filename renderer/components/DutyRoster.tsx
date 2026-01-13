@@ -5,12 +5,14 @@ import ImportTable from './ImportTable';
 // DepartmentDutyDaysTable entfernt
 // DepartmentDutyDaysTableData entfernt
 import { BUILD_INFO } from '../buildInfo';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Person {
   id: number;
   name: string;
   vorname: string;
   fahrzeugfuehrerHLFB?: boolean | number;
+  personnelNumber?: string;
 }
 
 const getDaysInYear = (year: number) => {
@@ -91,6 +93,10 @@ const filterActiveAzubisForMonth = (azubis: any[], allPeriods: any[], year: numb
 };
 
 const DutyRoster: React.FC = () => {
+  const { currentUser, hasPermission } = useAuth();
+  const canWrite = hasPermission('dienstplan', 'write');
+  const canRead = hasPermission('dienstplan', 'read');
+  
   const [personnel, setPersonnel] = useState<Person[]>([]);
   const [year, setYear] = useState<number>((window as any).rdPlanYear || new Date().getFullYear());
   const [yearPlannings, setYearPlannings] = useState<{ year: number; filePath: string }[]>([]);
@@ -452,9 +458,20 @@ const DutyRoster: React.FC = () => {
 
   // Kombiniere Personal und Azubis für die Dienstplan-Tabelle
   type Row = { id: string; origId: number; name: string; vorname: string; isAzubi: boolean; lehrjahr?: number };
+  
+  // Filtere Personal basierend auf Berechtigungen
+  let visiblePersonnel = personnel;
+  if (canRead && !canWrite && currentUser) {
+    // Read-Only: Zeige nur eigene Zeile
+    visiblePersonnel = personnel.filter(p => p.personnelNumber === currentUser.personnelNumber);
+  }
+  
+  // Filtere Azubis: nur bei Schreibrechten anzeigen
+  const visibleAzubis = canWrite ? filteredAzubis : [];
+  
   const allRows: Row[] = [
-    ...personnel.map(p => ({ id: `p_${p.id}`, origId: p.id, name: p.name, vorname: p.vorname, isAzubi: false })),
-    ...filteredAzubis.map(a => ({ id: `a_${a.id}`, origId: a.id, name: a.name, vorname: a.vorname, isAzubi: true, lehrjahr: a.lehrjahr }))
+    ...visiblePersonnel.map(p => ({ id: `p_${p.id}`, origId: p.id, name: p.name, vorname: p.vorname, isAzubi: false })),
+    ...visibleAzubis.map(a => ({ id: `a_${a.id}`, origId: a.id, name: a.name, vorname: a.vorname, isAzubi: true, lehrjahr: a.lehrjahr }))
   ];
   // Sortiere Azubis nach Lehrjahr, Personal bleibt oben
   allRows.sort((a, b) => {
@@ -1098,6 +1115,7 @@ const DutyRoster: React.FC = () => {
             Jahr:
             <select
               value={year}
+              disabled={!canWrite}
               onChange={e => setYear(Number(e.target.value))}
               style={{ 
                 padding: '6px 10px',
@@ -1348,6 +1366,7 @@ const DutyRoster: React.FC = () => {
                             <select
                               autoFocus
                               value={cell.value}
+                              disabled={!canWrite}
                               onBlur={() => stopEdit(getStateKey(person), dayIdx)}
                               onChange={e => {
                                 handleCellChange(getStateKey(person), dayIdx, e.target.value, 'dropdown');
@@ -1505,6 +1524,7 @@ const NewShiftTypeDialog: React.FC<NewShiftTypeDialogProps> = ({ unknownShiftTyp
                 <label>Auswertung: </label>
                 <select 
                   value={shiftType.auswertung} 
+                  disabled={!canWrite}
                   onChange={(e) => handleAuswertungChange(index, e.target.value)}
                   style={{ padding: '4px' }}
                 >
@@ -1601,6 +1621,7 @@ const NewAzubiDialog: React.FC<NewAzubiDialogProps> = ({ unknownNames, onConfirm
               <label>Lehrjahr: </label>
               <select 
                 value={azubi.lehrjahr} 
+                disabled={!canWrite}
                 onChange={(e) => handleLehrjahrChange(index, e.target.value)}
                 style={{ padding: '2px' }}
               >
@@ -1715,6 +1736,7 @@ const AzubiPeriodDialog: React.FC<AzubiPeriodDialogProps> = ({ azubisWithoutPeri
                 <label style={{ display: 'inline-block', width: '120px' }}>Lehrjahr: </label>
                 <select 
                   value={adjustments[index].lehrjahr} 
+                  disabled={!canWrite}
                   onChange={(e) => handleLehrjahrChange(index, e.target.value)}
                   style={{ padding: '4px' }}
                 >

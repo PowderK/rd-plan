@@ -1,7 +1,7 @@
 .container {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: flex-start;
 }
 .rtw {
@@ -112,6 +112,16 @@
   text-align: left;
   margin-bottom: 2px;
 }
+.vehicleNameHeader {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: left;
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
 .tableHeadEmpty { min-height: 1px; }
 .rowLabel {
   font-size: 11px;
@@ -159,10 +169,10 @@
   flex-direction: column;
   gap: 16px;
 }
-/* ITW Raster: 3 Spalten */
+/* ITW Raster: 3 Spalten mit fester Mindestbreite */
 .itwRack {
   display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 220px));
   gap: 12px;
 }
 .itwCard {
@@ -187,6 +197,8 @@
 .itwCardWrap {
   display: flex;
   flex-direction: column;
+  min-width: 220px;
+  flex-shrink: 0;
 }
 .itwDivider {
   height: 2px;
@@ -209,16 +221,15 @@
   min-width: 0;
 }
 .sidebar {
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 8px;
-  position: sticky;
-  top: 0;
-  /* Beginnt unterhalb des Headers (da in <main> gerendert) – keine zusätzliche Verschiebung nötig */
-  max-height: calc(100vh - 16px);
-  overflow: auto;
+  border-left: 1px solid var(--line);
   background: var(--bg);
-  width: 360px;
+  box-sizing: border-box;
+  padding: 8px;
+  position: relative;
+  height: 100%;
+  overflow-y: auto;
+  width: 100%;
+  z-index: 1;
 }
 .sidebarTitle {
   font-weight: 700;

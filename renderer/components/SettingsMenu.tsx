@@ -78,6 +78,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [originalQualificationTypes, setOriginalQualificationTypes] = useState<any[] | null>(null);
   // HLFB 75%-Regel Qualifikationszuordnung
   const [hlfbQualificationType, setHlfbQualificationType] = useState<string>('FzF HLF B');
+  
+  // Rollen und Rechte Management
+  const [roles, setRoles] = useState<{ id: number; name: string; description?: string; permissions: Record<string, 'none' | 'read' | 'write'> }[]>([]);
+  const [editingRoles, setEditingRoles] = useState(false);
+  const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
+  const [originalRoles, setOriginalRoles] = useState<any[] | null>(null);
   // Ü50 Qualifikationszuordnung (keine Soll/Ist-Berechnung, rot im Kontrollfeld)
   const [ue50QualificationType, setUe50QualificationType] = useState<string>('Ü50');
   // Year Import Dialog States
@@ -193,6 +199,17 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               if (ue50Qual) setUe50QualificationType(String(ue50Qual));
             } catch (e) {
               // console.error('Failed to load Ü50 qualification type:', e);
+            }
+            
+            // Load roles
+            try {
+              const rolesData = await (window as any).api.getSetting('roles');
+              if (rolesData) {
+                const parsedRoles = JSON.parse(rolesData);
+                setRoles(Array.isArray(parsedRoles) ? parsedRoles : []);
+              }
+            } catch (e) {
+              // console.error('Failed to load roles:', e);
             }
             
             setShiftTypesLoading(false);
@@ -399,6 +416,33 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     }
   };
 
+  const saveRoles = async () => {
+    try {
+      setLoading(true);
+      
+      // Validierung: Alle Rollen müssen einen Namen haben
+      const invalidRoles = roles.filter(r => !r.name || r.name.trim() === '');
+      if (invalidRoles.length > 0) {
+        alert('Alle Rollen müssen einen Namen haben. Bitte füllen Sie alle leeren Namen aus.');
+        setLoading(false);
+        return;
+      }
+      
+      // Speichere Rollen als JSON in Settings
+      await (window as any).api.setSetting('roles', JSON.stringify(roles));
+      
+      alert('Rollen gespeichert!');
+      setEditingRoles(false);
+      setSelectedRoleId(null);
+      setOriginalRoles(null);
+    } catch (err) {
+      console.error('Fehler beim Speichern der Rollen:', err);
+      alert('Fehler beim Speichern: ' + (err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSettingsImportComplete = (result: any) => {
     // console.log('Settings-Import abgeschlossen:', result);
     // Daten neu laden nach Import durch Seiten-Reload
@@ -509,7 +553,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   };
 
   // State für Kategorie-Tabs
-  const [activeCategory, setActiveCategory] = useState<'general' | 'roster' | 'qualifications'>('general');
+  const [activeCategory, setActiveCategory] = useState<'general' | 'roster' | 'qualifications' | 'roles'>('general');
 
     if (loading) return <div className="settings-menu"><p>Lade Einstellungen ...</p></div>;
 
@@ -571,6 +615,20 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                 }}
               >
                 Qualifikationen
+              </button>
+              <button
+                onClick={() => setActiveCategory('roles')}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderBottom: activeCategory === 'roles' ? '3px solid #0d6efd' : '3px solid transparent',
+                  background: activeCategory === 'roles' ? '#f8f9fa' : 'transparent',
+                  fontWeight: activeCategory === 'roles' ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Rollen & Rechte
               </button>
             </div>
 
@@ -1645,6 +1703,163 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                   </>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* KATEGORIE: ROLLEN & RECHTE */}
+        {activeCategory === 'roles' && (
+          <div>
+            <h3>Rollen und Rechteverwaltung</h3>
+            <p style={{ color: '#666', fontSize: 14, marginBottom: 16 }}>
+              Erstellen Sie Rollen und legen Sie fest, welche Rechte (keine, lesen, schreiben) für jeden Bereich gelten.
+            </p>
+
+            <table className={styles.table}>
+              <thead>
+                <tr className={styles.thead}>
+                  <th>Rollenname</th>
+                  <th>Beschreibung</th>
+                  <th style={{ width: 60 }}>#</th>
+                </tr>
+              </thead>
+              <tbody className={styles.tbody}>
+                {roles.map(role => (
+                  <tr 
+                    key={role.id} 
+                    className={[styles.row, selectedRoleId === role.id ? styles.selected : ''].filter(Boolean).join(' ')} 
+                    onClick={() => setSelectedRoleId(prev => prev === role.id ? null : role.id)}
+                  >
+                    <td>
+                      {editingRoles ? (
+                        <input 
+                          value={role.name}
+                          onChange={e => setRoles(prev => prev.map(r => r.id === role.id ? { ...r, name: e.target.value } : r))}
+                          style={{ 
+                            borderColor: (!role.name || role.name.trim() === '') ? '#ff4444' : '#ddd',
+                            backgroundColor: (!role.name || role.name.trim() === '') ? '#fff5f5' : 'white'
+                          }}
+                          placeholder="Rollenname erforderlich"
+                        />
+                      ) : role.name}
+                    </td>
+                    <td>
+                      {editingRoles ? (
+                        <input 
+                          value={role.description || ''}
+                          onChange={e => setRoles(prev => prev.map(r => r.id === role.id ? { ...r, description: e.target.value } : r))}
+                        />
+                      ) : (role.description || '')}
+                    </td>
+                    <td className={styles.center}>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Rolle "${role.name}" löschen?`)) {
+                            setRoles(prev => prev.filter(r => r.id !== role.id));
+                            if (selectedRoleId === role.id) setSelectedRoleId(null);
+                          }
+                        }}
+                        disabled={!editingRoles}
+                        style={{ color: '#cc0000', background: 'none', border: 'none', cursor: editingRoles ? 'pointer' : 'default' }}
+                      >
+                        ✗
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Rechte-Editor für ausgewählte Rolle */}
+            {selectedRoleId !== null && editingRoles && (
+              <div style={{ marginTop: 24, padding: 16, backgroundColor: '#f8f9fa', borderRadius: 6, border: '1px solid #dee2e6' }}>
+                <h4 style={{ marginTop: 0 }}>Rechte für Rolle: {roles.find(r => r.id === selectedRoleId)?.name}</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 16 }}>
+                  {[
+                    { key: 'einteilung', label: 'Einteilung', allowRead: true, allowWrite: true },
+                    { key: 'dienstplan', label: 'Dienstplan', allowRead: true, allowWrite: true },
+                    { key: 'werte', label: 'Werte', allowRead: true, allowWrite: false },
+                    { key: 'personal', label: 'Personal', allowRead: false, allowWrite: true },
+                    { key: 'fahrzeuge', label: 'Fahrzeuge', allowRead: false, allowWrite: true },
+                    { key: 'einstellungen', label: 'Einstellungen', allowRead: false, allowWrite: true }
+                  ].map(area => {
+                    const currentPermission = roles.find(r => r.id === selectedRoleId)?.permissions[area.key] || 'none';
+                    return (
+                      <div key={area.key} style={{ padding: 12, backgroundColor: 'white', borderRadius: 4, border: '1px solid #dee2e6' }}>
+                        <label style={{ display: 'block', fontWeight: 600, marginBottom: 8 }}>{area.label}</label>
+                        <select
+                          value={currentPermission}
+                          onChange={e => {
+                            const newPermission = e.target.value as 'none' | 'read' | 'write';
+                            setRoles(prev => prev.map(r => 
+                              r.id === selectedRoleId 
+                                ? { ...r, permissions: { ...r.permissions, [area.key]: newPermission } }
+                                : r
+                            ));
+                          }}
+                          style={{ width: '100%', padding: 4 }}
+                        >
+                          <option value="none">Keine</option>
+                          {area.allowRead && <option value="read">Lesen</option>}
+                          {area.allowWrite && <option value="write">Schreiben</option>}
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button onClick={() => {
+                if (editingRoles) {
+                  // Speichern
+                  saveRoles();
+                } else {
+                  // Bearbeiten starten
+                  setEditingRoles(true);
+                  setOriginalRoles([...roles]);
+                }
+              }}>
+                {editingRoles ? 'Speichern' : 'Bearbeiten'}
+              </button>
+              
+              {editingRoles && (
+                <>
+                  <button onClick={() => {
+                    // Abbrechen
+                    setRoles(originalRoles ? [...originalRoles] : []);
+                    setEditingRoles(false);
+                    setSelectedRoleId(null);
+                    setOriginalRoles(null);
+                  }}>
+                    Abbrechen
+                  </button>
+                  
+                  <button onClick={() => {
+                    // Neue Rolle hinzufügen
+                    const newId = Math.max(0, ...roles.map(r => r.id)) + 1;
+                    const defaultPermissions: Record<string, 'none' | 'read' | 'write'> = {
+                      einteilung: 'none',
+                      dienstplan: 'none',
+                      werte: 'none',
+                      personal: 'none',
+                      fahrzeuge: 'none',
+                      einstellungen: 'none'
+                    };
+                    setRoles(prev => [...prev, {
+                      id: newId,
+                      name: 'Neue Rolle',
+                      description: '',
+                      permissions: defaultPermissions
+                    }]);
+                    setSelectedRoleId(newId);
+                  }}>
+                    Neue Rolle
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}

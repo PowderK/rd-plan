@@ -6,6 +6,13 @@ import os from 'os';
 import { execSync } from 'child_process';
 import { initializeDatabaseManager, DatabaseAdapter, createDatabaseBackup, listDatabaseBackups, getSummaryForBackup, restoreDatabaseFromBackup, previewDutyRosterImport, getDatabaseManager } from './database-manager';
 import { getUpdateManager, getCurrentVersion, performUpdate } from './update-manager';
+import { initializeAuthService, getAuthService } from './auth-service';
+
+// Check Dev-Mode: --dev CLI flag oder RD_PLAN_DEV_MODE Environment-Variable
+const isDevMode = process.argv.includes('--dev') || process.env.RD_PLAN_DEV_MODE === 'true';
+if (isDevMode) {
+    console.log('[RD-Plan] 🔓 DEV MODE AKTIV - Authentifizierung deaktiviert');
+}
 
 // Setze den App-Namen für die Taskleiste/Dock
 app.setName('RD-Plan');
@@ -150,6 +157,85 @@ async function ensureDatabaseAdapter(): Promise<DatabaseAdapter> {
     return databaseAdapter;
 }
 
+// Ensure Admin-Rolle and Admin-Person exist
+async function ensureAdminRoleAndUser(adapter: DatabaseAdapter): Promise<void> {
+    try {
+        // 1. Prüfe ob Admin-Rolle existiert
+        const rolesData = await adapter.getSetting('roles');
+        let roles = [];
+        let adminRole = null;
+        
+        if (rolesData) {
+            try {
+                roles = JSON.parse(rolesData);
+                adminRole = roles.find((r: any) => r.name === 'Administrator');
+            } catch (e) {
+                console.error('[ensureAdminRoleAndUser] Error parsing roles:', e);
+            }
+        }
+        
+        // 2. Erstelle Admin-Rolle falls nicht vorhanden
+        if (!adminRole) {
+            const adminRoleId = roles.length > 0 ? Math.max(...roles.map((r: any) => r.id)) + 1 : 1;
+            adminRole = {
+                id: adminRoleId,
+                name: 'Administrator',
+                description: 'Volle Rechte für alle Bereiche',
+                permissions: {
+                    einteilung: 'write',
+                    dienstplan: 'write',
+                    werte: 'write',
+                    personal: 'write',
+                    fahrzeuge: 'write',
+                    einstellungen: 'write'
+                }
+            };
+            roles.push(adminRole);
+            await adapter.setSetting('roles', JSON.stringify(roles));
+            console.log('[ensureAdminRoleAndUser] ✓ Admin-Rolle erstellt');
+        }
+        
+        // 3. Prüfe ob bereits ein Benutzer mit Administrator-Rechten existiert
+        const allPersonnel = await adapter.getPersonnel();
+        const hasAdminUser = allPersonnel.some((p: any) => p.roleId && p.roleId === adminRole.id);
+        
+        if (hasAdminUser) {
+            console.log('[ensureAdminRoleAndUser] ✓ Administrator-Benutzer bereits vorhanden');
+            return;
+        }
+        
+        // 4. Prüfe ob Admin-Person mit Personalnummer 'admin' existiert
+        const adminPerson = allPersonnel.find((p: any) => p.personnelNumber === 'admin');
+        
+        // 5. Erstelle Admin-Person nur wenn kein Admin-Benutzer existiert
+        if (!adminPerson) {
+            await adapter.addPersonnel({
+                name: 'Administrator',
+                vorname: 'System',
+                teilzeit: 100,
+                fahrzeugfuehrer: 0,
+                fahrzeugfuehrerHLFB: 0,
+                nef: 0,
+                itwMaschinist: 0,
+                itwFahrzeugfuehrer: 0,
+                sort: 0,
+                personnelNumber: 'admin',
+                roleId: adminRole.id
+            });
+            console.log('[ensureAdminRoleAndUser] ✓ Admin-Person erstellt (Personalnummer: admin)');
+        } else if (!adminPerson.roleId || adminPerson.roleId !== adminRole.id) {
+            // Admin-Person hat keine oder falsche Rolle - aktualisieren
+            await adapter.updatePersonnel({
+                ...adminPerson,
+                roleId: adminRole.id
+            });
+            console.log('[ensureAdminRoleAndUser] ✓ Admin-Person aktualisiert');
+        }
+    } catch (error) {
+        console.error('[ensureAdminRoleAndUser] Fehler:', error);
+    }
+}
+
 // Print renderer logs forwarded via preload
 ipcMain.on('renderer-log', (_event, { level, args }) => {
     try {
@@ -174,6 +260,13 @@ ipcMain.handle('clear-duty-roster-month', async (_event, year: number, month: nu
 
 async function createWindow() {
     databaseAdapter = await initializeDatabaseManager();
+    
+    // Initialisiere Auth-Service
+    initializeAuthService(databaseAdapter);
+    
+    // Erstelle Admin-Rolle und Admin-Person falls nicht vorhanden
+    await ensureAdminRoleAndUser(databaseAdapter);
+    
     const mainWindow = new BrowserWindow({
         width: 1280,
         height: 800,
@@ -186,8 +279,7 @@ async function createWindow() {
         }
     });
 
-    const isDev = process.argv.includes('--dev');
-    if (isDev) {
+    if (isDevMode) {
         mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
         mainWindow.webContents.openDevTools();
     } else {
@@ -256,10 +348,59 @@ function updateSplashStatus(message: string, details?: string) {
 ipcMain.handle('get-system-username', async () => {
     try {
         // Verwende whoami-Befehl (funktioniert auf Windows, macOS und Linux)
-        const username = execSync('whoami', { encoding: 'utf-8' }).trim();
+        let username = execSync('whoami', { encoding: 'utf-8' }).trim();
+        
+        // Bei Windows-Rechnern Format "COMPUTERNAME\Username" -> nur Username extrahieren
+        if (username.includes('\\')) {
+            username = username.split('\\')[1];
+        }
+        
         return username;
     } catch (e) {
         return 'Unbekannt';
+    }
+});
+
+// Auth handlers
+ipcMain.handle('auth-is-dev-mode', async () => {
+    return isDevMode;
+});
+
+ipcMain.handle('auth-login', async (_event, personnelNumber: string) => {
+    try {
+        const authService = getAuthService();
+        const result = await authService.login(personnelNumber);
+        return result;
+    } catch (error: any) {
+        return { success: false, error: error.message || 'Login fehlgeschlagen' };
+    }
+});
+
+ipcMain.handle('auth-logout', async () => {
+    try {
+        const authService = getAuthService();
+        authService.logout();
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('auth-get-current-user', async () => {
+    try {
+        const authService = getAuthService();
+        return authService.getCurrentUser();
+    } catch (error) {
+        return null;
+    }
+});
+
+ipcMain.handle('auth-check-permission', async (_event, area: string, level: 'read' | 'write') => {
+    try {
+        const authService = getAuthService();
+        return authService.checkPermission(area, level);
+    } catch (error) {
+        return false;
     }
 });
 
@@ -270,6 +411,17 @@ ipcMain.handle('get-setting', async (_event, key: string) => {
 });
 
 ipcMain.handle('set-setting', async (_event, key: string, value: string) => {
+    const auth = getAuthService();
+    
+    // Unterschiedliche Berechtigungen je nach Setting-Key
+    if (key.startsWith('roster_released_')) {
+        // Monatsfreigabe gehört zu einteilung:write
+        auth.requirePermission('einteilung', 'write');
+    } else {
+        // Alle anderen Settings benötigen einstellungen:write
+        auth.requirePermission('einstellungen', 'write');
+    }
+    
     const adapter = await ensureDatabaseAdapter();
     await adapter.setSetting(key, value);
     return true;
@@ -287,6 +439,8 @@ ipcMain.handle('get-personnel-list', async (_event, includeInactive?: boolean, d
 });
 
 ipcMain.handle('add-personnel', async (_event, person: any) => {
+    const auth = getAuthService();
+    auth.requirePermission('personal', 'write');
     const adapter = await ensureDatabaseAdapter();
     await adapter.addPersonnel(person);
     BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
@@ -294,6 +448,8 @@ ipcMain.handle('add-personnel', async (_event, person: any) => {
 });
 
 ipcMain.handle('update-personnel', async (_event, person: any) => {
+    const auth = getAuthService();
+    auth.requirePermission('personal', 'write');
     const adapter = await ensureDatabaseAdapter();
     await adapter.updatePersonnel(person);
     BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
@@ -301,6 +457,8 @@ ipcMain.handle('update-personnel', async (_event, person: any) => {
 });
 
 ipcMain.handle('delete-personnel', async (_event, id: number) => {
+    const auth = getAuthService();
+    auth.requirePermission('personal', 'write');
     const adapter = await ensureDatabaseAdapter();
     await adapter.deletePersonnel(id);
     BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
@@ -309,6 +467,8 @@ ipcMain.handle('delete-personnel', async (_event, id: number) => {
 
 // Set active/inactive (soft hide)
 ipcMain.handle('set-person-active', async (_event, id: number, active: boolean) => {
+    const auth = getAuthService();
+    auth.requirePermission('personal', 'write');
     const adapter = await ensureDatabaseAdapter();
     await adapter.setPersonnelActive(id, !!active);
     BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
@@ -386,6 +546,8 @@ ipcMain.handle('get-duty-roster', async (_event, year: number) => {
 });
 
 ipcMain.handle('set-duty-roster-entry', async (_event, entry: any) => {
+    const auth = getAuthService();
+    auth.requirePermission('dienstplan', 'write');
     const adapter = await ensureDatabaseAdapter();
     const result = await adapter.setDutyRosterEntry(entry);
     notifyDutyRosterUpdate();
@@ -393,6 +555,8 @@ ipcMain.handle('set-duty-roster-entry', async (_event, entry: any) => {
 });
 
 ipcMain.handle('bulk-set-duty-roster-entries', async (_event, entries: any[]) => {
+    const auth = getAuthService();
+    auth.requirePermission('dienstplan', 'write');
     const adapter = await ensureDatabaseAdapter();
     const result = await adapter.bulkSetDutyRosterEntries(entries);
     notifyDutyRosterUpdate();
@@ -401,6 +565,8 @@ ipcMain.handle('bulk-set-duty-roster-entries', async (_event, entries: any[]) =>
 
 // Alias for older preload API name
 ipcMain.handle('bulk-set-duty-roster', async (_event, entries: any[]) => {
+    const auth = getAuthService();
+    auth.requirePermission('dienstplan', 'write');
     const adapter = await ensureDatabaseAdapter();
     const result = await adapter.bulkSetDutyRosterEntries(entries);
     notifyDutyRosterUpdate();
@@ -408,6 +574,8 @@ ipcMain.handle('bulk-set-duty-roster', async (_event, entries: any[]) => {
 });
 
 ipcMain.handle('clear-slot-assignments', async () => {
+    const auth = getAuthService();
+    auth.requirePermission('einteilung', 'write');
     const adapter = await ensureDatabaseAdapter();
     await adapter.clearSlotAssignments();
     notifyDutyRosterUpdate();
@@ -415,6 +583,8 @@ ipcMain.handle('clear-slot-assignments', async () => {
 });
 
 ipcMain.handle('assign-slot', async (_event, entry: { personId: number, personType: string, date: string, slotType: string }) => {
+    const auth = getAuthService();
+    auth.requirePermission('einteilung', 'write');
     const adapter = await ensureDatabaseAdapter();
     await adapter.assignSlot(entry);
     notifyDutyRosterUpdate();
