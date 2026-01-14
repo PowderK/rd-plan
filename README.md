@@ -7,11 +7,13 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v2.0.0 Build 501** - Azubi-Zeiträume und Namen beim Personal-Import korrigiert
+**v2.0.0 Build 892** - Authentifizierung, Rechteverwaltung und erweiterte Kommentarfunktionen
 
 ## Funktionen
 
 ### Kernfunktionen
+- **Authentifizierung & Rechteverwaltung** mit rollenbasierter Zugriffskontrolle
+- **Multi-User Support** mit personalisierten Login und Permission-Management
 - **Monats-Tabs** zur Navigation und Einteilung pro Monat
 - **Dienstplan-Verwaltung** mit rechter Sidebar (Kontrollkasten) unterhalb des Headers via Portal
 - **Personal-Verwaltung** mit Tab-Navigation für Stammpersonal, Azubis und Ärzte
@@ -19,6 +21,8 @@ RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die 
 - **Qualifikationsverwaltung** direkt beim Erstellen von Personen
 - **Excel Import/Export** für Dienstplandaten mit intelligenter Konfliktlösung
 - **Einstellungsmenü** mit umfangreichen Konfigurationsmöglichkeiten
+- **Kommentar-System** für persönliche und globale Notizen im Dienstplan (in Vorbereitung)
+- **Schichtübernahme-Feature** zur gezielten Verteilung von Zusatzschichten (in Vorbereitung)
 
 ### Azubi-Zeiträume-Management (v2.0+)
 - **Zeitraum-basierte Sichtbarkeit**: Azubis werden nur in ihren aktiven Zeiträumen im Dienstplan angezeigt
@@ -26,6 +30,19 @@ RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die 
 - **Flexible Zeiträume**: Start-/Enddatum mit optionaler Beschreibung (z.B. "2. Lehrjahr")
 - **Automatische Filterung**: Dienstplan zeigt nur aktive Azubis basierend auf dem aktuellen Monat
 - **Rückwärtskompatibilität**: Azubis ohne definierte Zeiträume bleiben immer sichtbar
+
+### Authentifizierung & Rechteverwaltung (v2.0+)
+- **Login-System**: Personalisierter Zugang über Personalnummer
+- **Rollenbasierte Berechtigungen**: Granulare Zugriffsrechte (none/read/write) für verschiedene Bereiche:
+  - Einteilung (Dienstplan-Bearbeitung)
+  - Dienstplan-Ansicht
+  - Werte & Fahrzeuge
+  - Personal-Verwaltung
+  - Einstellungen
+- **AuthContext & Session-Management**: React Context für konsistente Authentifizierung über alle Komponenten
+- **Dev-Mode**: Automatischer Admin-Login für Entwicklung und Testing
+- **Permission Guards**: Automatische UI-Anpassung basierend auf Benutzerrechten
+- **Sichere IPC-Kommunikation**: Electron preload mit authentifizierten API-Calls
 
 ### Erweiterte Import-Funktionen
 - **Schutz manueller Bearbeitungen**: Bereits geänderte Einträge werden durch blaue Markierung geschützt
@@ -69,6 +86,7 @@ rd-plan/
 │   ├── main.ts              # Electron-Hauptprozess
 │   ├── database.ts          # SQLite-Datenbankoperationen
 │   ├── database-manager.ts  # Datenbank-Abstraktionsschicht
+│   ├── auth-service.ts      # Authentifizierungs- & Rechteverwaltung
 │   └── roster-importer.ts   # Excel-Import-Engine mit Konfliktlösung
 ├── renderer/
 │   ├── components/
@@ -79,10 +97,13 @@ rd-plan/
 │   │   ├── SettingsMenu.tsx # Umfassendes Einstellungsmenü
 │   │   ├── ValuesPage.tsx   # Fahrzeug- und Musterverwaltung
 │   │   └── EinteilungPage.tsx # Kontrollkasten-Logik
+│   ├── contexts/
+│   │   └── AuthContext.tsx  # React Context für Authentifizierung
+│   ├── login.tsx            # Login-Seite mit Personalnummer-Authentifizierung
 │   ├── editAzubi.tsx        # Azubi-Editor mit Zeiträume-Management
 │   ├── addAzubi.tsx         # Azubi-Hinzufügen-Dialog
 │   └── (weitere UI-Komponenten)
-├── preload.ts               # Sichere Electron-IPC-Bridge
+├── preload.ts               # Sichere Electron-IPC-Bridge mit Auth-APIs
 ├── package.json             # Abhängigkeiten und Scripts
 ├── tsconfig.json            # TypeScript-Konfiguration
 ├── vite.config.ts           # Vite-Build-Konfiguration
@@ -90,10 +111,13 @@ rd-plan/
 ```
 
 ### Kernkomponenten
+- **auth-service.ts**: Authentifizierungs-Service mit Session-Management und Permission-Checks
+- **AuthContext.tsx**: React Context Provider für applikationsweite Authentifizierung
 - **database-manager.ts**: Abstraktionsschicht für verschiedene DB-Modi (lokal/zentral)
 - **roster-importer.ts**: Intelligente Excel-Import-Engine mit Konfliktbehandlung
 - **PersonnelOverview.tsx**: Zentrale Personal-Verwaltung mit integrierter Zeiträume-Funktion
 - **DutyRoster.tsx**: Hauptdienstplan mit Azubi-Filterung und Import-Dialogen
+- **login.tsx**: Benutzerfreundliche Login-Oberfläche mit Personalnummer-Eingabe
 
 ## Installation / Verteilung
 
@@ -106,13 +130,18 @@ Hinweis für Administratoren: Wenn du die Anwendung paketieren oder für andere 
 
 ## Entwicklungsstatus
 
-**Version 2.0.0 (Build 498)** - Aktive Entwicklung
+**Version 2.0.0 (Build 892)** - Aktive Entwicklung
 
-Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangreichen Feature-Set. Die aktuelle Version 2.0.0 führt das **Azubi-Zeiträume-Management-System**, **Person-Highlighting** und **Cross-Tab-Navigation** ein, bietet erweiterte Import-Funktionen mit Datenschutz und eine moderne Tab-basierte Personal-Verwaltung.
+Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangreichen Feature-Set. Die aktuelle Version 2.0.0 führt das **Authentifizierungs- & Rechteverwaltungssystem**, **Azubi-Zeiträume-Management**, **Person-Highlighting** und **Cross-Tab-Navigation** ein, bietet erweiterte Import-Funktionen mit Datenschutz und eine moderne Tab-basierte Personal-Verwaltung.
 
 **Produktionstauglichkeit**: Die Anwendung wird bereits in mehreren Rettungswachen erfolgreich eingesetzt. Für kritische Umgebungen wird empfohlen, die Funktionen vorab zu testen und regelmäßige Datensicherungen durchzuführen.
 
-**Neue Features in v2.0.0 (Build 498)**:
+**Neue Features in v2.0.0 (Build 892)**:
+- ✅ **Authentifizierungs-System**: Login mit Personalnummer und rollenbasierter Zugriffskontrolle
+- ✅ **Rechteverwaltung**: Granulare Berechtigungen (none/read/write) für alle Hauptbereiche
+- ✅ **AuthContext & Session-Management**: React Context für konsistente Auth über gesamte App
+- ✅ **Permission Guards**: Automatische UI-Anpassung basierend auf Benutzerrechten
+- ✅ **Dev-Mode**: Auto-Login für Entwicklung und Testing
 - ✅ Tab-Navigation in der Personal-Verwaltung (Stammpersonal/Azubis/Ärzte)
 - ✅ Qualifikationsmanagement beim Erstellen von Personen
 - ✅ Modernisierte Add-Dialoge mit Validierung
@@ -126,6 +155,10 @@ Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangrei
 - ✅ Person-Highlighting mit Tag/Nacht-Farbcodierung
 - ✅ Cross-Tab-Hervorhebung für verbesserte Navigation zwischen RTW/NEF und ITW
 
+**In Vorbereitung**:
+- 🔄 **Kommentar-System**: Persönliche und globale Notizen im Dienstplan (Issue #22)
+- 🔄 **Schichtübernahme-Feature**: Gezielte Verteilung von Zusatzschichten mit SOLL-Anpassung (Issue #21)
+
 ## Verwendung
 
 ### Produktive Nutzung
@@ -136,11 +169,12 @@ Starte die portable EXE direkt (Windows):
 ```
 
 ### Erste Schritte
-1. **Personal-Verwaltung**: Gehe zum Personal-Tab, um Stammpersonal, Azubis und ITW-Ärzte zu verwalten
-2. **Azubi-Zeiträume**: Wähle einen Azubi aus und klicke "Zeiträume verwalten" um Aktivitätszeiträume zu definieren
-3. **Dienstplan**: Nutze die Monats-Tabs zur Navigation und Einteilung der Schichten
-4. **Import**: Verwende "Excel Import/Export" für Datenübernahme aus bestehenden Systemen
-5. **Einstellungen**: Konfiguriere Fahrzeuge, Dienstarten und weitere Parameter
+1. **Login**: Melde dich mit deiner Personalnummer an (im Dev-Mode automatisch eingeloggt)
+2. **Personal-Verwaltung**: Gehe zum Personal-Tab, um Stammpersonal, Azubis und ITW-Ärzte zu verwalten
+3. **Azubi-Zeiträume**: Wähle einen Azubi aus und klicke "Zeiträume verwalten" um Aktivitätszeiträume zu definieren
+4. **Dienstplan**: Nutze die Monats-Tabs zur Navigation und Einteilung der Schichten
+5. **Import**: Verwende "Excel Import/Export" für Datenübernahme aus bestehenden Systemen
+6. **Einstellungen**: Konfiguriere Fahrzeuge, Dienstarten, Rollen & Berechtigungen und weitere Parameter
 
 ### Entwicklung
 Für Entwicklung oder lokale Ausführung:
@@ -226,7 +260,22 @@ Das **erweiterte Import-System** bietet umfassenden Schutz vor Datenverlust und 
 
 ## Roadmap & Changelog
 
-### Version 2.0.0 Build 494 (12. Dezember 2025) - Aktuell
+### Version 2.0.0 Build 892 (14. Januar 2026) - Aktuell
+- ✅ **Authentifizierungs-System**: Login-Seite mit Personalnummer-basierter Authentifizierung
+- ✅ **AuthService**: Backend-Service für Session-Management und Permission-Checks
+- ✅ **AuthContext**: React Context Provider für applikationsweite Authentifizierung
+- ✅ **Rollenbasierte Berechtigungen**: Granulare Zugriffsrechte (none/read/write) für:
+  - Einteilung (Dienstplan-Bearbeitung)
+  - Dienstplan-Ansicht
+  - Werte & Fahrzeuge
+  - Personal-Verwaltung
+  - Einstellungen
+- ✅ **Permission Guards**: Automatische UI-Anpassung und Zugriffsbeschränkungen
+- ✅ **Dev-Mode Support**: Automatischer Admin-Login für Entwicklung
+- ✅ **Sichere IPC**: Erweiterte Electron preload APIs für Auth-Kommunikation
+- ✅ **UI-Verbesserungen**: Login-Seite, Benutzer-Anzeige in Header, Logout-Funktion
+
+### Version 2.0.0 Build 494 (12. Dezember 2025)
 - ✅ **Tab-Navigation Personal**: Übersichtliche Aufteilung in Stammpersonal, Azubis und Ärzte
 - ✅ **Qualifikationsmanagement**: Direkte Verwaltung von Qualifikationen beim Erstellen von Personen
 - ✅ **Modernisierte Add-Dialoge**: Konsistentes Design mit Validierung für addPerson und addAzubi
@@ -249,6 +298,16 @@ Das **erweiterte Import-System** bietet umfassenden Schutz vor Datenverlust und 
 - ✅ **Teilzeit-Support**: Excel-Export/-Import mit Teilzeit-Prozentangaben
 
 ### Geplante Features
+- 🔄 **Kommentar-System** (Issue #22): Persönliche und globale Kommentare für Dienstplan-Tage
+  - Persönliche Notizen pro Kollege und Tag
+  - Globale Hinweise für alle Kollegen
+  - Kontextmenü-Integration im Dienstplan-Grid
+  - Visuelle Indikatoren für kommentierte Tage
+- 🔄 **Schichtübernahme-Feature** (Issue #21): Gezielte Verteilung von Zusatzschichten
+  - Übertragung von Schichten zwischen Kollegen
+  - Automatische SOLL-Anpassung für Übernehmer
+  - Proportionale Verrechnung bei nicht-beteiligten Kollegen
+  - UI für Schichtübernahme-Verwaltung
 - 🔄 **Multi-User Support**: Zentrale Datenbankunterstützung für Teamarbeit
 - 🔄 **Makros**: Wiederkehrende Dienstplan-Einträge automatisieren
 - 🔄 **Erweiterte Berichte**: PDF-Export und Statistiken
