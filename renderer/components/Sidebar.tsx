@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 
 type NavKey = 'dienstplan' | 'einteilung' | 'werte' | 'personal' | 'fahrzeuge' | 'einstellungen';
 
@@ -21,6 +22,7 @@ function emitNavigate(view: NavKey) {
 
 const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 	const [collapsed, setCollapsed] = useState(false);
+	const { hasPermission, logout, isDevMode, currentUser } = useAuth();
 	
 	// Emit collapse state changes
 	const toggleCollapse = () => {
@@ -41,8 +43,18 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 		personal: "M16 14c2.21 0 4 1.79 4 4v2H4v-2c0-2.21 1.79-4 4-4h8Zm-4-2a4 4 0 1 1 0-8 4 4 0 0 1 0 8Z",
 		fahrzeuge: "M3 13l2-5a2 2 0 0 1 2-1h8a2 2 0 0 1 2 1l2 5v5h-2a2 2 0 0 1-2-2H7a2 2 0 0 1-2 2H3v-5Zm4-1h10",
 		einstellungen: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm8 4l-1.2-.7.2-1.4-1.4-.8-.8-1.4-1.4.2L14 6l-2-1-2 1-1.4-.2-.8 1.4-1.4.8.2 1.4L4 12l1.2.7-.2 1.4 1.4.8.8 1.4 1.4-.2 2 1 2-1 1.4.2.8-1.4 1.4-.8-.2-1.4L20 12Z",
-		power: "M12 2v10m6.36-6.36a9 9 0 1 1-12.72 0"
+		power: "M12 2v10m6.36-6.36a9 9 0 1 1-12.72 0",
+		logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14l5-5-5-5m5 5H9"
 	};
+	
+	// Menu-Items mit Permission-Check
+	const menuItems = [
+		{ key: 'einteilung' as NavKey, icon: icons.einteilung, label: 'Einteilung', area: 'einteilung' },
+		{ key: 'dienstplan' as NavKey, icon: icons.dienstplan, label: 'Dienstplan', area: 'dienstplan' },
+		{ key: 'werte' as NavKey, icon: icons.werte, label: 'Werte', area: 'werte' },
+		{ key: 'personal' as NavKey, icon: icons.personal, label: 'Personal', area: 'personal' },
+		{ key: 'fahrzeuge' as NavKey, icon: icons.fahrzeuge, label: 'Fahrzeuge', area: 'fahrzeuge' }
+	].filter(item => hasPermission(item.area, 'read') || hasPermission(item.area, 'write'));
 	const Item = ({ keyName, icon, label, onClick }: { keyName: NavKey; icon: React.ReactNode; label: string; onClick: () => void }) => (
 		<button
 			onClick={onClick}
@@ -78,28 +90,75 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 				borderRight: '1px solid var(--line)',
 				background: 'var(--bg)',
 				boxSizing: 'border-box',
-				padding: 8
+				padding: 8,
+				position: 'relative'
 			}}>
+				{/* Dev-Mode Badge */}
+				{isDevMode && !collapsed && (
+					<div style={{
+						position: 'absolute',
+						top: 8,
+						right: 8,
+						background: '#fbbf24',
+						color: '#78350f',
+						fontSize: '10px',
+						fontWeight: 'bold',
+						padding: '2px 6px',
+						borderRadius: '4px',
+						zIndex: 10
+					}}>
+						DEV
+					</div>
+				)}
+				
 				{/* Scrollbarer Inhaltsbereich */}
-				<div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto', paddingBottom: 64 }}>
+				<div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto', paddingBottom: 120 }}>
 					<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-					<button onClick={toggleCollapse} title={collapsed ? 'Aufklappen' : 'Einklappen'} style={{ ...itemStyle, padding: 6, width: collapsed ? 40 : 32 }}>
+					<button onClick={toggleCollapse} title={collapsed ? 'Aufklappen' : 'Einklappen'} style={{ ...itemStyle, padding: 10, width: collapsed ? 48 : 48, height: 48, fontSize: 24 }}>
 						<span aria-hidden>{collapsed ? '›' : '‹'}</span>
 					</button>
 					</div>
 				<nav style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-				<Item keyName="einteilung" icon={<Icon path={icons.einteilung} />} label="Einteilung" onClick={() => emitNavigate('einteilung')} />
-				<Item keyName="dienstplan" icon={<Icon path={icons.dienstplan} />} label="Dienstplan" onClick={() => emitNavigate('dienstplan')} />
-				<Item keyName="werte" icon={<Icon path={icons.werte} />} label="Werte" onClick={() => emitNavigate('werte')} />
-				<Item keyName="personal" icon={<Icon path={icons.personal} />} label="Personal" onClick={() => emitNavigate('personal')} />
-				<Item keyName="fahrzeuge" icon={<Icon path={icons.fahrzeuge} />} label="Fahrzeuge" onClick={() => emitNavigate('fahrzeuge')} />
+					{menuItems.map(item => (
+						<Item 
+							key={item.key}
+							keyName={item.key} 
+							icon={<Icon path={item.icon} />} 
+							label={item.label} 
+							onClick={() => emitNavigate(item.key)} 
+						/>
+					))}
 				</nav>
 				<div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-					<Item keyName="einstellungen" icon={<Icon path={icons.einstellungen} />} label="Einstellungen" onClick={() => emitNavigate('einstellungen')} />
+					{hasPermission('einstellungen', 'read') && (
+						<Item keyName="einstellungen" icon={<Icon path={icons.einstellungen} />} label="Einstellungen" onClick={() => emitNavigate('einstellungen')} />
+					)}
 				</div>
 			</div>
 					{/* Feste Bottom-Leiste im Seitenmenü */}
-					<div style={{ position: 'fixed', left: 8, bottom: 8, width: (collapsed ? 56 : 200) - 16 }}>
+					<div style={{ position: 'fixed', left: 8, bottom: 8, width: (collapsed ? 56 : 200) - 16, display: 'flex', flexDirection: 'column', gap: 4 }}>
+				{/* User Info (wenn nicht collapsed) */}
+				{!collapsed && currentUser && (
+					<div style={{
+						padding: '8px',
+						background: '#f3f4f6',
+						borderRadius: '6px',
+						fontSize: '12px',
+						color: '#6b7280'
+					}}>
+						<div style={{ fontWeight: '600', color: '#374151' }}>{currentUser.vorname} {currentUser.name}</div>
+						<div style={{ fontSize: '10px' }}>#{currentUser.personnelNumber}</div>
+					</div>
+				)}
+				
+				{/* Logout Button (nur wenn nicht im Dev-Mode) */}
+				{!isDevMode && (
+					<button onClick={() => logout()} style={{ ...itemStyle, color: '#dc2626', width: '100%' }} title={collapsed ? 'Abmelden' : undefined}>
+						<Icon path={icons.logout} />
+						{!collapsed && <span>Abmelden</span>}
+					</button>
+				)}
+				
 				<button onClick={() => (window as any).api?.quitApp?.()} style={{ ...itemStyle, color: '#991b1b', width: '100%' }} title={collapsed ? 'Beenden' : undefined}>
 					<Icon path={icons.power} />
 					{!collapsed && <span>Beenden</span>}

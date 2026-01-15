@@ -401,6 +401,9 @@ const EditPerson: React.FC = () => {
   const [vorname, setVorname] = useState('');
   const [teilzeit, setTeilzeit] = useState(100);
   const [sort, setSort] = useState(0);
+  const [personnelNumber, setPersonnelNumber] = useState('');
+  const [roleId, setRoleId] = useState<number | null>(null);
+  const [roles, setRoles] = useState<{ id: number; name: string }[]>([]);
   // Alte Qualifikations-States entfernt - jetzt über Qualifikationsperioden verwaltet
   const [qualificationPeriods, setQualificationPeriods] = useState<QualificationPeriod[]>([]);
   const [showQualifications, setShowQualifications] = useState(true);
@@ -433,8 +436,21 @@ const EditPerson: React.FC = () => {
           setVorname(person.vorname || '');
           setTeilzeit(person.teilzeit ?? 100);
           setSort(person.sort ?? 0);
+          setPersonnelNumber(person.personnelNumber || '');
+          setRoleId(person.roleId || null);
         } else {
           // console.error('Person not found for ID:', id);
+        }
+        
+        // Lade Rollen
+        try {
+          const rolesData = await (window as any).api.getSetting('roles');
+          if (rolesData) {
+            const parsedRoles = JSON.parse(rolesData);
+            setRoles(Array.isArray(parsedRoles) ? parsedRoles.map((r: any) => ({ id: r.id, name: r.name })) : []);
+          }
+        } catch (e) {
+          // console.error('Fehler beim Laden der Rollen:', e);
         }
         
         // Lade Qualifikationsperioden
@@ -459,7 +475,7 @@ const EditPerson: React.FC = () => {
 
   const handleSave = async () => {
     // Nur noch Basisdaten speichern - Qualifikationen werden separat über Perioden verwaltet
-    await (window as any).api.updatePerson({ id, name, vorname, teilzeit, sort });
+    await (window as any).api.updatePerson({ id, name, vorname, teilzeit, sort, personnelNumber, roleId });
     if (window.opener) window.opener.postMessage('personnel-updated', '*');
     window.close();
   };
@@ -629,6 +645,19 @@ const EditPerson: React.FC = () => {
       </div>
       <div style={{ marginBottom: 12 }}>
         <label>Vorname: <input value={vorname} onChange={e => setVorname(e.target.value)} /></label>
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <label>Personalnummer: <input value={personnelNumber} onChange={e => setPersonnelNumber(e.target.value)} placeholder="Optional" /></label>
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <label>Rolle:
+          <select value={roleId || ''} onChange={e => setRoleId(e.target.value ? Number(e.target.value) : null)} style={{ marginLeft: 8 }}>
+            <option value="">Keine Rolle</option>
+            {roles.map(role => (
+              <option key={role.id} value={role.id}>{role.name}</option>
+            ))}
+          </select>
+        </label>
       </div>
       <div style={{ marginBottom: 24 }}>
         <label>Teilzeit (%): <input type="number" value={teilzeit} min={0} max={100} onChange={e => setTeilzeit(Number(e.target.value))} /></label>

@@ -5,12 +5,14 @@ import ImportTable from './ImportTable';
 // DepartmentDutyDaysTable entfernt
 // DepartmentDutyDaysTableData entfernt
 import { BUILD_INFO } from '../buildInfo';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Person {
   id: number;
   name: string;
   vorname: string;
   fahrzeugfuehrerHLFB?: boolean | number;
+  personnelNumber?: string;
 }
 
 const getDaysInYear = (year: number) => {
@@ -91,6 +93,10 @@ const filterActiveAzubisForMonth = (azubis: any[], allPeriods: any[], year: numb
 };
 
 const DutyRoster: React.FC = () => {
+  const { currentUser, hasPermission } = useAuth();
+  const canWrite = hasPermission('dienstplan', 'write');
+  const canRead = hasPermission('dienstplan', 'read');
+  
   const [personnel, setPersonnel] = useState<Person[]>([]);
   const [year, setYear] = useState<number>((window as any).rdPlanYear || new Date().getFullYear());
   const [yearPlannings, setYearPlannings] = useState<{ year: number; filePath: string }[]>([]);
@@ -452,9 +458,20 @@ const DutyRoster: React.FC = () => {
 
   // Kombiniere Personal und Azubis für die Dienstplan-Tabelle
   type Row = { id: string; origId: number; name: string; vorname: string; isAzubi: boolean; lehrjahr?: number };
+  
+  // Filtere Personal basierend auf Berechtigungen
+  let visiblePersonnel = personnel;
+  if (canRead && !canWrite && currentUser) {
+    // Read-Only: Zeige nur eigene Zeile
+    visiblePersonnel = personnel.filter(p => p.personnelNumber === currentUser.personnelNumber);
+  }
+  
+  // Filtere Azubis: nur bei Schreibrechten anzeigen
+  const visibleAzubis = canWrite ? filteredAzubis : [];
+  
   const allRows: Row[] = [
-    ...personnel.map(p => ({ id: `p_${p.id}`, origId: p.id, name: p.name, vorname: p.vorname, isAzubi: false })),
-    ...filteredAzubis.map(a => ({ id: `a_${a.id}`, origId: a.id, name: a.name, vorname: a.vorname, isAzubi: true, lehrjahr: a.lehrjahr }))
+    ...visiblePersonnel.map(p => ({ id: `p_${p.id}`, origId: p.id, name: p.name, vorname: p.vorname, isAzubi: false })),
+    ...visibleAzubis.map(a => ({ id: `a_${a.id}`, origId: a.id, name: a.name, vorname: a.vorname, isAzubi: true, lehrjahr: a.lehrjahr }))
   ];
   // Sortiere Azubis nach Lehrjahr, Personal bleibt oben
   allRows.sort((a, b) => {
@@ -1089,15 +1106,17 @@ const DutyRoster: React.FC = () => {
   }, [currentMonth]);
 
   return (
-    <div style={{ position: 'relative', padding: 16, height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxSizing: 'border-box' }}>
+    <div className="page-container" style={{ height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxSizing: 'border-box' }}>
       {/* Header-Bereich mit fester Größe */}
       <div style={{ flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        {/* Überschrift - ROT */}
+        <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <h2 style={{ margin: 0, marginRight: 'auto' }}>Dienstplan</h2>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             Jahr:
             <select
               value={year}
+              disabled={!canWrite}
               onChange={e => setYear(Number(e.target.value))}
               style={{ 
                 padding: '6px 10px',
@@ -1118,8 +1137,8 @@ const DutyRoster: React.FC = () => {
             </select>
           </label>
         </div>
-        {/* Monats-Tabs */}
-        <div style={{ 
+        {/* Monats-Tabs - GRÜN */}
+        <div className="tab-navigation tab-navigation-with-header" style={{ 
           background: 'var(--bg)',
           paddingTop: '8px',
           paddingBottom: '8px',
@@ -1348,6 +1367,7 @@ const DutyRoster: React.FC = () => {
                             <select
                               autoFocus
                               value={cell.value}
+                              disabled={!canWrite}
                               onBlur={() => stopEdit(getStateKey(person), dayIdx)}
                               onChange={e => {
                                 handleCellChange(getStateKey(person), dayIdx, e.target.value, 'dropdown');
@@ -1607,7 +1627,6 @@ const NewAzubiDialog: React.FC<NewAzubiDialogProps> = ({ unknownNames, onConfirm
                 <option value={1}>1</option>
                 <option value={2}>2</option>
                 <option value={3}>3</option>
-                <option value={4}>4</option>
               </select>
             </div>
           </div>
@@ -1640,15 +1659,57 @@ interface AzubiPeriodDialogProps {
 }
 
 const AzubiPeriodDialog: React.FC<AzubiPeriodDialogProps> = ({ azubisWithoutPeriod, onConfirm, onCancel }) => {
-  const [adjustments, setAdjustments] = useState<Array<{azubiId: number, startDate: string, endDate: string, description: string, lehrjahr: number}>>(() => {
-    return azubisWithoutPeriod.map(azubi => ({
-      azubiId: azubi.azubiId,
-      startDate: azubi.importDateRange.start,
-      endDate: azubi.importDateRange.end,
-      description: 'Automatisch durch Import erstellt',
-      lehrjahr: 1
-    }));
-  });
+  const [adjustments, setAdjustments] = useState<Array<{azubiId: number, startDate: string, endDate: string, description: string, lehrjahr: number}>>([]);
+  const [minLehrjahre, setMinLehrjahre] = useState<{[key: number]: number}>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadAzubiPeriods = async () => {
+      const minLehrjahrMap: {[key: number]: number} = {};
+      const initialAdjustments = [];
+
+      for (const azubi of azubisWithoutPeriod) {
+        try {
+          const periods = await (window as any).api.getAzubiPeriods(azubi.azubiId);
+          
+          // Ermittle das Lehrjahr des letzten Zeitraums
+          let minLehrjahr = 1;
+          if (periods && periods.length > 0) {
+            const sortedPeriods = [...periods].sort((a, b) => 
+              new Date(b.end_date).getTime() - new Date(a.end_date).getTime()
+            );
+            minLehrjahr = sortedPeriods[0].lehrjahr || 1;
+          }
+          
+          minLehrjahrMap[azubi.azubiId] = minLehrjahr;
+          
+          initialAdjustments.push({
+            azubiId: azubi.azubiId,
+            startDate: azubi.importDateRange.start,
+            endDate: azubi.importDateRange.end,
+            description: 'Automatisch durch Import erstellt',
+            lehrjahr: minLehrjahr
+          });
+        } catch (error) {
+          // Bei Fehler: Standard-Werte verwenden
+          minLehrjahrMap[azubi.azubiId] = 1;
+          initialAdjustments.push({
+            azubiId: azubi.azubiId,
+            startDate: azubi.importDateRange.start,
+            endDate: azubi.importDateRange.end,
+            description: 'Automatisch durch Import erstellt',
+            lehrjahr: 1
+          });
+        }
+      }
+
+      setMinLehrjahre(minLehrjahrMap);
+      setAdjustments(initialAdjustments);
+      setLoading(false);
+    };
+
+    loadAzubiPeriods();
+  }, [azubisWithoutPeriod]);
 
   const handleStartDateChange = (index: number, value: string) => {
     const newData = [...adjustments];
@@ -1683,7 +1744,11 @@ const AzubiPeriodDialog: React.FC<AzubiPeriodDialogProps> = ({ azubisWithoutPeri
         background: 'white', padding: '20px', borderRadius: '8px', minWidth: '600px', maxWidth: '800px', maxHeight: '80vh', overflow: 'auto'
       }}>
         <h3>Azubi-Zeiträume korrigieren</h3>
-        <p>Folgende Azubis haben keinen aktiven Zeitraum für den Importzeitraum. Bitte korrigieren Sie die Zeiträume:</p>
+        {loading ? (
+          <p>Lade Azubi-Daten...</p>
+        ) : (
+          <>
+            <p>Folgende Azubis haben keinen aktiven Zeitraum für den Importzeitraum. Bitte korrigieren Sie die Zeiträume:</p>
         
         {azubisWithoutPeriod.map((azubi, index) => (
           <div key={index} style={{ marginBottom: '20px', border: '1px solid #ddd', padding: '15px', borderRadius: '4px' }}>
@@ -1717,11 +1782,11 @@ const AzubiPeriodDialog: React.FC<AzubiPeriodDialogProps> = ({ azubisWithoutPeri
                   value={adjustments[index].lehrjahr} 
                   onChange={(e) => handleLehrjahrChange(index, e.target.value)}
                   style={{ padding: '4px' }}
+                  disabled={loading}
                 >
-                  <option value={1}>1</option>
-                  <option value={2}>2</option>
+                  {minLehrjahre[adjustments[index].azubiId] <= 1 && <option value={1}>1</option>}
+                  {minLehrjahre[adjustments[index].azubiId] <= 2 && <option value={2}>2</option>}
                   <option value={3}>3</option>
-                  <option value={4}>4</option>
                 </select>
               </div>
               
@@ -1743,16 +1808,20 @@ const AzubiPeriodDialog: React.FC<AzubiPeriodDialogProps> = ({ azubisWithoutPeri
           <button 
             onClick={onCancel}
             style={{ marginRight: '10px', padding: '8px 16px' }}
+            disabled={loading}
           >
             Abbrechen
           </button>
           <button 
             onClick={() => onConfirm(adjustments)}
             style={{ padding: '8px 16px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px' }}
+            disabled={loading}
           >
             Zeiträume anlegen und Import fortsetzen
           </button>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

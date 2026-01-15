@@ -285,7 +285,8 @@ const removedAzubiEditModal = () => {
 // Zeiträume Manager Komponente
 const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ azubi, onClose }) => {
   const [periods, setPeriods] = useState<AzubiPeriod[]>([]);
-  const [newPeriod, setNewPeriod] = useState({ start_date: '', end_date: '', description: '' });
+  const [minLehrjahr, setMinLehrjahr] = useState(1);
+  const [newPeriod, setNewPeriod] = useState({ start_date: '', end_date: '', description: '', lehrjahr: 1 });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -293,6 +294,16 @@ const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ 
       try {
         const azubiPeriods = await (window as any).api.getAzubiPeriods(azubi.id);
         setPeriods(azubiPeriods);
+        
+        // Ermittle das Lehrjahr des letzten Zeitraums als Minimum
+        if (azubiPeriods.length > 0) {
+          const sortedPeriods = [...azubiPeriods].sort((a, b) => 
+            new Date(b.end_date).getTime() - new Date(a.end_date).getTime()
+          );
+          const lastLehrjahr = sortedPeriods[0].lehrjahr || 1;
+          setMinLehrjahr(lastLehrjahr);
+          setNewPeriod(prev => ({ ...prev, lehrjahr: lastLehrjahr }));
+        }
       } catch (error) {
         // console.error('Fehler beim Laden der Zeiträume:', error);
       }
@@ -317,13 +328,25 @@ const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ 
         azubi_id: azubi.id,
         start_date: newPeriod.start_date,
         end_date: newPeriod.end_date,
-        description: newPeriod.description || undefined
+        description: newPeriod.description || undefined,
+        lehrjahr: newPeriod.lehrjahr
       });
 
       // Zeiträume neu laden
       const updatedPeriods = await (window as any).api.getAzubiPeriods(azubi.id);
       setPeriods(updatedPeriods);
-      setNewPeriod({ start_date: '', end_date: '', description: '' });
+      
+      // Aktualisiere minLehrjahr basierend auf neuem letzten Zeitraum
+      if (updatedPeriods.length > 0) {
+        const sortedPeriods = [...updatedPeriods].sort((a, b) => 
+          new Date(b.end_date).getTime() - new Date(a.end_date).getTime()
+        );
+        const lastLehrjahr = sortedPeriods[0].lehrjahr || 1;
+        setMinLehrjahr(lastLehrjahr);
+        setNewPeriod({ start_date: '', end_date: '', description: '', lehrjahr: lastLehrjahr });
+      } else {
+        setNewPeriod({ start_date: '', end_date: '', description: '', lehrjahr: minLehrjahr });
+      }
     } catch (error) {
       // console.error('Fehler beim Hinzufügen des Zeitraums:', error);
       alert('Fehler beim Hinzufügen des Zeitraums!');
@@ -391,7 +414,7 @@ const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ 
                 borderRadius: 4 
               }}>
                 <div style={{ flexGrow: 1 }}>
-                  <strong>{new Date(period.start_date).toLocaleDateString('de-DE')} - {new Date(period.end_date).toLocaleDateString('de-DE')}</strong>
+                  <strong>{new Date(period.start_date).toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })} - {new Date(period.end_date).toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })}</strong>
                   {period.description && <div style={{ fontSize: '0.9em', color: '#666' }}>{period.description}</div>}
                 </div>
                 <button 
@@ -442,12 +465,25 @@ const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ 
             </div>
           </div>
           <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', marginBottom: 4, fontSize: '0.9em', fontWeight: 'bold' }}>Lehrjahr:</label>
+            <select 
+              value={newPeriod.lehrjahr} 
+              onChange={e => setNewPeriod({...newPeriod, lehrjahr: Number(e.target.value)})}
+              style={{ width: '100%', padding: '8px' }}
+              disabled={loading}
+            >
+              {minLehrjahr <= 1 && <option value={1}>1. Lehrjahr</option>}
+              {minLehrjahr <= 2 && <option value={2}>2. Lehrjahr</option>}
+              <option value={3}>3. Lehrjahr</option>
+            </select>
+          </div>
+          <div style={{ marginBottom: 12 }}>
             <label style={{ display: 'block', marginBottom: 4, fontSize: '0.9em', fontWeight: 'bold' }}>Beschreibung (optional):</label>
             <input 
               type="text" 
               value={newPeriod.description} 
               onChange={e => setNewPeriod({...newPeriod, description: e.target.value})}
-              placeholder="z.B. 2. Lehrjahr, Praktikum..."
+              placeholder="z.B. Praktikum, Urlaub..."
               style={{ width: '100%', padding: '8px' }}
               disabled={loading}
             />
@@ -506,6 +542,8 @@ interface Person {
   phone?: string;
   mobile?: string;
   email?: string;
+  roleId?: number;
+  personnelNumber?: string;
 }
 
 interface Azubi { id: number; name: string; vorname: string; lehrjahr: number }
@@ -563,6 +601,9 @@ const PersonnelOverview: React.FC = () => {
   const [originalItws, setOriginalItws] = useState<ItwDoctor[] | null>(null);
 
   const [showInactive, setShowInactive] = useState(false);
+  
+  // Rollen für Dropdown
+  const [roles, setRoles] = useState<{ id: number; name: string }[]>([]);
   
   // Modal States entfernt - nutzt direkt openEditPersonWindow für alle
 
@@ -628,12 +669,25 @@ const PersonnelOverview: React.FC = () => {
     setItws(list);
   }, []);
 
+  const loadRoles = useCallback(async () => {
+    try {
+      const rolesData = await (window as any).api.getSetting('roles');
+      if (rolesData) {
+        const parsedRoles = JSON.parse(rolesData);
+        setRoles(Array.isArray(parsedRoles) ? parsedRoles.map((r: any) => ({ id: r.id, name: r.name })) : []);
+      }
+    } catch (e) {
+      // console.error('Fehler beim Laden der Rollen:', e);
+    }
+  }, []);
+
   useEffect(() => {
     loadPersonnel();
     loadAzubis();
     loadItws();
     loadQualificationPeriods();
     loadActivePeriods();
+    loadRoles();
     const handler = (_event: any) => {
       // console.log('[Renderer] personnel-updated Event empfangen');
       loadPersonnel();
@@ -814,19 +868,19 @@ const PersonnelOverview: React.FC = () => {
   const inactivePersonnel = personnel.filter(p => !isPersonActive(p));
 
   return (
-    <div style={{ padding: 24 }}>
-
-  {/* Überschrift entfernt */}
-      {loading ? <div>Lade Daten...</div> : (
+    <div className="page-container">
+      {loading ? (
+        <div>Lade Daten...</div>
+      ) : (
       <>
       
-      {/* Tab Navigation */}
-      <div style={{ 
-        display: 'flex', 
-        gap: 4, 
-        marginBottom: 16,
-        borderBottom: '2px solid #dee2e6'
-      }}>
+      {/* Sticky Container für Header + Tabs */}
+      <div className="sticky-header-container">
+        {/* Überschrift - ROT */}
+        <h2 className="page-header">Personal</h2>
+        
+        {/* Tab Navigation - GRÜN */}
+        <div className="tab-navigation">
         <button
           onClick={() => setActiveTab('stammpersonal')}
           style={{
@@ -869,7 +923,12 @@ const PersonnelOverview: React.FC = () => {
         >
           Ärzte
         </button>
+        </div>
       </div>
+      {/* Ende Sticky Container */}
+
+      {/* Content - GRAU */}
+      <div style={{ paddingTop: 16 }}>
       
       {/* Stammpersonal Tab */}
       {activeTab === 'stammpersonal' && (
@@ -1123,7 +1182,7 @@ const PersonnelOverview: React.FC = () => {
               const rowClass = [styles.row, selectedAzubiId === a.id ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
               const periods = azubiPeriods[a.id] || [];
               const periodsText = periods.length > 0 
-                ? periods.map(p => `${new Date(p.start_date).toLocaleDateString('de-DE')} - ${new Date(p.end_date).toLocaleDateString('de-DE')}`).join(', ')
+                ? periods.map(p => `${new Date(p.start_date).toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })} - ${new Date(p.end_date).toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })}`).join(', ')
                 : 'Keine Zeiträume definiert';
               
               return (
@@ -1234,17 +1293,11 @@ const PersonnelOverview: React.FC = () => {
       </div>
       )}
       
+      </div>
+      {/* Ende Content */}
+      
       </>
       )}
-      
-      {/* PersonEditModal entfernt - nutzt direkt openEditPersonWindow */}
-
-      {/* AzubiEditModal entfernt - nutzt direkt openEditPersonWindow */}
-
-      {/* Zeiträume Manager Dialog */}
-      {/* AzubiPeriodsManager entfernt - jetzt über Qualifikationssystem */}
-      
-      {/* Globale Bottom-Buttons entfernt, da Aktionen nun unter jeder Tabelle stehen */}
     </div>
   );
 };

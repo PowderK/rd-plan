@@ -32,6 +32,13 @@ try {
 }
 
 contextBridge.exposeInMainWorld('api', {
+    // Auth
+    authIsDevMode: () => ipcRenderer.invoke('auth-is-dev-mode'),
+    authLogin: (personnelNumber: string) => ipcRenderer.invoke('auth-login', personnelNumber),
+    authLogout: () => ipcRenderer.invoke('auth-logout'),
+    authGetCurrentUser: () => ipcRenderer.invoke('auth-get-current-user'),
+    authCheckPermission: (area: string, level: 'read' | 'write') => ipcRenderer.invoke('auth-check-permission', area, level),
+    // Data
     getShifts: () => ipcRenderer.invoke('get-shifts'),
     getPersonnel: (includeInactive?: boolean) => ipcRenderer.invoke('get-personnel', includeInactive === true),
     updateShift: (shift: any) => ipcRenderer.invoke('update-shift', shift),

@@ -227,9 +227,8 @@ const EinteilungPage: React.FC = () => {
   return (
     <div
       style={{
-        padding: 8,
         display: 'grid',
-        gridTemplateColumns: '1fr 300px',
+        gridTemplateColumns: '1fr 380px',
         gap: 12,
         alignItems: 'start'
       }}
@@ -249,13 +248,17 @@ const EinteilungPage: React.FC = () => {
           onEntryAssigned={handleEntryAssigned}
         />
       </div>
-      {/* Rechte Sidebar: Zielcontainer für den Kontrollkasten (unterhalb des Headers, analog Menü) */}
+      {/* Rechte Sidebar: Zielcontainer für den Kontrollkasten */}
       <div
         id="einteilung-right-sidebar"
         style={{
-          position: 'sticky',
-          top: 0, // beginnt unterhalb des Headers, da dieser außerhalb von <main> sticky ist
-          alignSelf: 'start'
+          position: 'fixed',
+          top: 'clamp(56px, 6.5vw, 90px)',
+          right: 8,
+          width: 380,
+          height: 'calc(100vh - clamp(56px, 6.5vw, 90px))',
+          overflowY: 'auto',
+          overflowX: 'hidden'
         }}
       />
     </div>

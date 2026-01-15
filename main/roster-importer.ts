@@ -121,6 +121,61 @@ export class RosterImporter {
             auswertungMap.set(st.code, auswertung || 'off');
         }
         
+        // Lade Fahrzeuge und deren Positionen für lesbare Bezeichnungen
+        const rtwVehicles = await this.dbAdapter.getRtwVehicles();
+        const nefVehicles = await this.dbAdapter.getNefVehicles();
+        const itwVehicles = await this.dbAdapter.getItwVehicles();
+        
+        const vehiclePositionsMap = new Map<string, string>(); // slotId -> lesbare Bezeichnung
+        
+        // RTW Positionen
+        for (let rIdx = 0; rIdx < rtwVehicles.length; rIdx++) {
+            const v = rtwVehicles[rIdx];
+            const positions = await this.dbAdapter.getVehiclePositions('rtw', v.id);
+            positions.sort((a: any, b: any) => a.sort - b.sort);
+            
+            for (let pIdx = 0; pIdx < positions.length; pIdx++) {
+                const pos = positions[pIdx];
+                const posName = pos.positionName.replace(/\s+\d+$/, ''); // Zahl am Ende entfernen
+                
+                // Tag-Schicht
+                const tagSlotId = `rtw${rIdx + 1}_tag_${pIdx + 1}`;
+                vehiclePositionsMap.set(tagSlotId, `${v.name || `RTW ${rIdx + 1}`} ${posName} Tag`);
+                
+                // Nacht-Schicht
+                const nachtSlotId = `rtw${rIdx + 1}_nacht_${pIdx + 1}`;
+                vehiclePositionsMap.set(nachtSlotId, `${v.name || `RTW ${rIdx + 1}`} ${posName} Nacht`);
+            }
+        }
+        
+        // NEF Positionen
+        for (let nIdx = 0; nIdx < nefVehicles.length; nIdx++) {
+            const v = nefVehicles[nIdx];
+            const positions = await this.dbAdapter.getVehiclePositions('nef', v.id);
+            positions.sort((a: any, b: any) => a.sort - b.sort);
+            
+            if (positions.length > 0) {
+                const pos = positions[0];
+                const posName = pos.positionName.replace(/\s+\d+$/, '');
+                const slotId = `nef${nIdx + 1}_assist`;
+                vehiclePositionsMap.set(slotId, `${v.name || `NEF ${nIdx + 1}`} ${posName}`);
+            }
+        }
+        
+        // ITW Positionen
+        for (let iIdx = 0; iIdx < itwVehicles.length; iIdx++) {
+            const v = itwVehicles[iIdx];
+            const positions = await this.dbAdapter.getVehiclePositions('itw', v.id);
+            positions.sort((a: any, b: any) => a.sort - b.sort);
+            
+            for (let pIdx = 0; pIdx < positions.length; pIdx++) {
+                const pos = positions[pIdx];
+                const posName = pos.positionName.replace(/\s+\d+$/, '');
+                const slotId = `itw${iIdx + 1}_${pIdx + 1}`;
+                vehiclePositionsMap.set(slotId, `${v.name || `ITW ${iIdx + 1}`} ${posName}`);
+            }
+        }
+        
         // Extrahiere alle betroffenen Jahre aus den zu importierenden Einträgen
         const years = new Set<number>();
         for (const entry of entriesToImport) {
@@ -153,11 +208,15 @@ export class RosterImporter {
                 // Wenn auswertung = 'off' oder nicht definiert → Person nicht verfügbar
                 if (!auswertung || auswertung === 'off') {
                     const personName = personMap.get(`${entry.personType}_${entry.personId}`) || `ID ${entry.personId}`;
+                    
+                    // Konvertiere Slot-ID zu lesbarer Bezeichnung
+                    const readableAssignment = vehiclePositionsMap.get(vehicleAssignment) || vehicleAssignment;
+                    
                     conflicts.push({
                         personName,
                         date: entry.date,
                         dutyRosterValue: entry.value.trim(), // Neue Schichtart aus Import (z.B. "K" für Krank)
-                        einteilungValue: vehicleAssignment // Fahrzeugzuweisung (z.B. "rtw1_tag_1")
+                        einteilungValue: readableAssignment // Lesbare Fahrzeugzuweisung (z.B. "RTW 5 Fahrzeugführer Tag")
                     });
                 }
             }
@@ -292,6 +351,14 @@ export class RosterImporter {
                 
                 const rawName = String(nameCell.v).trim();
                 if (!rawName) continue;
+                
+                // Prüfe, ob dieser Azubi überhaupt Diensteinträge für die gefilterten Daten hat
+                const valueAddr = XLSX.utils.encode_cell({ r: row, c: col });
+                const valueCell = worksheet[valueAddr];
+                const rawValue = valueCell && valueCell.v != null ? String(valueCell.v).trim() : '';
+                
+                // Nur berücksichtigen, wenn tatsächlich ein Diensteintrag vorhanden ist
+                if (!rawValue) continue;
                 
                 // Check if this name is already known
                 const keyFull = rawName.toLowerCase();
