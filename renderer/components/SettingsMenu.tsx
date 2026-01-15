@@ -555,25 +555,22 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   // State für Kategorie-Tabs
   const [activeCategory, setActiveCategory] = useState<'general' | 'roster' | 'qualifications' | 'roles'>('general');
 
-    if (loading) return <div className="settings-menu"><p>Lade Einstellungen ...</p></div>;
+  if (loading) return <div style={{ padding: 24 }}><p>Lade Einstellungen ...</p></div>;
 
   return (
-        <div className="settings-menu">
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-              <h2 style={{ margin: 0 }}>Einstellungen</h2>
-              <div style={{ fontSize: 12, color: '#666' }}>
-                Version {BUILD_INFO.version} (Build {BUILD_INFO.build}) — © Benjamin Kreitz
+        <div className="page-container">
+            {/* Sticky Container für Header + Tabs */}
+            <div className="sticky-header-container">
+              {/* Überschrift - ROT */}
+              <div className="page-header-with-version">
+                <h2>Einstellungen</h2>
+                <div className="page-header-version">
+                  Version {BUILD_INFO.version} (Build {BUILD_INFO.build}) — © Benjamin Kreitz
+                </div>
               </div>
-            </div>
 
-            {/* Kategorie-Tabs */}
-            <div style={{ 
-              display: 'flex', 
-              gap: 4, 
-              marginTop: 16, 
-              borderBottom: '2px solid #dee2e6',
-              marginBottom: 16
-            }}>
+              {/* Kategorie-Tabs - GRÜN */}
+              <div className="tab-navigation">
               <button
                 onClick={() => setActiveCategory('general')}
                 style={{
@@ -631,6 +628,11 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                 Rollen & Rechte
               </button>
             </div>
+          </div>
+          {/* Ende Sticky Container */}
+
+            {/* Content - GRAU */}
+            <div style={{ paddingTop: 16 }}>
 
             {/* KATEGORIE: ALLGEMEIN */}
             {activeCategory === 'general' && (
@@ -2196,6 +2198,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         />
       )}
           </div>
+          {/* Ende Content */}
+        </div>
     );
 };
 
@@ -2377,7 +2381,6 @@ const NewAzubiDialog: React.FC<NewAzubiDialogProps> = ({ unknownNames, onConfirm
                 <option value={1}>1</option>
                 <option value={2}>2</option>
                 <option value={3}>3</option>
-                <option value={4}>4</option>
               </select>
             </div>
           </div>

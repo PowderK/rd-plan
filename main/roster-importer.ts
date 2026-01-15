@@ -352,6 +352,14 @@ export class RosterImporter {
                 const rawName = String(nameCell.v).trim();
                 if (!rawName) continue;
                 
+                // Prüfe, ob dieser Azubi überhaupt Diensteinträge für die gefilterten Daten hat
+                const valueAddr = XLSX.utils.encode_cell({ r: row, c: col });
+                const valueCell = worksheet[valueAddr];
+                const rawValue = valueCell && valueCell.v != null ? String(valueCell.v).trim() : '';
+                
+                // Nur berücksichtigen, wenn tatsächlich ein Diensteintrag vorhanden ist
+                if (!rawValue) continue;
+                
                 // Check if this name is already known
                 const keyFull = rawName.toLowerCase();
                 let personInfo = fullNameMap.get(keyFull) || null;

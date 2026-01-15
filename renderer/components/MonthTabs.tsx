@@ -1029,7 +1029,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                     background: 'var(--bg)'
                                 }}>
                                     <div style={{ paddingBottom: 4, borderBottom: '2px solid #ef4444' }}>
-                                        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 4 }}>{v.name || nefNames[nIdx] || ''}</div>
+                                        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 4 }}>{v.name || nefName || ''}</div>
                                         <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr', gap: '6px' }}>
                                             <div></div>
                                             <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>{nefLabel}</div>
@@ -1058,7 +1058,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 style={{ 
                     paddingTop: headerHeight, 
                     paddingBottom: 12, 
-                    paddingLeft: (sidebarCollapsed) + 46,
+                    paddingLeft: sidebarCollapsed ? 46 : 46,
                     paddingRight: 25,
                     overflowX: 'auto', 
                     overflowY: 'visible',
@@ -1674,7 +1674,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
                             const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                             const ue50 = (p as any).ue50 === 1;
-                            return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, cumDiff, teilzeit, hlfb, ue50 } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, cumDiff: number, teilzeit: number, hlfb: boolean, ue50: boolean };
+                            const total = tn.tag + tn.nacht + nef + itw;
+                            return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, cumDiff, teilzeit, hlfb, ue50, total } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, cumDiff: number, teilzeit: number, hlfb: boolean, ue50: boolean, total: number };
                         });
                         // Farbliche Hervorhebung: nur Personen mit Monats-Soll > 0 berücksichtigen, Rest (Jahr) auf 100%-Äquivalent normalisieren
                         const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
@@ -2026,7 +2027,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
                             const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                             const ue50 = (p as any).ue50 === 1;
-                            return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, cumDiff, teilzeit, hlfb, ue50 } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, cumDiff: number, teilzeit: number, hlfb: boolean, ue50: boolean };
+                            const total = tn.tag + tn.nacht + nef + itw;
+                            return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, cumDiff, teilzeit, hlfb, ue50, total } as { key: string, name: string, target: number|string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, cumDiff: number, teilzeit: number, hlfb: boolean, ue50: boolean, total: number };
                         });
                         const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
                         const eligible = itemsWithIndex.filter(it => typeof it.target === 'number' && (it.target as number) > 0);

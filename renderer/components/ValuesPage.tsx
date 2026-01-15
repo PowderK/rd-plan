@@ -728,10 +728,10 @@ const ValuesPage: React.FC = () => {
 
   const styles = {
     table: { borderCollapse: 'collapse', minWidth: 980 } as React.CSSProperties,
-    thSticky: { position: 'sticky' as const, top: 0, background: '#fff', zIndex: 2, border: '1px solid #ccc', padding: '6px 8px' },
-    thStickyName: { position: 'sticky' as const, top: 0, left: 0, background: '#fff', zIndex: 4, border: '1px solid #ccc', padding: '6px 8px' },
+    thSticky: { position: 'sticky' as const, top: 0, background: 'var(--bg)', zIndex: 2, border: '1px solid #ccc', padding: '6px 8px', boxShadow: '0 1px 0 0 var(--line)' },
+    thStickyName: { position: 'sticky' as const, top: 0, left: 0, background: 'var(--bg)', zIndex: 4, border: '1px solid #ccc', padding: '6px 8px', boxShadow: '0 1px 0 0 var(--line)' },
     th: { border: '1px solid #ccc', padding: '6px 8px' },
-    nameSticky: { position: 'sticky' as const, left: 0, background: '#fff', zIndex: 3, border: '1px solid #ccc', padding: '6px 8px', minWidth: 240, textAlign: 'left' },
+    nameSticky: { position: 'sticky' as const, left: 0, background: 'var(--bg)', zIndex: 3, border: '1px solid #ccc', padding: '6px 8px', minWidth: 240, textAlign: 'left' },
     td: { border: '1px solid #ccc', padding: '6px 8px', textAlign: 'right' } as React.CSSProperties,
     tdLeft: { border: '1px solid #ccc', padding: '6px 8px', textAlign: 'left' } as React.CSSProperties,
     kpiRow: { background: '#f9fafb' } as React.CSSProperties,
@@ -849,10 +849,12 @@ const ValuesPage: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: 16 }}>
+    <div className="page-container">
       {renderCalculationPopup()}
-      <h2>Werte – {year}</h2>
-      <div style={{ overflow: 'auto', maxHeight: '70vh', border: '1px solid #e0e0e0', borderRadius: 8 }}>
+      {/* Überschrift - ROT */}
+      <h2 className="page-header">Werte – {year}</h2>
+      {/* Content - GRAU */}
+      <div className="page-content" style={{ overflow: 'auto', maxHeight: '70vh', border: '2px solid #e0e0e0', borderRadius: 8, position: 'relative', paddingTop: 0 }}>
         <table style={styles.table}>
           <thead>
             <tr>

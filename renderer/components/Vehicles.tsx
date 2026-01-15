@@ -269,16 +269,37 @@ const Vehicles: React.FC = () => {
   const addItw = () => { (window as any).api.openAddItwVehicleWindow(); };
 
   return (
-    <div style={{ padding: 16 }}>
-      <h2>Fahrzeuge</h2>
+    <div style={{ 
+      paddingRight: 24,
+      paddingLeft: 24,
+      paddingTop: 0,
+      paddingBottom: 24
+    }}>
+      {/* Überschrift - ROT */}
+      <h2 style={{ 
+        marginTop: 0, 
+        marginBottom: 0,
+        position: 'sticky',
+        top: 0,
+        background: 'var(--bg)',
+        zIndex: 101,
+        paddingTop: 8,
+        paddingBottom: 8
+      }}>Fahrzeuge</h2>
 
-      {/* Tab Navigation */}
+      {/* Tab Navigation - GRÜN */}
       <div style={{ 
         display: 'flex', 
         gap: 4, 
-        marginTop: 16, 
+        marginTop: 0, 
         borderBottom: '2px solid #dee2e6',
-        marginBottom: 16
+        marginBottom: 0,
+        position: 'sticky',
+        top: 52,
+        background: 'var(--bg)',
+        zIndex: 100,
+        paddingTop: 0,
+        paddingBottom: 0
       }}>
         <button
           onClick={() => setActiveTab('rtw')}
@@ -324,9 +345,12 @@ const Vehicles: React.FC = () => {
         </button>
       </div>
 
+      {/* Content - GRAU */}
+      <div style={{ paddingTop: 16 }}>
+
       {/* RTW Tab */}
       {activeTab === 'rtw' && (
-      <div style={{ marginTop: 16 }}>
+      <div>
         <h3>RTW Fahrzeuge</h3>
         <table className={styles.table}>
           <thead>
@@ -677,6 +701,8 @@ const Vehicles: React.FC = () => {
           onClose={() => setShowItwPositionEditor(null)}
         />
       )}
+      </div>
+      {/* Ende Content */}
     </div>
   );
 };

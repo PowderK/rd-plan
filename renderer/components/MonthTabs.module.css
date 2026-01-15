@@ -248,6 +248,7 @@
 }
 .sidebarItem {
   /* Grid layout is defined inline */
+  display: grid;
 }
 .sidebarName {
   font-size: 12px;

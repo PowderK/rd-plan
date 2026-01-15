@@ -1,0 +1,144 @@
+/* Global Layout Styles für alle Seiten */
+/* Verwendet das definierte Layout-Schema: Blau (Sidebar), Gelb (Main Header), Rot (Überschrift), Grün (Tabs), Grau (Content) */
+
+/* Page Container */
+.page-container {
+  padding-right: 24px;
+  padding-left: 24px;
+  padding-top: 0;
+  padding-bottom: 24px;
+}
+
+/* Sticky Container für Header + Tabs */
+.sticky-header-container {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 101;
+  box-shadow: 0 1px 0 0 var(--line);
+}
+
+/* ROT: Überschrift (innerhalb sticky container) */
+.page-header {
+  margin: 0 !important;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.page-header-with-version {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 !important;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.page-header-with-version h2 {
+  margin: 0;
+}
+
+.page-header-version {
+  font-size: 12px;
+  color: #666;
+}
+
+/* GRÜN: Tab Navigation (innerhalb sticky container) */
+.tab-navigation {
+  display: flex;
+  gap: 4px;
+  margin: 0 !important;
+  border-bottom: 2px solid #dee2e6;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+/* Für Seiten ohne Tabs */
+.page-header-standalone {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 101;
+  box-shadow: 0 1px 0 0 var(--line);
+  margin: 0 !important;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+/* Tab Button Styles */
+.tab-button {
+  padding: 8px 16px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-button:hover {
+  background: #f8f9fa;
+}
+
+.tab-button.active {
+  border-bottom-color: #0ea5e9;
+  background: #f8f9fa;
+  font-weight: 600;
+}
+
+/* Spezielle Tab-Farben */
+.tab-button.active-red {
+  border-bottom-color: #dc3545;
+}
+
+.tab-button.active-yellow {
+  border-bottom-color: #ffc107;
+}
+
+.tab-button.active-blue {
+  border-bottom-color: #0d6efd;
+}
+
+/* GRAU: Content Bereich */
+.page-content {
+  padding-top: 16px;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .page-container {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+  
+  .tab-button {
+    padding: 6px 12px;
+    font-size: 14px;
+  }
+}
+
+/* Utilities für Dark Mode */
+:root[data-theme='dark'] .page-header,
+:root[data-theme='dark'] .page-header-with-version,
+:root[data-theme='dark'] .tab-navigation {
+  background: var(--bg);
+}
+
+/* Scrollbar Styling (optional) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}

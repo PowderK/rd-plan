@@ -10,6 +10,7 @@ import ValuesPage from './components/ValuesPage';
 import EinteilungPage from './components/EinteilungPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './login';
+import './global-layout.css';
 
 const monthNames = [
     'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
@@ -105,7 +106,7 @@ const AppContent: React.FC = () => {
                 case 'fahrzeuge':
                     return <Vehicles />;
                 case 'einstellungen':
-                    return <div style={{ padding: 16 }}><SettingsMenu onClose={() => setActiveView('dienstplan')} /></div>;
+                    return <SettingsMenu onClose={() => setActiveView('dienstplan')} />;
                 default:
                     return null;
             }
