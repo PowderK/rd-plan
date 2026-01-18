@@ -1,7 +1,5 @@
 // buildInfo.ts
-import versionData from '../version.json';
-
 export const BUILD_INFO = {
-  version: versionData.version,
-  build: 935
+  version: '1.0.3 RC',
+  build: 936
 };
