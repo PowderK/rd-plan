@@ -1,5 +1,3 @@
-## Build 943 - 2026-01-22
-
 - automated build
 
 ## Build 942 - 2026-01-22
