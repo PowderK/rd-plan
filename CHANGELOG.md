@@ -1,19 +1,3 @@
-<<<<<<< HEAD
-=======
-## Build 975 - 2026-01-22
-
-- automated build
->>>>>>> a56faee (Build 975: automated bump and CHANGELOG entry)
-
-## Build 974 - 2026-01-22
-
-- automated build
-
-## Build 973 - 2026-01-22
->>>>>>> 4ea702d (Build 974: automated bump and CHANGELOG entry)
-
-- automated build
-
 ## Build 943 - 2026-01-22
 
 - automated build
