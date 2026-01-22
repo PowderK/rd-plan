@@ -1,4 +1,10 @@
-## Build 944 - 2026-01-22
+
+## Build 974 - 2026-01-22
+
+- automated build
+
+## Build 973 - 2026-01-22
+>>>>>>> 4ea702d (Build 974: automated bump and CHANGELOG entry)
 
 - automated build
 
