@@ -24,6 +24,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Read version from version.json
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(cat version.json | jq -r '.version')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
       - name: Install Visual Studio Build Tools with Windows SDK
         run: choco install visualstudio2022buildtools --package-parameters="--add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.Windows10SDK.19041 --includeRecommended --includeOptional" --yes --no-progress
 
@@ -135,7 +143,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           # Use tag name when available, otherwise fall back to the short SHA for manual runs
-          name: rd-plan-windows-${{ github.ref_name || github.sha }}
+          name: rd-plan-windows-v${{ steps.version.outputs.version }}
           path: |
             dist/*.exe
             dist/*win*.zip

@@ -27,8 +27,27 @@ function usePersonnel() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await (window as any).api.getPersonnelList?.();
-        setList(Array.isArray(r) ? r : []);
+        const rawList = await (window as any).api.getPersonnelList?.();
+        const allQualPeriods = await (window as any).api.getAllQualificationPeriods?.();
+        
+        // Filtere Personal: Nur Personen MIT Rettungsdienst-Qualifikation
+        const rettungsdienstQualName = 'Rettungsdienst';
+        const periodsByPerson: Record<number, any[]> = {};
+        if (Array.isArray(allQualPeriods)) {
+          allQualPeriods.forEach((p: any) => {
+            if (!periodsByPerson[p.personId]) periodsByPerson[p.personId] = [];
+            periodsByPerson[p.personId].push(p);
+          });
+        }
+        
+        const filteredList = (Array.isArray(rawList) ? rawList : []).filter((p: any) => {
+          const pPeriods = periodsByPerson[p.id] || [];
+          const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName && per.active);
+          // Person muss mindestens eine aktive Rettungsdienst-Periode haben
+          return rdPeriods.length > 0;
+        });
+        
+        setList(filteredList);
       } catch { setList([]); }
     })();
   }, []);

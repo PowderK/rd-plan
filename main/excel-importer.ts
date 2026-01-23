@@ -4,6 +4,8 @@ import { AsyncDB } from './database';
 export interface PersonnelImportData {
   name: string;
   vorname: string;
+  personnelNumber?: string;
+  roleName?: string;
   street?: string;
   postalCode?: string;
   city?: string;
@@ -45,6 +47,16 @@ export class ExcelPersonnelImporter {
 
   constructor(db: AsyncDB) {
     this.db = db;
+  }
+
+  /**
+   * Hilfsfunktion: Normalisiert endYM-Werte (behandelt leere Strings, "9999-12" etc. als NULL)
+   */
+  private normalizeEndYM(endYM: string | null | undefined): string | null {
+    if (!endYM || endYM.trim() === '' || endYM.startsWith('9999')) {
+      return null;
+    }
+    return endYM;
   }
 
   /**
@@ -169,7 +181,11 @@ export class ExcelPersonnelImporter {
       // Füge Zeitraum hinzu (falls vorhanden)
       if (row['Von'] && row['Von'].toString().trim() !== '') {
         const start_date = String(row['Von']).trim();
-        const end_date = row['Bis'] && row['Bis'].toString().trim() !== '' ? String(row['Bis']).trim() : null;
+        // Behandle leere Strings und "9999-12" als NULL
+        let end_date = row['Bis'] && row['Bis'].toString().trim() !== '' ? String(row['Bis']).trim() : null;
+        if (end_date && end_date.startsWith('9999')) {
+          end_date = null; // "9999-12" oder ähnliche Platzhalter als unbegrenzt behandeln
+        }
         const description = row['Beschreibung'] && row['Beschreibung'].toString().trim() !== '' ? String(row['Beschreibung']).trim() : '';
         
         azubi.periods!.push({
@@ -202,9 +218,11 @@ export class ExcelPersonnelImporter {
 
     const name = String(row['Name']).trim();
     const vorname = row['Vorname'] ? String(row['Vorname']).trim() : '';
+    const personnelNumber = row['Personalnummer'] ? String(row['Personalnummer']).trim() : '';
+    const roleName = row['Rolle'] ? String(row['Rolle']).trim() : '';
     const teilzeit = row['Teilzeit'] ? parseInt(String(row['Teilzeit']), 10) : 0;
     
-    console.log(`[ExcelImporter] Person: "${name}" "${vorname}" | Raw Name=${row['Name']}, Vorname=${row['Vorname']}, Teilzeit=${teilzeit}`);
+    console.log(`[ExcelImporter] Person: "${name}" "${vorname}" | Personnel#: ${personnelNumber}, Role: ${roleName}, Teilzeit=${teilzeit}`);
     
     // Extrahiere Qualifikationen aus den _Von/_Bis Spalten
     const qualifications: Array<{ qualType: string; startYM: string; endYM: string }> = [];
@@ -228,7 +246,11 @@ export class ExcelPersonnelImporter {
       // Nur hinzufügen, wenn mindestens startYM vorhanden ist
       if (startYM && startYM.toString().trim() !== '') {
         const startYMStr = String(startYM).trim();
-        const endYMStr = endYM && endYM.toString().trim() !== '' ? String(endYM).trim() : null;
+        let endYMStr = endYM && endYM.toString().trim() !== '' ? String(endYM).trim() : null;
+        // Behandle "9999-12" und ähnliche Platzhalter als NULL
+        if (endYMStr && endYMStr.startsWith('9999')) {
+          endYMStr = null;
+        }
         
         qualifications.push({
           qualType,
@@ -248,7 +270,11 @@ export class ExcelPersonnelImporter {
 
     if (activeStart && activeStart.toString().trim() !== '') {
         const startYMStr = String(activeStart).trim();
-        const endYMStr = activeEnd && activeEnd.toString().trim() !== '' ? String(activeEnd).trim() : null;
+        let endYMStr = activeEnd && activeEnd.toString().trim() !== '' ? String(activeEnd).trim() : null;
+        // Behandle "9999-12" und ähnliche Platzhalter als NULL
+        if (endYMStr && endYMStr.startsWith('9999')) {
+          endYMStr = null;
+        }
         const descStr = activeDesc ? String(activeDesc).trim() : '';
         
         activePeriods.push({
@@ -262,6 +288,8 @@ export class ExcelPersonnelImporter {
     return {
       name,
       vorname,
+      personnelNumber,
+      roleName,
       active: row['Aktiv'] !== undefined ? this.parseBooleanValue(row['Aktiv']) : true,
       teilzeit,
       qualifications: qualifications.length > 0 ? qualifications : undefined,
@@ -359,6 +387,10 @@ export class ExcelPersonnelImporter {
     try {
       await this.db.run('BEGIN TRANSACTION');
 
+      // Lade Rollen für Mapping von Namen zu IDs
+      const roles = await this.db.all('SELECT id, name FROM roles');
+      const roleNameToId = new Map(roles.map((r: any) => [r.name.toLowerCase(), r.id]));
+
       // Wenn replaceExisting = true, lösche alle bestehenden Personal-Daten und Azubis
       if (replaceExisting) {
         await this.db.run('DELETE FROM qualification_periods');
@@ -387,12 +419,21 @@ export class ExcelPersonnelImporter {
           const maxSortResult = await this.db.get('SELECT MAX(sort) as maxSort FROM personnel');
           const nextSort = (maxSortResult?.maxSort || 0) + 1;
 
+          // Resolve roleId
+          let roleId = null;
+          if (person.roleName && person.roleName.trim() !== '') {
+            roleId = roleNameToId.get(person.roleName.toLowerCase()) || null;
+            if (!roleId) {
+              console.warn(`[ExcelImporter] Role "${person.roleName}" not found for person ${person.name}`);
+            }
+          }
+
           // Füge Person hinzu - verwende nur vorhandene Felder
           let insertResult;
           if (person.street || person.postalCode || person.city || person.phone || person.mobile || person.email) {
             // Legacy-Format mit erweiterten Feldern
             insertResult = await this.db.run(
-              'INSERT INTO personnel (name, vorname, street, postalCode, city, phone, mobile, email, active, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+              'INSERT INTO personnel (name, vorname, street, postalCode, city, phone, mobile, email, active, sort, personnelNumber, roleId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
               [
                 person.name,
                 person.vorname,
@@ -403,13 +444,15 @@ export class ExcelPersonnelImporter {
                 person.mobile || '',
                 person.email || '',
                 person.active !== false ? 1 : 0,
-                nextSort
+                nextSort,
+                person.personnelNumber || null,
+                roleId
               ]
             );
           } else {
             // Neues Export-Format - nur Basis-Felder (mit NOT NULL defaults)
             insertResult = await this.db.run(
-              'INSERT INTO personnel (name, vorname, active, sort, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+              'INSERT INTO personnel (name, vorname, active, sort, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, personnelNumber, roleId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
               [
                 person.name,
                 person.vorname,
@@ -420,7 +463,9 @@ export class ExcelPersonnelImporter {
                 0, // fahrzeugfuehrerHLFB default
                 0, // nef default
                 0, // itwMaschinist default
-                0  // itwFahrzeugfuehrer default
+                0, // itwFahrzeugfuehrer default
+                person.personnelNumber || null,
+                roleId
               ]
             );
           }
@@ -446,9 +491,11 @@ export class ExcelPersonnelImporter {
             console.log(`[ExcelImporter] Importing ${person.qualifications.length} qualifications for ${person.name}`);
             for (const qual of person.qualifications) {
               try {
+                // Behandle leere Strings, "9999-12" und ähnliche Platzhalter als NULL für unbegrenzte Zeiträume
+                const endYM = this.normalizeEndYM(qual.endYM);
                 await this.db.run(
                   'INSERT INTO qualification_periods (personId, qualType, startYM, endYM, active) VALUES (?, ?, ?, ?, ?)',
-                  [personId, qual.qualType, qual.startYM, qual.endYM, 1]
+                  [personId, qual.qualType, qual.startYM, endYM, 1]
                 );
               } catch (error) {
                 console.error(`[ExcelImporter] ✗ Konnte Qualifikation ${qual.qualType} für Person ${personId} nicht importieren:`, error);
@@ -464,9 +511,11 @@ export class ExcelPersonnelImporter {
             console.log(`[ExcelImporter] Importing ${person.activePeriods.length} active periods for ${person.name}`);
             for (const period of person.activePeriods) {
                 try {
+                    // Behandle leere Strings, "9999-12" und ähnliche Platzhalter als NULL für unbegrenzte Zeiträume
+                    const endYM = this.normalizeEndYM(period.endYM);
                     await this.db.run(
                         'INSERT INTO personnel_active_periods (personId, startYM, endYM, description, active) VALUES (?, ?, ?, ?, ?)',
-                        [personId, period.startYM, period.endYM, period.description || '', 1]
+                        [personId, period.startYM, endYM, period.description || '', 1]
                     );
                 } catch (error) {
                     console.error(`[ExcelImporter] ✗ Konnte Aktivitäts-Zeitraum für Person ${personId} nicht importieren:`, error);
@@ -533,11 +582,13 @@ export class ExcelPersonnelImporter {
             console.log(`[ExcelImporter] Importing ${azubi.periods.length} periods for azubi ${azubi.name}`);
             for (const period of azubi.periods) {
               try {
+                // Behandle leere Strings und "9999-12" als NULL für unbegrenzte Zeiträume
+                const endDate = this.normalizeEndYM(period.end_date);
                 await this.db.run(
                   'INSERT INTO azubi_periods (azubi_id, start_date, end_date, description, lehrjahr) VALUES (?, ?, ?, ?, ?)',
-                  [azubiId, period.start_date, period.end_date || null, period.description || '', azubi.lehrjahr]
+                  [azubiId, period.start_date, endDate, period.description || '', azubi.lehrjahr]
                 );
-                console.log(`[ExcelImporter] ✓ Zeitraum importiert: ${period.start_date} - ${period.end_date || 'offen'} (Lehrjahr: ${azubi.lehrjahr})`);
+                console.log(`[ExcelImporter] ✓ Zeitraum importiert: ${period.start_date} - ${endDate || 'offen'} (Lehrjahr: ${azubi.lehrjahr})`);
               } catch (error) {
                 console.error(`[ExcelImporter] ✗ Konnte Zeitraum für Azubi ${azubiId} nicht importieren:`, error);
               }
@@ -619,7 +670,7 @@ export class ExcelPersonnelImporter {
       console.log('[ExcelImporter] Available qualification types:', qualTypes.map(q => q.name));
       
       // Erstelle Header mit separaten Spalten für jede Qualifikation
-      const headers = ['Name', 'Vorname', 'Aktiv', 'Teilzeit', 'Aktiv_Von', 'Aktiv_Bis', 'Aktiv_Beschreibung'];
+      const headers = ['Name', 'Vorname', 'Personalnummer', 'Rolle', 'Aktiv', 'Teilzeit', 'Aktiv_Von', 'Aktiv_Bis', 'Aktiv_Beschreibung'];
       const qualHeaders: string[] = [];
       
       for (const qualType of qualTypes) {
@@ -629,6 +680,10 @@ export class ExcelPersonnelImporter {
       
       headers.push(...qualHeaders);
       const exportData = [headers];
+
+      // Lade alle Rollen
+      const roles = await this.db.all('SELECT id, name FROM roles ORDER BY sort, name');
+      const roleMap = new Map(roles.map((r: any) => [r.id, r.name]));
 
       for (const person of personnel) {
         // Lade alle Qualifikationen für diese Person (nicht nur aktuelle)
@@ -648,14 +703,19 @@ export class ExcelPersonnelImporter {
 
         console.log(`[ExcelImporter] All qualifications for person ${person.id}:`, allQuals);
         
+        // Hole Rollenname
+        const roleName = person.roleId ? (roleMap.get(person.roleId) || '') : '';
+        
         // Erstelle Zeile mit Grunddaten
         const row = [
           person.name,
           person.vorname || '',
+          person.personnelNumber || '',
+          roleName,
           person.active ? 'ja' : 'nein',
           person.teilzeit || 0,
           activePeriod ? activePeriod.startYM : '',
-          activePeriod ? (activePeriod.endYM || '') : '',
+          activePeriod && activePeriod.endYM && activePeriod.endYM.trim() !== '' ? activePeriod.endYM : '',
           activePeriod ? (activePeriod.description || '') : ''
         ];
         
@@ -664,7 +724,8 @@ export class ExcelPersonnelImporter {
           const qual = allQuals.find(q => q.qualType === qualType.name);
           if (qual) {
             row.push(qual.startYM || ''); // Von-Datum
-            row.push(qual.endYM || ''); // Bis-Datum (leer = unbegrenzt)
+            // Explizit: NULL oder leerer String = unbegrenzt, wird als leerer String exportiert
+            row.push(qual.endYM && qual.endYM.trim() !== '' ? qual.endYM : ''); // Bis-Datum (leer = unbegrenzt)
           } else {
             row.push(''); // Kein Von-Datum
             row.push(''); // Kein Bis-Datum
@@ -721,7 +782,7 @@ export class ExcelPersonnelImporter {
               azubi.vorname || '',
               azubi.lehrjahr,
               period.start_date,
-              period.end_date || '', // null = unbegrenzt -> leerer String in Excel
+              period.end_date && period.end_date.trim() !== '' ? period.end_date : '', // NULL oder leer = unbegrenzt
               period.description || ''
             ]);
           }

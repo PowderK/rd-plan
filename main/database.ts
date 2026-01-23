@@ -226,9 +226,48 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
                 await db.exec(`UPDATE personnel SET ${field} = '' WHERE ${field} IS NULL`);
             }
         }
+        
+        // Migration: add 'personnelNumber' if missing
+        if (!colsAfter.some((c: any) => c.name === 'personnelNumber')) {
+            await db.exec("ALTER TABLE personnel ADD COLUMN personnelNumber TEXT DEFAULT NULL");
+        }
+        
+        // Migration: add 'roleId' if missing
+        if (!colsAfter.some((c: any) => c.name === 'roleId')) {
+            await db.exec("ALTER TABLE personnel ADD COLUMN roleId INTEGER DEFAULT NULL");
+        }
     } catch (e) {
     }
 
+    // --- Roles Tabelle für Rechteverwaltung (Migration für existierende DBs) ---
+    try {
+        console.log('[Database] Checking for roles table...');
+        const rolesTableExists = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='roles'");
+        console.log('[Database] Roles table exists:', !!rolesTableExists);
+        if (!rolesTableExists) {
+            console.log('[Database] Creating roles table...');
+            await db.exec(`
+                CREATE TABLE roles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    description TEXT,
+                    canEditPersonnel INTEGER DEFAULT 0,
+                    canEditVehicles INTEGER DEFAULT 0,
+                    canEditSettings INTEGER DEFAULT 0,
+                    canEditRoster INTEGER DEFAULT 0,
+                    canViewReports INTEGER DEFAULT 0,
+                    canExportData INTEGER DEFAULT 0,
+                    canManageUsers INTEGER DEFAULT 0,
+                    sort INTEGER DEFAULT 0
+                )
+            `);
+            console.log('[Database] Migration: roles table created successfully');
+        }
+    } catch (e) {
+        console.error('[Database] Error creating roles table:', e);
+    }
+
+    // --- Settings Tabelle ---
     await db.exec(`
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
@@ -2071,20 +2110,32 @@ export const initializeQualificationTypesTable = async (db: AsyncDB) => {
     const count = await db.get('SELECT COUNT(*) as count FROM qualification_types');
     if (count.count === 0) {
         const defaultQualifications = [
-            { name: 'RTW Fahrzeugführer', description: 'Fahrzeugführer Rettungswagen', category: 'Fahrzeugführung', sort: 1 },
-            { name: 'HLF-B Fahrzeugführer', description: 'Hilfeleistungslöschfahrzeug B', category: 'Fahrzeugführung', sort: 2 },
-            { name: 'NEF Assistent', description: 'Notarzteinsatzfahrzeug Assistent', category: 'Notfall', sort: 3 },
-            { name: 'ITW Maschinist', description: 'Maschinist Intensivtransportwagen', category: 'Transport', sort: 4 },
-            { name: 'ITW Fahrzeugführer', description: 'Fahrzeugführer Intensivtransportwagen', category: 'Fahrzeugführung', sort: 5 },
-            { name: 'Ü50', description: 'Über 50 Jahre', category: 'Sonstiges', sort: 6 },
-            { name: 'Leitender PAL', description: 'Leitender Praxisanleiter', category: 'Leitung', sort: 7 }
+            { name: 'Rettungsdienst', description: 'Berechtigung zur Teilnahme am Rettungsdienst', category: 'Grundqualifikation', sort: 0, excludeFromStats: false },
+            { name: 'RTW Fahrzeugführer', description: 'Fahrzeugführer Rettungswagen', category: 'Fahrzeugführung', sort: 1, excludeFromStats: false },
+            { name: 'HLF-B Fahrzeugführer', description: 'Hilfeleistungslöschfahrzeug B', category: 'Fahrzeugführung', sort: 2, excludeFromStats: false },
+            { name: 'NEF Assistent', description: 'Notarzteinsatzfahrzeug Assistent', category: 'Notfall', sort: 3, excludeFromStats: false },
+            { name: 'ITW Maschinist', description: 'Maschinist Intensivtransportwagen', category: 'Transport', sort: 4, excludeFromStats: false },
+            { name: 'ITW Fahrzeugführer', description: 'Fahrzeugführer Intensivtransportwagen', category: 'Fahrzeugführung', sort: 5, excludeFromStats: false },
+            { name: 'Ü50', description: 'Über 50 Jahre', category: 'Sonstiges', sort: 6, excludeFromStats: false },
+            { name: 'Leitender PAL', description: 'Leitender Praxisanleiter', category: 'Leitung', sort: 7, excludeFromStats: false }
         ];
 
         for (const qual of defaultQualifications) {
-            await db.run(
-                'INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, 1, ?)',
-                [qual.name, qual.description, qual.category, qual.sort]
-            );
+            // Prüfe ob excludeFromStats Spalte existiert
+            const cols = await db.all("PRAGMA table_info('qualification_types')");
+            const hasExcludeFromStats = cols.some((c: any) => c.name === 'excludeFromStats');
+            
+            if (hasExcludeFromStats) {
+                await db.run(
+                    'INSERT INTO qualification_types (name, description, category, active, sort, excludeFromStats) VALUES (?, ?, ?, 1, ?, ?)',
+                    [qual.name, qual.description, qual.category, qual.sort, qual.excludeFromStats ? 1 : 0]
+                );
+            } else {
+                await db.run(
+                    'INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, 1, ?)',
+                    [qual.name, qual.description, qual.category, qual.sort]
+                );
+            }
         }
     }
 };
@@ -2175,50 +2226,65 @@ export const getQualifiedPersonsForPosition = async (
     
     const requiredQuals = cellRequirements?.qualifications || SHIFT_QUALIFICATION_REQUIREMENTS[position] || [];
     
-    if (requiredQuals.length === 0 && !cellRequirements) {
-        // Keine Qualifikation erforderlich - alle aktiven Personen zurückgeben
-        const allPersons = await db.all(`
-            SELECT id, name, vorname, 0 as isAzubi
-            FROM personnel 
-            WHERE active = 1
-            ORDER BY name, vorname
-        `);
-        return allPersons.map((p: any) => ({ ...p, qualifications: [] }));
-    }
-    
     const yearMonth = date.substring(0, 7); // '2025-11-15' -> '2025-11'
     const results: any[] = [];
     
-    // Hole qualifizierte Personen
+    // GRUNDVORAUSSETZUNG: Qualifikation "Rettungsdienst" ist für ALLE Einteilungen erforderlich
+    // Hole nur Personen die die Qualifikation "Rettungsdienst" im gegebenen Monat haben
+    const personsWithRettungsdienst = await db.all(`
+        SELECT DISTINCT 
+            p.id, p.name, p.vorname,
+            GROUP_CONCAT(qp.qualType) as qualifications,
+            0 as isAzubi
+        FROM personnel p
+        INNER JOIN qualification_periods qp ON p.id = qp.personId
+            AND qp.active = 1
+            AND qp.qualType = 'Rettungsdienst'
+            AND qp.startYM <= ?
+            AND (qp.endYM IS NULL OR qp.endYM >= ?)
+        WHERE p.active = 1
+        GROUP BY p.id, p.name, p.vorname
+        ORDER BY p.name, p.vorname
+    `, [yearMonth, yearMonth]);
+    
+    // Wenn keine positionsspezifischen Qualifikationen erforderlich, return alle mit Rettungsdienst
+    if (requiredQuals.length === 0 && !cellRequirements) {
+        // Hole alle Qualifikationen für jede Person
+        for (const person of personsWithRettungsdienst) {
+            const allQuals = await db.all(`
+                SELECT qualType FROM qualification_periods 
+                WHERE personId = ? AND active = 1 
+                AND startYM <= ? AND (endYM IS NULL OR endYM >= ?)
+            `, [person.id, yearMonth, yearMonth]);
+            person.qualifications = allQuals.map((q: any) => q.qualType);
+        }
+        return personsWithRettungsdienst;
+    }
+    
+    // Hole qualifizierte Personen (die bereits Rettungsdienst haben)
     if (requiredQuals.length > 0) {
-        const personsWithQuals = await db.all(`
-            SELECT DISTINCT 
-                p.id, p.name, p.vorname,
-                GROUP_CONCAT(qp.qualType) as qualifications,
-                0 as isAzubi
-            FROM personnel p
-            LEFT JOIN qualification_periods qp ON p.id = qp.personId
-                AND qp.active = 1
-                AND qp.startYM <= ?
-                AND (qp.endYM IS NULL OR qp.endYM >= ?)
-            WHERE p.active = 1
-            GROUP BY p.id, p.name, p.vorname
-            ORDER BY p.name, p.vorname
-        `, [yearMonth, yearMonth]);
-        
-        // Filtere nur Personen, die mindestens eine der erforderlichen Qualifikationen haben
-        const qualified = personsWithQuals.filter((person: any) => {
-            const personQuals = person.qualifications ? person.qualifications.split(',') : [];
-            return requiredQuals.some(req => personQuals.includes(req));
-        }).map((person: any) => ({
-            ...person,
-            qualifications: person.qualifications ? person.qualifications.split(',') : []
-        }));
-        
-        results.push(...qualified);
+        // Prüfe für jede Person, ob sie die erforderlichen Qualifikationen hat
+        for (const person of personsWithRettungsdienst) {
+            const personQuals = await db.all(`
+                SELECT qualType FROM qualification_periods 
+                WHERE personId = ? AND active = 1 
+                AND startYM <= ? AND (endYM IS NULL OR endYM >= ?)
+            `, [person.id, yearMonth, yearMonth]);
+            
+            const qualNames = personQuals.map((q: any) => q.qualType);
+            
+            // Prüfe ob Person mindestens eine der erforderlichen Qualifikationen hat
+            if (requiredQuals.some(req => qualNames.includes(req))) {
+                results.push({
+                    ...person,
+                    qualifications: qualNames
+                });
+            }
+        }
     }
     
     // Füge qualifizierte Azubis hinzu (falls erlaubt)
+    // WICHTIG: Azubis benötigen NICHT die Qualifikation "Rettungsdienst"
     if (cellRequirements?.azubiLehrjahr) {
         const qualifiedAzubis = await db.all(`
             SELECT id, name, vorname, lehrjahr, 1 as isAzubi

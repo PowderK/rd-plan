@@ -239,7 +239,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
     on: (channel: string, callback: (...args: any[]) => void) => {
         // Whitelist für erlaubte Channels
-        const validChannels = ['splash-status', 'duty-roster-updated', 'personnel-updated'];
+        const validChannels = ['splash-status', 'splash-version', 'duty-roster-updated', 'personnel-updated'];
         if (validChannels.includes(channel)) {
             ipcRenderer.on(channel, (_event, ...args) => callback(...args));
         }

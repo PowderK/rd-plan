@@ -66,11 +66,11 @@ try {
       if (remotes.length === 0) {
         console.log('No git remotes configured, skipping push.');
       } else {
-        // determine current branch
-        const branch = execSync('git rev-parse --abbrev-ref HEAD').toString().trim();
+        // determine current branch - force "dev" branch
         const remote = remotes.includes('origin') ? 'origin' : remotes[0];
-        console.log(`Pushing branch ${branch} to remote ${remote}...`);
-        execSync(`git push ${remote} ${branch}`, { stdio: 'ignore' });
+        const targetBranch = 'dev';
+        console.log(`Pushing to ${targetBranch} branch on remote ${remote}...`);
+        execSync(`git push ${remote} HEAD:${targetBranch}`, { stdio: 'ignore' });
         console.log('Pushed branch. Pushing tags...');
         execSync(`git push ${remote} --tags`, { stdio: 'ignore' });
         console.log('Pushed tags to', remote);

@@ -1030,6 +1030,64 @@ export class DatabaseManager {
         console.log('[DatabaseManager] Adding roleId to personnel');
         await db.exec("ALTER TABLE personnel ADD COLUMN roleId INTEGER");
     }
+    
+    // Migration: create roles table if missing
+    const rolesTableExists = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='roles'");
+    if (!rolesTableExists) {
+        console.log('[DatabaseManager] Creating roles table');
+        await db.exec(`
+            CREATE TABLE roles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT,
+                canEditPersonnel INTEGER DEFAULT 0,
+                canEditVehicles INTEGER DEFAULT 0,
+                canEditSettings INTEGER DEFAULT 0,
+                canEditRoster INTEGER DEFAULT 0,
+                canViewReports INTEGER DEFAULT 0,
+                canExportData INTEGER DEFAULT 0,
+                canManageUsers INTEGER DEFAULT 0,
+                sort INTEGER DEFAULT 0
+            )
+        `);
+        console.log('[DatabaseManager] Roles table created successfully');
+    }
+    
+    // Migration: migrate roles from settings JSON to roles table
+    const rolesCount = await db.get("SELECT COUNT(*) as count FROM roles");
+    if (rolesCount.count === 0) {
+        console.log('[DatabaseManager] Migrating roles from settings to roles table...');
+        const rolesSetting = await db.get("SELECT value FROM settings WHERE key='roles'");
+        if (rolesSetting && rolesSetting.value) {
+            try {
+                const oldRoles = JSON.parse(rolesSetting.value);
+                for (const role of oldRoles) {
+                    // Mapping der alten permissions zu neuen Feldern
+                    const perms = role.permissions || {};
+                    await db.run(`
+                        INSERT OR IGNORE INTO roles (id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    `, [
+                        role.id,
+                        role.name,
+                        role.description || '',
+                        perms.personal === 'write' ? 1 : 0,
+                        perms.fahrzeuge === 'write' ? 1 : 0,
+                        perms.einstellungen === 'write' ? 1 : 0,
+                        perms.einteilung === 'write' || perms.dienstplan === 'write' ? 1 : 0,
+                        perms.werte === 'read' || perms.werte === 'write' ? 1 : 0,
+                        perms.werte === 'write' || perms.personal === 'write' || perms.fahrzeuge === 'write' ? 1 : 0,
+                        perms.personal === 'write' || perms.einstellungen === 'write' ? 1 : 0,
+                        role.id
+                    ]);
+                    console.log(`[DatabaseManager] ✓ Migrated role: ${role.name} (ID: ${role.id})`);
+                }
+                console.log('[DatabaseManager] Roles migration completed');
+            } catch (e) {
+                console.error('[DatabaseManager] Error migrating roles:', e);
+            }
+        }
+    }
   }
   
   private async initializeSQLiteSchema(db: AsyncDB) {
