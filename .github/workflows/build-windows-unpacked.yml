@@ -1,0 +1,38 @@
+name: Build Windows Unpacked
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-unpacked:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build App
+        run: npm run build
+
+      - name: Build Windows Unpacked
+        run: npx electron-builder --win --x64 --dir
+
+      - name: Upload unpacked build as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rd-plan-win-unpacked
+          path: dist/win-unpacked/

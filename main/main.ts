@@ -1832,7 +1832,7 @@ app.whenReady().then(async () => {
     // 1. Prüfe IMMER zuerst auf eine lokale Konfigurationsdatei (neben der Exe) und erzwinge deren Nutzung
     // Das ermöglicht es, durch Ablegen einer db-config.json neben der App den Datenbank-Pfad vorzugeben (z.B. für USB-Stick)
     
-    // Splash Screen SOFORT anzeigen (bevor Netzwerk-Zugriffe starten)
+    // Splash Screen anzeigen
     createSplashScreen();
     updateSplashStatus('RD-Plan wird gestartet...', 'Initialisierung...');
     

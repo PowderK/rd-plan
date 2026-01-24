@@ -16,6 +16,8 @@ export interface SettingsExportData {
   rtwVehicles: Array<{ id: number; name: string; sort: number; archived_year?: number }>;
   nefVehicles: Array<{ id: number; name: string; sort: number; archived_year?: number; occupancy_mode: string }>;
   itwVehicles: Array<{ id: number; name: string; sort: number; archived_year?: number }>;
+  itwDoctors: Array<{ id: number; name: string; vorname: string; sort: number }>;
+  roles: Array<{ id: number; name: string; description?: string; canEditPersonnel: boolean; canEditVehicles: boolean; canEditSettings: boolean; canEditRoster: boolean; canViewReports: boolean; canExportData: boolean; canManageUsers: boolean; sort: number }>;
   qualificationTypes: Array<{ id: number; name: string; description?: string; category: string; active: boolean; sort: number }>;
   vehiclePositions: Array<{ id: number; vehicleType: string; vehicleId: number; positionName: string; qualificationTypeId: number | null; sort: number }>;
   rtwVehiclePeriods: Array<{ id: number; vehicleId: number; startYM: string; endYM: string | null; active: boolean }>;
@@ -34,6 +36,8 @@ export interface SettingsImportResult {
     rtwVehicles: number;
     nefVehicles: number;
     itwVehicles: number;
+    itwDoctors: number;
+    roles: number;
     qualificationTypes: number;
     vehiclePositions: number;
     rtwVehiclePeriods: number;
@@ -49,6 +53,16 @@ export class SettingsImporter {
   constructor(private db: AsyncDB) {}
 
   /**
+   * Hilfsfunktion: Normalisiert endYM-Werte (behandelt leere Strings, "9999-12" etc. als NULL)
+   */
+  private normalizeEndYM(endYM: string | null | undefined): string | null {
+    if (!endYM || endYM.trim() === '' || endYM.startsWith('9999')) {
+      return null;
+    }
+    return endYM;
+  }
+
+  /**
    * Exportiert alle Einstellungen in eine JSON-Datei
    */
   async exportSettingsToJson(filePath: string): Promise<void> {
@@ -62,6 +76,8 @@ export class SettingsImporter {
       const rtwVehicles = await this.db.all('SELECT id, name, sort, archived_year FROM rtw_vehicles ORDER BY sort');
       const nefVehicles = await this.db.all('SELECT id, name, sort, archived_year, occupancy_mode FROM nef_vehicles ORDER by sort');
       const itwVehicles = await this.db.all('SELECT id, name, sort, archived_year FROM itw_vehicles ORDER BY sort');
+      const itwDoctors = await this.db.all('SELECT id, name, vorname, sort FROM itw_doctors ORDER BY sort, name');
+      const roles = await this.db.all('SELECT id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort FROM roles ORDER BY sort, name');
       const qualificationTypes = await this.db.all('SELECT id, name, description, category, active, sort FROM qualification_types ORDER BY sort, name');
       const vehiclePositions = await this.db.all('SELECT id, vehicleType, vehicleId, positionName, qualificationTypeId, sort FROM vehicle_positions ORDER BY vehicleType, vehicleId, sort');
       const rtwVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM rtw_vehicle_periods ORDER BY vehicleId, startYM');
@@ -82,6 +98,8 @@ export class SettingsImporter {
         rtwVehicles: rtwVehicles || [],
         nefVehicles: nefVehicles || [],
         itwVehicles: itwVehicles || [],
+        itwDoctors: itwDoctors || [],
+        roles: roles || [],
         qualificationTypes: qualificationTypes || [],
         vehiclePositions: vehiclePositions || [],
         rtwVehiclePeriods: rtwVehiclePeriods || [],
@@ -112,6 +130,8 @@ export class SettingsImporter {
       const rtwVehicles = await this.db.all('SELECT id, name, sort, archived_year FROM rtw_vehicles ORDER BY sort');
       const nefVehicles = await this.db.all('SELECT id, name, sort, archived_year, occupancy_mode FROM nef_vehicles ORDER BY sort');
       const itwVehicles = await this.db.all('SELECT id, name, sort, archived_year FROM itw_vehicles ORDER BY sort');
+      const itwDoctors = await this.db.all('SELECT id, name, vorname, sort FROM itw_doctors ORDER BY sort, name');
+      const roles = await this.db.all('SELECT id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort FROM roles ORDER BY sort, name');
       const qualificationTypes = await this.db.all('SELECT id, name, description, category, active, sort FROM qualification_types ORDER BY sort, name');
       const vehiclePositions = await this.db.all('SELECT id, vehicleType, vehicleId, positionName, qualificationTypeId, sort FROM vehicle_positions ORDER BY vehicleType, vehicleId, sort');
       const rtwVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM rtw_vehicle_periods ORDER BY vehicleId, startYM');
@@ -205,11 +225,31 @@ export class SettingsImporter {
       // ITW-Vehicles-Sheet
       if (itwVehicles && itwVehicles.length > 0) {
         const itwData = [
-          ['ID', 'Name', 'Sortierung'],
-          ...itwVehicles.map(v => [v.id, v.name, v.sort])
+          ['ID', 'Name', 'Sortierung', 'Archiviert (Jahr)'],
+          ...itwVehicles.map(v => [v.id, v.name, v.sort, v.archived_year || ''])
         ];
         const itwWs = XLSX.utils.aoa_to_sheet(itwData);
         XLSX.utils.book_append_sheet(wb, itwWs, 'ITW-Fahrzeuge');
+      }
+
+      // ITW-Doctors-Sheet
+      if (itwDoctors && itwDoctors.length > 0) {
+        const itwDocData = [
+          ['ID', 'Name', 'Vorname', 'Sortierung'],
+          ...itwDoctors.map(d => [d.id, d.name, d.vorname, d.sort])
+        ];
+        const itwDocWs = XLSX.utils.aoa_to_sheet(itwDocData);
+        XLSX.utils.book_append_sheet(wb, itwDocWs, 'ITW-Ärzte');
+      }
+
+      // Roles-Sheet
+      if (roles && roles.length > 0) {
+        const rolesData = [
+          ['ID', 'Name', 'Beschreibung', 'Personal bearbeiten', 'Fahrzeuge bearbeiten', 'Einstellungen bearbeiten', 'Dienstplan bearbeiten', 'Berichte ansehen', 'Daten exportieren', 'Benutzer verwalten', 'Sortierung'],
+          ...roles.map(r => [r.id, r.name, r.description || '', r.canEditPersonnel ? 'Ja' : 'Nein', r.canEditVehicles ? 'Ja' : 'Nein', r.canEditSettings ? 'Ja' : 'Nein', r.canEditRoster ? 'Ja' : 'Nein', r.canViewReports ? 'Ja' : 'Nein', r.canExportData ? 'Ja' : 'Nein', r.canManageUsers ? 'Ja' : 'Nein', r.sort])
+        ];
+        const rolesWs = XLSX.utils.aoa_to_sheet(rolesData);
+        XLSX.utils.book_append_sheet(wb, rolesWs, 'Rollen');
       }
 
       // QualificationTypes-Sheet
@@ -236,7 +276,7 @@ export class SettingsImporter {
       if (rtwVehiclePeriods && rtwVehiclePeriods.length > 0) {
         const rtwPData = [
           ['ID', 'FahrzeugID', 'StartYM', 'EndYM', 'Aktiv'],
-          ...rtwVehiclePeriods.map(p => [p.id, p.vehicleId, p.startYM, p.endYM || '', p.active ? 'Ja' : 'Nein'])
+          ...rtwVehiclePeriods.map(p => [p.id, p.vehicleId, p.startYM, p.endYM && p.endYM.trim() !== '' ? p.endYM : '', p.active ? 'Ja' : 'Nein'])
         ];
         const rtwPWs = XLSX.utils.aoa_to_sheet(rtwPData);
         XLSX.utils.book_append_sheet(wb, rtwPWs, 'RTW-Zeiträume');
@@ -246,7 +286,7 @@ export class SettingsImporter {
       if (nefVehiclePeriods && nefVehiclePeriods.length > 0) {
         const nefPData = [
           ['ID', 'FahrzeugID', 'StartYM', 'EndYM', 'Aktiv'],
-          ...nefVehiclePeriods.map(p => [p.id, p.vehicleId, p.startYM, p.endYM || '', p.active ? 'Ja' : 'Nein'])
+          ...nefVehiclePeriods.map(p => [p.id, p.vehicleId, p.startYM, p.endYM && p.endYM.trim() !== '' ? p.endYM : '', p.active ? 'Ja' : 'Nein'])
         ];
         const nefPWs = XLSX.utils.aoa_to_sheet(nefPData);
         XLSX.utils.book_append_sheet(wb, nefPWs, 'NEF-Zeiträume');
@@ -256,7 +296,7 @@ export class SettingsImporter {
       if (itwVehiclePeriods && itwVehiclePeriods.length > 0) {
         const itwPData = [
           ['ID', 'FahrzeugID', 'StartYM', 'EndYM', 'Aktiv'],
-          ...itwVehiclePeriods.map(p => [p.id, p.vehicleId, p.startYM, p.endYM || '', p.active ? 'Ja' : 'Nein'])
+          ...itwVehiclePeriods.map(p => [p.id, p.vehicleId, p.startYM, p.endYM && p.endYM.trim() !== '' ? p.endYM : '', p.active ? 'Ja' : 'Nein'])
         ];
         const itwPWs = XLSX.utils.aoa_to_sheet(itwPData);
         XLSX.utils.book_append_sheet(wb, itwPWs, 'ITW-Zeiträume');
@@ -266,7 +306,7 @@ export class SettingsImporter {
       if (personnelActivePeriods && personnelActivePeriods.length > 0) {
         const papData = [
           ['ID', 'PersonID', 'StartYM', 'EndYM', 'Beschreibung', 'Aktiv'],
-          ...personnelActivePeriods.map(p => [p.id, p.personId, p.startYM, p.endYM || '', p.description || '', p.active ? 'Ja' : 'Nein'])
+          ...personnelActivePeriods.map(p => [p.id, p.personId, p.startYM, p.endYM && p.endYM.trim() !== '' ? p.endYM : '', p.description || '', p.active ? 'Ja' : 'Nein'])
         ];
         const papWs = XLSX.utils.aoa_to_sheet(papData);
         XLSX.utils.book_append_sheet(wb, papWs, 'Personal-Aktivitätszeiträume');
@@ -276,7 +316,7 @@ export class SettingsImporter {
       if (qualificationPeriods && qualificationPeriods.length > 0) {
         const qpData = [
           ['ID', 'PersonID', 'Qualifikation', 'StartYM', 'EndYM', 'Aktiv'],
-          ...qualificationPeriods.map(p => [p.id, p.personId, p.qualType, p.startYM, p.endYM || '', p.active ? 'Ja' : 'Nein'])
+          ...qualificationPeriods.map(p => [p.id, p.personId, p.qualType, p.startYM, p.endYM && p.endYM.trim() !== '' ? p.endYM : '', p.active ? 'Ja' : 'Nein'])
         ];
         const qpWs = XLSX.utils.aoa_to_sheet(qpData);
         XLSX.utils.book_append_sheet(wb, qpWs, 'Qualifikations-Zeiträume');
@@ -306,6 +346,8 @@ export class SettingsImporter {
         rtwVehicles: 0,
         nefVehicles: 0,
         itwVehicles: 0,
+        itwDoctors: 0,
+        roles: 0,
         qualificationTypes: 0,
         vehiclePositions: 0,
         rtwVehiclePeriods: 0,
@@ -516,16 +558,16 @@ export class SettingsImporter {
               let newId: number | undefined;
               if (replaceExisting) {
                 const res = await this.db.run(`
-                  INSERT INTO itw_vehicles (name, sort) VALUES (?, ?)
-                `, [vehicle.name, vehicle.sort || 0]);
+                  INSERT INTO itw_vehicles (name, sort, archived_year) VALUES (?, ?, ?)
+                `, [vehicle.name, vehicle.sort || 0, vehicle.archived_year || null]);
                 newId = Number(res.lastInsertRowid);
                 result.imported.itwVehicles++;
               } else {
                 const existing = await this.db.get('SELECT id FROM itw_vehicles WHERE name = ?', [vehicle.name]);
                 if (!existing) {
                   const res = await this.db.run(`
-                    INSERT INTO itw_vehicles (name, sort) VALUES (?, ?)
-                  `, [vehicle.name, vehicle.sort || 0]);
+                    INSERT INTO itw_vehicles (name, sort, archived_year) VALUES (?, ?, ?)
+                  `, [vehicle.name, vehicle.sort || 0, vehicle.archived_year || null]);
                   newId = Number(res.lastInsertRowid);
                   result.imported.itwVehicles++;
                 } else {
@@ -535,6 +577,86 @@ export class SettingsImporter {
               }
               if (newId && vehicle.id) {
                 idMappings.itwVehicles.set(vehicle.id, newId);
+              }
+            }
+          }
+        }
+
+        // ITW-Doctors importieren
+        if (data.itwDoctors && Array.isArray(data.itwDoctors)) {
+          if (replaceExisting) {
+            await this.db.run('DELETE FROM itw_doctors');
+          }
+          
+          for (const doctor of data.itwDoctors) {
+            if (doctor.name) {
+              if (replaceExisting) {
+                await this.db.run(`
+                  INSERT INTO itw_doctors (name, vorname, sort) VALUES (?, ?, ?)
+                `, [doctor.name, doctor.vorname || '', doctor.sort || 0]);
+                result.imported.itwDoctors++;
+              } else {
+                const existing = await this.db.get('SELECT id FROM itw_doctors WHERE name = ? AND vorname = ?', [doctor.name, doctor.vorname || '']);
+                if (!existing) {
+                  await this.db.run(`
+                    INSERT INTO itw_doctors (name, vorname, sort) VALUES (?, ?, ?)
+                  `, [doctor.name, doctor.vorname || '', doctor.sort || 0]);
+                  result.imported.itwDoctors++;
+                } else {
+                  result.skipped++;
+                }
+              }
+            }
+          }
+        }
+
+        // Rollen importieren
+        if (data.roles && Array.isArray(data.roles)) {
+          if (replaceExisting) {
+            await this.db.run('DELETE FROM roles');
+          }
+          
+          for (const role of data.roles) {
+            if (role.name) {
+              if (replaceExisting) {
+                await this.db.run(`
+                  INSERT INTO roles (name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort) 
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [
+                  role.name, 
+                  role.description || '', 
+                  role.canEditPersonnel ? 1 : 0,
+                  role.canEditVehicles ? 1 : 0,
+                  role.canEditSettings ? 1 : 0,
+                  role.canEditRoster ? 1 : 0,
+                  role.canViewReports ? 1 : 0,
+                  role.canExportData ? 1 : 0,
+                  role.canManageUsers ? 1 : 0,
+                  role.sort || 0
+                ]);
+                result.imported.roles++;
+              } else {
+                const existing = await this.db.get('SELECT id FROM roles WHERE name = ?', [role.name]);
+                if (!existing) {
+                  await this.db.run(`
+                    INSERT INTO roles (name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  `, [
+                    role.name, 
+                    role.description || '', 
+                    role.canEditPersonnel ? 1 : 0,
+                    role.canEditVehicles ? 1 : 0,
+                    role.canEditSettings ? 1 : 0,
+                    role.canEditRoster ? 1 : 0,
+                    role.canViewReports ? 1 : 0,
+                    role.canExportData ? 1 : 0,
+                    role.canManageUsers ? 1 : 0,
+                    role.sort || 0
+                  ]);
+                  result.imported.roles++;
+                } else {
+                  result.skipped++;
+                }
               }
             }
           }
@@ -638,7 +760,7 @@ export class SettingsImporter {
               if (replaceExisting) {
                 await this.db.run(`
                   INSERT INTO rtw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, ?, ?)
-                `, [mappedVehicleId, p.startYM, p.endYM || null, p.active !== false ? 1 : 0]);
+                `, [mappedVehicleId, p.startYM, this.normalizeEndYM(p.endYM), p.active !== false ? 1 : 0]);
                 result.imported.rtwVehiclePeriods++;
               } else {
                 // Check for duplicate period? Maybe just insert if not exact match?
@@ -647,7 +769,7 @@ export class SettingsImporter {
                 if (!existing) {
                   await this.db.run(`
                     INSERT INTO rtw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, ?, ?)
-                  `, [mappedVehicleId, p.startYM, p.endYM || null, p.active !== false ? 1 : 0]);
+                  `, [mappedVehicleId, p.startYM, this.normalizeEndYM(p.endYM), p.active !== false ? 1 : 0]);
                   result.imported.rtwVehiclePeriods++;
                 } else {
                   result.skipped++;
@@ -670,14 +792,14 @@ export class SettingsImporter {
               if (replaceExisting) {
                 await this.db.run(`
                   INSERT INTO nef_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, ?, ?)
-                `, [mappedVehicleId, p.startYM, p.endYM || null, p.active !== false ? 1 : 0]);
+                `, [mappedVehicleId, p.startYM, this.normalizeEndYM(p.endYM), p.active !== false ? 1 : 0]);
                 result.imported.nefVehiclePeriods++;
               } else {
                 const existing = await this.db.get('SELECT id FROM nef_vehicle_periods WHERE vehicleId = ? AND startYM = ?', [mappedVehicleId, p.startYM]);
                 if (!existing) {
                   await this.db.run(`
                     INSERT INTO nef_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, ?, ?)
-                  `, [mappedVehicleId, p.startYM, p.endYM || null, p.active !== false ? 1 : 0]);
+                  `, [mappedVehicleId, p.startYM, this.normalizeEndYM(p.endYM), p.active !== false ? 1 : 0]);
                   result.imported.nefVehiclePeriods++;
                 } else {
                   result.skipped++;
@@ -700,14 +822,14 @@ export class SettingsImporter {
               if (replaceExisting) {
                 await this.db.run(`
                   INSERT INTO itw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, ?, ?)
-                `, [mappedVehicleId, p.startYM, p.endYM || null, p.active !== false ? 1 : 0]);
+                `, [mappedVehicleId, p.startYM, this.normalizeEndYM(p.endYM), p.active !== false ? 1 : 0]);
                 result.imported.itwVehiclePeriods++;
               } else {
                 const existing = await this.db.get('SELECT id FROM itw_vehicle_periods WHERE vehicleId = ? AND startYM = ?', [mappedVehicleId, p.startYM]);
                 if (!existing) {
                   await this.db.run(`
                     INSERT INTO itw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, ?, ?)
-                  `, [mappedVehicleId, p.startYM, p.endYM || null, p.active !== false ? 1 : 0]);
+                  `, [mappedVehicleId, p.startYM, this.normalizeEndYM(p.endYM), p.active !== false ? 1 : 0]);
                   result.imported.itwVehiclePeriods++;
                 } else {
                   result.skipped++;
@@ -772,7 +894,14 @@ export class SettingsImporter {
           { id: 1, name: 'NEF 1', sort: 0, archived_year: undefined, occupancy_mode: '24h' }
         ],
         itwVehicles: [
-          { id: 1, name: 'ITW 1', sort: 0 }
+          { id: 1, name: 'ITW 1', sort: 0, archived_year: undefined }
+        ],
+        itwDoctors: [
+          { id: 1, name: 'Mustermann', vorname: 'Max', sort: 0 }
+        ],
+        roles: [
+          { id: 1, name: 'Administrator', description: 'Vollzugriff auf alle Funktionen', canEditPersonnel: true, canEditVehicles: true, canEditSettings: true, canEditRoster: true, canViewReports: true, canExportData: true, canManageUsers: true, sort: 1 },
+          { id: 2, name: 'Benutzer', description: 'Standardbenutzer mit Lesezugriff', canEditPersonnel: false, canEditVehicles: false, canEditSettings: false, canEditRoster: false, canViewReports: true, canExportData: false, canManageUsers: false, sort: 2 }
         ],
         qualificationTypes: [
           { id: 1, name: 'Rettungssanitäter', description: 'Rettungssanitäter Ausbildung', category: 'Medizin', active: true, sort: 1 },
