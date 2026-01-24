@@ -22,6 +22,7 @@ interface SettingsImportResult {
 interface PersonnelImportResult {
   success: boolean;
   imported: number;
+  updated: number;
   skipped: number;
   errors: string[];
 }
@@ -59,7 +60,7 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
       setPersonnelResult(null);
 
       const importResult = await (window as any).electronAPI.invoke('import-personnel-excel', filePath, replaceExistingPersonnel);
-      
+
       setPersonnelResult(importResult);
       setImporting(false);
 
@@ -71,6 +72,7 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
       setPersonnelResult({
         success: false,
         imported: 0,
+        updated: 0,
         skipped: 0,
         errors: [`Import fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}`]
       });
@@ -127,7 +129,7 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
       setSettingsResult(null);
 
       const importResult = await (window as any).electronAPI.invoke('import-settings-json', filePath, replaceExistingSettings);
-      
+
       setSettingsResult(importResult);
       setImporting(false);
 
@@ -187,17 +189,17 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
   };
 
   const getTotalImported = (result: SettingsImportResult) => {
-    return result.imported.settings + 
-           result.imported.shiftTypes + 
-           result.imported.holidays + 
-           result.imported.itwPatterns + 
-           result.imported.deptPatterns + 
-           result.imported.rtwVehicles + 
-           result.imported.nefVehicles +
-           result.imported.itwVehicles +
-           result.imported.itwDoctors +
-           result.imported.roles +
-           result.imported.qualificationTypes;
+    return result.imported.settings +
+      result.imported.shiftTypes +
+      result.imported.holidays +
+      result.imported.itwPatterns +
+      result.imported.deptPatterns +
+      result.imported.rtwVehicles +
+      result.imported.nefVehicles +
+      result.imported.itwVehicles +
+      result.imported.itwDoctors +
+      result.imported.roles +
+      result.imported.qualificationTypes;
   };
 
   return (
@@ -224,7 +226,7 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
       {/* Personal Excel Import/Export */}
       <div style={{ marginBottom: '40px', padding: '16px', border: '1px solid #ddd', borderRadius: '8px' }}>
         <h3>Personal (Excel)</h3>
-        
+
         <div style={{ marginBottom: '20px' }}>
           <h4>Import</h4>
           <div style={{ marginBottom: '10px' }}>
@@ -270,7 +272,7 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
           >
             <strong>Import-Ergebnis:</strong><br />
             Status: {personnelResult.success ? 'Erfolgreich' : 'Fehlerhaft'}<br />
-            Importiert: {personnelResult.imported}, Übersprungen: {personnelResult.skipped}
+            Importiert: {personnelResult.imported}, Aktualisiert: {personnelResult.updated || 0}, Übersprungen: {personnelResult.skipped}
             {personnelResult.errors.length > 0 && (
               <>
                 <br /><strong>Fehler:</strong>
@@ -306,7 +308,7 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
       {/* Einstellungen JSON Import/Export */}
       <div style={{ padding: '16px', border: '1px solid #ddd', borderRadius: '8px' }}>
         <h3>Einstellungen (JSON)</h3>
-        
+
         <div style={{ marginBottom: '20px' }}>
           <h4>Import</h4>
           <div style={{ marginBottom: '10px' }}>

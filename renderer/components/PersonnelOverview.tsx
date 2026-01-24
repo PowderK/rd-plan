@@ -1,286 +1,6 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import styles from './PersonnelOverview.module.css';
-
-// Person Edit Modal Komponente
-// PersonEditModal entfernt - direkte Verwendung von openEditPersonWindow
-const removedPersonEditModal = () => {
-  const [formData, setFormData] = useState({
-    name: person.name || '',
-    vorname: person.vorname || '',
-    street: person.street || '',
-    postalCode: person.postalCode || '',
-    city: person.city || '',
-    phone: person.phone || '',
-    mobile: person.mobile || '',
-    email: person.email || '',
-    active: person.active ?? true
-  });
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await (window as any).api.updatePerson(person.id, formData);
-      onSave();
-      onClose();
-    } catch (error) {
-      // console.error('Fehler beim Speichern der Person:', error);
-      alert('Fehler beim Speichern!');
-    }
-  };
-
-  return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    }}>
-      <div style={{
-        backgroundColor: 'white',
-        padding: '24px',
-        borderRadius: '8px',
-        minWidth: '400px',
-        maxHeight: '80vh',
-        overflow: 'auto'
-      }}>
-        <h3>Person bearbeiten: {person.name}, {person.vorname}</h3>
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '12px' }}>
-            <label>Nachname:
-              <input 
-                type="text" 
-                value={formData.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
-                required
-              />
-            </label>
-          </div>
-          <div style={{ marginBottom: '12px' }}>
-            <label>Vorname:
-              <input 
-                type="text" 
-                value={formData.vorname}
-                onChange={(e) => setFormData(prev => ({ ...prev, vorname: e.target.value }))}
-                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
-                required
-              />
-            </label>
-          </div>
-          <div style={{ marginBottom: '12px' }}>
-            <label>Straße:
-              <input 
-                type="text" 
-                value={formData.street}
-                onChange={(e) => setFormData(prev => ({ ...prev, street: e.target.value }))}
-                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
-              />
-            </label>
-          </div>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-            <label style={{ flex: '1' }}>PLZ:
-              <input 
-                type="text" 
-                value={formData.postalCode}
-                onChange={(e) => setFormData(prev => ({ ...prev, postalCode: e.target.value }))}
-                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
-              />
-            </label>
-            <label style={{ flex: '2' }}>Stadt:
-              <input 
-                type="text" 
-                value={formData.city}
-                onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
-                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
-              />
-            </label>
-          </div>
-          <div style={{ marginBottom: '12px' }}>
-            <label>Telefon:
-              <input 
-                type="tel" 
-                value={formData.phone}
-                onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
-              />
-            </label>
-          </div>
-          <div style={{ marginBottom: '12px' }}>
-            <label>Mobil:
-              <input 
-                type="tel" 
-                value={formData.mobile}
-                onChange={(e) => setFormData(prev => ({ ...prev, mobile: e.target.value }))}
-                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
-              />
-            </label>
-          </div>
-          <div style={{ marginBottom: '12px' }}>
-            <label>E-Mail:
-              <input 
-                type="email" 
-                value={formData.email}
-                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
-              />
-            </label>
-          </div>
-          <div style={{ marginBottom: '24px' }}>
-            <label>
-              <input 
-                type="checkbox" 
-                checked={Boolean(formData.active)}
-                onChange={(e) => setFormData(prev => ({ ...prev, active: e.target.checked }))}
-              />
-              {' '}Aktiv
-            </label>
-          </div>
-          
-          {/* Qualifikations-Management */}
-          <div style={{ marginBottom: '24px' }}>
-            <h4 style={{ marginBottom: '12px' }}>Qualifikationen</h4>
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-              <button 
-                type="button"
-                onClick={() => {
-                  // Öffne Qualifikations-Management für diese Person
-                  (window as any).api.openEditPersonWindow(person.id);
-                  onClose(); // Schließe das aktuelle Modal
-                }}
-                style={{
-                  backgroundColor: '#28a745',
-                  color: 'white',
-                  border: 'none',
-                  padding: '8px 12px',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
-              >
-                Qualifikationen verwalten
-              </button>
-            </div>
-            
-            {/* Zeige aktuelle Qualifikationen */}
-            <div style={{ 
-              background: '#f8f9fa', 
-              padding: '8px', 
-              borderRadius: '4px',
-              fontSize: '12px'
-            }}>
-              <strong>Aktuelle Qualifikationen:</strong><br/>
-              {qualificationPeriods && qualificationPeriods.length > 0 ? (
-                qualificationPeriods
-                  .filter((q: QualificationPeriod) => q.active)
-                  .map((q: QualificationPeriod) => `${q.qualType} (${q.startYM || 'offen'} - ${q.endYM || 'unbegrenzt'})`)
-                  .join(', ')
-              ) : (
-                'Keine Qualifikationen vorhanden'
-              )}
-            </div>
-          </div>
-          
-          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-            <button type="button" onClick={onClose}>Abbrechen</button>
-            <button type="submit" style={{ backgroundColor: '#007bff', color: 'white' }}>Speichern</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-
-// Azubi Edit Modal Komponente  
-// AzubiEditModal entfernt - nutzt direkt openEditPersonWindow über Qualifikationssystem
-const removedAzubiEditModal = () => {
-  const [formData, setFormData] = useState({
-    name: azubi.name || '',
-    vorname: azubi.vorname || '',
-    lehrjahr: azubi.lehrjahr || 1
-  });
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await (window as any).api.updateAzubi(azubi.id, formData);
-      onSave();
-      onClose();
-    } catch (error) {
-      // console.error('Fehler beim Speichern des Azubis:', error);
-      alert('Fehler beim Speichern!');
-    }
-  };
-
-  return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    }}>
-      <div style={{
-        backgroundColor: 'white',
-        padding: '24px',
-        borderRadius: '8px',
-        minWidth: '400px'
-      }}>
-        <h3>Azubi bearbeiten: {azubi.name}, {azubi.vorname}</h3>
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '12px' }}>
-            <label>Nachname:
-              <input 
-                type="text" 
-                value={formData.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
-                required
-              />
-            </label>
-          </div>
-          <div style={{ marginBottom: '12px' }}>
-            <label>Vorname:
-              <input 
-                type="text" 
-                value={formData.vorname}
-                onChange={(e) => setFormData(prev => ({ ...prev, vorname: e.target.value }))}
-                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
-                required
-              />
-            </label>
-          </div>
-          <div style={{ marginBottom: '24px' }}>
-            <label>Lehrjahr:
-              <select 
-                value={formData.lehrjahr}
-                onChange={(e) => setFormData(prev => ({ ...prev, lehrjahr: Number(e.target.value) }))}
-                style={{ width: '100%', marginTop: '4px', padding: '8px' }}
-              >
-                <option value={1}>1. Lehrjahr</option>
-                <option value={2}>2. Lehrjahr</option>
-                <option value={3}>3. Lehrjahr</option>
-              </select>
-            </label>
-          </div>
-          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-            <button type="button" onClick={onClose}>Abbrechen</button>
-            <button type="submit" style={{ backgroundColor: '#007bff', color: 'white' }}>Speichern</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
 
 // Zeiträume Manager Komponente
 const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ azubi, onClose }) => {
@@ -294,10 +14,10 @@ const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ 
       try {
         const azubiPeriods = await (window as any).api.getAzubiPeriods(azubi.id);
         setPeriods(azubiPeriods);
-        
+
         // Ermittle das Lehrjahr des letzten Zeitraums als Minimum
         if (azubiPeriods.length > 0) {
-          const sortedPeriods = [...azubiPeriods].sort((a, b) => 
+          const sortedPeriods = [...azubiPeriods].sort((a, b) =>
             new Date(b.end_date).getTime() - new Date(a.end_date).getTime()
           );
           const lastLehrjahr = sortedPeriods[0].lehrjahr || 1;
@@ -335,10 +55,10 @@ const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ 
       // Zeiträume neu laden
       const updatedPeriods = await (window as any).api.getAzubiPeriods(azubi.id);
       setPeriods(updatedPeriods);
-      
+
       // Aktualisiere minLehrjahr basierend auf neuem letzten Zeitraum
       if (updatedPeriods.length > 0) {
-        const sortedPeriods = [...updatedPeriods].sort((a, b) => 
+        const sortedPeriods = [...updatedPeriods].sort((a, b) =>
           new Date(b.end_date).getTime() - new Date(a.end_date).getTime()
         );
         const lastLehrjahr = sortedPeriods[0].lehrjahr || 1;
@@ -376,13 +96,13 @@ const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ 
   };
 
   return (
-    <div style={{ 
-      position: 'fixed', 
-      top: 0, 
-      left: 0, 
-      right: 0, 
-      bottom: 0, 
-      backgroundColor: 'rgba(0,0,0,0.5)', 
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.5)',
       zIndex: 1000,
       display: 'flex',
       alignItems: 'center',
@@ -399,34 +119,34 @@ const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ 
         boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
       }}>
         <h2>Zeiträume für {azubi.vorname} {azubi.name}</h2>
-        
+
         {/* Aktuelle Zeiträume anzeigen */}
         {periods.length > 0 ? (
           <div style={{ marginBottom: 24 }}>
             <h3>Aktuelle Zeiträume:</h3>
             {periods.map(period => (
-              <div key={period.id} style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                marginBottom: 12, 
-                padding: 12, 
-                backgroundColor: '#f5f5f5', 
-                borderRadius: 4 
+              <div key={period.id} style={{
+                display: 'flex',
+                alignItems: 'center',
+                marginBottom: 12,
+                padding: 12,
+                backgroundColor: '#f5f5f5',
+                borderRadius: 4
               }}>
                 <div style={{ flexGrow: 1 }}>
                   <strong>{new Date(period.start_date).toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })} - {new Date(period.end_date).toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })}</strong>
                   {period.description && <div style={{ fontSize: '0.9em', color: '#666' }}>{period.description}</div>}
                 </div>
-                <button 
-                  onClick={() => deletePeriod(period.id)} 
+                <button
+                  onClick={() => deletePeriod(period.id)}
                   disabled={loading}
-                  style={{ 
-                    marginLeft: 12, 
-                    backgroundColor: '#ff4444', 
-                    color: 'white', 
-                    border: 'none', 
-                    padding: '6px 12px', 
-                    borderRadius: 4, 
+                  style={{
+                    marginLeft: 12,
+                    backgroundColor: '#ff4444',
+                    color: 'white',
+                    border: 'none',
+                    padding: '6px 12px',
+                    borderRadius: 4,
                     cursor: loading ? 'not-allowed' : 'pointer'
                   }}
                 >
@@ -445,20 +165,20 @@ const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div>
               <label style={{ display: 'block', marginBottom: 4, fontSize: '0.9em', fontWeight: 'bold' }}>Von:</label>
-              <input 
-                type="date" 
-                value={newPeriod.start_date} 
-                onChange={e => setNewPeriod({...newPeriod, start_date: e.target.value})}
+              <input
+                type="date"
+                value={newPeriod.start_date}
+                onChange={e => setNewPeriod({ ...newPeriod, start_date: e.target.value })}
                 style={{ width: '100%', padding: '8px' }}
                 disabled={loading}
               />
             </div>
             <div>
               <label style={{ display: 'block', marginBottom: 4, fontSize: '0.9em', fontWeight: 'bold' }}>Bis:</label>
-              <input 
-                type="date" 
-                value={newPeriod.end_date} 
-                onChange={e => setNewPeriod({...newPeriod, end_date: e.target.value})}
+              <input
+                type="date"
+                value={newPeriod.end_date}
+                onChange={e => setNewPeriod({ ...newPeriod, end_date: e.target.value })}
                 style={{ width: '100%', padding: '8px' }}
                 disabled={loading}
               />
@@ -466,9 +186,9 @@ const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ 
           </div>
           <div style={{ marginBottom: 12 }}>
             <label style={{ display: 'block', marginBottom: 4, fontSize: '0.9em', fontWeight: 'bold' }}>Lehrjahr:</label>
-            <select 
-              value={newPeriod.lehrjahr} 
-              onChange={e => setNewPeriod({...newPeriod, lehrjahr: Number(e.target.value)})}
+            <select
+              value={newPeriod.lehrjahr}
+              onChange={e => setNewPeriod({ ...newPeriod, lehrjahr: Number(e.target.value) })}
               style={{ width: '100%', padding: '8px' }}
               disabled={loading}
             >
@@ -479,24 +199,24 @@ const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ 
           </div>
           <div style={{ marginBottom: 12 }}>
             <label style={{ display: 'block', marginBottom: 4, fontSize: '0.9em', fontWeight: 'bold' }}>Beschreibung (optional):</label>
-            <input 
-              type="text" 
-              value={newPeriod.description} 
-              onChange={e => setNewPeriod({...newPeriod, description: e.target.value})}
+            <input
+              type="text"
+              value={newPeriod.description}
+              onChange={e => setNewPeriod({ ...newPeriod, description: e.target.value })}
               placeholder="z.B. Praktikum, Urlaub..."
               style={{ width: '100%', padding: '8px' }}
               disabled={loading}
             />
           </div>
-          <button 
+          <button
             onClick={addPeriod}
             disabled={loading}
-            style={{ 
-              backgroundColor: '#007acc', 
-              color: 'white', 
-              border: 'none', 
-              padding: '10px 20px', 
-              borderRadius: 4, 
+            style={{
+              backgroundColor: '#007acc',
+              color: 'white',
+              border: 'none',
+              padding: '10px 20px',
+              borderRadius: 4,
               cursor: loading ? 'not-allowed' : 'pointer'
             }}
           >
@@ -505,14 +225,14 @@ const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ 
         </div>
 
         <div style={{ marginTop: 24, textAlign: 'right' }}>
-          <button 
+          <button
             onClick={onClose}
-            style={{ 
-              backgroundColor: '#6c757d', 
-              color: 'white', 
-              border: 'none', 
-              padding: '10px 20px', 
-              borderRadius: 4, 
+            style={{
+              backgroundColor: '#6c757d',
+              color: 'white',
+              border: 'none',
+              padding: '10px 20px',
+              borderRadius: 4,
               cursor: 'pointer'
             }}
           >
@@ -590,7 +310,7 @@ const PersonnelOverview: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [dragOverId, setDragOverId] = useState<number | null>(null);
   const [dragPosition, setDragPosition] = useState<'above' | 'below' | null>(null);
-  const [dragContext, setDragContext] = useState<'person'|'azubi'|'itw'|null>(null);
+  const [dragContext, setDragContext] = useState<'person' | 'azubi' | 'itw' | null>(null);
   const [selectedPersonId, setSelectedPersonId] = useState<number | null>(null);
   // Azubi/ITW: gleiche Optik/Verhalten/Bearbeitung
   const [editingAzubis, setEditingAzubis] = useState(false);
@@ -601,10 +321,10 @@ const PersonnelOverview: React.FC = () => {
   const [originalItws, setOriginalItws] = useState<ItwDoctor[] | null>(null);
 
   const [showInactive, setShowInactive] = useState(false);
-  
+
   // Rollen für Dropdown
   const [roles, setRoles] = useState<{ id: number; name: string }[]>([]);
-  
+
   // Modal States entfernt - nutzt direkt openEditPersonWindow für alle
 
   const loadPersonnel = useCallback(async () => {
@@ -732,7 +452,7 @@ const PersonnelOverview: React.FC = () => {
   }, [loadPersonnel, loadAzubis]);
 
   const onDragStart = (id: number) => setDraggedId(id);
-  const onDragOver = (e: React.DragEvent<HTMLTableRowElement>, overId: number, ctx: 'person'|'azubi'|'itw') => {
+  const onDragOver = (e: React.DragEvent<HTMLTableRowElement>, overId: number, ctx: 'person' | 'azubi' | 'itw') => {
     e.preventDefault();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const offsetY = e.clientY - rect.top;
@@ -855,9 +575,9 @@ const PersonnelOverview: React.FC = () => {
     const periods = activePeriods[p.id];
     if (periods && periods.length > 0) {
       const currentYM = new Date().toISOString().slice(0, 7);
-      return periods.some(per => 
-        per.active && 
-        per.startYM <= currentYM && 
+      return periods.some(per =>
+        per.active &&
+        per.startYM <= currentYM &&
         (!per.endYM || per.endYM >= currentYM)
       );
     }
@@ -872,431 +592,431 @@ const PersonnelOverview: React.FC = () => {
       {loading ? (
         <div>Lade Daten...</div>
       ) : (
-      <>
-      
-      {/* Sticky Container für Header + Tabs */}
-      <div className="sticky-header-container">
-        {/* Überschrift - ROT */}
-        <h2 className="page-header">Personal</h2>
-        
-        {/* Tab Navigation - GRÜN */}
-        <div className="tab-navigation">
-        <button
-          onClick={() => setActiveTab('stammpersonal')}
-          style={{
-            padding: '8px 16px',
-            border: 'none',
-            borderBottom: activeTab === 'stammpersonal' ? '3px solid #0ea5e9' : '3px solid transparent',
-            background: activeTab === 'stammpersonal' ? '#f8f9fa' : 'transparent',
-            fontWeight: activeTab === 'stammpersonal' ? 600 : 400,
-            cursor: 'pointer',
-            transition: 'all 0.2s'
-          }}
-        >
-          Stammpersonal
-        </button>
-        <button
-          onClick={() => setActiveTab('azubis')}
-          style={{
-            padding: '8px 16px',
-            border: 'none',
-            borderBottom: activeTab === 'azubis' ? '3px solid #0ea5e9' : '3px solid transparent',
-            background: activeTab === 'azubis' ? '#f8f9fa' : 'transparent',
-            fontWeight: activeTab === 'azubis' ? 600 : 400,
-            cursor: 'pointer',
-            transition: 'all 0.2s'
-          }}
-        >
-          Azubis
-        </button>
-        <button
-          onClick={() => setActiveTab('ärzte')}
-          style={{
-            padding: '8px 16px',
-            border: 'none',
-            borderBottom: activeTab === 'ärzte' ? '3px solid #0ea5e9' : '3px solid transparent',
-            background: activeTab === 'ärzte' ? '#f8f9fa' : 'transparent',
-            fontWeight: activeTab === 'ärzte' ? 600 : 400,
-            cursor: 'pointer',
-            transition: 'all 0.2s'
-          }}
-        >
-          Ärzte
-        </button>
-        </div>
-      </div>
-      {/* Ende Sticky Container */}
+        <>
 
-      {/* Content - GRAU */}
-      <div style={{ paddingTop: 16 }}>
-      
-      {/* Stammpersonal Tab */}
-      {activeTab === 'stammpersonal' && (
-      <div>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Inaktive anzeigen
-        </label>
-      </div>
-      
-      {/* Aktives Personal Tabelle */}
-      <table className={styles.table}>
-        <thead>
-          <tr className={styles.thead}>
-            <th>Name</th>
-            <th>Vorname</th>
-            <th className={styles.checkboxCell}>Aktiv</th>
-            <th style={{ width: 120 }} className={styles.center}>Qualifikationen</th>
-            <th style={{ width: 100 }} className={styles.center}>Aktionen</th>
-          </tr>
-        </thead>
-        <tbody className={styles.tbody}>
-          {activePersonnel.map(person => {
-            const selected = person.id === selectedPersonId;
-            const isOver = dragContext === 'person' && dragOverId === person.id;
-            const rowClass = [styles.row, selected ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
-            return (
-              <tr
-                key={person.id}
-                draggable={true}
-                onDragStart={() => onDragStart(person.id)}
-                onDragOver={(e) => onDragOver(e, person.id, 'person')}
-                onDragLeave={() => onDragLeave()}
-                onDrop={() => onDrop(person.id)}
-                onClick={() => handleRowClick(person.id)}
-                className={rowClass}
-                style={{ cursor: 'move' }}
+          {/* Sticky Container für Header + Tabs */}
+          <div className="sticky-header-container">
+            {/* Überschrift - ROT */}
+            <h2 className="page-header">Personal</h2>
+
+            {/* Tab Navigation - GRÜN */}
+            <div className="tab-navigation">
+              <button
+                onClick={() => setActiveTab('stammpersonal')}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderBottom: activeTab === 'stammpersonal' ? '3px solid #0ea5e9' : '3px solid transparent',
+                  background: activeTab === 'stammpersonal' ? '#f8f9fa' : 'transparent',
+                  fontWeight: activeTab === 'stammpersonal' ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
               >
-                <td>
-                  {person.name}
-                  {person.teilzeit && person.teilzeit < 100 && (
-                    <span style={{ fontSize: '11px', color: '#666', marginLeft: '8px' }}>
-                      ({person.teilzeit}%)
-                    </span>
-                  )}
-                </td>
-                <td>{person.vorname}</td>
-                <td className={styles.checkboxCell}>
-                  <span style={{ 
-                    color: '#28a745',
-                    fontSize: '16px'
-                  }}>
-                    ✓
-                  </span>
-                </td>
-                <td className={styles.center} style={{ fontSize: '11px', padding: '4px' }}>
-                  {qualificationPeriods[person.id] && qualificationPeriods[person.id].length > 0 ? (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
-                      {qualificationPeriods[person.id]
-                        .filter(q => q.active)
-                        .slice(0, 3)
-                        .map((qual, idx) => (
-                          <span
-                            key={idx}
-                            style={{
-                              background: '#007bff',
-                              color: 'white',
-                              padding: '2px 6px',
-                              borderRadius: '3px',
-                              fontSize: '10px',
-                              whiteSpace: 'nowrap'
-                            }}
-                            title={`${qual.qualType}: ${qual.startYM} - ${qual.endYM || 'unbegrenzt'}`}
-                          >
-                            {qual.qualType === 'Fahrzeugführer' ? 'FzF' :
-                             qual.qualType === 'Fahrzeugführer HLF-B' ? 'HLF' :
-                             qual.qualType === 'ITW Maschinist' ? 'ITW-Ma' :
-                             qual.qualType === 'ITW Fahrzeugführer' ? 'ITW-FzF' :
-                             qual.qualType.substring(0, 4)}
-                          </span>
-                        ))}
-                      {qualificationPeriods[person.id].filter(q => q.active).length > 3 && (
-                        <span style={{ fontSize: '10px', color: '#666' }}>
-                          +{qualificationPeriods[person.id].filter(q => q.active).length - 3}
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <span style={{ color: '#ccc', fontSize: '10px' }}>Keine</span>
-                  )}
-                </td>
-                <td className={styles.center}>
-                  <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        (window as any).api.openEditPersonWindow(person.id);
-                      }}
-                      style={{
-                        background: '#007bff',
-                        color: 'white',
-                        border: 'none',
-                        padding: '4px 8px',
-                        borderRadius: '3px',
-                        cursor: 'pointer',
-                        fontSize: '11px'
-                      }}
-                      title="Person bearbeiten"
-                    >
-                      ✏️
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                Stammpersonal
+              </button>
+              <button
+                onClick={() => setActiveTab('azubis')}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderBottom: activeTab === 'azubis' ? '3px solid #0ea5e9' : '3px solid transparent',
+                  background: activeTab === 'azubis' ? '#f8f9fa' : 'transparent',
+                  fontWeight: activeTab === 'azubis' ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Azubis
+              </button>
+              <button
+                onClick={() => setActiveTab('ärzte')}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderBottom: activeTab === 'ärzte' ? '3px solid #0ea5e9' : '3px solid transparent',
+                  background: activeTab === 'ärzte' ? '#f8f9fa' : 'transparent',
+                  fontWeight: activeTab === 'ärzte' ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Ärzte
+              </button>
+            </div>
+          </div>
+          {/* Ende Sticky Container */}
 
-      {/* Inaktives Personal Tabelle */}
-      {showInactive && inactivePersonnel.length > 0 && (
-        <div style={{ marginTop: '32px' }}>
-          <h4 style={{ color: '#666', marginBottom: '8px', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>Inaktives Personal</h4>
-          <table className={styles.table} style={{ opacity: 0.7, backgroundColor: '#f9f9f9' }}>
-            <thead>
-              <tr className={styles.thead} style={{ background: '#eee', color: '#666' }}>
-                <th>Name</th>
-                <th>Vorname</th>
-                <th className={styles.checkboxCell}>Aktiv</th>
-                <th style={{ width: 120 }} className={styles.center}>Qualifikationen</th>
-                <th style={{ width: 100 }} className={styles.center}>Aktionen</th>
-              </tr>
-            </thead>
-            <tbody className={styles.tbody}>
-              {inactivePersonnel.map(person => {
-                const selected = person.id === selectedPersonId;
-                const rowClass = [styles.row, selected ? styles.selected : ''].filter(Boolean).join(' ');
-                return (
-                  <tr
-                    key={person.id}
-                    onClick={() => handleRowClick(person.id)}
-                    className={rowClass}
-                    style={{ color: '#666' }}
-                  >
-                    <td>
-                      {person.name}
-                      {person.teilzeit && person.teilzeit < 100 && (
-                        <span style={{ fontSize: '11px', color: '#999', marginLeft: '8px' }}>
-                          ({person.teilzeit}%)
-                        </span>
-                      )}
-                    </td>
-                    <td>{person.vorname}</td>
-                    <td className={styles.checkboxCell}>
-                      <span style={{ 
-                        color: '#dc3545',
-                        fontSize: '16px'
-                      }}>
-                        ✗
-                      </span>
-                    </td>
-                    <td className={styles.center} style={{ fontSize: '11px', padding: '4px' }}>
-                      {qualificationPeriods[person.id] && qualificationPeriods[person.id].length > 0 ? (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
-                          {qualificationPeriods[person.id]
-                            .filter(q => q.active)
-                            .slice(0, 3)
-                            .map((qual, idx) => (
-                              <span
-                                key={idx}
-                                style={{
-                                  background: '#6c757d',
-                                  color: 'white',
-                                  padding: '2px 6px',
-                                  borderRadius: '3px',
-                                  fontSize: '10px',
-                                  whiteSpace: 'nowrap'
-                                }}
-                                title={`${qual.qualType}: ${qual.startYM} - ${qual.endYM || 'unbegrenzt'}`}
-                              >
-                                {qual.qualType === 'Fahrzeugführer' ? 'FzF' :
-                                 qual.qualType === 'Fahrzeugführer HLF-B' ? 'HLF' :
-                                 qual.qualType === 'ITW Maschinist' ? 'ITW-Ma' :
-                                 qual.qualType === 'ITW Fahrzeugführer' ? 'ITW-FzF' :
-                                 qual.qualType.substring(0, 4)}
-                              </span>
-                            ))}
-                        </div>
-                      ) : (
-                        <span style={{ color: '#ccc', fontSize: '10px' }}>Keine</span>
-                      )}
-                    </td>
-                    <td className={styles.center}>
-                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            (window as any).api.openEditPersonWindow(person.id);
-                          }}
-                          style={{
-                            background: '#6c757d',
-                            color: 'white',
-                            border: 'none',
-                            padding: '4px 8px',
-                            borderRadius: '3px',
-                            cursor: 'pointer',
-                            fontSize: '11px'
-                          }}
-                          title="Person bearbeiten"
+          {/* Content - GRAU */}
+          <div style={{ paddingTop: 16 }}>
+
+            {/* Stammpersonal Tab */}
+            {activeTab === 'stammpersonal' && (
+              <div>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Inaktive anzeigen
+                  </label>
+                </div>
+
+                {/* Aktives Personal Tabelle */}
+                <table className={styles.table}>
+                  <thead>
+                    <tr className={styles.thead}>
+                      <th>Name</th>
+                      <th>Vorname</th>
+                      <th className={styles.checkboxCell}>Aktiv</th>
+                      <th style={{ width: 120 }} className={styles.center}>Qualifikationen</th>
+                      <th style={{ width: 100 }} className={styles.center}>Aktionen</th>
+                    </tr>
+                  </thead>
+                  <tbody className={styles.tbody}>
+                    {activePersonnel.map(person => {
+                      const selected = person.id === selectedPersonId;
+                      const isOver = dragContext === 'person' && dragOverId === person.id;
+                      const rowClass = [styles.row, selected ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
+                      return (
+                        <tr
+                          key={person.id}
+                          draggable={true}
+                          onDragStart={() => onDragStart(person.id)}
+                          onDragOver={(e) => onDragOver(e, person.id, 'person')}
+                          onDragLeave={() => onDragLeave()}
+                          onDrop={() => onDrop(person.id)}
+                          onClick={() => handleRowClick(person.id)}
+                          className={rowClass}
+                          style={{ cursor: 'move' }}
                         >
-                          ✏️
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                          <td>
+                            {person.name}
+                            {person.teilzeit && person.teilzeit < 100 && (
+                              <span style={{ fontSize: '11px', color: '#666', marginLeft: '8px' }}>
+                                ({person.teilzeit}%)
+                              </span>
+                            )}
+                          </td>
+                          <td>{person.vorname}</td>
+                          <td className={styles.checkboxCell}>
+                            <span style={{
+                              color: '#28a745',
+                              fontSize: '16px'
+                            }}>
+                              ✓
+                            </span>
+                          </td>
+                          <td className={styles.center} style={{ fontSize: '11px', padding: '4px' }}>
+                            {qualificationPeriods[person.id] && qualificationPeriods[person.id].length > 0 ? (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                                {qualificationPeriods[person.id]
+                                  .filter(q => q.active)
+                                  .slice(0, 3)
+                                  .map((qual, idx) => (
+                                    <span
+                                      key={idx}
+                                      style={{
+                                        background: '#007bff',
+                                        color: 'white',
+                                        padding: '2px 6px',
+                                        borderRadius: '3px',
+                                        fontSize: '10px',
+                                        whiteSpace: 'nowrap'
+                                      }}
+                                      title={`${qual.qualType}: ${qual.startYM} - ${qual.endYM || 'unbegrenzt'} `}
+                                    >
+                                      {qual.qualType === 'Fahrzeugführer' ? 'FzF' :
+                                        qual.qualType === 'Fahrzeugführer HLF-B' ? 'HLF' :
+                                          qual.qualType === 'ITW Maschinist' ? 'ITW-Ma' :
+                                            qual.qualType === 'ITW Fahrzeugführer' ? 'ITW-FzF' :
+                                              qual.qualType.substring(0, 4)}
+                                    </span>
+                                  ))}
+                                {qualificationPeriods[person.id].filter(q => q.active).length > 3 && (
+                                  <span style={{ fontSize: '10px', color: '#666' }}>
+                                    +{qualificationPeriods[person.id].filter(q => q.active).length - 3}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span style={{ color: '#ccc', fontSize: '10px' }}>Keine</span>
+                            )}
+                          </td>
+                          <td className={styles.center}>
+                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  (window as any).api.openEditPersonWindow(person.id);
+                                }}
+                                style={{
+                                  background: '#007bff',
+                                  color: 'white',
+                                  border: 'none',
+                                  padding: '4px 8px',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer',
+                                  fontSize: '11px'
+                                }}
+                                title="Person bearbeiten"
+                              >
+                                ✏️
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
 
-      {/* Aktionen unter der Stammpersonal-Tabelle */}
-      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-        <button onClick={() => (window as any).api.openAddPersonWindow()}>
-          Hinzufügen
-        </button>
-      </div>
-      </div>
-      )}
-      
-      {/* Azubis Tab */}
-      {activeTab === 'azubis' && (
-      <div>
-        <h3>Azubis</h3>
-        {/* Azubis: Buttons unter der Tabelle */}
-        <table className={styles.table}>
-          <thead>
-            <tr className={styles.thead}>
-              <th>Name</th>
-              <th>Vorname</th>
-              <th className={styles.narrow}>Lehrjahr</th>
-              <th>Zeiträume</th>
-              <th className={styles.center}>Aktionen</th>
-              <th className={styles.center} style={{ width: 60 }}>#</th>
-            </tr>
-          </thead>
-          <tbody className={styles.tbody}>
-            {azubis.map(a => {
-              const isOver = dragContext === 'azubi' && dragOverId === a.id;
-              const rowClass = [styles.row, selectedAzubiId === a.id ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
-              const periods = azubiPeriods[a.id] || [];
-              const periodsText = periods.length > 0 
-                ? periods.map(p => `${new Date(p.start_date).toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })} - ${new Date(p.end_date).toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })}`).join(', ')
-                : 'Keine Zeiträume definiert';
-              
-              return (
-                <tr key={a.id}
-                    draggable={!editingAzubis}
-                    onDragStart={() => !editingAzubis && onAzubiDragStart(a.id)}
-                    onDragOver={(e) => !editingAzubis && onDragOver(e, a.id, 'azubi')}
-                    onDragLeave={() => !editingAzubis && onDragLeave()}
-                    onDrop={() => !editingAzubis && onAzubiDrop(a.id)}
-                    onClick={() => handleAzubiRowClick(a.id)}
-                    className={rowClass}
-                    style={{ cursor: editingAzubis ? 'default' : 'move' }}>
-                  <td>{editingAzubis ? <input value={a.name} onChange={e => updateAzubiField(a.id, 'name', e.target.value)} /> : a.name}</td>
-                  <td>{editingAzubis ? <input value={a.vorname} onChange={e => updateAzubiField(a.id, 'vorname', e.target.value)} /> : a.vorname}</td>
-                  <td>{editingAzubis ? <input type="number" className={styles.narrow} value={a.lehrjahr} onChange={e => updateAzubiField(a.id, 'lehrjahr', Number(e.target.value))} /> : a.lehrjahr}</td>
-                  <td style={{ fontSize: '0.9em', color: periods.length > 0 ? '#333' : '#999', maxWidth: '200px', wordWrap: 'break-word' }}>
-                    {periodsText}
-                  </td>
-                  <td className={styles.center}>
-                    <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          (window as any).api.openEditAzubiWindow(a.id);
-                        }}
-                        style={{
-                          background: '#007bff',
-                          color: 'white',
-                          border: 'none',
-                          padding: '4px 8px',
-                          borderRadius: '3px',
-                          cursor: 'pointer',
-                          fontSize: '11px'
-                        }}
-                        title="Azubi bearbeiten"
-                      >
-                        ✏️
-                      </button>
-                      {/* Zeiträume-Button entfernt - jetzt über Qualifikationssystem */}
-                    </div>
-                  </td>
-                  <td className={styles.center}>{selectedAzubiId === a.id ? '✓' : ''}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {!editingAzubis ? (
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button onClick={() => (window as any).api.openAddAzubiWindow()}>Hinzufügen</button>
+                {/* Inaktives Personal Tabelle */}
+                {showInactive && inactivePersonnel.length > 0 && (
+                  <div style={{ marginTop: '32px' }}>
+                    <h4 style={{ color: '#666', marginBottom: '8px', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>Inaktives Personal</h4>
+                    <table className={styles.table} style={{ opacity: 0.7, backgroundColor: '#f9f9f9' }}>
+                      <thead>
+                        <tr className={styles.thead} style={{ background: '#eee', color: '#666' }}>
+                          <th>Name</th>
+                          <th>Vorname</th>
+                          <th className={styles.checkboxCell}>Aktiv</th>
+                          <th style={{ width: 120 }} className={styles.center}>Qualifikationen</th>
+                          <th style={{ width: 100 }} className={styles.center}>Aktionen</th>
+                        </tr>
+                      </thead>
+                      <tbody className={styles.tbody}>
+                        {inactivePersonnel.map(person => {
+                          const selected = person.id === selectedPersonId;
+                          const rowClass = [styles.row, selected ? styles.selected : ''].filter(Boolean).join(' ');
+                          return (
+                            <tr
+                              key={person.id}
+                              onClick={() => handleRowClick(person.id)}
+                              className={rowClass}
+                              style={{ color: '#666' }}
+                            >
+                              <td>
+                                {person.name}
+                                {person.teilzeit && person.teilzeit < 100 && (
+                                  <span style={{ fontSize: '11px', color: '#999', marginLeft: '8px' }}>
+                                    ({person.teilzeit}%)
+                                  </span>
+                                )}
+                              </td>
+                              <td>{person.vorname}</td>
+                              <td className={styles.checkboxCell}>
+                                <span style={{
+                                  color: '#dc3545',
+                                  fontSize: '16px'
+                                }}>
+                                  ✗
+                                </span>
+                              </td>
+                              <td className={styles.center} style={{ fontSize: '11px', padding: '4px' }}>
+                                {qualificationPeriods[person.id] && qualificationPeriods[person.id].length > 0 ? (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                                    {qualificationPeriods[person.id]
+                                      .filter(q => q.active)
+                                      .slice(0, 3)
+                                      .map((qual, idx) => (
+                                        <span
+                                          key={idx}
+                                          style={{
+                                            background: '#6c757d',
+                                            color: 'white',
+                                            padding: '2px 6px',
+                                            borderRadius: '3px',
+                                            fontSize: '10px',
+                                            whiteSpace: 'nowrap'
+                                          }}
+                                          title={`${qual.qualType}: ${qual.startYM} - ${qual.endYM || 'unbegrenzt'} `}
+                                        >
+                                          {qual.qualType === 'Fahrzeugführer' ? 'FzF' :
+                                            qual.qualType === 'Fahrzeugführer HLF-B' ? 'HLF' :
+                                              qual.qualType === 'ITW Maschinist' ? 'ITW-Ma' :
+                                                qual.qualType === 'ITW Fahrzeugführer' ? 'ITW-FzF' :
+                                                  qual.qualType.substring(0, 4)}
+                                        </span>
+                                      ))}
+                                  </div>
+                                ) : (
+                                  <span style={{ color: '#ccc', fontSize: '10px' }}>Keine</span>
+                                )}
+                              </td>
+                              <td className={styles.center}>
+                                <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      (window as any).api.openEditPersonWindow(person.id);
+                                    }}
+                                    style={{
+                                      background: '#6c757d',
+                                      color: 'white',
+                                      border: 'none',
+                                      padding: '4px 8px',
+                                      borderRadius: '3px',
+                                      cursor: 'pointer',
+                                      fontSize: '11px'
+                                    }}
+                                    title="Person bearbeiten"
+                                  >
+                                    ✏️
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Aktionen unter der Stammpersonal-Tabelle */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <button onClick={() => (window as any).api.openAddPersonWindow()}>
+                    Hinzufügen
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Azubis Tab */}
+            {activeTab === 'azubis' && (
+              <div>
+                <h3>Azubis</h3>
+                {/* Azubis: Buttons unter der Tabelle */}
+                <table className={styles.table}>
+                  <thead>
+                    <tr className={styles.thead}>
+                      <th>Name</th>
+                      <th>Vorname</th>
+                      <th className={styles.narrow}>Lehrjahr</th>
+                      <th>Zeiträume</th>
+                      <th className={styles.center}>Aktionen</th>
+                      <th className={styles.center} style={{ width: 60 }}>#</th>
+                    </tr>
+                  </thead>
+                  <tbody className={styles.tbody}>
+                    {azubis.map(a => {
+                      const isOver = dragContext === 'azubi' && dragOverId === a.id;
+                      const rowClass = [styles.row, selectedAzubiId === a.id ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
+                      const periods = azubiPeriods[a.id] || [];
+                      const periodsText = periods.length > 0
+                        ? periods.map(p => `${new Date(p.start_date).toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })} - ${new Date(p.end_date).toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })} `).join(', ')
+                        : 'Keine Zeiträume definiert';
+
+                      return (
+                        <tr key={a.id}
+                          draggable={!editingAzubis}
+                          onDragStart={() => !editingAzubis && onAzubiDragStart(a.id)}
+                          onDragOver={(e) => !editingAzubis && onDragOver(e, a.id, 'azubi')}
+                          onDragLeave={() => !editingAzubis && onDragLeave()}
+                          onDrop={() => !editingAzubis && onAzubiDrop(a.id)}
+                          onClick={() => handleAzubiRowClick(a.id)}
+                          className={rowClass}
+                          style={{ cursor: editingAzubis ? 'default' : 'move' }}>
+                          <td>{editingAzubis ? <input value={a.name} onChange={e => updateAzubiField(a.id, 'name', e.target.value)} /> : a.name}</td>
+                          <td>{editingAzubis ? <input value={a.vorname} onChange={e => updateAzubiField(a.id, 'vorname', e.target.value)} /> : a.vorname}</td>
+                          <td>{editingAzubis ? <input type="number" className={styles.narrow} value={a.lehrjahr} onChange={e => updateAzubiField(a.id, 'lehrjahr', Number(e.target.value))} /> : a.lehrjahr}</td>
+                          <td style={{ fontSize: '0.9em', color: periods.length > 0 ? '#333' : '#999', maxWidth: '200px', wordWrap: 'break-word' }}>
+                            {periodsText}
+                          </td>
+                          <td className={styles.center}>
+                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  (window as any).api.openEditAzubiWindow(a.id);
+                                }}
+                                style={{
+                                  background: '#007bff',
+                                  color: 'white',
+                                  border: 'none',
+                                  padding: '4px 8px',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer',
+                                  fontSize: '11px'
+                                }}
+                                title="Azubi bearbeiten"
+                              >
+                                ✏️
+                              </button>
+                              {/* Zeiträume-Button entfernt - jetzt über Qualifikationssystem */}
+                            </div>
+                          </td>
+                          <td className={styles.center}>{selectedAzubiId === a.id ? '✓' : ''}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {!editingAzubis ? (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button onClick={() => (window as any).api.openAddAzubiWindow()}>Hinzufügen</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button onClick={saveEditingAzubis}>Speichern</button>
+                    <button onClick={cancelEditingAzubis}>Abbrechen</button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Ärzte Tab */}
+            {activeTab === 'ärzte' && (
+              <div>
+                <h3>ITW Ärzte</h3>
+                {/* ITW Ärzte: Buttons unter der Tabelle */}
+                <table className={styles.table}>
+                  <thead>
+                    <tr className={styles.thead}>
+                      <th>Name</th>
+                      <th>Vorname</th>
+                      <th className={styles.center} style={{ width: 60 }}>#</th>
+                    </tr>
+                  </thead>
+                  <tbody className={styles.tbody}>
+                    {itws.map(a => {
+                      const isOver = dragContext === 'itw' && dragOverId === a.id;
+                      const rowClass = [styles.row, selectedItwId === a.id ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
+                      return (
+                        <tr key={a.id}
+                          draggable={!editingItw}
+                          onDragStart={() => !editingItw && onItwDragStart(a.id)}
+                          onDragOver={(e) => !editingItw && onDragOver(e, a.id, 'itw')}
+                          onDragLeave={() => !editingItw && onDragLeave()}
+                          onDrop={() => !editingItw && onItwDrop(a.id)}
+                          onClick={() => handleItwRowClick(a.id)}
+                          className={rowClass}
+                          style={{ cursor: editingItw ? 'default' : 'move' }}>
+                          <td>{editingItw ? <input value={a.name} onChange={e => updateItwField(a.id, 'name', e.target.value)} /> : a.name}</td>
+                          <td>{editingItw ? <input value={a.vorname} onChange={e => updateItwField(a.id, 'vorname', e.target.value)} /> : a.vorname}</td>
+                          <td className={styles.center}>{selectedItwId === a.id ? '✓' : ''}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {!editingItw ? (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button onClick={() => (window as any).api.openAddItwWindow()}>Hinzufügen</button>
+                    <button onClick={startEditingItw} disabled={itws.length === 0}>Ändern</button>
+                    <button onClick={handleDeleteSelectedItw} disabled={selectedItwId == null}>Löschen</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button onClick={saveEditingItw}>Speichern</button>
+                    <button onClick={cancelEditingItw}>Abbrechen</button>
+                  </div>
+                )}
+              </div>
+            )}
+
           </div>
-        ) : (
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button onClick={saveEditingAzubis}>Speichern</button>
-            <button onClick={cancelEditingAzubis}>Abbrechen</button>
-          </div>
-        )}
-      </div>
-      )}
-      
-      {/* Ärzte Tab */}
-      {activeTab === 'ärzte' && (
-      <div>
-        <h3>ITW Ärzte</h3>
-        {/* ITW Ärzte: Buttons unter der Tabelle */}
-        <table className={styles.table}>
-          <thead>
-            <tr className={styles.thead}>
-              <th>Name</th>
-              <th>Vorname</th>
-              <th className={styles.center} style={{ width: 60 }}>#</th>
-            </tr>
-          </thead>
-          <tbody className={styles.tbody}>
-            {itws.map(a => {
-              const isOver = dragContext === 'itw' && dragOverId === a.id;
-              const rowClass = [styles.row, selectedItwId === a.id ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
-              return (
-                <tr key={a.id}
-                    draggable={!editingItw}
-                    onDragStart={() => !editingItw && onItwDragStart(a.id)}
-                    onDragOver={(e) => !editingItw && onDragOver(e, a.id, 'itw')}
-                    onDragLeave={() => !editingItw && onDragLeave()}
-                    onDrop={() => !editingItw && onItwDrop(a.id)}
-                    onClick={() => handleItwRowClick(a.id)}
-                    className={rowClass}
-                    style={{ cursor: editingItw ? 'default' : 'move' }}>
-                  <td>{editingItw ? <input value={a.name} onChange={e => updateItwField(a.id, 'name', e.target.value)} /> : a.name}</td>
-                  <td>{editingItw ? <input value={a.vorname} onChange={e => updateItwField(a.id, 'vorname', e.target.value)} /> : a.vorname}</td>
-                  <td className={styles.center}>{selectedItwId === a.id ? '✓' : ''}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {!editingItw ? (
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button onClick={() => (window as any).api.openAddItwWindow()}>Hinzufügen</button>
-            <button onClick={startEditingItw} disabled={itws.length === 0}>Ändern</button>
-            <button onClick={handleDeleteSelectedItw} disabled={selectedItwId == null}>Löschen</button>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button onClick={saveEditingItw}>Speichern</button>
-            <button onClick={cancelEditingItw}>Abbrechen</button>
-          </div>
-        )}
-      </div>
-      )}
-      
-      </div>
-      {/* Ende Content */}
-      
-      </>
+          {/* Ende Content */}
+
+        </>
       )}
     </div>
   );
