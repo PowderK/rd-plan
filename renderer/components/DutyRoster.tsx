@@ -143,6 +143,8 @@ const DutyRoster: React.FC = () => {
   const [nefVehicles, setNefVehicles] = useState<{ id: number; name: string }[]>([]);
   const [rtwActs, setRtwActs] = useState<Record<number, boolean[]>>({});
   const [nefActs, setNefActs] = useState<Record<number, boolean[]>>({});
+  // Freigabe-Status pro Monat
+  const [releasedMonths, setReleasedMonths] = useState<boolean[]>(Array(12).fill(false));
 
   useEffect(() => {
     (async () => {
@@ -400,7 +402,18 @@ const DutyRoster: React.FC = () => {
         } catch { }
         // Roster gezielt für das neue Jahr laden, auch wenn setYear async ist
         await reloadRoster(newYear);
+        // Freigabe-Status neu laden
+        try {
+          const releasedProms = Array(12).fill(0).map((_, i) => {
+            const key = `roster_released_${newYear}_${i}`;
+            return (window as any).api.getSetting(key).then((val: string) => val === '1');
+          });
+          const status = await Promise.all(releasedProms);
+          setReleasedMonths(status);
+        } catch (e) { console.warn('Failed to reload released status', e); }
       } catch (e) { console.warn('[Renderer] settings-updated handler error', e); }
+
+
     };
     (window as any).api && (window as any).api.onDutyRosterUpdated && (window as any).api.onDutyRosterUpdated(onUpdated);
     (window as any).api?.onSettingsUpdated?.(onSettingsUpdated);
@@ -929,6 +942,15 @@ const DutyRoster: React.FC = () => {
         });
         setNefActs(map);
       } catch { }
+      // Freigabe-Status laden bei Jahreswechsel
+      try {
+        const status = await Promise.all(Array(12).fill(0).map(async (_, i) => {
+          const key = `roster_released_${year}_${i}`;
+          const val = await (window as any).api.getSetting(key);
+          return val === '1';
+        }));
+        setReleasedMonths(status);
+      } catch (e) { console.warn('Failed to load released status', e); }
     })();
   }, [year]);
 
@@ -1264,184 +1286,202 @@ const DutyRoster: React.FC = () => {
           }
         }}
       >
-        <table style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: Math.max(800, days.length * 40) }}>
-          <thead style={{ position: 'sticky', top: 0, zIndex: 5, background: 'var(--bg)', boxShadow: '0 2px 0 0 #d0d0d0' }}>
-            <tr>
-              <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid #d0d0d0', minWidth: nameColWidth }}>{'Name'}</th>
-              <th style={{ border: '1px solid #d0d0d0', minWidth: 40, whiteSpace: 'nowrap', background: 'var(--bg)' }}>24h</th>
-              <th style={{ border: '1px solid #d0d0d0', minWidth: 40, whiteSpace: 'nowrap', background: 'var(--bg)' }}>IW</th>
-              {days.map((d, i) => (
-                <th key={i} style={{ border: '1px solid #d0d0d0', whiteSpace: 'nowrap', background: 'var(--bg)' }}>{d.date}</th>
-              ))}
-            </tr>
-            <tr>
-              <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid #d0d0d0', minWidth: nameColWidth }}> </th>
-              <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }}> </th>
-              <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }}> </th>
-              {days.map((d, i) => (
-                <th key={i} style={{ border: '1px solid #d0d0d0', whiteSpace: 'nowrap', background: 'var(--bg)' }}>{d.weekday}</th>
-              ))}
-            </tr>
-            <tr>
-              <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid #d0d0d0', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>Schichtfolge</th>
-              <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
-              <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
-              {days.map((d, i) => {
-                // Dept day via deptPatternSeqs gültig-ab + 21er Modulo
-                const iso = d.iso;
-                const seqs = [...(deptPatternSeqs || [])].sort((a, b) => a.startDate.localeCompare(b.startDate));
-                let active = seqs[0];
-                for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
-                const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
-                const cur = new Date(iso + 'T00:00:00Z');
-                const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-                const pat = active?.pattern || [];
-                const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
-                return (
-                  <th key={i} style={{ border: '1px solid #d0d0d0', fontWeight: 'normal', color: 'var(--muted)', fontSize: 13, background: 'var(--bg)' }}>
-                    {depDay}
-                  </th>
-                );
-              })}
-            </tr>
-            {itwEnabled && (
-              <>
-                <tr>
-                  <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid #d0d0d0', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--text)', fontSize: 13 }}>
-                    Abteilung: {department}
-                  </th>
-                  <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
-                  <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
-                  {days.map((_, i) => (
-                    <th key={`dept_${i}`} style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
-                  ))}
-                </tr>
-                <tr>
-                  <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid #d0d0d0', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>ITW</th>
-                  <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
-                  <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
-                  {days.map((_, i) => {
-                    const showIW = isIwDay(i);
-                    return (
-                      <th key={`itw_${i}`} style={{ border: '1px solid #d0d0d0', fontWeight: 'normal', color: 'var(--muted)', fontSize: 13, background: 'var(--bg)' }}>
-                        {showIW ? 'IW' : ''}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </>
-            )}
-          </thead>
-          <tbody>
-            {allRows.map((person, rowIdx) => {
-              // Trennzeile vor dem ersten Azubi
-              const isFirstAzubi = person.isAzubi && (rowIdx === 0 || !allRows[rowIdx - 1].isAzubi);
-              return [
-                isFirstAzubi ? (
-                  <tr key="azubi-separator">
-                    <td colSpan={days.length + 3} style={{ background: '#e0e0e0', fontWeight: 'bold', textAlign: 'left', border: '1px solid #d0d0d0' }}>
-                      Azubis
-                    </td>
+        {/* View Protection: Hide content if read-only and not released */}
+        {!canWrite && !releasedMonths[currentMonth] ? (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            color: '#6b7280',
+            background: '#f9fafb',
+            minHeight: '400px'
+          }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔒</div>
+            <div style={{ fontSize: '20px', fontWeight: 600, marginBottom: '8px' }}>Dienstplan noch nicht freigegeben</div>
+            <div style={{ fontSize: '14px' }}>Der Dienstplan für diesen Monat ist derzeit nur für Administratoren sichtbar.</div>
+          </div>
+        ) : (
+          <table style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: Math.max(800, days.length * 40) }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 5, background: 'var(--bg)', boxShadow: '0 2px 0 0 #d0d0d0' }}>
+              <tr>
+                <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid #d0d0d0', minWidth: nameColWidth }}>{'Name'}</th>
+                <th style={{ border: '1px solid #d0d0d0', minWidth: 40, whiteSpace: 'nowrap', background: 'var(--bg)' }}>24h</th>
+                <th style={{ border: '1px solid #d0d0d0', minWidth: 40, whiteSpace: 'nowrap', background: 'var(--bg)' }}>IW</th>
+                {days.map((d, i) => (
+                  <th key={i} style={{ border: '1px solid #d0d0d0', whiteSpace: 'nowrap', background: 'var(--bg)' }}>{d.date}</th>
+                ))}
+              </tr>
+              <tr>
+                <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid #d0d0d0', minWidth: nameColWidth }}> </th>
+                <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }}> </th>
+                <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }}> </th>
+                {days.map((d, i) => (
+                  <th key={i} style={{ border: '1px solid #d0d0d0', whiteSpace: 'nowrap', background: 'var(--bg)' }}>{d.weekday}</th>
+                ))}
+              </tr>
+              <tr>
+                <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid #d0d0d0', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>Schichtfolge</th>
+                <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
+                <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
+                {days.map((d, i) => {
+                  // Dept day via deptPatternSeqs gültig-ab + 21er Modulo
+                  const iso = d.iso;
+                  const seqs = [...(deptPatternSeqs || [])].sort((a, b) => a.startDate.localeCompare(b.startDate));
+                  let active = seqs[0];
+                  for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
+                  const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
+                  const cur = new Date(iso + 'T00:00:00Z');
+                  const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                  const pat = active?.pattern || [];
+                  const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
+                  return (
+                    <th key={i} style={{ border: '1px solid #d0d0d0', fontWeight: 'normal', color: 'var(--muted)', fontSize: 13, background: 'var(--bg)' }}>
+                      {depDay}
+                    </th>
+                  );
+                })}
+              </tr>
+              {itwEnabled && (
+                <>
+                  <tr>
+                    <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid #d0d0d0', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--text)', fontSize: 13 }}>
+                      Abteilung: {department}
+                    </th>
+                    <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
+                    <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
+                    {days.map((_, i) => (
+                      <th key={`dept_${i}`} style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
+                    ))}
                   </tr>
-                ) : null,
-                (
-                  <tr key={person.id} style={{ background: rowIdx % 2 === 1 ? 'var(--hover)' : undefined }}>
-                    <td style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 1, border: '1px solid #d0d0d0', fontStyle: person.isAzubi ? 'italic' : undefined, color: (!person.isAzubi && !!(personnel.find(p => p.id === person.origId)?.fahrzeugfuehrerHLFB)) ? '#1565c0' : undefined }}>
-                      {person.name}{person.isAzubi && person.lehrjahr !== undefined ? ` (Azubi, ${person.lehrjahr}. Lj.)` : ''}
-                    </td>
-                    <td style={{ border: '1px solid #d0d0d0', textAlign: 'center', minWidth: 30 }}>
-                      {!person.isAzubi ? (
-                        (() => {
-                          const key = getStateKey(person);
-                          let count = 0;
-                          for (const d of days) {
-                            const raw = (roster[key]?.[d.iso]?.value || '').trim();
-                            if (!raw) continue;
-                            // Zähle nur, wenn der Code als 24h ausgewertet wird
-                            if (auswertungByType[raw] === '24h') count++;
-                          }
-                          return count;
-                        })()
-                      ) : ''}
-                    </td>
-                    <td style={{ border: '1px solid #d0d0d0', textAlign: 'center', minWidth: 40 }}>
-                      {!person.isAzubi ? (
-                        (() => {
-                          const key = getStateKey(person);
-                          let count = 0;
-                          for (const d of days) {
-                            const t = String(roster[key]?.[d.iso]?.type || '');
-                            const raw = (roster[key]?.[d.iso]?.value || '').trim();
-                            if (t.startsWith('itw_') || (raw && auswertungByType[raw] === 'itw')) count++;
-                          }
-                          return count;
-                        })()
-                      ) : ''}
-                    </td>
-                    {days.map((_, dayIdx) => {
-                      const iso = days[dayIdx]?.iso;
-                      const cell = roster[getStateKey(person)]?.[iso] || { value: '', type: 'dropdown' };
-                      const isEditing = editing[getStateKey(person)]?.[dayIdx];
-                      const code = (cell.value || '').trim();
-                      const hex = colorByType[code] || '';
-                      const bgTint = hex ? hexToRgba(hex, 0.2) : undefined; // sanfter Hintergrund
-                      const isManualEdit = cell.manualEdit;
-
-                      // Debug: Log wenn manuelle Bearbeitung erkannt wird
-                      if (isManualEdit && code) {
-                        // console.log('[DEBUG] Rendering manual edit:', { person: person.name, dayIdx, iso, code, isManualEdit, cell });
-                      }
-                      const cellStyle = {
-                        minWidth: 40,
-                        cursor: 'pointer',
-                        border: '1px solid #d0d0d0',
-                        whiteSpace: 'nowrap',
-                        background: bgTint,
-                        ...(isManualEdit ? { borderLeft: '4px solid #1976d2' } : {})
-                      };
+                  <tr>
+                    <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, border: '1px solid #d0d0d0', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>ITW</th>
+                    <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
+                    <th style={{ border: '1px solid #d0d0d0', background: 'var(--bg)' }} />
+                    {days.map((_, i) => {
+                      const showIW = isIwDay(i);
                       return (
-                        <td key={dayIdx} style={cellStyle}
-                          onClick={() => {
-                            if (!isEditing) {
-                              // console.log('[DEBUG] Zellenklick:', { dayIdx, iso: days[dayIdx].iso, date: days[dayIdx].date });
-                              startEdit(getStateKey(person), dayIdx);
-                            }
-                          }}>
-                          {isEditing ? (
-                            (
-                              <select
-                                autoFocus
-                                value={cell.value}
-                                disabled={!canWrite}
-                                onBlur={() => stopEdit(getStateKey(person), dayIdx)}
-                                onChange={e => {
-                                  handleCellChange(getStateKey(person), dayIdx, e.target.value, 'dropdown');
-                                  stopEdit(getStateKey(person), dayIdx);
-                                }}
-                              >
-                                <option value="">-</option>
-                                {shiftTypes.map(type => (
-                                  <option key={type.id} value={type.code}>{type.code}</option>
-                                ))}
-                                {customDropdownValues.map((v, idx) => (
-                                  <option key={`custom_${idx}`} value={v}>{v}</option>
-                                ))}
-                              </select>
-                            )
-                          ) : (
-                            <span style={{ color: cell.value ? undefined : '#bbb' }}>
-                              {cell.value || <i>–</i>}
-                            </span>
-                          )}
-                        </td>
+                        <th key={`itw_${i}`} style={{ border: '1px solid #d0d0d0', fontWeight: 'normal', color: 'var(--muted)', fontSize: 13, background: 'var(--bg)' }}>
+                          {showIW ? 'IW' : ''}
+                        </th>
                       );
                     })}
                   </tr>
-                )
-              ];
-            })}
-          </tbody>
-        </table>
+                </>
+              )}
+            </thead>
+            <tbody>
+              {allRows.map((person, rowIdx) => {
+                // Trennzeile vor dem ersten Azubi
+                const isFirstAzubi = person.isAzubi && (rowIdx === 0 || !allRows[rowIdx - 1].isAzubi);
+                return [
+                  isFirstAzubi ? (
+                    <tr key="azubi-separator">
+                      <td colSpan={days.length + 3} style={{ background: '#e0e0e0', fontWeight: 'bold', textAlign: 'left', border: '1px solid #d0d0d0' }}>
+                        Azubis
+                      </td>
+                    </tr>
+                  ) : null,
+                  (
+                    <tr key={person.id} style={{ background: rowIdx % 2 === 1 ? 'var(--hover)' : undefined }}>
+                      <td style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 1, border: '1px solid #d0d0d0', fontStyle: person.isAzubi ? 'italic' : undefined, color: (!person.isAzubi && !!(personnel.find(p => p.id === person.origId)?.fahrzeugfuehrerHLFB)) ? '#1565c0' : undefined }}>
+                        {person.name}{person.isAzubi && person.lehrjahr !== undefined ? ` (Azubi, ${person.lehrjahr}. Lj.)` : ''}
+                      </td>
+                      <td style={{ border: '1px solid #d0d0d0', textAlign: 'center', minWidth: 30 }}>
+                        {!person.isAzubi ? (
+                          (() => {
+                            const key = getStateKey(person);
+                            let count = 0;
+                            for (const d of days) {
+                              const raw = (roster[key]?.[d.iso]?.value || '').trim();
+                              if (!raw) continue;
+                              // Zähle nur, wenn der Code als 24h ausgewertet wird
+                              if (auswertungByType[raw] === '24h') count++;
+                            }
+                            return count;
+                          })()
+                        ) : ''}
+                      </td>
+                      <td style={{ border: '1px solid #d0d0d0', textAlign: 'center', minWidth: 40 }}>
+                        {!person.isAzubi ? (
+                          (() => {
+                            const key = getStateKey(person);
+                            let count = 0;
+                            for (const d of days) {
+                              const t = String(roster[key]?.[d.iso]?.type || '');
+                              const raw = (roster[key]?.[d.iso]?.value || '').trim();
+                              if (t.startsWith('itw_') || (raw && auswertungByType[raw] === 'itw')) count++;
+                            }
+                            return count;
+                          })()
+                        ) : ''}
+                      </td>
+                      {days.map((_, dayIdx) => {
+                        const iso = days[dayIdx]?.iso;
+                        const cell = roster[getStateKey(person)]?.[iso] || { value: '', type: 'dropdown' };
+                        const isEditing = editing[getStateKey(person)]?.[dayIdx];
+                        const code = (cell.value || '').trim();
+                        const hex = colorByType[code] || '';
+                        const bgTint = hex ? hexToRgba(hex, 0.2) : undefined; // sanfter Hintergrund
+                        const isManualEdit = cell.manualEdit;
+
+                        // Debug: Log wenn manuelle Bearbeitung erkannt wird
+                        if (isManualEdit && code) {
+                          // console.log('[DEBUG] Rendering manual edit:', { person: person.name, dayIdx, iso, code, isManualEdit, cell });
+                        }
+                        const cellStyle = {
+                          minWidth: 40,
+                          cursor: 'pointer',
+                          border: '1px solid #d0d0d0',
+                          whiteSpace: 'nowrap',
+                          background: bgTint,
+                          ...(isManualEdit ? { borderLeft: '4px solid #1976d2' } : {})
+                        };
+                        return (
+                          <td key={dayIdx} style={cellStyle}
+                            onClick={() => {
+                              if (!isEditing) {
+                                // console.log('[DEBUG] Zellenklick:', { dayIdx, iso: days[dayIdx].iso, date: days[dayIdx].date });
+                                startEdit(getStateKey(person), dayIdx);
+                              }
+                            }}>
+                            {isEditing ? (
+                              (
+                                <select
+                                  autoFocus
+                                  value={cell.value}
+                                  disabled={!canWrite}
+                                  onBlur={() => stopEdit(getStateKey(person), dayIdx)}
+                                  onChange={e => {
+                                    handleCellChange(getStateKey(person), dayIdx, e.target.value, 'dropdown');
+                                    stopEdit(getStateKey(person), dayIdx);
+                                  }}
+                                >
+                                  <option value="">-</option>
+                                  {shiftTypes.map(type => (
+                                    <option key={type.id} value={type.code}>{type.code}</option>
+                                  ))}
+                                  {customDropdownValues.map((v, idx) => (
+                                    <option key={`custom_${idx}`} value={v}>{v}</option>
+                                  ))}
+                                </select>
+                              )
+                            ) : (
+                              <span style={{ color: cell.value ? undefined : '#bbb' }}>
+                                {cell.value || <i>–</i>}
+                              </span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  )
+                ];
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
       {/* Tabellen 'Diensttage Abteilung 1 (2025)' entfernt */}
       {showImportTable && importTableMonth !== null && (
