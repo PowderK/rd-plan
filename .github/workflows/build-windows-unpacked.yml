@@ -3,8 +3,11 @@ name: Build Windows Unpacked
 on:
   workflow_dispatch:
   push:
-    branches: [ main, beta ]
+    tags:
+      - 'v*'
 
+permissions:
+  contents: write
 jobs:
   build-windows-unpacked:
     runs-on: windows-latest
