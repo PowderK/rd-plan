@@ -6,7 +6,7 @@ export interface AuthUser {
   name: string;
   vorname: string;
   roleId: number | null;
-  permissions: Record<string, 'none' | 'read' | 'write'>;
+  permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>;
 }
 
 interface AuthContextType {
@@ -115,7 +115,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const userLevel = currentUser.permissions[area] || 'none';
     
     if (userLevel === 'none') return false;
-    if (level === 'read') return userLevel === 'read' || userLevel === 'write';
+    if (level === 'read') return userLevel === 'read' || userLevel === 'read_all' || userLevel === 'write';
     if (level === 'write') return userLevel === 'write';
     
     return false;

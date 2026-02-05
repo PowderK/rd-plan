@@ -78,7 +78,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [hlfbQualificationType, setHlfbQualificationType] = useState<string>('FzF HLF B');
 
   // Rollen und Rechte Management
-  const [roles, setRoles] = useState<{ id: number; name: string; description?: string; permissions: Record<string, 'none' | 'read' | 'write'> }[]>([]);
+  const [roles, setRoles] = useState<{ id: number; name: string; description?: string; permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'> }[]>([]);
   const [editingRoles, setEditingRoles] = useState(false);
   const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
   const [originalRoles, setOriginalRoles] = useState<any[] | null>(null);
@@ -1798,7 +1798,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 16 }}>
                   {[
                     { key: 'einteilung', label: 'Einteilung', allowRead: true, allowWrite: true },
-                    { key: 'dienstplan', label: 'Dienstplan', allowRead: true, allowWrite: true },
+                    { key: 'dienstplan', label: 'Dienstplan', allowRead: true, allowWrite: true, allowReadAll: true },
                     { key: 'werte', label: 'Werte', allowRead: true, allowWrite: false },
                     { key: 'personal', label: 'Personal', allowRead: false, allowWrite: true },
                     { key: 'fahrzeuge', label: 'Fahrzeuge', allowRead: false, allowWrite: true },
@@ -1811,7 +1811,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                         <select
                           value={currentPermission}
                           onChange={e => {
-                            const newPermission = e.target.value as 'none' | 'read' | 'write';
+                            const newPermission = e.target.value as 'none' | 'read' | 'read_all' | 'write';
                             setRoles(prev => prev.map(r =>
                               r.id === selectedRoleId
                                 ? { ...r, permissions: { ...r.permissions, [area.key]: newPermission } }
@@ -1822,6 +1822,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                         >
                           <option value="none">Keine</option>
                           {area.allowRead && <option value="read">Lesen</option>}
+                          {area.allowReadAll && <option value="read_all">Lesen / alle</option>}
                           {area.allowWrite && <option value="write">Schreiben</option>}
                         </select>
                       </div>
@@ -1860,7 +1861,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                   <button onClick={() => {
                     // Neue Rolle hinzufügen
                     const newId = Math.max(0, ...roles.map(r => r.id)) + 1;
-                    const defaultPermissions: Record<string, 'none' | 'read' | 'write'> = {
+                    const defaultPermissions: Record<string, 'none' | 'read' | 'read_all' | 'write'> = {
                       einteilung: 'none',
                       dienstplan: 'none',
                       werte: 'none',

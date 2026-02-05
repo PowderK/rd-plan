@@ -6,7 +6,7 @@ export interface AuthSession {
   name: string;
   vorname: string;
   roleId: number | null;
-  permissions: Record<string, 'none' | 'read' | 'write'>;
+  permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>;
 }
 
 export class AuthService {
@@ -16,16 +16,16 @@ export class AuthService {
 
   async login(personnelNumber: string): Promise<{ success: boolean; error?: string; session?: AuthSession }> {
     try {
-      // Finde Person mit dieser Personalnummer
+      // Finde Person mit dieser Personalnummer (case-insensitive)
       const allPersonnel = await this.dbAdapter.getPersonnel();
-      const person = allPersonnel.find((p: any) => p.personnelNumber === personnelNumber);
+      const person = allPersonnel.find((p: any) => p.personnelNumber.toLowerCase() === personnelNumber.toLowerCase());
       
       if (!person) {
         return { success: false, error: 'Personalnummer nicht gefunden' };
       }
 
       // Lade Rollen-Permissions
-      let permissions: Record<string, 'none' | 'read' | 'write'> = {
+      let permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'> = {
         einteilung: 'none',
         dienstplan: 'none',
         werte: 'none',

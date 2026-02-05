@@ -204,8 +204,16 @@ $window.Add_Loaded({
         })
     }
     
-    # Get Username
-    $username = $env:USERNAME
+    # Get Username (normalize leading H to lowercase h)
+    $usernameRaw = $env:USERNAME
+
+    if ($usernameRaw -match '^[Hh]') {
+        $username = 'h' + $usernameRaw.Substring(1)
+    } else {
+        $username = $usernameRaw
+    }
+
+    Write-Host "Username normalisiert: $username"
 
     # --- Database Check ---
     Update-Status "Prüfe Datenbank-Konfiguration..."
