@@ -1,5 +1,5 @@
 // buildInfo.ts
 export const BUILD_INFO = {
   version: '1.0.3 RC',
-  build: 1010
+  build: 1011
 };
