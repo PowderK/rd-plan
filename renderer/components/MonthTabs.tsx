@@ -60,6 +60,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     const [releasedMonths, setReleasedMonths] = useState<boolean[]>(Array(12).fill(false));
     // Sidebar Collapse Status
     const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
+    // Feature Toggle: Alte RTW Schichten
+    const [featureOldRtwShifts, setFeatureOldRtwShifts] = useState(false);
 
     useEffect(() => {
         const loadHlfbPeriods = async () => {
@@ -82,6 +84,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
             } catch (e) { console.warn('Failed to load HLF-B periods', e); }
         };
         loadHlfbPeriods();
+
+        // Feature Toggle laden
+        const loadFeature = async () => {
+            try {
+                const val = await (window as any).api.getSetting('feature_old_rtw_shifts');
+                setFeatureOldRtwShifts(val === 'true');
+            } catch { }
+        };
+        loadFeature();
     }, []);
 
     useEffect(() => {
@@ -418,6 +429,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 const list = await (window as any).api.getHolidaysForYear?.(year);
                 const s = new Set<string>((list || []).map((h: any) => String(h.date)));
                 setHolidays(s);
+            } catch { }
+            // Feature Toggle laden
+            try {
+                const feat = await (window as any).api.getSetting('feature_old_rtw_shifts');
+                setFeatureOldRtwShifts(feat === 'true' || feat === true);
             } catch { }
         };
         load();
@@ -1712,7 +1728,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                                         const ue50 = (p as any).ue50 === 1;
                                         const total = tn.tag + tn.nacht + nef + itw;
-                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, cumDiff, teilzeit, hlfb, ue50, total } as { key: string, name: string, target: number | string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, cumDiff: number, teilzeit: number, hlfb: boolean, ue50: boolean, total: number };
+                                        const oldRtwShifts = (p as any).old_rtw_shifts || 0;
+                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, cumDiff, teilzeit, hlfb, ue50, total, oldRtwShifts } as { key: string, name: string, target: number | string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, cumDiff: number, teilzeit: number, hlfb: boolean, ue50: boolean, total: number, oldRtwShifts: number };
                                     });
                                     // Farbliche Hervorhebung: nur Personen mit Monats-Soll > 0 berücksichtigen, Rest (Jahr) auf 100%-Äquivalent normalisieren
                                     const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
@@ -1794,6 +1811,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                             <div className={styles.sidebarSub}></div>
                                             <Kontrollkasten
                                                 items={items}
+                                                showOldRtwShifts={featureOldRtwShifts}
                                                 highlightedPersonKey={highlightedPersonKey}
                                                 setHighlightedPersonKey={setHighlightedPersonKey}
                                                 mixColor={mixColor}
@@ -2064,8 +2082,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
                                         const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                                         const ue50 = (p as any).ue50 === 1;
+                                        const oldRtwShifts = (p as any).oldRtwShifts || 0;
                                         const total = tn.tag + tn.nacht + nef + itw;
-                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, cumDiff, teilzeit, hlfb, ue50, total } as { key: string, name: string, target: number | string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, cumDiff: number, teilzeit: number, hlfb: boolean, ue50: boolean, total: number };
+                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, cumDiff, teilzeit, hlfb, ue50, total, oldRtwShifts } as any;
                                     });
                                     const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
                                     const eligible = itemsWithIndex.filter(it => typeof it.target === 'number' && (it.target as number) > 0);
@@ -2143,6 +2162,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                             <div className={styles.sidebarSub}></div>
                                             <Kontrollkasten
                                                 items={items}
+                                                showOldRtwShifts={featureOldRtwShifts}
                                                 highlightedPersonKey={highlightedPersonKey}
                                                 setHighlightedPersonKey={setHighlightedPersonKey}
                                                 mixColor={mixColor}

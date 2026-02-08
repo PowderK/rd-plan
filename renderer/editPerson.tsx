@@ -56,7 +56,7 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!qualType || !startYM) {
       alert('Bitte füllen Sie alle Pflichtfelder aus.');
       return;
@@ -96,7 +96,7 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
         overflow: 'auto'
       }}>
         <h3 style={{ marginTop: 0, marginBottom: '20px' }}>{title}</h3>
-        
+
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>
@@ -149,7 +149,7 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
               />
               Unbegrenzte Gültigkeit
             </label>
-            
+
             {!isUnlimited && (
               <>
                 <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>
@@ -246,7 +246,7 @@ const ActivePeriodForm: React.FC<ActivePeriodFormProps> = ({ period, onSave, onC
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!startYM) {
       alert('Bitte Start-Monat angeben.');
       return;
@@ -286,7 +286,7 @@ const ActivePeriodForm: React.FC<ActivePeriodFormProps> = ({ period, onSave, onC
         overflow: 'auto'
       }}>
         <h3 style={{ marginTop: 0, marginBottom: '20px' }}>{title}</h3>
-        
+
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>
@@ -316,7 +316,7 @@ const ActivePeriodForm: React.FC<ActivePeriodFormProps> = ({ period, onSave, onC
               />
               Unbegrenzte Gültigkeit
             </label>
-            
+
             {!isUnlimited && (
               <>
                 <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>
@@ -404,6 +404,8 @@ const EditPerson: React.FC = () => {
   const [personnelNumber, setPersonnelNumber] = useState('');
   const [roleId, setRoleId] = useState<number | null>(null);
   const [roles, setRoles] = useState<{ id: number; name: string }[]>([]);
+  const [oldRtwShifts, setOldRtwShifts] = useState<number>(0);
+  const [showOldRtwShiftsFeature, setShowOldRtwShiftsFeature] = useState(false);
   // Alte Qualifikations-States entfernt - jetzt über Qualifikationsperioden verwaltet
   const [qualificationPeriods, setQualificationPeriods] = useState<QualificationPeriod[]>([]);
   const [showQualifications, setShowQualifications] = useState(true);
@@ -416,32 +418,37 @@ const EditPerson: React.FC = () => {
   const [editingActivePeriod, setEditingActivePeriod] = useState<ActivePeriod | null>(null);
   const [showAddActivePeriod, setShowAddActivePeriod] = useState(false);
 
+  const [active, setActive] = useState(true);
+
   useEffect(() => {
     if (!id) {
       // console.error('No person ID provided to editPerson');
       return;
     }
-    
+
     // console.log('editPerson useEffect triggered for ID:', id);
-    
+
     (async () => {
       try {
         // Lade Personendaten
         // console.log('Loading person data for ID:', id);
         const person = await (window as any).api.getPerson(id);
         // console.log('Person data loaded:', person);
-        
+
         if (person) {
           setName(person.name || '');
           setVorname(person.vorname || '');
           setTeilzeit(person.teilzeit ?? 100);
           setSort(person.sort ?? 0);
+          setSort(person.sort ?? 0);
           setPersonnelNumber(person.personnelNumber || '');
           setRoleId(person.roleId || null);
+          setOldRtwShifts(person.old_rtw_shifts || 0);
+          setActive(person.active !== 0 && person.active !== false);
         } else {
           // console.error('Person not found for ID:', id);
         }
-        
+
         // Lade Rollen
         try {
           const rolesData = await (window as any).api.getSetting('roles');
@@ -452,7 +459,13 @@ const EditPerson: React.FC = () => {
         } catch (e) {
           // console.error('Fehler beim Laden der Rollen:', e);
         }
-        
+
+        // Feature-Toggle laden
+        try {
+          const feat = await (window as any).api.getSetting('feature_old_rtw_shifts');
+          setShowOldRtwShiftsFeature(feat === 'true' || feat === true);
+        } catch { }
+
         // Lade Qualifikationsperioden
         // console.log('Loading qualification periods for person ID:', id);
         const periods = await (window as any).api.getQualificationPeriods(id);
@@ -464,7 +477,7 @@ const EditPerson: React.FC = () => {
         const actPeriods = await (window as any).api.getPersonnelActivePeriods(id);
         // console.log('Loaded active periods:', actPeriods);
         setActivePeriods(actPeriods || []);
-        
+
         // console.log('editPerson data loading completed for ID:', id);
       } catch (error) {
         // console.error('Error in editPerson useEffect:', error);
@@ -474,17 +487,21 @@ const EditPerson: React.FC = () => {
   }, [id]);
 
   const handleSave = async () => {
-    // Nur noch Basisdaten speichern - Qualifikationen werden separat über Perioden verwaltet
-    await (window as any).api.updatePerson({ id, name, vorname, teilzeit, sort, personnelNumber, roleId });
-    if (window.opener) window.opener.postMessage('personnel-updated', '*');
-    window.close();
+    try {
+      // Nur noch Basisdaten speichern - Qualifikationen werden separat über Perioden verwaltet
+      await (window as any).api.updatePerson({ id, name, vorname, teilzeit, active, sort, personnelNumber, roleId, oldRtwShifts });
+      if (window.opener) window.opener.postMessage('personnel-updated', '*');
+      window.close();
+    } catch (e) {
+      alert('Fehler beim Speichern: ' + (e as Error).message);
+    }
   };
 
   const handleDelete = async () => {
     if (!window.confirm(`Sind Sie sicher, dass Sie ${vorname} ${name} löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.`)) {
       return;
     }
-    
+
     try {
       await (window as any).api.deletePerson(id);
       if (window.opener) window.opener.postMessage('personnel-updated', '*');
@@ -662,14 +679,31 @@ const EditPerson: React.FC = () => {
       <div style={{ marginBottom: 24 }}>
         <label>Teilzeit (%): <input type="number" value={teilzeit} min={0} max={100} onChange={e => setTeilzeit(Number(e.target.value))} /></label>
       </div>
-      
+
+      {showOldRtwShiftsFeature && (
+        <div style={{ marginBottom: 24 }}>
+          <label>Alte RTW-Schichten (aus Altsystem):
+            <input
+              type="number"
+              value={oldRtwShifts === 0 ? '' : oldRtwShifts}
+              onChange={(e) => setOldRtwShifts(e.target.value === '' ? 0 : Number(e.target.value))}
+              min="0"
+              style={{ marginLeft: 8 }}
+            />
+          </label>
+          <div style={{ fontSize: '0.85em', color: '#666', marginTop: 4 }}>
+            Dieser Wert wird im Dienstplan angezeigt, aber <strong>nicht</strong> zur aktuellen Ist-Berechnung addiert.
+          </div>
+        </div>
+      )}
+
       {/* Aktivitätszeiträume */}
-      <div style={{ 
-        marginBottom: 24, 
-        border: '2px solid #28a745', 
-        padding: 20, 
-        borderRadius: 8, 
-        backgroundColor: '#f8f9fa' 
+      <div style={{
+        marginBottom: 24,
+        border: '2px solid #28a745',
+        padding: 20,
+        borderRadius: 8,
+        backgroundColor: '#f8f9fa'
       }}>
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -678,14 +712,14 @@ const EditPerson: React.FC = () => {
               <span style={{ fontSize: '12px', color: '#666' }}>
                 {activePeriods.length} Periode(n)
               </span>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setShowActivePeriods(!showActivePeriods)}
-                style={{ 
-                  background: showActivePeriods ? '#dc3545' : '#28a745', 
-                  color: 'white', 
-                  border: 'none', 
-                  cursor: 'pointer', 
+                style={{
+                  background: showActivePeriods ? '#dc3545' : '#28a745',
+                  color: 'white',
+                  border: 'none',
+                  cursor: 'pointer',
                   fontSize: '12px',
                   padding: '4px 8px',
                   borderRadius: '4px'
@@ -699,7 +733,7 @@ const EditPerson: React.FC = () => {
             Legen Sie fest, in welchen Zeiträumen der Mitarbeiter aktiv ist (z.B. Elternzeit, Sabbatical).
           </p>
         </div>
-        
+
         {showActivePeriods && (
           <div>
             <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -809,14 +843,14 @@ const EditPerson: React.FC = () => {
           </div>
         )}
       </div>
-      
+
       {/* Qualifikationen & Zeiträume - Hauptfunktion */}
-      <div style={{ 
-        marginBottom: 24, 
-        border: '2px solid #007bff', 
-        padding: 20, 
-        borderRadius: 8, 
-        backgroundColor: '#f8f9fa' 
+      <div style={{
+        marginBottom: 24,
+        border: '2px solid #007bff',
+        padding: 20,
+        borderRadius: 8,
+        backgroundColor: '#f8f9fa'
       }}>
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -825,14 +859,14 @@ const EditPerson: React.FC = () => {
               <span style={{ fontSize: '12px', color: '#666' }}>
                 {qualificationPeriods.length} Periode(n)
               </span>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setShowQualifications(!showQualifications)}
-                style={{ 
-                  background: showQualifications ? '#dc3545' : '#28a745', 
-                  color: 'white', 
-                  border: 'none', 
-                  cursor: 'pointer', 
+                style={{
+                  background: showQualifications ? '#dc3545' : '#28a745',
+                  color: 'white',
+                  border: 'none',
+                  cursor: 'pointer',
                   fontSize: '12px',
                   padding: '4px 8px',
                   borderRadius: '4px'
@@ -846,7 +880,7 @@ const EditPerson: React.FC = () => {
             Verwalten Sie Qualifikationen mit genauen Zeiträumen (Monat/Jahr). Ersetzt die alten Checkbox-Qualifikationen.
           </p>
         </div>
-        
+
         {showQualifications && (
           <div>
             <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -956,7 +990,7 @@ const EditPerson: React.FC = () => {
           </div>
         )}
       </div>
-      
+
       <button onClick={handleSave} style={{ backgroundColor: '#007bff', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Speichern</button>
       <button onClick={handleDelete} style={{ marginLeft: 8, backgroundColor: '#dc3545', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Löschen</button>
       <button onClick={() => window.close()} style={{ marginLeft: 8, padding: '8px 16px', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer' }}>Abbrechen</button>

@@ -11,6 +11,10 @@ export interface AuthSession {
 
 export class AuthService {
   private currentSession: AuthSession | null = null;
+  private normalizePersonnelNumber(value: unknown): string {
+    if (value === null || value === undefined) return '';
+    return String(value).toLowerCase().trim();
+  }
   
   constructor(private dbAdapter: DatabaseAdapter) {}
 
@@ -18,7 +22,11 @@ export class AuthService {
     try {
       // Finde Person mit dieser Personalnummer (case-insensitive)
       const allPersonnel = await this.dbAdapter.getPersonnel();
-      const person = allPersonnel.find((p: any) => p.personnelNumber.toLowerCase() === personnelNumber.toLowerCase());
+      const inputNumber = this.normalizePersonnelNumber(personnelNumber);
+      if (!inputNumber) {
+        return { success: false, error: 'Bitte eine gültige Personalnummer eingeben' };
+      }
+      const person = allPersonnel.find((p: any) => this.normalizePersonnelNumber(p?.personnelNumber) === inputNumber);
       
       if (!person) {
         return { success: false, error: 'Personalnummer nicht gefunden' };

@@ -95,6 +95,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [yearImportUnknownAzubiNames, setYearImportUnknownAzubiNames] = useState<string[]>([]);
   // System Info
   const [systemUsername, setSystemUsername] = useState<string>('Lädt...');
+  // Feature toggle for old RTW shifts
+  const [featureOldRtwShifts, setFeatureOldRtwShifts] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -173,7 +175,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       } catch { }
       // Feiertage laden
       try {
-        const list = await (window as any).api.getHolidaysForYear?.(Number(y || new Date().getFullYear()));
+        const list = await (window as any).api.getHolidaysForYear?.(Number(year || new Date().getFullYear()));
         setHolidays((list || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
       } catch { }
 
@@ -229,6 +231,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
           setDbDirInput((cfg.configuredDir || cfg.defaults?.appDir || ''));
         }
       } catch { }
+
+      // Load feature_old_rtw_shifts
+      try {
+        const feat = await (window as any).api.getSetting('feature_old_rtw_shifts');
+        setFeatureOldRtwShifts(feat === 'true' || feat === true);
+      } catch { }
     })();
   }, []);    // Fahrzeug-UI entfernt
 
@@ -271,6 +279,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
       } catch { }
     } catch { }
+
+    // Save feature_old_rtw_shifts
+    await (window as any).api.setSetting('feature_old_rtw_shifts', String(featureOldRtwShifts));
     onClose();
   };
 
@@ -653,6 +664,26 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                 <div><code>{systemUsername}</code></div>
                 <div style={{ fontWeight: 600 }}>Betriebssystem:</div>
                 <div>{navigator.platform}</div>
+              </div>
+            </div>
+
+            {/* Feature Toggles */}
+            <div style={{ marginBottom: 16, padding: 12, background: '#f8f9fa', borderRadius: 8 }}>
+              <h3 style={{ marginTop: 0 }}>Funktionen</h3>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  id="featureOldRtwShifts"
+                  checked={featureOldRtwShifts}
+                  onChange={(e) => setFeatureOldRtwShifts(e.target.checked)}
+                  style={{ marginRight: 8 }}
+                />
+                <label htmlFor="featureOldRtwShifts" style={{ cursor: 'pointer' }}>
+                  <strong>Alte RTW-Schichten Tracking aktivieren</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                    Ermöglicht die Erfassung von Schichten aus einem Altsystem in den Personaleinstellungen und zeigt diese im Dienstplan an.
+                  </div>
+                </label>
               </div>
             </div>
 

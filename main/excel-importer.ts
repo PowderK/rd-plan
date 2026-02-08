@@ -212,6 +212,9 @@ export class ExcelPersonnelImporter {
     const qualTypes = new Set<string>();
     for (const header of headerRow) {
       if (typeof header === 'string' && header.includes('_Von')) {
+        if (header === 'Aktiv_Von' || header.startsWith('Aktiv_')) {
+          continue;
+        }
         const qualType = header.replace('_Von', '');
         qualTypes.add(qualType);
       }

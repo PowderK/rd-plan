@@ -210,9 +210,33 @@ const AddPerson: React.FC = () => {
   const [name, setName] = useState('');
   const [vorname, setVorname] = useState('');
   const [teilzeit, setTeilzeit] = useState(100);
+  const [personnelNumber, setPersonnelNumber] = useState('');
+  const [roleId, setRoleId] = useState<number | ''>('');
+  const [roles, setRoles] = useState<Array<{ id: number; name: string }>>([]);
   const [qualifications, setQualifications] = useState<QualificationPeriod[]>([]);
   const [showAddQualification, setShowAddQualification] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [rolesLoading, setRolesLoading] = useState(true);
+
+  useEffect(() => {
+    const loadRoles = async () => {
+      try {
+        const raw = await (window as any).api.getSetting('roles');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const list = Array.isArray(parsed) ? parsed : [];
+          setRoles(list.map((r: any) => ({ id: Number(r.id), name: String(r.name || r.id) })));
+        } else {
+          setRoles([]);
+        }
+      } catch {
+        setRoles([]);
+      } finally {
+        setRolesLoading(false);
+      }
+    };
+    loadRoles();
+  }, []);
 
   const handleAddQualification = (qual: QualificationPeriod) => {
     if (editingIndex !== null) {
@@ -247,6 +271,8 @@ const AddPerson: React.FC = () => {
         name, 
         vorname, 
         teilzeit,
+        personnelNumber: personnelNumber.trim() || null,
+        roleId: roleId === '' ? null : roleId,
         fahrzeugfuehrer: false,
         fahrzeugfuehrerHLFB: false,
         nef: false,
@@ -349,6 +375,50 @@ const AddPerson: React.FC = () => {
             boxSizing: 'border-box'
           }}
         />
+      </div>
+
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ display: 'block', marginBottom: '6px', fontWeight: 500 }}>
+          Personalnummer
+        </label>
+        <input
+          type="text"
+          value={personnelNumber}
+          onChange={e => setPersonnelNumber(e.target.value)}
+          placeholder="z.B. H123456"
+          style={{
+            width: '100%',
+            padding: '10px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            fontSize: '14px',
+            boxSizing: 'border-box'
+          }}
+        />
+      </div>
+
+      <div style={{ marginBottom: '24px' }}>
+        <label style={{ display: 'block', marginBottom: '6px', fontWeight: 500 }}>
+          Rolle
+        </label>
+        <select
+          value={roleId}
+          onChange={e => setRoleId(e.target.value === '' ? '' : Number(e.target.value))}
+          disabled={rolesLoading}
+          style={{
+            width: '100%',
+            padding: '10px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            fontSize: '14px',
+            boxSizing: 'border-box'
+          }}
+        >
+          <option value="">{rolesLoading ? 'Lade Rollen...' : 'Bitte wählen (optional)'}</option>
+          {roles.map(r => (
+            <option key={r.id} value={r.id}>{r.name}</option>
+          ))}
+        </select>
       </div>
 
       {/* Qualifikationen Sektion */}
