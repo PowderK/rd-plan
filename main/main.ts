@@ -799,6 +799,33 @@ ipcMain.handle('get-year-plannings', async () => {
     return await adapter.getYearPlannings();
 });
 
+// Shift Transfers (Issue #21)
+ipcMain.handle('get-shift-transfers', async (_event, year?: number, month?: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getShiftTransfers(year, month);
+});
+
+ipcMain.handle('add-shift-transfer', async (_event, transfer: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addShiftTransfer(transfer);
+    notifyDutyRosterUpdate();
+    return true;
+});
+
+ipcMain.handle('update-shift-transfer', async (_event, id: number, transfer: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateShiftTransfer(id, transfer);
+    notifyDutyRosterUpdate();
+    return true;
+});
+
+ipcMain.handle('delete-shift-transfer', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteShiftTransfer(id);
+    notifyDutyRosterUpdate();
+    return true;
+});
+
 ipcMain.handle('get-year-planning-for-year', async (_event, year: number) => {
     const adapter = await ensureDatabaseAdapter();
     return await adapter.getYearPlanningForYear(year);

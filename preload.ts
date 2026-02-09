@@ -14,17 +14,17 @@ function safeStringify(arg: any) {
 try {
     const _log = console.log.bind(console);
     console.log = (...args: any[]) => {
-        try { ipcRenderer.send('renderer-log', { level: 'log', args: args.map(safeStringify) }); } catch (e) {}
+        try { ipcRenderer.send('renderer-log', { level: 'log', args: args.map(safeStringify) }); } catch (e) { }
         _log(...args);
     };
     const _warn = console.warn.bind(console);
     console.warn = (...args: any[]) => {
-        try { ipcRenderer.send('renderer-log', { level: 'warn', args: args.map(safeStringify) }); } catch (e) {}
+        try { ipcRenderer.send('renderer-log', { level: 'warn', args: args.map(safeStringify) }); } catch (e) { }
         _warn(...args);
     };
     const _error = console.error.bind(console);
     console.error = (...args: any[]) => {
-        try { ipcRenderer.send('renderer-log', { level: 'error', args: args.map(safeStringify) }); } catch (e) {}
+        try { ipcRenderer.send('renderer-log', { level: 'error', args: args.map(safeStringify) }); } catch (e) { }
         _error(...args);
     };
 } catch (e) {
@@ -99,7 +99,7 @@ contextBridge.exposeInMainWorld('api', {
     hasQualificationInMonth: (personId: number, qualType: string, yearMonth: string) => ipcRenderer.invoke('has-qualification-in-month', personId, qualType, yearMonth),
     validateQualificationForShift: (personId: number, shiftValue: string, date: string, cellType?: string) => ipcRenderer.invoke('validate-qualification-for-shift', personId, shiftValue, date, cellType),
     getActiveQualifications: (personId: number, yearMonth: string) => ipcRenderer.invoke('get-active-qualifications', personId, yearMonth),
-    
+
     // Personnel Active Periods
     getPersonnelActivePeriods: (personId: number) => ipcRenderer.invoke('get-personnel-active-periods', personId),
     getAllPersonnelActivePeriods: () => ipcRenderer.invoke('get-all-personnel-active-periods'),
@@ -107,13 +107,13 @@ contextBridge.exposeInMainWorld('api', {
     updatePersonnelActivePeriod: (id: number, period: any) => ipcRenderer.invoke('update-personnel-active-period', id, period),
     deletePersonnelActivePeriod: (id: number) => ipcRenderer.invoke('delete-personnel-active-period', id),
     isPersonnelActiveInMonth: (personId: number, yearMonth: string) => ipcRenderer.invoke('is-personnel-active-in-month', personId, yearMonth),
-    
+
     // Qualification Types Management  
     getQualificationTypes: (activeOnly?: boolean) => ipcRenderer.invoke('get-qualification-types', activeOnly),
     addQualificationType: (qualType: any) => ipcRenderer.invoke('add-qualification-type', qualType),
     updateQualificationType: (id: number, qualType: any) => ipcRenderer.invoke('update-qualification-type', id, qualType),
     deleteQualificationType: (id: number) => ipcRenderer.invoke('delete-qualification-type', id),
-  getQualifiedPersonsForPosition: (position: string, date: string, cellType?: string) => ipcRenderer.invoke('get-qualified-persons-for-position', position, date, cellType),
+    getQualifiedPersonsForPosition: (position: string, date: string, cellType?: string) => ipcRenderer.invoke('get-qualified-persons-for-position', position, date, cellType),
     // Windows
     openAddAzubiWindow: () => ipcRenderer.send('open-add-azubi-window'),
     openEditAzubiWindow: (id: number) => ipcRenderer.send('open-edit-azubi-window', id),
@@ -149,7 +149,7 @@ contextBridge.exposeInMainWorld('api', {
     updateNefVehicle: (v: any) => ipcRenderer.invoke('update-nef-vehicle', v),
     deleteNefVehicle: (id: number) => ipcRenderer.invoke('delete-nef-vehicle', id),
     updateNefVehicleOrder: (order: number[]) => ipcRenderer.invoke('update-nef-vehicle-order', order),
-    setNefOccupancy: (id: number, mode: '24h'|'tag') => ipcRenderer.invoke('set-nef-occupancy', id, mode),
+    setNefOccupancy: (id: number, mode: '24h' | 'tag') => ipcRenderer.invoke('set-nef-occupancy', id, mode),
     openAddRtwWindow: () => ipcRenderer.send('open-add-rtw-window'),
     openAddNefWindow: () => ipcRenderer.send('open-add-nef-window'),
     onVehiclesUpdated: (callback: () => void) => ipcRenderer.on('vehicles-updated', callback),
@@ -211,6 +211,11 @@ contextBridge.exposeInMainWorld('api', {
     getYearPlanningForYear: (year: number) => ipcRenderer.invoke('get-year-planning-for-year', year),
     saveYearPlannings: (plannings: { year: number; filePath: string }[]) => ipcRenderer.invoke('save-year-plannings', plannings),
     deleteYearPlanning: (year: number) => ipcRenderer.invoke('delete-year-planning', year),
+    // Shift Transfers (Issue #21)
+    getShiftTransfers: (year?: number, month?: number) => ipcRenderer.invoke('get-shift-transfers', year, month),
+    addShiftTransfer: (transfer: any) => ipcRenderer.invoke('add-shift-transfer', transfer),
+    updateShiftTransfer: (id: number, transfer: any) => ipcRenderer.invoke('update-shift-transfer', id, transfer),
+    deleteShiftTransfer: (id: number) => ipcRenderer.invoke('delete-shift-transfer', id),
     openItwWindow: () => ipcRenderer.send('open-itw-window'),
     openVehiclesWindow: () => ipcRenderer.send('open-vehicles-window'),
     openValuesWindow: () => ipcRenderer.send('open-values-window'),

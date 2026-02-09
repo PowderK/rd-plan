@@ -7,7 +7,7 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v2.0.0 Build 892** - Authentifizierung, Rechteverwaltung und erweiterte Kommentarfunktionen
+**v2.1.0 Beta** - Schichtübernahme (Shift Transfer) mit monatsbasierter Logik und Persistenz-Fixes
 
 ## Funktionen
 
@@ -21,8 +21,8 @@ RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die 
 - **Qualifikationsverwaltung** direkt beim Erstellen von Personen
 - **Excel Import/Export** für Dienstplandaten mit intelligenter Konfliktlösung
 - **Einstellungsmenü** mit umfangreichen Konfigurationsmöglichkeiten
-- **Kommentar-System** für persönliche und globale Notizen im Dienstplan (in Vorbereitung)
-- **Schichtübernahme-Feature** zur gezielten Verteilung von Zusatzschichten (in Vorbereitung)
+- **Schichtübernahme-Feature** zur gezielten Verteilung von Zusatzschichten mit automatischer SOLL-Anpassung
+- **Erweitertes Kommentar-System** für persönliche und globale Notizen im Dienstplan (Beta)
 
 ### Azubi-Zeiträume-Management (v2.0+)
 - **Zeitraum-basierte Sichtbarkeit**: Azubis werden nur in ihren aktiven Zeiträumen im Dienstplan angezeigt
@@ -130,7 +130,7 @@ Hinweis für Administratoren: Wenn du die Anwendung paketieren oder für andere 
 
 ## Entwicklungsstatus
 
-**Version 2.0.0 (Build 892)** - Aktive Entwicklung
+**Version 2.1.0 Beta** - Aktive Entwicklung (Beta)
 
 Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangreichen Feature-Set. Die aktuelle Version 2.0.0 führt das **Authentifizierungs- & Rechteverwaltungssystem**, **Azubi-Zeiträume-Management**, **Person-Highlighting** und **Cross-Tab-Navigation** ein, bietet erweiterte Import-Funktionen mit Datenschutz und eine moderne Tab-basierte Personal-Verwaltung.
 
@@ -142,6 +142,11 @@ Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangrei
 - ✅ **AuthContext & Session-Management**: React Context für konsistente Auth über gesamte App
 - ✅ **Permission Guards**: Automatische UI-Anpassung basierend auf Benutzerrechten
 - ✅ **Dev-Mode**: Auto-Login für Entwicklung und Testing
+- ✅ **Schichtübernahme (Shift Transfer)**: Gezielte Übertragung von SOLL-Schichten zwischen Kollegen
+- ✅ **Monats-basierte Logik**: Einfache Verwaltung pro Monat (YYYY-MM)
+- ✅ **Performance-Optimierung**: Gecachte Berechnungen via `useMemo` für maximale Responsivität
+- ✅ **Automatisierte Migration**: Nahtloses Datenbank-Upgrade bei Versionswechsel
+- ✅ **Persistenz-Garantie**: Korrektes Speichern und Laden der Feature-Einstellungen
 - ✅ Tab-Navigation in der Personal-Verwaltung (Stammpersonal/Azubis/Ärzte)
 - ✅ Qualifikationsmanagement beim Erstellen von Personen
 - ✅ Modernisierte Add-Dialoge mit Validierung
@@ -155,9 +160,10 @@ Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangrei
 - ✅ Person-Highlighting mit Tag/Nacht-Farbcodierung
 - ✅ Cross-Tab-Hervorhebung für verbesserte Navigation zwischen RTW/NEF und ITW
 
+
 **In Vorbereitung**:
-- 🔄 **Kommentar-System**: Persönliche und globale Notizen im Dienstplan (Issue #22)
-- 🔄 **Schichtübernahme-Feature**: Gezielte Verteilung von Zusatzschichten mit SOLL-Anpassung (Issue #21)
+- 🔄 **Kommentar-System**: Erweiterte Funktionen für globale Hinweise (Issue #22)
+- 🔄 **Makros**: Wiederkehrende Dienstplan-Einträge automatisieren (Issue #23)
 
 ## Verwendung
 
@@ -258,6 +264,22 @@ Das **erweiterte Import-System** bietet umfassenden Schutz vor Datenverlust und 
 - Jahres-Rest im Kontrollkasten: Jahresziel − gefahrene Jahreslast (zusätzlich farblich hinterlegt je nach Puffer)
 - Tag/Nacht-Werte sind global über das Jahr gerechnet (nicht monatlich), damit sie in beiden Ansichten konsistent sind.
 
+## Schichtübernahme (Shift Transfer)
+
+Die Schichtübernahme ermöglicht es, SOLL-Schichten gezielt zwischen Mitarbeitern zu übertragen. Dies ist besonders nützlich für langfristige Absprachen oder die Verteilung von Zusatzkontingenten.
+
+### Funktionsweise
+1. **Zielgerichtet**: Ein Transfer hat immer einen Geber und einen Empfänger.
+2. **Monats-basiert**: Die Übernahme gilt für einen spezifischen Monat (z.B. Februar 2026).
+3. **SOLL-Anpassung**: Die Schichten werden dem SOLL des Empfängers für den gewählten Monat gutgeschrieben.
+4. **Transparenz**: Im Kontrollkasten wird das angepasste SOLL hervorgehoben (z.B. `130 (120 + 10 übernommen)`).
+
+### Technische Implementierung
+- **Datenbank**: Tabelle `shift_transfers` speichert Transfers mit einem `YYYY-MM` Identifikator.
+- **Berechnung**: Die `calculateSollWithTransfers` Logik integriert die Transfers nahtlos in die Hamilton-Verteilung der Grund-Soll-Werte.
+- **Integrität**: Kaskadierendes Löschen stellt sicher, dass Transfers beim Löschen von Personen automatisch entfernt werden.
+- **Migration**: Das System erkennt ältere Datumsformate und konvertiert diese automatisch in die neue monatsbasierte Struktur.
+
 ## Roadmap & Changelog
 
 ### Version 2.0.0 Build 892 (14. Januar 2026) - Aktuell
@@ -303,11 +325,11 @@ Das **erweiterte Import-System** bietet umfassenden Schutz vor Datenverlust und 
   - Globale Hinweise für alle Kollegen
   - Kontextmenü-Integration im Dienstplan-Grid
   - Visuelle Indikatoren für kommentierte Tage
-- 🔄 **Schichtübernahme-Feature** (Issue #21): Gezielte Verteilung von Zusatzschichten
-  - Übertragung von Schichten zwischen Kollegen
+- ✅ **Schichtübernahme-Feature** (Issue #21): Gezielte Verteilung von Zusatzschichten
+  - Übertragung von Schichten zwischen Kollegen pro Monat
   - Automatische SOLL-Anpassung für Übernehmer
-  - Proportionale Verrechnung bei nicht-beteiligten Kollegen
-  - UI für Schichtübernahme-Verwaltung
+  - Persistente Speicherung mit kaskadierender Integrität
+  - UI-Integration im Kontrollkasten und Einstellungsbereich
 - 🔄 **Multi-User Support**: Zentrale Datenbankunterstützung für Teamarbeit
 - 🔄 **Makros**: Wiederkehrende Dienstplan-Einträge automatisieren
 - 🔄 **Erweiterte Berichte**: PDF-Export und Statistiken

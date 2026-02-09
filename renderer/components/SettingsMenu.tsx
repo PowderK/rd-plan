@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import ImportYearTable from './ImportYearTable';
 import SettingsImportExport from './SettingsImportExport';
+import { ShiftTransferManager } from './ShiftTransferManager';
 import { BUILD_INFO } from '../buildInfo';
 import styles from './PersonnelOverview.module.css';
 
@@ -95,8 +96,11 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [yearImportUnknownAzubiNames, setYearImportUnknownAzubiNames] = useState<string[]>([]);
   // System Info
   const [systemUsername, setSystemUsername] = useState<string>('Lädt...');
-  // Feature toggle for old RTW shifts
+  // Feature toggles
   const [featureOldRtwShifts, setFeatureOldRtwShifts] = useState(false);
+  const [featureShiftTransfers, setFeatureShiftTransfers] = useState(false);
+  const [showShiftTransferManager, setShowShiftTransferManager] = useState(false);
+
 
   useEffect(() => {
     (async () => {
@@ -237,6 +241,16 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         const feat = await (window as any).api.getSetting('feature_old_rtw_shifts');
         setFeatureOldRtwShifts(feat === 'true' || feat === true);
       } catch { }
+      try {
+        const feat = await (window as any).api.getSetting('feature_old_rtw_shifts');
+        setFeatureOldRtwShifts(feat === 'true' || feat === true);
+      } catch { }
+
+      // Load feature_shift_transfers
+      try {
+        const feats = await (window as any).api.getSetting('feature_shift_transfers');
+        setFeatureShiftTransfers(feats === 'true' || feats === true);
+      } catch { }
     })();
   }, []);    // Fahrzeug-UI entfernt
 
@@ -282,6 +296,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
 
     // Save feature_old_rtw_shifts
     await (window as any).api.setSetting('feature_old_rtw_shifts', String(featureOldRtwShifts));
+    // Save feature_old_rtw_shifts
+    await (window as any).api.setSetting('feature_old_rtw_shifts', String(featureOldRtwShifts));
+
+    // Save feature_shift_transfers
+    await (window as any).api.setSetting('feature_shift_transfers', String(featureShiftTransfers));
+
     onClose();
   };
 
@@ -1037,6 +1057,35 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                     </button>
                   </div>
                 </div>
+              )}
+            </div>
+
+            {/* Shift Transfers */}
+            <div style={{ marginBottom: 24, padding: 12, background: '#f8f9fa', borderRadius: 8, border: '1px solid #dee2e6' }}>
+              <h3 style={{ marginTop: 0 }}>Schichtübernahmen</h3>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                <input
+                  type="checkbox"
+                  id="featureShiftTransfers"
+                  checked={featureShiftTransfers}
+                  onChange={(e) => setFeatureShiftTransfers(e.target.checked)}
+                  style={{ marginRight: 8 }}
+                />
+                <label htmlFor="featureShiftTransfers" style={{ cursor: 'pointer' }}>
+                  <strong>Gezielte Schichtübernahme aktivieren</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                    Erlaubt die Übertragung von SOLL-Schichten zwischen Mitarbeitern.
+                  </div>
+                </label>
+              </div>
+
+              {featureShiftTransfers && (
+                <button
+                  onClick={() => setShowShiftTransferManager(true)}
+                  style={{ padding: '6px 12px', background: '#007bff', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                >
+                  Verwalten…
+                </button>
               )}
             </div>
 
@@ -2221,6 +2270,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         )}
       </div>
       {/* Ende Content */}
+      {showShiftTransferManager && (
+        <ShiftTransferManager onClose={() => setShowShiftTransferManager(false)} />
+      )}
     </div>
   );
 };
@@ -2426,5 +2478,7 @@ const NewAzubiDialog: React.FC<NewAzubiDialogProps> = ({ unknownNames, onConfirm
     </div>
   );
 };
+
+
 
 export default SettingsMenu;

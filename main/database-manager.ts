@@ -172,6 +172,12 @@ export interface DatabaseAdapter {
   exportPersonnelToExcel(filePath: string): Promise<void>;
   createPersonnelTemplate(filePath: string): Promise<void>;
 
+  // Shift Transfers (Issue #21)
+  getShiftTransfers(year?: number, month?: number): Promise<any[]>;
+  addShiftTransfer(transfer: any): Promise<number>;
+  updateShiftTransfer(id: number, transfer: any): Promise<void>;
+  deleteShiftTransfer(id: number): Promise<void>;
+
   close(): Promise<void>;
 }
 
@@ -781,6 +787,28 @@ class SQLiteAdapter implements DatabaseAdapter {
   async close() {
     // SQLite database is closed automatically
   }
+  // Shift Transfers (Issue #21)
+  async getShiftTransfers(year?: number, month?: number) {
+    const { getShiftTransfers } = await import('./database');
+    return getShiftTransfers(this.db, year, month);
+  }
+
+  async addShiftTransfer(transfer: any) {
+    const { addShiftTransfer } = await import('./database');
+    return addShiftTransfer(this.db, transfer);
+  }
+
+  async updateShiftTransfer(id: number, transfer: any) {
+    const { updateShiftTransfer } = await import('./database');
+    return updateShiftTransfer(this.db, id, transfer);
+  }
+
+  async deleteShiftTransfer(id: number) {
+    const { deleteShiftTransfer } = await import('./database');
+    return deleteShiftTransfer(this.db, id);
+  }
+
+
 }
 
 export class DatabaseManager {
@@ -1093,6 +1121,82 @@ export class DatabaseManager {
         } catch (e) {
           console.error('[DatabaseManager] Error migrating roles:', e);
         }
+      }
+    }
+
+    // Migration: create shift_transfers table if missing (Issue #21)
+    const shiftTransfersTableExists = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='shift_transfers'");
+    if (!shiftTransfersTableExists) {
+      console.log('[DatabaseManager] Creating shift_transfers table');
+      await db.exec(`
+        CREATE TABLE shift_transfers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          from_person_id INTEGER NOT NULL,
+          to_person_id INTEGER NOT NULL,
+          shift_count REAL NOT NULL,
+          position_type TEXT NOT NULL,
+          valid_from TEXT NOT NULL,
+          valid_until TEXT,
+          reason TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(from_person_id) REFERENCES personnel(id) ON DELETE CASCADE,
+          FOREIGN KEY(to_person_id) REFERENCES personnel(id) ON DELETE CASCADE
+        )
+      `);
+      await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_from ON shift_transfers(from_person_id)`);
+      await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_to ON shift_transfers(to_person_id)`);
+      await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_month ON shift_transfers(valid_from)`);
+      console.log('[DatabaseManager] shift_transfers table created successfully');
+
+      // Add default setting
+      const featureSetting = await db.get("SELECT value FROM settings WHERE key='feature_shift_transfers'");
+      if (!featureSetting) {
+        await db.run("INSERT INTO settings (key, value) VALUES ('feature_shift_transfers', 'false')");
+        console.log('[DatabaseManager] Added feature_shift_transfers setting');
+      }
+    } else {
+      // Migration: Convert valid_from to YYYY-MM format and remove valid_until
+      const columns = await db.all("PRAGMA table_info(shift_transfers)");
+      const hasValidUntil = columns.some((col: any) => col.name === 'valid_until');
+
+      if (hasValidUntil) {
+        console.log('[DatabaseManager] Migrating shift_transfers to single-month format');
+
+        // Get existing data
+        const existingTransfers = await db.all("SELECT * FROM shift_transfers");
+
+        // Drop and recreate table with new schema
+        await db.exec("DROP TABLE shift_transfers");
+        await db.exec(`
+          CREATE TABLE shift_transfers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_person_id INTEGER NOT NULL,
+            to_person_id INTEGER NOT NULL,
+            shift_count REAL NOT NULL,
+            position_type TEXT NOT NULL,
+            month TEXT NOT NULL,
+            reason TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(from_person_id) REFERENCES personnel(id) ON DELETE CASCADE,
+            FOREIGN KEY(to_person_id) REFERENCES personnel(id) ON DELETE CASCADE
+          )
+        `);
+        await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_from ON shift_transfers(from_person_id)`);
+        await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_to ON shift_transfers(to_person_id)`);
+        await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_month ON shift_transfers(month)`);
+
+        // Migrate existing data: convert YYYY-MM-DD to YYYY-MM
+        for (const transfer of existingTransfers) {
+          const month = transfer.valid_from.substring(0, 7); // Extract YYYY-MM
+          await db.run(
+            `INSERT INTO shift_transfers (id, from_person_id, to_person_id, shift_count, position_type, month, reason, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [transfer.id, transfer.from_person_id, transfer.to_person_id, transfer.shift_count,
+            transfer.position_type, month, transfer.reason, transfer.created_at]
+          );
+        }
+
+        console.log(`[DatabaseManager] Migrated ${existingTransfers.length} shift transfers to single-month format`);
       }
     }
   }
@@ -1471,6 +1575,28 @@ export class DatabaseManager {
     fs.copyFileSync(src, this.currentDbPath);
     console.log('[DatabaseManager] Backup wiederhergestellt von:', src);
   }
+
+
+  // Shift Transfers (Issue #21)
+  async getShiftTransfers(year?: number, month?: number) {
+    const adapter = this.getAdapter();
+    return adapter.getShiftTransfers(year, month);
+  }
+
+  async addShiftTransfer(transfer: any) {
+    const adapter = this.getAdapter();
+    return adapter.addShiftTransfer(transfer);
+  }
+
+  async updateShiftTransfer(id: number, transfer: any) {
+    const adapter = this.getAdapter();
+    return adapter.updateShiftTransfer(id, transfer);
+  }
+
+  async deleteShiftTransfer(id: number) {
+    const adapter = this.getAdapter();
+    return adapter.deleteShiftTransfer(id);
+  }
 }
 
 // Global database manager instance
@@ -1542,6 +1668,7 @@ export async function closeDatabaseManager() {
     globalDatabaseManager = null;
   }
 }
+
 
 export async function createDatabaseBackup(opts?: { year?: number; month?: number }): Promise<string> {
   const mgr = getDatabaseManager();

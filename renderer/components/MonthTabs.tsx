@@ -62,6 +62,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
     // Feature Toggle: Alte RTW Schichten
     const [featureOldRtwShifts, setFeatureOldRtwShifts] = useState(false);
+    // Schichtübernahmen
+    const [shiftTransfers, setShiftTransfers] = useState<any[]>([]);
 
     useEffect(() => {
         const loadHlfbPeriods = async () => {
@@ -106,7 +108,28 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 setReleasedMonths(status);
             } catch (e) { console.warn('Failed to load released status', e); }
         };
+        const loadTransfers = async () => {
+            try {
+                console.log('[MonthTabs] Loading shift transfers for year:', year);
+                const transfers = await (window as any).api.getShiftTransfers(year);
+                console.log('[MonthTabs] Loaded transfers:', transfers);
+                if (Array.isArray(transfers)) {
+                    console.log('[MonthTabs] Setting', transfers.length, 'transfers');
+                    setShiftTransfers(transfers);
+                } else {
+                    console.warn('[MonthTabs] Transfers is not an array:', typeof transfers);
+                }
+            } catch (e) {
+                console.error('[MonthTabs] Failed to load shift transfers:', e);
+            }
+        };
         loadReleased();
+        loadTransfers();
+
+        // Listener für Updates
+        const onTransfersUpdated = () => loadTransfers();
+        (window as any).api?.onShiftTransfersUpdated?.(onTransfersUpdated);
+        return () => { (window as any).api?.offShiftTransfersUpdated?.(onTransfersUpdated); };
     }, [year]);
 
     // Höre auf Sidebar Collapse Events
@@ -1117,7 +1140,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         {/* ========================================================== */}
                         {/* GEMEINSAME SOLL-BERECHNUNG für RTW-Tab und ITW-Tab        */}
                         {/* ========================================================== */}
-                        {(() => {
+                        {useMemo(() => {
                             const computeSharedTargets = () => {
                                 // 1. Flatten Roster for Shared Calculation
                                 const flattenedRoster: any[] = [];
@@ -1154,7 +1177,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                     { rtwActs: rtwActivations, nefActs: nefActivations },
                                     department,
                                     deptPatternSeqs || [],
-                                    hlfbPeriodsByPerson
+                                    hlfbPeriodsByPerson,
+                                    shiftTransfers // <-- Pass loaded transfers here
                                 );
 
                                 // 3. Map Targets to MonthTabs format
@@ -1362,9 +1386,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 };
                             };
 
-                            (window as any).__sharedTargets = computeSharedTargets();
+                            const result = computeSharedTargets();
+                            (window as any).__sharedTargets = result;
                             return null;
-                        })()}
+                        }, [year, roster, localRoster, personnel, azubis, ue50Ids, auswertungByType,
+                            rtwVehicles, nefVehicles, rtwActivations, nefActivations, department,
+                            deptPatternSeqs, hlfbPeriodsByPerson, shiftTransfers, currentMonth])}
 
                         {viewMode === 'rtwnef' && (
                             <>
@@ -1729,7 +1756,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         const ue50 = (p as any).ue50 === 1;
                                         const total = tn.tag + tn.nacht + nef + itw;
                                         const oldRtwShifts = (p as any).old_rtw_shifts || 0;
-                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, cumDiff, teilzeit, hlfb, ue50, total, oldRtwShifts } as { key: string, name: string, target: number | string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, cumDiff: number, teilzeit: number, hlfb: boolean, ue50: boolean, total: number, oldRtwShifts: number };
+
+                                        // Prüfe ob für diesen Monat eine Übernahme vorliegt
+                                        const hasTransfer = (shiftTransfers || []).some((t: any) => {
+                                            if (t.to_person_id !== p.id) return false;
+                                            const [ty, tm] = (t.month || '').split('-').map(Number);
+                                            return ty === year && tm === (currentMonth + 1);
+                                        });
+
+                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, cumDiff, teilzeit, hlfb, ue50, total, oldRtwShifts, hasTransfer } as { key: string, name: string, target: number | string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, cumDiff: number, teilzeit: number, hlfb: boolean, ue50: boolean, total: number, oldRtwShifts: number, hasTransfer: boolean };
                                     });
                                     // Farbliche Hervorhebung: nur Personen mit Monats-Soll > 0 berücksichtigen, Rest (Jahr) auf 100%-Äquivalent normalisieren
                                     const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));

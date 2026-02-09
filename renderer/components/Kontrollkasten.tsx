@@ -31,6 +31,7 @@ interface KontrollkastenItem {
   teilzeit?: number;
   presenceRemainingByPerson?: number;
   oldRtwShifts?: number;
+  hasTransfer?: boolean;
 }
 
 interface KontrollkastenProps {
@@ -137,7 +138,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
 
                 {/* Soll/Ist mit Waage */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, borderRight: '1px solid #e5e7eb', paddingRight: 4 }}>
-                  <span className={styles.sidebarVal} style={{ fontSize: 11 }}>
+                  <span className={styles.sidebarVal} style={{ fontSize: 11, color: it.hasTransfer ? '#3b82f6' : undefined, fontWeight: it.hasTransfer ? 600 : undefined }}>
                     {(it.target === '' ? '–' : it.target) + ' | ' + it.count}
                   </span>
                   {renderPresenceMeter(it.cumDiff, 5)}
