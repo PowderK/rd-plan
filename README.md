@@ -7,7 +7,7 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v2.1.0 Beta** - Schichtübernahme (Shift Transfer) mit monatsbasierter Logik und Persistenz-Fixes
+**v1.0.5 RC** - Schichtübernahme (Shift Transfer) mit monatsbasierter Logik und Persistenz-Fixes
 
 ## Funktionen
 
@@ -24,14 +24,14 @@ RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die 
 - **Schichtübernahme-Feature** zur gezielten Verteilung von Zusatzschichten mit automatischer SOLL-Anpassung
 - **Erweitertes Kommentar-System** für persönliche und globale Notizen im Dienstplan (Beta)
 
-### Azubi-Zeiträume-Management (v2.0+)
+### Azubi-Zeiträume-Management (v1.0+)
 - **Zeitraum-basierte Sichtbarkeit**: Azubis werden nur in ihren aktiven Zeiträumen im Dienstplan angezeigt
 - **Integrierte Verwaltung** im Personal-Tab mit Modal-Dialog
 - **Flexible Zeiträume**: Start-/Enddatum mit optionaler Beschreibung (z.B. "2. Lehrjahr")
 - **Automatische Filterung**: Dienstplan zeigt nur aktive Azubis basierend auf dem aktuellen Monat
 - **Rückwärtskompatibilität**: Azubis ohne definierte Zeiträume bleiben immer sichtbar
 
-### Authentifizierung & Rechteverwaltung (v2.0+)
+### Authentifizierung & Rechteverwaltung (v1.0+)
 - **Login-System**: Personalisierter Zugang über Personalnummer
 - **Rollenbasierte Berechtigungen**: Granulare Zugriffsrechte (none/read/write) für verschiedene Bereiche:
   - Einteilung (Dienstplan-Bearbeitung)
@@ -130,23 +130,20 @@ Hinweis für Administratoren: Wenn du die Anwendung paketieren oder für andere 
 
 ## Entwicklungsstatus
 
-**Version 2.1.0 Beta** - Aktive Entwicklung (Beta)
+**Version 1.0.5 RC** - Aktive Entwicklung (Release Candidate)
 
-Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangreichen Feature-Set. Die aktuelle Version 2.0.0 führt das **Authentifizierungs- & Rechteverwaltungssystem**, **Azubi-Zeiträume-Management**, **Person-Highlighting** und **Cross-Tab-Navigation** ein, bietet erweiterte Import-Funktionen mit Datenschutz und eine moderne Tab-basierte Personal-Verwaltung.
+Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangreichen Feature-Set. Die aktuelle Version 1.0.5 RC führt die **Schichtübernahme (Shift Transfer)**, das **Authentifizierungs- & Rechteverwaltungssystem**, das **Azubi-Zeiträume-Management**, das **Person-Highlighting** und die **Cross-Tab-Navigation** ein. Zudem bietet sie erweiterte Import-Funktionen mit Datenschutz und eine moderne Tab-basierte Personal-Verwaltung.
 
 **Produktionstauglichkeit**: Die Anwendung wird bereits in mehreren Rettungswachen erfolgreich eingesetzt. Für kritische Umgebungen wird empfohlen, die Funktionen vorab zu testen und regelmäßige Datensicherungen durchzuführen.
 
-**Neue Features in v2.0.0 (Build 892)**:
-- ✅ **Authentifizierungs-System**: Login mit Personalnummer und rollenbasierter Zugriffskontrolle
-- ✅ **Rechteverwaltung**: Granulare Berechtigungen (none/read/write) für alle Hauptbereiche
-- ✅ **AuthContext & Session-Management**: React Context für konsistente Auth über gesamte App
-- ✅ **Permission Guards**: Automatische UI-Anpassung basierend auf Benutzerrechten
-- ✅ **Dev-Mode**: Auto-Login für Entwicklung und Testing
+**Neue Features in v1.0.5 RC**:
 - ✅ **Schichtübernahme (Shift Transfer)**: Gezielte Übertragung von SOLL-Schichten zwischen Kollegen
 - ✅ **Monats-basierte Logik**: Einfache Verwaltung pro Monat (YYYY-MM)
 - ✅ **Performance-Optimierung**: Gecachte Berechnungen via `useMemo` für maximale Responsivität
 - ✅ **Automatisierte Migration**: Nahtloses Datenbank-Upgrade bei Versionswechsel
 - ✅ **Persistenz-Garantie**: Korrektes Speichern und Laden der Feature-Einstellungen
+- ✅ **Ganzzahlige Soll-Verteilung**: Implementierung des Hamilton-Verfahrens für faire Schichtverteilung
+- ✅ **Authentifizierungs-System**: Login mit Personalnummer und rollenbasierter Zugriffskontrolle
 - ✅ Tab-Navigation in der Personal-Verwaltung (Stammpersonal/Azubis/Ärzte)
 - ✅ Qualifikationsmanagement beim Erstellen von Personen
 - ✅ Modernisierte Add-Dialoge mit Validierung
@@ -171,7 +168,7 @@ Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangrei
 Starte die portable EXE direkt (Windows):
 
 ```bash
-./RD-Plan-2.0.0.exe
+./RD-Plan-1.0.5-RC.exe
 ```
 
 ### Erste Schritte
@@ -282,7 +279,10 @@ Die Schichtübernahme ermöglicht es, SOLL-Schichten gezielt zwischen Mitarbeite
 
 ## Roadmap & Changelog
 
-### Version 2.0.0 Build 892 (14. Januar 2026) - Aktuell
+### Version 1.0.5 RC (Februar 2026) - Aktuell
+- ✅ **Schichtübernahme-Feature**: Gezielte Verteilung von Zusatzschichten mit monatsbasierter Logik
+- ✅ **Ganzzahlige Soll-Verteilung**: Hamilton-Verfahren zur gerechten Umverteilung von Restschichten
+- ✅ **Persistenz-Fix**: Dauerhaftes Speichern der Feature-Einstellungen
 - ✅ **Authentifizierungs-System**: Login-Seite mit Personalnummer-basierter Authentifizierung
 - ✅ **AuthService**: Backend-Service für Session-Management und Permission-Checks
 - ✅ **AuthContext**: React Context Provider für applikationsweite Authentifizierung
@@ -297,7 +297,7 @@ Die Schichtübernahme ermöglicht es, SOLL-Schichten gezielt zwischen Mitarbeite
 - ✅ **Sichere IPC**: Erweiterte Electron preload APIs für Auth-Kommunikation
 - ✅ **UI-Verbesserungen**: Login-Seite, Benutzer-Anzeige in Header, Logout-Funktion
 
-### Version 2.0.0 Build 494 (12. Dezember 2025)
+### Version 1.0.0 Build 494 (Dezember 2025)
 - ✅ **Tab-Navigation Personal**: Übersichtliche Aufteilung in Stammpersonal, Azubis und Ärzte
 - ✅ **Qualifikationsmanagement**: Direkte Verwaltung von Qualifikationen beim Erstellen von Personen
 - ✅ **Modernisierte Add-Dialoge**: Konsistentes Design mit Validierung für addPerson und addAzubi
