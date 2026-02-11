@@ -96,6 +96,7 @@ const DutyRoster: React.FC = () => {
   const { currentUser, hasPermission } = useAuth();
   const canWrite = hasPermission('dienstplan', 'write');
   const canRead = hasPermission('dienstplan', 'read');
+  const canReadAll = currentUser?.permissions['dienstplan'] === 'read_all';
 
   const [personnel, setPersonnel] = useState<Person[]>([]);
   const [year, setYear] = useState<number>((window as any).rdPlanYear || new Date().getFullYear());
@@ -502,9 +503,11 @@ const DutyRoster: React.FC = () => {
 
   // Filtere Personal basierend auf Berechtigungen
   let visiblePersonnel = personnel;
-  if (canRead && !canWrite && currentUser) {
-    // Read-Only: Zeige nur eigene Zeile
-    visiblePersonnel = personnel.filter(p => p.personnelNumber === currentUser.personnelNumber);
+  if ((canRead || canReadAll) && !canWrite && currentUser) {
+    // Read-Only: Zeige nur eigene Zeile, es sei denn user hat dienstplan_read_all
+    if (!canReadAll) {
+      visiblePersonnel = personnel.filter(p => p.personnelNumber === currentUser.personnelNumber);
+    }
   }
 
   // Filtere Azubis: nur bei Schreibrechten anzeigen
@@ -1249,7 +1252,7 @@ const DutyRoster: React.FC = () => {
           ))}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-          <button onClick={handleImport}>
+          <button onClick={handleImport} disabled={!canWrite}>
             Import Monat (Excel)
           </button>
           <span style={{ fontSize: 12, color: '#555' }}>Importiert den aktuellen Monat aus der in den Einstellungen hinterlegten Excel-Datei.</span>
@@ -1286,8 +1289,8 @@ const DutyRoster: React.FC = () => {
           }
         }}
       >
-        {/* View Protection: Hide content if read-only and not released */}
-        {!canWrite && !releasedMonths[currentMonth] ? (
+        {/* View Protection: Hide content if read-only and not released, unless user has read_all */}
+        {!canWrite && !canReadAll && !releasedMonths[currentMonth] ? (
           <div style={{
             display: 'flex',
             flexDirection: 'column',

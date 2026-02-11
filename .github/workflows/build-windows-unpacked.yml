@@ -5,10 +5,8 @@ on:
   push:
     tags:
       - 'v*'
-
 permissions:
   contents: write
-
 jobs:
   build-windows-unpacked:
     runs-on: windows-latest

@@ -22,26 +22,26 @@ export interface DatabaseAdapter {
   updatePersonnel(person: any): Promise<void>;
   deletePersonnel(id: number): Promise<void>;
   updatePersonnelOrder(order: number[]): Promise<void>;
-  
+
   getDutyRoster(year: number): Promise<any[]>;
   setDutyRosterEntry(entry: any): Promise<{ success: boolean; warning?: string; vehicleAssignment?: string }>;
   bulkSetDutyRosterEntries(entries: any[]): Promise<number>;
   bulkImportDutyRosterEntries(entries: any[], respectManualEdits?: boolean, deleteEmpty?: boolean): Promise<{ imported: number, skipped: number }>;
-  
+
   getAzubiList(): Promise<any[]>;
   getAzubi(id: number): Promise<any | null>;
   addAzubi(azubi: any): Promise<any>;
   updateAzubi(azubi: any): Promise<void>;
   deleteAzubi(id: number): Promise<void>;
   updateAzubiOrder(order: number[]): Promise<void>;
-  
+
   // Azubi Periods
   getAzubiPeriods(azubiId: number): Promise<any[]>;
   getAllAzubiPeriods(): Promise<any[]>;
   addAzubiPeriod(period: any): Promise<void>;
   updateAzubiPeriod(period: any): Promise<void>;
   deleteAzubiPeriod(id: number): Promise<void>;
-  
+
   // Qualification Periods
   getQualificationPeriods(personId: number): Promise<any[]>;
   getAllQualificationPeriods(): Promise<any[]>;
@@ -59,22 +59,22 @@ export interface DatabaseAdapter {
   updatePersonnelActivePeriod(period: any): Promise<void>;
   deletePersonnelActivePeriod(id: number): Promise<void>;
   isPersonnelActiveInMonth(personId: number, yearMonth: string): Promise<boolean>;
-  
+
   // Qualification Types Management
   getQualificationTypes(activeOnly?: boolean): Promise<any[]>;
   addQualificationType(qualType: any): Promise<void>;
   updateQualificationType(qualType: QualificationType): Promise<void>;
-    deleteQualificationType(id: number): Promise<void>;
-    getQualifiedPersonsForPosition(position: string, date: string, cellType?: string): Promise<{ id: number; name: string; vorname: string; qualifications: string[]; isAzubi?: boolean; lehrjahr?: number }[]>;
-  
+  deleteQualificationType(id: number): Promise<void>;
+  getQualifiedPersonsForPosition(position: string, date: string, cellType?: string): Promise<{ id: number; name: string; vorname: string; qualifications: string[]; isAzubi?: boolean; lehrjahr?: number }[]>;
+
   // NEF vehicles
-  
+
   getItwDoctors(): Promise<any[]>;
   addItwDoctor(doc: any): Promise<void>;
   updateItwDoctor(doc: any): Promise<void>;
   deleteItwDoctor(id: number): Promise<void>;
   updateItwDoctorOrder(order: number[]): Promise<void>;
-  
+
   getRtwVehicles(year?: number): Promise<any[]>;
   addRtwVehicle(v: { name: string }): Promise<void>;
   updateRtwVehicle(v: { id: number, name: string }): Promise<void>;
@@ -85,7 +85,7 @@ export interface DatabaseAdapter {
   updateNefVehicle(v: { id: number, name: string, occupancyMode?: '24h' | 'tag' }): Promise<void>;
   deleteNefVehicle(id: number, currentYear?: number): Promise<void>;
   updateNefVehicleOrder(order: number[]): Promise<void>;
-  
+
   getItwVehicles(year?: number): Promise<any[]>;
   addItwVehicle(v: { name: string }): Promise<void>;
   updateItwVehicle(v: { id: number, name: string }): Promise<void>;
@@ -97,7 +97,7 @@ export interface DatabaseAdapter {
   getNefVehicleActivations(year: number): Promise<any[]>;
   setNefVehicleActivation(vehicleId: number, year: number, month: number, enabled: boolean): Promise<void>;
   setNefOccupancyMode(id: number, mode: '24h' | 'tag'): Promise<void>;
-  
+
   // RTW/NEF Vehicle Periods
   getRtwVehiclePeriods(vehicleId: number): Promise<any[]>;
   getAllRtwVehiclePeriods(): Promise<any[]>;
@@ -109,7 +109,7 @@ export interface DatabaseAdapter {
   addNefVehiclePeriod(period: any): Promise<void>;
   updateNefVehiclePeriod(period: any): Promise<void>;
   deleteNefVehiclePeriod(id: number): Promise<void>;
-  
+
   getItwVehiclePeriods(vehicleId: number): Promise<any[]>;
   getAllItwVehiclePeriods(): Promise<any[]>;
   addItwVehiclePeriod(period: any): Promise<void>;
@@ -128,56 +128,62 @@ export interface DatabaseAdapter {
   setHolidaysForYear(year: number, dates: any[]): Promise<void>;
   addHoliday(date: string, name?: string): Promise<void>;
   deleteHoliday(date: string): Promise<void>;
-  
+
   getSetting(key: string): Promise<string | null>;
   setSetting(key: string, value: string): Promise<void>;
-  
+
   getShiftTypes(): Promise<any[]>;
   addShiftType(type: any): Promise<void>;
   updateShiftType(type: any): Promise<void>;
   deleteShiftType(id: number): Promise<void>;
-  
+
   // Roster Import
-  importDutyRoster(filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number> }): Promise<{success: boolean, message: string, importedCount: number}>;
+  importDutyRoster(filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number> }): Promise<{ success: boolean, message: string, importedCount: number }>;
 
   // Excel Import/Export für Personal
   importPersonnelFromExcel(filePath: string, replaceExisting: boolean): Promise<any>;
   exportPersonnelToExcel(filePath: string): Promise<void>;
   createPersonnelTemplate(filePath: string): Promise<void>;
-  
+
   // Settings Import/Export
   importSettingsFromJson(filePath: string, replaceExisting: boolean): Promise<any>;
   exportSettingsToJson(filePath: string): Promise<void>;
   exportSettingsToExcel(filePath: string): Promise<void>;
   createSettingsTemplate(filePath: string): Promise<void>;
-  
+
   clearDutyRosterForYear(year: number): Promise<void>;
   clearDutyRosterForMonth(year: number, month: number): Promise<void>;
   clearSlotAssignments(): Promise<void>;
   assignSlot(entry: { personId: number, personType: string, date: string, slotType: string }): Promise<void>;
-  
+
   getItwPatterns(): Promise<any[]>;
   setItwPatterns(patterns: any[]): Promise<void>;
   getDeptPatterns(): Promise<any[]>;
   setDeptPatterns(patterns: any[]): Promise<void>;
-  
+
   // Year Plannings
   getYearPlannings(): Promise<{ year: number; filePath: string }[]>;
   getYearPlanningForYear(year: number): Promise<{ year: number; filePath: string } | undefined>;
   saveYearPlannings(plannings: { year: number; filePath: string }[]): Promise<void>;
   deleteYearPlanning(year: number): Promise<void>;
-  
+
   // Excel Import/Export
   importPersonnelFromExcel(filePath: string, replaceExisting?: boolean): Promise<any>;
   exportPersonnelToExcel(filePath: string): Promise<void>;
   createPersonnelTemplate(filePath: string): Promise<void>;
-  
+
+  // Shift Transfers (Issue #21)
+  getShiftTransfers(year?: number, month?: number): Promise<any[]>;
+  addShiftTransfer(transfer: any): Promise<number>;
+  updateShiftTransfer(id: number, transfer: any): Promise<void>;
+  deleteShiftTransfer(id: number): Promise<void>;
+
   close(): Promise<void>;
 }
 
 class SQLiteAdapter implements DatabaseAdapter {
-  constructor(private db: AsyncDB) {}
-  
+  constructor(private db: AsyncDB) { }
+
   async getPersonnel(includeInactive?: boolean, date?: string) {
     const { getPersonnel } = await import('./database');
     return getPersonnel(this.db, !!includeInactive, date);
@@ -190,72 +196,72 @@ class SQLiteAdapter implements DatabaseAdapter {
     const { getPersonById } = await import('./database');
     return getPersonById(this.db, id);
   }
-  
+
   async addPersonnel(person: any) {
     const { addPersonnel } = await import('./database');
     return addPersonnel(this.db, person);
   }
-  
+
   async updatePersonnel(person: any) {
     const { updatePersonnel } = await import('./database');
     return updatePersonnel(this.db, person);
   }
-  
+
   async deletePersonnel(id: number) {
     const { deletePersonnel } = await import('./database');
     return deletePersonnel(this.db, id);
   }
-  
+
   async updatePersonnelOrder(order: number[]) {
     const { updatePersonnelOrder } = await import('./database');
     return updatePersonnelOrder(this.db, order);
   }
-  
+
   async getDutyRoster(year: number) {
     const { getDutyRoster } = await import('./database');
     return getDutyRoster(this.db, year);
   }
-  
+
   async setDutyRosterEntry(entry: any) {
     const { setDutyRosterEntry } = await import('./database');
     return setDutyRosterEntry(this.db, entry);
   }
-  
+
   async bulkSetDutyRosterEntries(entries: any[]) {
     const { bulkSetDutyRosterEntries } = await import('./database');
     return bulkSetDutyRosterEntries(this.db, entries);
   }
-  
+
   async bulkImportDutyRosterEntries(entries: any[], respectManualEdits: boolean = true, deleteEmpty: boolean = true) {
     const { bulkImportDutyRosterEntries } = await import('./database');
     return bulkImportDutyRosterEntries(this.db, entries, respectManualEdits, deleteEmpty);
   }
-  
+
   async getAzubiList() {
     const { getAzubiList } = await import('./database');
     return getAzubiList(this.db);
   }
-  
+
   async getAzubi(id: number) {
     const { getAzubi } = await import('./database');
     return getAzubi(this.db, id);
   }
-  
+
   async addAzubi(azubi: any) {
     const { addAzubi } = await import('./database');
     return addAzubi(this.db, azubi);
   }
-  
+
   async updateAzubi(azubi: any) {
     const { updateAzubi } = await import('./database');
     return updateAzubi(this.db, azubi);
   }
-  
+
   async deleteAzubi(id: number) {
     const { deleteAzubi } = await import('./database');
     return deleteAzubi(this.db, id);
   }
-  
+
   async updateAzubiOrder(order: number[]) {
     const { updateAzubiOrder } = await import('./database');
     return updateAzubiOrder(this.db, order);
@@ -266,49 +272,49 @@ class SQLiteAdapter implements DatabaseAdapter {
     const { getAzubiPeriods } = await import('./database');
     return getAzubiPeriods(this.db, azubiId);
   }
-  
+
   async getAllAzubiPeriods() {
     const { getAllAzubiPeriods } = await import('./database');
     return getAllAzubiPeriods(this.db);
   }
-  
+
   async addAzubiPeriod(period: any) {
     const { addAzubiPeriod } = await import('./database');
     return addAzubiPeriod(this.db, period);
   }
-  
+
   async updateAzubiPeriod(period: any) {
     const { updateAzubiPeriod } = await import('./database');
     return updateAzubiPeriod(this.db, period);
   }
-  
+
   async deleteAzubiPeriod(id: number) {
     const { deleteAzubiPeriod } = await import('./database');
     return deleteAzubiPeriod(this.db, id);
   }
-  
+
   // Qualification Periods
   async getQualificationPeriods(personId: number) {
     const { getQualificationPeriods } = await import('./database');
     const result = await getQualificationPeriods(this.db, personId);
     return result;
   }
-  
+
   async getAllQualificationPeriods() {
     const { getAllQualificationPeriods } = await import('./database');
     return getAllQualificationPeriods(this.db);
   }
-  
+
   async addQualificationPeriod(period: any) {
     const { addQualificationPeriod } = await import('./database');
     return addQualificationPeriod(this.db, period);
   }
-  
+
   async updateQualificationPeriod(period: any) {
     const { updateQualificationPeriod } = await import('./database');
     return updateQualificationPeriod(this.db, period);
   }
-  
+
   async deleteQualificationPeriod(id: number) {
     const { deleteQualificationPeriod } = await import('./database');
     return deleteQualificationPeriod(this.db, id);
@@ -324,22 +330,22 @@ class SQLiteAdapter implements DatabaseAdapter {
     const { getPersonnelActivePeriods } = await import('./database');
     return getPersonnelActivePeriods(this.db, personId);
   }
-  
+
   async getAllPersonnelActivePeriods() {
     const { getAllPersonnelActivePeriods } = await import('./database');
     return getAllPersonnelActivePeriods(this.db);
   }
-  
+
   async addPersonnelActivePeriod(period: any) {
     const { addPersonnelActivePeriod } = await import('./database');
     return addPersonnelActivePeriod(this.db, period);
   }
-  
+
   async updatePersonnelActivePeriod(period: any) {
     const { updatePersonnelActivePeriod } = await import('./database');
     return updatePersonnelActivePeriod(this.db, period);
   }
-  
+
   async deletePersonnelActivePeriod(id: number) {
     const { deletePersonnelActivePeriod } = await import('./database');
     return deletePersonnelActivePeriod(this.db, id);
@@ -374,87 +380,87 @@ class SQLiteAdapter implements DatabaseAdapter {
     const { getQualifiedPersonsForPosition } = await import('./database');
     return getQualifiedPersonsForPosition(this.db, position, date, cellType);
   }
-  
+
   async hasQualificationInMonth(personId: number, qualType: string, yearMonth: string) {
     const { hasQualificationInMonth } = await import('./database');
     return hasQualificationInMonth(this.db, personId, qualType, yearMonth);
   }
-  
+
   async getActiveQualifications(personId: number, yearMonth: string) {
     const { getActiveQualifications } = await import('./database');
     return getActiveQualifications(this.db, personId, yearMonth);
   }
-  
+
   async getItwDoctors() {
     const { getItwDoctors } = await import('./database');
     return getItwDoctors(this.db);
   }
-  
+
   async addItwDoctor(doc: any) {
     const { addItwDoctor } = await import('./database');
     return addItwDoctor(this.db, doc);
   }
-  
+
   async updateItwDoctor(doc: any) {
     const { updateItwDoctor } = await import('./database');
     return updateItwDoctor(this.db, doc);
   }
-  
+
   async deleteItwDoctor(id: number) {
     const { deleteItwDoctor } = await import('./database');
     return deleteItwDoctor(this.db, id);
   }
-  
+
   async updateItwDoctorOrder(order: number[]) {
     const { updateItwDoctorOrder } = await import('./database');
     return updateItwDoctorOrder(this.db, order);
   }
-  
+
   async getRtwVehicles(year?: number) {
     const { getRtwVehicles } = await import('./database');
     return getRtwVehicles(this.db, year);
   }
-  
+
   async addRtwVehicle(v: { name: string }) {
     const { addRtwVehicle } = await import('./database');
     return addRtwVehicle(this.db, v);
   }
-  
+
   async updateRtwVehicle(v: { id: number, name: string }) {
     const { updateRtwVehicle } = await import('./database');
     return updateRtwVehicle(this.db, v);
   }
-  
+
   async deleteRtwVehicle(id: number, currentYear?: number) {
     const { deleteRtwVehicle } = await import('./database');
     return deleteRtwVehicle(this.db, id, currentYear);
   }
-  
+
   async updateRtwVehicleOrder(order: number[]) {
     const { updateRtwVehicleOrder } = await import('./database');
     return updateRtwVehicleOrder(this.db, order);
   }
-  
+
   async getNefVehicles(year?: number) {
     const { getNefVehicles } = await import('./database');
     return getNefVehicles(this.db, year);
   }
-  
+
   async addNefVehicle(v: { name: string, occupancyMode?: '24h' | 'tag' }) {
     const { addNefVehicle } = await import('./database');
     return addNefVehicle(this.db, v);
   }
-  
+
   async updateNefVehicle(v: { id: number, name: string, occupancyMode?: '24h' | 'tag' }) {
     const { updateNefVehicle } = await import('./database');
     return updateNefVehicle(this.db, v);
   }
-  
+
   async deleteNefVehicle(id: number, currentYear?: number) {
     const { deleteNefVehicle } = await import('./database');
     return deleteNefVehicle(this.db, id, currentYear);
   }
-  
+
   async updateNefVehicleOrder(order: number[]) {
     const { updateNefVehicleOrder } = await import('./database');
     return updateNefVehicleOrder(this.db, order);
@@ -464,99 +470,99 @@ class SQLiteAdapter implements DatabaseAdapter {
     const { getItwVehicles } = await import('./database');
     return getItwVehicles(this.db, year);
   }
-  
+
   async addItwVehicle(v: { name: string }) {
     const { addItwVehicle } = await import('./database');
     return addItwVehicle(this.db, v);
   }
-  
+
   async updateItwVehicle(v: { id: number, name: string }) {
     const { updateItwVehicle } = await import('./database');
     return updateItwVehicle(this.db, v);
   }
-  
+
   async deleteItwVehicle(id: number, currentYear?: number) {
     const { deleteItwVehicle } = await import('./database');
     return deleteItwVehicle(this.db, id, currentYear);
   }
-  
+
   async updateItwVehicleOrder(order: number[]) {
     const { updateItwVehicleOrder } = await import('./database');
     return updateItwVehicleOrder(this.db, order);
   }
-  
+
   async getRtwVehicleActivations(year: number) {
     const { getRtwVehicleActivations } = await import('./database');
     return getRtwVehicleActivations(this.db, year);
   }
-  
+
   async setRtwVehicleActivation(vehicleId: number, year: number, month: number, enabled: boolean) {
     const { setRtwVehicleActivation } = await import('./database');
     return setRtwVehicleActivation(this.db, vehicleId, year, month, enabled);
   }
-  
+
   async getNefVehicleActivations(year: number) {
     const { getNefVehicleActivations } = await import('./database');
     return getNefVehicleActivations(this.db, year);
   }
-  
+
   async setNefVehicleActivation(vehicleId: number, year: number, month: number, enabled: boolean) {
     const { setNefVehicleActivation } = await import('./database');
     return setNefVehicleActivation(this.db, vehicleId, year, month, enabled);
   }
-  
-  async setNefOccupancyMode(id: number, mode: '24h'|'tag') {
+
+  async setNefOccupancyMode(id: number, mode: '24h' | 'tag') {
     const { setNefOccupancyMode } = await import('./database');
     return setNefOccupancyMode(this.db, id, mode);
   }
-  
+
   // RTW Vehicle Periods
   async getRtwVehiclePeriods(vehicleId: number) {
     const { getRtwVehiclePeriods } = await import('./database');
     return getRtwVehiclePeriods(this.db, vehicleId);
   }
-  
+
   async getAllRtwVehiclePeriods() {
     const { getAllRtwVehiclePeriods } = await import('./database');
     return getAllRtwVehiclePeriods(this.db);
   }
-  
+
   async addRtwVehiclePeriod(period: any) {
     const { addRtwVehiclePeriod } = await import('./database');
     return addRtwVehiclePeriod(this.db, period);
   }
-  
+
   async updateRtwVehiclePeriod(period: any) {
     const { updateRtwVehiclePeriod } = await import('./database');
     return updateRtwVehiclePeriod(this.db, period);
   }
-  
+
   async deleteRtwVehiclePeriod(id: number) {
     const { deleteRtwVehiclePeriod } = await import('./database');
     return deleteRtwVehiclePeriod(this.db, id);
   }
-  
+
   // NEF Vehicle Periods
   async getNefVehiclePeriods(vehicleId: number) {
     const { getNefVehiclePeriods } = await import('./database');
     return getNefVehiclePeriods(this.db, vehicleId);
   }
-  
+
   async getAllNefVehiclePeriods() {
     const { getAllNefVehiclePeriods } = await import('./database');
     return getAllNefVehiclePeriods(this.db);
   }
-  
+
   async addNefVehiclePeriod(period: any) {
     const { addNefVehiclePeriod } = await import('./database');
     return addNefVehiclePeriod(this.db, period);
   }
-  
+
   async updateNefVehiclePeriod(period: any) {
     const { updateNefVehiclePeriod } = await import('./database');
     return updateNefVehiclePeriod(this.db, period);
   }
-  
+
   async deleteNefVehiclePeriod(id: number) {
     const { deleteNefVehiclePeriod } = await import('./database');
     return deleteNefVehiclePeriod(this.db, id);
@@ -567,22 +573,22 @@ class SQLiteAdapter implements DatabaseAdapter {
     const { getItwVehiclePeriods } = await import('./database');
     return getItwVehiclePeriods(this.db, vehicleId);
   }
-  
+
   async getAllItwVehiclePeriods() {
     const { getAllItwVehiclePeriods } = await import('./database');
     return getAllItwVehiclePeriods(this.db);
   }
-  
+
   async addItwVehiclePeriod(period: any) {
     const { addItwVehiclePeriod } = await import('./database');
     return addItwVehiclePeriod(this.db, period);
   }
-  
+
   async updateItwVehiclePeriod(period: any) {
     const { updateItwVehiclePeriod } = await import('./database');
     return updateItwVehiclePeriod(this.db, period);
   }
-  
+
   async deleteItwVehiclePeriod(id: number) {
     const { deleteItwVehiclePeriod } = await import('./database');
     return deleteItwVehiclePeriod(this.db, id);
@@ -618,169 +624,191 @@ class SQLiteAdapter implements DatabaseAdapter {
     const { updateVehiclePositionOrder } = await import('./database');
     return updateVehiclePositionOrder(this.db, order);
   }
-  
+
   async getHolidaysForYear(year: number) {
     const { getHolidaysForYear } = await import('./database');
     return getHolidaysForYear(this.db, year);
   }
-  
+
   async setHolidaysForYear(year: number, dates: any[]) {
     const { setHolidaysForYear } = await import('./database');
     return setHolidaysForYear(this.db, year, dates);
   }
-  
+
   async addHoliday(date: string, name?: string) {
     const { addHoliday } = await import('./database');
     return addHoliday(this.db, date, name ?? '');
   }
-  
+
   async deleteHoliday(date: string) {
     const { deleteHoliday } = await import('./database');
     return deleteHoliday(this.db, date);
   }
-  
+
   async getSetting(key: string) {
     const { getSetting } = await import('./database');
     return getSetting(this.db, key);
   }
-  
+
   async setSetting(key: string, value: string) {
     const { setSetting } = await import('./database');
     return setSetting(this.db, key, value);
   }
-  
+
   async getShiftTypes() {
     const { getShiftTypes } = await import('./database');
     return getShiftTypes(this.db);
   }
-  
+
   async addShiftType(type: any) {
     const { addShiftType } = await import('./database');
     return addShiftType(this.db, type);
   }
-  
+
   async updateShiftType(type: any) {
     const { updateShiftType } = await import('./database');
     return updateShiftType(this.db, type);
   }
-  
+
   async deleteShiftType(id: number) {
     const { deleteShiftType } = await import('./database');
     return deleteShiftType(this.db, id);
   }
-  
+
   async clearDutyRosterForYear(year: number) {
     const { clearDutyRosterForYear } = await import('./database');
     return clearDutyRosterForYear(this.db, year);
   }
-  
+
   async clearDutyRosterForMonth(year: number, month: number) {
     const { clearDutyRosterForMonth } = await import('./database');
     return clearDutyRosterForMonth(this.db, year, month);
   }
-  
+
   async clearSlotAssignments() {
     const { clearSlotAssignments } = await import('./database');
     return clearSlotAssignments(this.db);
   }
-  
+
   async assignSlot(entry: { personId: number, personType: string, date: string, slotType: string }) {
     const { assignSlot } = await import('./database');
     return assignSlot(this.db, entry);
   }
-  
+
   async getItwPatterns() {
     const { getItwPatterns } = await import('./database');
     return getItwPatterns(this.db);
   }
-  
+
   async setItwPatterns(patterns: any[]) {
     const { setItwPatterns } = await import('./database');
     return setItwPatterns(this.db, patterns);
   }
-  
+
   async getDeptPatterns() {
     const { getDeptPatterns } = await import('./database');
     return getDeptPatterns(this.db);
   }
-  
+
   async setDeptPatterns(patterns: any[]) {
     const { setDeptPatterns } = await import('./database');
     return setDeptPatterns(this.db, patterns);
   }
-  
+
   async importPersonnelFromExcel(filePath: string, replaceExisting = false) {
     const { ExcelPersonnelImporter } = await import('./excel-importer');
     const importer = new ExcelPersonnelImporter(this.db);
     const { personnel, azubis } = importer.parseExcelFile(filePath);
     return await importer.importPersonnelData(personnel, azubis, replaceExisting);
   }
-  
+
   async exportPersonnelToExcel(filePath: string) {
     const { ExcelPersonnelImporter } = await import('./excel-importer');
     const importer = new ExcelPersonnelImporter(this.db);
     return await importer.exportToExcel(filePath);
   }
-  
+
   async createPersonnelTemplate(filePath: string) {
     const { ExcelPersonnelImporter } = await import('./excel-importer');
     ExcelPersonnelImporter.createTemplate(filePath);
   }
 
-  async importDutyRoster(filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number> }): Promise<{success: boolean, message: string, importedCount: number}> {
+  async importDutyRoster(filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number> }): Promise<{ success: boolean, message: string, importedCount: number }> {
     const { RosterImporter } = await import('./roster-importer');
     const importer = new RosterImporter(this);
     return importer.importDutyRoster(filePath, year, month, options);
   }
-  
+
   // Settings Import/Export Methoden
   async importSettingsFromJson(filePath: string, replaceExisting: boolean) {
     const { SettingsImporter } = await import('./settings-importer');
     const importer = new SettingsImporter(this.db);
     return await importer.importSettingsFromJson(filePath, replaceExisting);
   }
-  
+
   async exportSettingsToJson(filePath: string) {
     const { SettingsImporter } = await import('./settings-importer');
     const importer = new SettingsImporter(this.db);
     return await importer.exportSettingsToJson(filePath);
   }
-  
+
   async exportSettingsToExcel(filePath: string) {
     const { SettingsImporter } = await import('./settings-importer');
     const importer = new SettingsImporter(this.db);
     return await importer.exportSettingsToExcel(filePath);
   }
-  
+
   async createSettingsTemplate(filePath: string) {
     const { SettingsImporter } = await import('./settings-importer');
     const importer = new SettingsImporter(this.db);
     return await importer.createSettingsTemplate(filePath);
   }
-  
+
   async getYearPlannings() {
     const { getYearPlannings } = await import('./database');
     return getYearPlannings(this.db);
   }
-  
+
   async getYearPlanningForYear(year: number) {
     const { getYearPlanningForYear } = await import('./database');
     return getYearPlanningForYear(this.db, year);
   }
-  
+
   async saveYearPlannings(plannings: { year: number; filePath: string }[]) {
     const { saveYearPlannings } = await import('./database');
     return saveYearPlannings(this.db, plannings);
   }
-  
+
   async deleteYearPlanning(year: number) {
     const { deleteYearPlanning } = await import('./database');
     return deleteYearPlanning(this.db, year);
   }
-  
+
   async close() {
     // SQLite database is closed automatically
   }
+  // Shift Transfers (Issue #21)
+  async getShiftTransfers(year?: number, month?: number) {
+    const { getShiftTransfers } = await import('./database');
+    return getShiftTransfers(this.db, year, month);
+  }
+
+  async addShiftTransfer(transfer: any) {
+    const { addShiftTransfer } = await import('./database');
+    return addShiftTransfer(this.db, transfer);
+  }
+
+  async updateShiftTransfer(id: number, transfer: any) {
+    const { updateShiftTransfer } = await import('./database');
+    return updateShiftTransfer(this.db, id, transfer);
+  }
+
+  async deleteShiftTransfer(id: number) {
+    const { deleteShiftTransfer } = await import('./database');
+    return deleteShiftTransfer(this.db, id);
+  }
+
+
 }
 
 export class DatabaseManager {
@@ -788,30 +816,30 @@ export class DatabaseManager {
   private config: DatabaseConfig;
   private currentDbPath?: string;
   private lastDiagnostics: any = null;
-  
+
   constructor(config: DatabaseConfig) {
     this.config = config;
   }
-  
+
   async initialize(): Promise<DatabaseAdapter> {
     console.log('[DatabaseManager] Initializing database with mode:', this.config.mode);
-    
+
     if (this.config.mode === 'postgresql') {
       return this.initializePostgreSQL();
     }
-    
+
     return this.initializeSQLite();
   }
-  
+
   private async initializePostgreSQL(): Promise<DatabaseAdapter> {
     console.log('[DatabaseManager] Starting PostgreSQL database');
-    
+
     if (!this.config.postgresConfig) {
       throw new Error('PostgreSQL configuration is required for postgresql mode');
     }
-    
+
     const db = await initializePostgreSQLDatabase(this.config.postgresConfig);
-    
+
     // Collect diagnostics
     try {
       this.lastDiagnostics = {
@@ -827,23 +855,23 @@ export class DatabaseManager {
           port: this.config.postgresConfig.port || 5432
         }
       };
-    } catch {}
-    
+    } catch { }
+
     this.adapter = new SQLiteAdapter(db); // Same adapter works for both!
     return this.adapter;
   }
-  
+
   private async initializeSQLite(): Promise<DatabaseAdapter> {
     console.log('[DatabaseManager] Starting SQLite database');
-    
-  let dbPath: string;
-  const attempts: Array<{ kind: string; dir: string; file?: string; exists?: boolean; canWrite?: boolean; note?: string }> = [];
-    
+
+    let dbPath: string;
+    const attempts: Array<{ kind: string; dir: string; file?: string; exists?: boolean; canWrite?: boolean; note?: string }> = [];
+
     if (this.config.mode === 'central-sqlite' && this.config.centralPath) {
       // Use central path for multi-user scenarios
       dbPath = this.config.centralPath;
       // Ensure target directory exists (especially on Windows)
-      try { fs.mkdirSync(path.dirname(dbPath), { recursive: true }); } catch {}
+      try { fs.mkdirSync(path.dirname(dbPath), { recursive: true }); } catch { }
       try {
         fs.accessSync(path.dirname(dbPath), fs.constants.W_OK);
         attempts.push({ kind: 'central', dir: path.dirname(dbPath), file: dbPath, exists: true, canWrite: true });
@@ -873,20 +901,20 @@ export class DatabaseManager {
             if (json && typeof json.dbDir === 'string' && json.dbDir.trim()) {
               cfgDbDir = String(json.dbDir).trim();
               // Validate
-              try { fs.mkdirSync(cfgDbDir, { recursive: true }); } catch {}
-              let can = false; try { fs.accessSync(cfgDbDir, fs.constants.W_OK); can = true; } catch {}
+              try { fs.mkdirSync(cfgDbDir, { recursive: true }); } catch { }
+              let can = false; try { fs.accessSync(cfgDbDir, fs.constants.W_OK); can = true; } catch { }
               attempts.push({ kind: 'userConfig', dir: cfgDbDir, exists: true, canWrite: can, note: 'db-config.json' });
               if (!can) cfgDbDir = '';
             }
           }
-        } catch {}
+        } catch { }
 
         let dbDir = '';
         if (cfgDbDir) {
           dbDir = cfgDbDir;
         } else if (envDir) {
           dbDir = envDir;
-          try { fs.mkdirSync(dbDir, { recursive: true }); } catch {}
+          try { fs.mkdirSync(dbDir, { recursive: true }); } catch { }
           let canWriteEnv = false;
           try { fs.accessSync(dbDir, fs.constants.W_OK); canWriteEnv = true; } catch { canWriteEnv = false; }
           attempts.push({ kind: 'env', dir: dbDir, exists: true, canWrite: canWriteEnv, note: 'RD_PLAN_DB_DIR' });
@@ -898,7 +926,7 @@ export class DatabaseManager {
 
         if (!dbDir && portableDir) {
           const pdir = path.join(portableDir, 'DB');
-          try { fs.mkdirSync(pdir, { recursive: true }); } catch {}
+          try { fs.mkdirSync(pdir, { recursive: true }); } catch { }
           let canPortable = false;
           try { fs.accessSync(pdir, fs.constants.W_OK); canPortable = true; } catch { canPortable = false; }
           attempts.push({ kind: 'portableDir', dir: pdir, exists: true, canWrite: canPortable, note: 'PORTABLE_EXECUTABLE_DIR' });
@@ -908,7 +936,7 @@ export class DatabaseManager {
         if (!dbDir) {
           dbDir = path.join(appRoot, 'DB');
           // Ensure directory exists
-          try { fs.mkdirSync(dbDir, { recursive: true }); } catch {}
+          try { fs.mkdirSync(dbDir, { recursive: true }); } catch { }
           // Verify write access; if not writable (e.g., Program Files on Windows) OR appRoot looks temp, fallback to userData
           let canWrite = false;
           try { fs.accessSync(dbDir, fs.constants.W_OK); canWrite = true; } catch { canWrite = false; }
@@ -926,7 +954,7 @@ export class DatabaseManager {
           if (!canWrite) {
             const userDataPath = app.getPath('userData');
             dbDir = path.join(userDataPath, 'DB');
-            try { fs.mkdirSync(dbDir, { recursive: true }); } catch {}
+            try { fs.mkdirSync(dbDir, { recursive: true }); } catch { }
             let canWriteUser = false;
             try { fs.accessSync(dbDir, fs.constants.W_OK); canWriteUser = true; } catch { canWriteUser = false; }
             attempts.push({ kind: 'userData', dir: dbDir, exists: true, canWrite: canWriteUser, note: isLikelyTemp ? 'fallback because appRoot is temp' : 'fallback from appRoot' });
@@ -940,13 +968,13 @@ export class DatabaseManager {
         // Fallback to userData if any error occurs
         const userDataPath = app.getPath('userData');
         const dbDir = path.join(userDataPath, 'DB');
-        try { fs.mkdirSync(dbDir, { recursive: true }); } catch {}
+        try { fs.mkdirSync(dbDir, { recursive: true }); } catch { }
         try { fs.accessSync(dbDir, fs.constants.W_OK); attempts.push({ kind: 'userData-catch', dir: dbDir, exists: true, canWrite: true, note: 'exception fallback' }); } catch { attempts.push({ kind: 'userData-catch', dir: dbDir, exists: true, canWrite: false, note: 'exception fallback no write' }); }
         dbPath = path.join(dbDir, 'rd-plan.db');
         console.log('[DatabaseManager] Fallback: Using local SQLite database at userData:', dbPath);
       }
     }
-    
+
     const db = await this.initializeSQLiteWithPath(dbPath);
     this.currentDbPath = dbPath;
     // Collect diagnostics
@@ -968,47 +996,47 @@ export class DatabaseManager {
         attempts,
         chosenDbPath: dbPath,
       };
-    } catch {}
+    } catch { }
     this.adapter = new SQLiteAdapter(db);
     return this.adapter;
   }
-  
+
   private async initializeSQLiteWithPath(dbPath: string): Promise<AsyncDB> {
     // Import BetterSqlite3 dynamically to create a custom AsyncDB with specific path
     const BetterSqlite3 = (await import('better-sqlite3')).default;
     const raw = new BetterSqlite3(dbPath);
-    
+
     const db: AsyncDB = {
-        exec: async (sql: string) => { raw.exec(sql); },
-        run: async (sql: string, params: any[] = []) => {
-            const stmt = raw.prepare(sql);
-            return Array.isArray(params) ? stmt.run(...params) : stmt.run(params);
-        },
-        get: async <T = any>(sql: string, params: any[] = []) => {
-            const stmt = raw.prepare(sql);
-            return Array.isArray(params) ? (stmt.get(...params) as T | undefined) : (stmt.get(params) as T | undefined);
-        },
-        all: async <T = any>(sql: string, params: any[] = []) => {
-            const stmt = raw.prepare(sql);
-            return Array.isArray(params) ? (stmt.all(...params) as T[]) : (stmt.all(params) as T[]);
-        },
-        prepare: async (sql: string) => {
-            const stmt = raw.prepare(sql);
-            return {
-                run: async (...params: any[]) => stmt.run(...params),
-                get: async <T = any>(...params: any[]) => stmt.get(...params) as T | undefined,
-                all: async <T = any>(...params: any[]) => stmt.all(...params) as T[],
-                finalize: async () => { /* no-op for better-sqlite3 */ },
-            };
-        },
+      exec: async (sql: string) => { raw.exec(sql); },
+      run: async (sql: string, params: any[] = []) => {
+        const stmt = raw.prepare(sql);
+        return Array.isArray(params) ? stmt.run(...params) : stmt.run(params);
+      },
+      get: async <T = any>(sql: string, params: any[] = []) => {
+        const stmt = raw.prepare(sql);
+        return Array.isArray(params) ? (stmt.get(...params) as T | undefined) : (stmt.get(params) as T | undefined);
+      },
+      all: async <T = any>(sql: string, params: any[] = []) => {
+        const stmt = raw.prepare(sql);
+        return Array.isArray(params) ? (stmt.all(...params) as T[]) : (stmt.all(params) as T[]);
+      },
+      prepare: async (sql: string) => {
+        const stmt = raw.prepare(sql);
+        return {
+          run: async (...params: any[]) => stmt.run(...params),
+          get: async <T = any>(...params: any[]) => stmt.get(...params) as T | undefined,
+          all: async <T = any>(...params: any[]) => stmt.all(...params) as T[],
+          finalize: async () => { /* no-op for better-sqlite3 */ },
+        };
+      },
     };
 
     // Initialize database schema (copied from existing database.ts)
     await this.initializeSQLiteSchema(db);
-    
+
     // Run migrations after schema initialization
     await this.runMigrations(db);
-    
+
     return db;
   }
 
@@ -1016,26 +1044,33 @@ export class DatabaseManager {
     // Migration: add 'lehrjahr' column to azubi_periods if missing
     const azubiPeriodsCols = await db.all("PRAGMA table_info('azubi_periods')");
     if (!azubiPeriodsCols.some((c: any) => c.name === 'lehrjahr')) {
-        console.log('[DatabaseManager] Adding lehrjahr to azubi_periods');
-        await db.exec("ALTER TABLE azubi_periods ADD COLUMN lehrjahr INTEGER DEFAULT 1");
+      console.log('[DatabaseManager] Adding lehrjahr to azubi_periods');
+      await db.exec("ALTER TABLE azubi_periods ADD COLUMN lehrjahr INTEGER DEFAULT 1");
     }
-    
+
     // Migration: add 'personnelNumber' and 'roleId' columns to personnel if missing
     const personnelCols = await db.all("PRAGMA table_info('personnel')");
     if (!personnelCols.some((c: any) => c.name === 'personnelNumber')) {
-        console.log('[DatabaseManager] Adding personnelNumber to personnel');
-        await db.exec("ALTER TABLE personnel ADD COLUMN personnelNumber TEXT");
+      console.log('[DatabaseManager] Adding personnelNumber to personnel');
+      await db.exec("ALTER TABLE personnel ADD COLUMN personnelNumber TEXT");
     }
     if (!personnelCols.some((c: any) => c.name === 'roleId')) {
-        console.log('[DatabaseManager] Adding roleId to personnel');
-        await db.exec("ALTER TABLE personnel ADD COLUMN roleId INTEGER");
+      console.log('[DatabaseManager] Adding roleId to personnel');
+      await db.exec("ALTER TABLE personnel ADD COLUMN roleId INTEGER");
     }
-    
+
+    // Migration: add 'old_rtw_shifts' if missing
+    if (!personnelCols.some((c: any) => c.name === 'old_rtw_shifts')) {
+      console.log('[DatabaseManager] Adding old_rtw_shifts to personnel');
+      await db.exec("ALTER TABLE personnel ADD COLUMN old_rtw_shifts INTEGER DEFAULT 0");
+      await db.exec("UPDATE personnel SET old_rtw_shifts = 0 WHERE old_rtw_shifts IS NULL");
+    }
+
     // Migration: create roles table if missing
     const rolesTableExists = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='roles'");
     if (!rolesTableExists) {
-        console.log('[DatabaseManager] Creating roles table');
-        await db.exec(`
+      console.log('[DatabaseManager] Creating roles table');
+      await db.exec(`
             CREATE TABLE roles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
@@ -1050,46 +1085,122 @@ export class DatabaseManager {
                 sort INTEGER DEFAULT 0
             )
         `);
-        console.log('[DatabaseManager] Roles table created successfully');
+      console.log('[DatabaseManager] Roles table created successfully');
     }
-    
+
     // Migration: migrate roles from settings JSON to roles table
     const rolesCount = await db.get("SELECT COUNT(*) as count FROM roles");
     if (rolesCount.count === 0) {
-        console.log('[DatabaseManager] Migrating roles from settings to roles table...');
-        const rolesSetting = await db.get("SELECT value FROM settings WHERE key='roles'");
-        if (rolesSetting && rolesSetting.value) {
-            try {
-                const oldRoles = JSON.parse(rolesSetting.value);
-                for (const role of oldRoles) {
-                    // Mapping der alten permissions zu neuen Feldern
-                    const perms = role.permissions || {};
-                    await db.run(`
+      console.log('[DatabaseManager] Migrating roles from settings to roles table...');
+      const rolesSetting = await db.get("SELECT value FROM settings WHERE key='roles'");
+      if (rolesSetting && rolesSetting.value) {
+        try {
+          const oldRoles = JSON.parse(rolesSetting.value);
+          for (const role of oldRoles) {
+            // Mapping der alten permissions zu neuen Feldern
+            const perms = role.permissions || {};
+            await db.run(`
                         INSERT OR IGNORE INTO roles (id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     `, [
-                        role.id,
-                        role.name,
-                        role.description || '',
-                        perms.personal === 'write' ? 1 : 0,
-                        perms.fahrzeuge === 'write' ? 1 : 0,
-                        perms.einstellungen === 'write' ? 1 : 0,
-                        perms.einteilung === 'write' || perms.dienstplan === 'write' ? 1 : 0,
-                        perms.werte === 'read' || perms.werte === 'write' ? 1 : 0,
-                        perms.werte === 'write' || perms.personal === 'write' || perms.fahrzeuge === 'write' ? 1 : 0,
-                        perms.personal === 'write' || perms.einstellungen === 'write' ? 1 : 0,
-                        role.id
-                    ]);
-                    console.log(`[DatabaseManager] ✓ Migrated role: ${role.name} (ID: ${role.id})`);
-                }
-                console.log('[DatabaseManager] Roles migration completed');
-            } catch (e) {
-                console.error('[DatabaseManager] Error migrating roles:', e);
-            }
+              role.id,
+              role.name,
+              role.description || '',
+              perms.personal === 'write' ? 1 : 0,
+              perms.fahrzeuge === 'write' ? 1 : 0,
+              perms.einstellungen === 'write' ? 1 : 0,
+              perms.einteilung === 'write' || perms.dienstplan === 'write' ? 1 : 0,
+              perms.werte === 'read' || perms.werte === 'write' ? 1 : 0,
+              perms.werte === 'write' || perms.personal === 'write' || perms.fahrzeuge === 'write' ? 1 : 0,
+              perms.personal === 'write' || perms.einstellungen === 'write' ? 1 : 0,
+              role.id
+            ]);
+            console.log(`[DatabaseManager] ✓ Migrated role: ${role.name} (ID: ${role.id})`);
+          }
+          console.log('[DatabaseManager] Roles migration completed');
+        } catch (e) {
+          console.error('[DatabaseManager] Error migrating roles:', e);
         }
+      }
+    }
+
+    // Migration: create shift_transfers table if missing (Issue #21)
+    const shiftTransfersTableExists = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='shift_transfers'");
+    if (!shiftTransfersTableExists) {
+      console.log('[DatabaseManager] Creating shift_transfers table');
+      await db.exec(`
+        CREATE TABLE shift_transfers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          from_person_id INTEGER NOT NULL,
+          to_person_id INTEGER NOT NULL,
+          shift_count REAL NOT NULL,
+          position_type TEXT NOT NULL,
+          valid_from TEXT NOT NULL,
+          valid_until TEXT,
+          reason TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(from_person_id) REFERENCES personnel(id) ON DELETE CASCADE,
+          FOREIGN KEY(to_person_id) REFERENCES personnel(id) ON DELETE CASCADE
+        )
+      `);
+      await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_from ON shift_transfers(from_person_id)`);
+      await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_to ON shift_transfers(to_person_id)`);
+      await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_month ON shift_transfers(valid_from)`);
+      console.log('[DatabaseManager] shift_transfers table created successfully');
+
+      // Add default setting
+      const featureSetting = await db.get("SELECT value FROM settings WHERE key='feature_shift_transfers'");
+      if (!featureSetting) {
+        await db.run("INSERT INTO settings (key, value) VALUES ('feature_shift_transfers', 'false')");
+        console.log('[DatabaseManager] Added feature_shift_transfers setting');
+      }
+    } else {
+      // Migration: Convert valid_from to YYYY-MM format and remove valid_until
+      const columns = await db.all("PRAGMA table_info(shift_transfers)");
+      const hasValidUntil = columns.some((col: any) => col.name === 'valid_until');
+
+      if (hasValidUntil) {
+        console.log('[DatabaseManager] Migrating shift_transfers to single-month format');
+
+        // Get existing data
+        const existingTransfers = await db.all("SELECT * FROM shift_transfers");
+
+        // Drop and recreate table with new schema
+        await db.exec("DROP TABLE shift_transfers");
+        await db.exec(`
+          CREATE TABLE shift_transfers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_person_id INTEGER NOT NULL,
+            to_person_id INTEGER NOT NULL,
+            shift_count REAL NOT NULL,
+            position_type TEXT NOT NULL,
+            month TEXT NOT NULL,
+            reason TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(from_person_id) REFERENCES personnel(id) ON DELETE CASCADE,
+            FOREIGN KEY(to_person_id) REFERENCES personnel(id) ON DELETE CASCADE
+          )
+        `);
+        await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_from ON shift_transfers(from_person_id)`);
+        await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_to ON shift_transfers(to_person_id)`);
+        await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_month ON shift_transfers(month)`);
+
+        // Migrate existing data: convert YYYY-MM-DD to YYYY-MM
+        for (const transfer of existingTransfers) {
+          const month = transfer.valid_from.substring(0, 7); // Extract YYYY-MM
+          await db.run(
+            `INSERT INTO shift_transfers (id, from_person_id, to_person_id, shift_count, position_type, month, reason, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [transfer.id, transfer.from_person_id, transfer.to_person_id, transfer.shift_count,
+            transfer.position_type, month, transfer.reason, transfer.created_at]
+          );
+        }
+
+        console.log(`[DatabaseManager] Migrated ${existingTransfers.length} shift transfers to single-month format`);
+      }
     }
   }
-  
+
   private async initializeSQLiteSchema(db: AsyncDB) {
     await db.exec(`
         CREATE TABLE IF NOT EXISTS shifts (
@@ -1296,30 +1407,30 @@ export class DatabaseManager {
 
     // Initialize default qualification types if empty
     try {
-        const count = await db.get('SELECT COUNT(*) as count FROM qualification_types');
-        if (count && count.count === 0) {
-            const defaultQualifications = [
-                { name: 'RTW Fahrzeugführer', description: 'Fahrzeugführer Rettungswagen', category: 'Fahrzeugführung', sort: 1 },
-                { name: 'HLF-B Fahrzeugführer', description: 'Hilfeleistungslöschfahrzeug B', category: 'Fahrzeugführung', sort: 2 },
-                { name: 'NEF Assistent', description: 'Notarzteinsatzfahrzeug Assistent', category: 'Notfall', sort: 3 },
-                { name: 'ITW Maschinist', description: 'Maschinist Intensivtransportwagen', category: 'Transport', sort: 4 },
-                { name: 'ITW Fahrzeugführer', description: 'Fahrzeugführer Intensivtransportwagen', category: 'Fahrzeugführung', sort: 5 },
-                { name: 'Ü50', description: 'Über 50 Jahre', category: 'Sonstiges', sort: 6 },
-                { name: 'Leitender PAL', description: 'Leitender Praxisanleiter', category: 'Leitung', sort: 7 }
-            ];
+      const count = await db.get('SELECT COUNT(*) as count FROM qualification_types');
+      if (count && count.count === 0) {
+        const defaultQualifications = [
+          { name: 'RTW Fahrzeugführer', description: 'Fahrzeugführer Rettungswagen', category: 'Fahrzeugführung', sort: 1 },
+          { name: 'HLF-B Fahrzeugführer', description: 'Hilfeleistungslöschfahrzeug B', category: 'Fahrzeugführung', sort: 2 },
+          { name: 'NEF Assistent', description: 'Notarzteinsatzfahrzeug Assistent', category: 'Notfall', sort: 3 },
+          { name: 'ITW Maschinist', description: 'Maschinist Intensivtransportwagen', category: 'Transport', sort: 4 },
+          { name: 'ITW Fahrzeugführer', description: 'Fahrzeugführer Intensivtransportwagen', category: 'Fahrzeugführung', sort: 5 },
+          { name: 'Ü50', description: 'Über 50 Jahre', category: 'Sonstiges', sort: 6 },
+          { name: 'Leitender PAL', description: 'Leitender Praxisanleiter', category: 'Leitung', sort: 7 }
+        ];
 
-            for (const qual of defaultQualifications) {
-                await db.run(
-                    'INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, 1, ?)',
-                    [qual.name, qual.description, qual.category, qual.sort]
-                );
-            }
-            console.log('[DatabaseManager] Initialized default qualification types');
+        for (const qual of defaultQualifications) {
+          await db.run(
+            'INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, 1, ?)',
+            [qual.name, qual.description, qual.category, qual.sort]
+          );
         }
+        console.log('[DatabaseManager] Initialized default qualification types');
+      }
     } catch (e) {
-        console.warn('[DatabaseManager] Error initializing qualification types:', e);
+      console.warn('[DatabaseManager] Error initializing qualification types:', e);
     }
-    
+
     console.log('[DatabaseManager] SQLite schema initialized');
     // --- Lightweight migrations to ensure columns exist ---
     try {
@@ -1328,28 +1439,28 @@ export class DatabaseManager {
       if (!hasActive) {
         console.log('[DatabaseManager] Adding missing column "active" to personnel table');
         await db.exec("ALTER TABLE personnel ADD COLUMN active INTEGER DEFAULT 1");
-        try { await db.exec("UPDATE personnel SET active = 1 WHERE active IS NULL"); } catch {}
+        try { await db.exec("UPDATE personnel SET active = 1 WHERE active IS NULL"); } catch { }
       }
     } catch (e) {
       console.warn('[DatabaseManager] Warning while ensuring personnel.active column', e);
     }
   }
-  
+
   getAdapter(): DatabaseAdapter {
     if (!this.adapter) {
       throw new Error('Database not initialized. Call initialize() first.');
     }
     return this.adapter;
   }
-  
+
   isInitialized(): boolean {
     return this.adapter !== null;
   }
-  
+
   getConfig(): DatabaseConfig {
     return this.config;
   }
-  
+
   async close() {
     if (this.adapter) {
       await this.adapter.close();
@@ -1389,11 +1500,11 @@ export class DatabaseManager {
     const label = rawLabel.replace(/[^a-z0-9-_]/g, '').slice(0, 40);
     // Structure: backups/<YYYY>/<YYYY-MM|YYYY-ALL>/<YYYYMMDDHHMMSS>-<label>
     const backupDir = path.join(parent, 'backups', yStr, folderYM, `${ts}-${label}`);
-    try { fs.mkdirSync(backupDir, { recursive: true }); } catch {}
+    try { fs.mkdirSync(backupDir, { recursive: true }); } catch { }
     const target = path.join(backupDir, 'rd-plan.db');
     fs.copyFileSync(this.currentDbPath, target);
     console.log('[DatabaseManager] Backup erstellt:', target);
-    try { fs.writeFileSync(path.join(backupDir, 'label.txt'), label, 'utf-8'); } catch {}
+    try { fs.writeFileSync(path.join(backupDir, 'label.txt'), label, 'utf-8'); } catch { }
     return backupDir;
   }
 
@@ -1451,7 +1562,7 @@ export class DatabaseManager {
     } else {
       dutyRoster = getCount('SELECT COUNT(*) as cnt FROM duty_roster');
     }
-    try { raw.close(); } catch {}
+    try { raw.close(); } catch { }
     return { personnel, azubis, dutyRoster };
   }
 
@@ -1464,6 +1575,28 @@ export class DatabaseManager {
     fs.copyFileSync(src, this.currentDbPath);
     console.log('[DatabaseManager] Backup wiederhergestellt von:', src);
   }
+
+
+  // Shift Transfers (Issue #21)
+  async getShiftTransfers(year?: number, month?: number) {
+    const adapter = this.getAdapter();
+    return adapter.getShiftTransfers(year, month);
+  }
+
+  async addShiftTransfer(transfer: any) {
+    const adapter = this.getAdapter();
+    return adapter.addShiftTransfer(transfer);
+  }
+
+  async updateShiftTransfer(id: number, transfer: any) {
+    const adapter = this.getAdapter();
+    return adapter.updateShiftTransfer(id, transfer);
+  }
+
+  async deleteShiftTransfer(id: number) {
+    const adapter = this.getAdapter();
+    return adapter.deleteShiftTransfer(id);
+  }
 }
 
 // Global database manager instance
@@ -1473,31 +1606,31 @@ export async function initializeDatabaseManager(config?: DatabaseConfig): Promis
   if (globalDatabaseManager && globalDatabaseManager.isInitialized()) {
     return globalDatabaseManager.getAdapter();
   }
-  
+
   // Check for PostgreSQL environment variable
   const pgConnectionString = process.env.RD_PLAN_PG_CONNECTION;
-  
+
   // Default configuration
   const defaultConfig: DatabaseConfig = {
-    mode: pgConnectionString 
-      ? 'postgresql' 
+    mode: pgConnectionString
+      ? 'postgresql'
       : (process.env.RD_PLAN_DB_MODE === 'central-sqlite' ? 'central-sqlite' : 'sqlite'),
     multiUser: process.env.RD_PLAN_MULTI_USER === 'true',
     centralPath: process.env.RD_PLAN_CENTRAL_DB_PATH,
     postgresConfig: pgConnectionString ? { connectionString: pgConnectionString } : undefined
   };
-  
+
   const finalConfig = { ...defaultConfig, ...config };
-  
+
   // PostgreSQL mode enables multi-user by default
   if (finalConfig.mode === 'postgresql') {
     finalConfig.multiUser = true;
   }
-  
+
   // Auto-detect multi-user scenario and central path for SQLite
   if (finalConfig.mode !== 'postgresql' && !finalConfig.centralPath) {
     const userDataPath = app.getPath('userData');
-    
+
     // Check if we're running in a network/shared environment
     if (userDataPath.includes('network') || userDataPath.includes('shared') || userDataPath.includes('smb')) {
       finalConfig.multiUser = true;
@@ -1507,7 +1640,7 @@ export async function initializeDatabaseManager(config?: DatabaseConfig): Promis
       console.log('[DatabaseManager] Auto-detected network environment, using central database:', finalConfig.centralPath);
     }
   }
-  
+
   // Switch to central SQLite for multi-user scenarios
   if (finalConfig.multiUser && finalConfig.mode === 'sqlite') {
     console.log('[DatabaseManager] Multi-user detected, switching to central SQLite');
@@ -1517,7 +1650,7 @@ export async function initializeDatabaseManager(config?: DatabaseConfig): Promis
       finalConfig.centralPath = path.join(documentsPath, 'RD-Plan-Shared', 'rd-plan.db');
     }
   }
-  
+
   globalDatabaseManager = new DatabaseManager(finalConfig);
   return globalDatabaseManager.initialize();
 }
@@ -1535,6 +1668,7 @@ export async function closeDatabaseManager() {
     globalDatabaseManager = null;
   }
 }
+
 
 export async function createDatabaseBackup(opts?: { year?: number; month?: number }): Promise<string> {
   const mgr = getDatabaseManager();

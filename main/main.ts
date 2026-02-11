@@ -46,10 +46,10 @@ function notifyDutyRosterUpdate() {
         clearTimeout(dutyRosterUpdateTimeout);
     }
     dutyRosterUpdateTimeout = setTimeout(() => {
-        BrowserWindow.getAllWindows().forEach(w => { 
-            try { 
-                w.webContents.send('duty-roster-updated'); 
-            } catch {} 
+        BrowserWindow.getAllWindows().forEach(w => {
+            try {
+                w.webContents.send('duty-roster-updated');
+            } catch { }
         });
         dutyRosterUpdateTimeout = null;
     }, 300); // 300ms Debounce
@@ -89,18 +89,18 @@ function hasDbConfig(): boolean {
         if (fs.existsSync(configPath)) {
             return true;
         }
-        
+
         // Automatisch Standard-Konfiguration erstellen, wenn nicht vorhanden
         const defaultDbDir = suggestDefaultDbDir();
         const userData = app.getPath('userData');
-        
+
         try {
             fs.mkdirSync(userData, { recursive: true });
             fs.writeFileSync(configPath, JSON.stringify({ dbDir: defaultDbDir }, null, 2), 'utf-8');
-            
+
             // Auch die globale Konfiguration erstellen (neben der Exe)
             const result = writeGlobalDbConfig(defaultDbDir);
-            
+
             return true;
         } catch (e) {
             return false;
@@ -116,7 +116,7 @@ function writeGlobalDbConfig(dbDir: string): { success: boolean; path?: string; 
         const baseDir = (portableDir && portableDir.trim()) ? portableDir : path.dirname(app.getPath('exe'));
         const p = path.join(baseDir, 'db-config.json');
         const payload = { dbDir } as any;
-        try { fs.mkdirSync(baseDir, { recursive: true }); } catch {}
+        try { fs.mkdirSync(baseDir, { recursive: true }); } catch { }
         fs.writeFileSync(p, JSON.stringify(payload, null, 2), 'utf-8');
         return { success: true, path: p };
     } catch (e: any) {
@@ -164,7 +164,7 @@ async function ensureAdminRoleAndUser(adapter: DatabaseAdapter): Promise<void> {
         const rolesData = await adapter.getSetting('roles');
         let roles = [];
         let adminRole = null;
-        
+
         if (rolesData) {
             try {
                 roles = JSON.parse(rolesData);
@@ -173,7 +173,7 @@ async function ensureAdminRoleAndUser(adapter: DatabaseAdapter): Promise<void> {
                 console.error('[ensureAdminRoleAndUser] Error parsing roles:', e);
             }
         }
-        
+
         // 2. Erstelle Admin-Rolle falls nicht vorhanden
         if (!adminRole) {
             const adminRoleId = roles.length > 0 ? Math.max(...roles.map((r: any) => r.id)) + 1 : 1;
@@ -194,19 +194,19 @@ async function ensureAdminRoleAndUser(adapter: DatabaseAdapter): Promise<void> {
             await adapter.setSetting('roles', JSON.stringify(roles));
             console.log('[ensureAdminRoleAndUser] ✓ Admin-Rolle erstellt');
         }
-        
+
         // 3. Prüfe ob bereits ein Benutzer mit Administrator-Rechten existiert
         const allPersonnel = await adapter.getPersonnel();
         const hasAdminUser = allPersonnel.some((p: any) => p.roleId && p.roleId === adminRole.id);
-        
+
         if (hasAdminUser) {
             console.log('[ensureAdminRoleAndUser] ✓ Administrator-Benutzer bereits vorhanden');
             return;
         }
-        
+
         // 4. Prüfe ob Admin-Person mit Personalnummer 'admin' existiert
         const adminPerson = allPersonnel.find((p: any) => p.personnelNumber === 'admin');
-        
+
         // 5. Erstelle Admin-Person nur wenn kein Admin-Benutzer existiert
         if (!adminPerson) {
             await adapter.addPersonnel({
@@ -258,19 +258,23 @@ ipcMain.handle('clear-duty-roster-month', async (_event, year: number, month: nu
     return true;
 });
 
-async function createWindow() {
-    databaseAdapter = await initializeDatabaseManager();
-    
-    // Initialisiere Auth-Service
-    initializeAuthService(databaseAdapter);
-    
+async function createWindow(showImmediately: boolean = false) {
+    databaseAdapter = await ensureDatabaseAdapter();
+
+    // Initialisiere Auth-Service nur falls noch nicht geschehen
+    try {
+        getAuthService();
+    } catch {
+        initializeAuthService(databaseAdapter);
+    }
+
     // Erstelle Admin-Rolle und Admin-Person falls nicht vorhanden
     await ensureAdminRoleAndUser(databaseAdapter);
-    
+
     const mainWindow = new BrowserWindow({
         width: 1280,
         height: 800,
-        show: false, // Nicht sofort anzeigen
+        show: false, // Nicht sofort anzeigen (wird gesteuert via ready-to-show)
         icon: path.join(__dirname, '../media/Icon.icns'),
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
@@ -289,19 +293,28 @@ async function createWindow() {
 
     // Wenn Hauptfenster bereit ist: Splash schließen, Hauptfenster zeigen
     mainWindow.once('ready-to-show', () => {
-        // Berechne wie lange der Splash bereits angezeigt wurde
-        const elapsed = Date.now() - splashStartTime;
-        const minDisplayTime = 6000; // Mindestens 6 Sekunden (Animation 5.29s + Fade 0.5s + Puffer)
-        const remainingTime = Math.max(0, minDisplayTime - elapsed);
-        
-        setTimeout(() => {
+        if (showImmediately) {
             if (splashWindow && !splashWindow.isDestroyed()) {
                 splashWindow.close();
                 splashWindow = null;
             }
             mainWindow.show();
             mainWindow.focus();
-        }, remainingTime);
+        } else {
+            // Berechne wie lange der Splash bereits angezeigt wurde
+            const elapsed = Date.now() - splashStartTime;
+            const minDisplayTime = 6000; // Mindestens 6 Sekunden (Animation 5.29s + Fade 0.5s + Puffer)
+            const remainingTime = Math.max(0, minDisplayTime - elapsed);
+
+            setTimeout(() => {
+                if (splashWindow && !splashWindow.isDestroyed()) {
+                    splashWindow.close();
+                    splashWindow = null;
+                }
+                mainWindow.show();
+                mainWindow.focus();
+            }, remainingTime);
+        }
     });
 
     mainWindow.on('closed', () => {
@@ -311,7 +324,7 @@ async function createWindow() {
 
 function createSplashScreen() {
     splashStartTime = Date.now(); // Zeitstempel merken
-    
+
     splashWindow = new BrowserWindow({
         width: 500,
         height: 600,
@@ -329,7 +342,7 @@ function createSplashScreen() {
 
     splashWindow.loadFile(path.join(__dirname, '../splash.html'));
     splashWindow.center();
-    
+
     splashWindow.on('closed', () => {
         splashWindow = null;
     });
@@ -349,12 +362,12 @@ ipcMain.handle('get-system-username', async () => {
     try {
         // Verwende whoami-Befehl (funktioniert auf Windows, macOS und Linux)
         let username = execSync('whoami', { encoding: 'utf-8' }).trim();
-        
+
         // Bei Windows-Rechnern Format "COMPUTERNAME\Username" -> nur Username extrahieren
         if (username.includes('\\')) {
             username = username.split('\\')[1];
         }
-        
+
         return username;
     } catch (e) {
         return 'Unbekannt';
@@ -412,7 +425,7 @@ ipcMain.handle('get-setting', async (_event, key: string) => {
 
 ipcMain.handle('set-setting', async (_event, key: string, value: string) => {
     const auth = getAuthService();
-    
+
     // Unterschiedliche Berechtigungen je nach Setting-Key
     if (key.startsWith('roster_released_')) {
         // Monatsfreigabe gehört zu einteilung:write
@@ -421,7 +434,7 @@ ipcMain.handle('set-setting', async (_event, key: string, value: string) => {
         // Alle anderen Settings benötigen einstellungen:write
         auth.requirePermission('einstellungen', 'write');
     }
-    
+
     const adapter = await ensureDatabaseAdapter();
     await adapter.setSetting(key, value);
     return true;
@@ -443,7 +456,7 @@ ipcMain.handle('add-personnel', async (_event, person: any) => {
     auth.requirePermission('personal', 'write');
     const adapter = await ensureDatabaseAdapter();
     await adapter.addPersonnel(person);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     return true;
 });
 
@@ -452,7 +465,7 @@ ipcMain.handle('update-personnel', async (_event, person: any) => {
     auth.requirePermission('personal', 'write');
     const adapter = await ensureDatabaseAdapter();
     await adapter.updatePersonnel(person);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     return true;
 });
 
@@ -461,7 +474,7 @@ ipcMain.handle('delete-personnel', async (_event, id: number) => {
     auth.requirePermission('personal', 'write');
     const adapter = await ensureDatabaseAdapter();
     await adapter.deletePersonnel(id);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     return true;
 });
 
@@ -471,14 +484,14 @@ ipcMain.handle('set-person-active', async (_event, id: number, active: boolean) 
     auth.requirePermission('personal', 'write');
     const adapter = await ensureDatabaseAdapter();
     await adapter.setPersonnelActive(id, !!active);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('update-personnel-order', async (_event, order: number[]) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updatePersonnelOrder(order);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     return true;
 });
 
@@ -486,21 +499,21 @@ ipcMain.handle('update-personnel-order', async (_event, order: number[]) => {
 ipcMain.handle('add-person', async (_event, person: any) => {
     const adapter = await ensureDatabaseAdapter();
     const result = await adapter.addPersonnel(person);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     return { id: result.lastInsertRowid };
 });
 
 ipcMain.handle('update-person', async (_event, person: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updatePersonnel(person);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('delete-person', async (_event, id: number) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.deletePersonnel(id);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     return true;
 });
 
@@ -600,28 +613,28 @@ ipcMain.handle('get-azubi-list', async () => {
 ipcMain.handle('add-azubi', async (_event, azubi: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.addAzubi(azubi);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubi-updated'); w.webContents.send('azubis-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubi-updated'); w.webContents.send('azubis-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('update-azubi', async (_event, azubi: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateAzubi(azubi);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubi-updated'); w.webContents.send('azubis-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubi-updated'); w.webContents.send('azubis-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('delete-azubi', async (_event, id: number) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.deleteAzubi(id);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubi-updated'); w.webContents.send('azubis-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubi-updated'); w.webContents.send('azubis-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('update-azubi-order', async (_event, order: number[]) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateAzubiOrder(order);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubis-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubis-updated'); } catch { } });
     return true;
 });
 
@@ -644,21 +657,21 @@ ipcMain.handle('get-all-azubi-periods', async () => {
 ipcMain.handle('add-azubi-period', async (_event, period: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.addAzubiPeriod(period);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubis-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubis-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('update-azubi-period', async (_event, id: number, period: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateAzubiPeriod({ ...period, id });
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubis-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubis-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('delete-azubi-period', async (_event, id: number) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.deleteAzubiPeriod(id);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubis-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubis-updated'); } catch { } });
     return true;
 });
 
@@ -677,21 +690,21 @@ ipcMain.handle('get-all-qualification-periods', async () => {
 ipcMain.handle('add-qualification-period', async (_event, period: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.addQualificationPeriod(period);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('update-qualification-period', async (_event, id: number, period: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateQualificationPeriod({ ...period, id });
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('delete-qualification-period', async (_event, id: number) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.deleteQualificationPeriod(id);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     return true;
 });
 
@@ -755,7 +768,7 @@ ipcMain.handle('get-all-personnel-active-periods', async () => {
 ipcMain.handle('add-personnel-active-period', async (_event, period: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.addPersonnelActivePeriod(period);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     return true;
 });
 
@@ -764,14 +777,14 @@ ipcMain.handle('update-personnel-active-period', async (_event, id: number, peri
     // Ensure ID is passed correctly
     period.id = id;
     await adapter.updatePersonnelActivePeriod(period);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('delete-personnel-active-period', async (_event, id: number) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.deletePersonnelActivePeriod(id);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     return true;
 });
 
@@ -784,6 +797,33 @@ ipcMain.handle('is-personnel-active-in-month', async (_event, personId: number, 
 ipcMain.handle('get-year-plannings', async () => {
     const adapter = await ensureDatabaseAdapter();
     return await adapter.getYearPlannings();
+});
+
+// Shift Transfers (Issue #21)
+ipcMain.handle('get-shift-transfers', async (_event, year?: number, month?: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getShiftTransfers(year, month);
+});
+
+ipcMain.handle('add-shift-transfer', async (_event, transfer: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addShiftTransfer(transfer);
+    notifyDutyRosterUpdate();
+    return true;
+});
+
+ipcMain.handle('update-shift-transfer', async (_event, id: number, transfer: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateShiftTransfer(id, transfer);
+    notifyDutyRosterUpdate();
+    return true;
+});
+
+ipcMain.handle('delete-shift-transfer', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteShiftTransfer(id);
+    notifyDutyRosterUpdate();
+    return true;
 });
 
 ipcMain.handle('get-year-planning-for-year', async (_event, year: number) => {
@@ -812,28 +852,28 @@ ipcMain.handle('get-itw-doctors', async () => {
 ipcMain.handle('add-itw-doctor', async (_event, doctor: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.addItwDoctor(doctor);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); w.webContents.send('itw-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); w.webContents.send('itw-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('update-itw-doctor', async (_event, doctor: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateItwDoctor(doctor);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); w.webContents.send('itw-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); w.webContents.send('itw-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('delete-itw-doctor', async (_event, id: number) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.deleteItwDoctor(id);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); w.webContents.send('itw-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); w.webContents.send('itw-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('update-itw-doctor-order', async (_event, order: number[]) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateItwDoctorOrder(order);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-updated'); } catch { } });
     return true;
 });
 
@@ -846,30 +886,30 @@ ipcMain.handle('get-rtw-vehicles', async (_event, year?: number) => {
 ipcMain.handle('add-rtw-vehicle', async (_event, v: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.addRtwVehicle(v);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('update-rtw-vehicle', async (_event, v: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateRtwVehicle(v);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('delete-rtw-vehicle', async (_event, id: number) => {
     const adapter = await ensureDatabaseAdapter();
     let y: number | undefined;
-    try { const ys = await adapter.getSetting('year'); if (ys) y = Number(ys); } catch {}
+    try { const ys = await adapter.getSetting('year'); if (ys) y = Number(ys); } catch { }
     await adapter.deleteRtwVehicle(id, y);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('update-rtw-vehicle-order', async (_event, order: number[]) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateRtwVehicleOrder(order);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
     return true;
 });
 
@@ -881,30 +921,30 @@ ipcMain.handle('get-nef-vehicles', async (_event, year?: number) => {
 ipcMain.handle('add-nef-vehicle', async (_event, v: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.addNefVehicle(v);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('update-nef-vehicle', async (_event, v: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateNefVehicle(v);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('delete-nef-vehicle', async (_event, id: number) => {
     const adapter = await ensureDatabaseAdapter();
     let y: number | undefined;
-    try { const ys = await adapter.getSetting('year'); if (ys) y = Number(ys); } catch {}
+    try { const ys = await adapter.getSetting('year'); if (ys) y = Number(ys); } catch { }
     await adapter.deleteNefVehicle(id, y);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('update-nef-vehicle-order', async (_event, order: number[]) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateNefVehicleOrder(order);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
     return true;
 });
 
@@ -919,14 +959,14 @@ ipcMain.handle('add-itw-vehicle', async (_event, v: { name: string }) => {
     await adapter.addItwVehicle(v);
     // Auto-enable ITW if a vehicle is added
     await adapter.setSetting('itw', 'true');
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('update-itw-vehicle', async (_event, v: { id: number, name: string }) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateItwVehicle(v);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
     return true;
 });
 
@@ -937,14 +977,14 @@ ipcMain.handle('delete-itw-vehicle', async (_event, id: number, currentYear?: nu
     const remaining = await adapter.getItwVehicles();
     const isActive = remaining.length > 0;
     await adapter.setSetting('itw', String(isActive));
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('update-itw-vehicle-order', async (_event, order: number[]) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateItwVehicleOrder(order);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch { } });
     return true;
 });
 
@@ -1042,25 +1082,25 @@ ipcMain.handle('get-all-itw-vehicle-periods', async () => {
 ipcMain.handle('add-itw-vehicle-period', async (_event, period: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.addItwVehiclePeriod(period);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('update-itw-vehicle-period', async (_event, period: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateItwVehiclePeriod(period);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('delete-itw-vehicle-period', async (_event, id: number) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.deleteItwVehiclePeriod(id);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
     return true;
 });
 
-ipcMain.handle('set-nef-occupancy', async (_event, id: number, mode: '24h'|'tag') => {
+ipcMain.handle('set-nef-occupancy', async (_event, id: number, mode: '24h' | 'tag') => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.setNefOccupancyMode(id, mode);
     return true;
@@ -1080,28 +1120,28 @@ ipcMain.handle('get-vehicle-positions-with-qualifications', async (_event, vehic
 ipcMain.handle('add-vehicle-position', async (_event, position: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.addVehiclePosition(position);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('update-vehicle-position', async (_event, position: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateVehiclePosition(position);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('delete-vehicle-position', async (_event, id: number) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.deleteVehiclePosition(id);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('update-vehicle-position-order', async (_event, order: number[]) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updateVehiclePositionOrder(order);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch { } });
     return true;
 });
 
@@ -1132,14 +1172,14 @@ ipcMain.handle('set-holidays', async (_event, year: number, dates: any[]) => {
 ipcMain.handle('add-holiday', async (_event, date: string, name?: string) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.addHoliday(date, name);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch { } });
     return true;
 });
 
 ipcMain.handle('delete-holiday', async (_event, date: string) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.deleteHoliday(date);
-    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch {} });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch { } });
     return true;
 });
 
@@ -1171,7 +1211,7 @@ ipcMain.handle('import-personnel-excel', async (_event, filePath: string, replac
     const adapter = await ensureDatabaseAdapter();
     const result = await adapter.importPersonnelFromExcel(filePath, replaceExisting);
     if (result.success) {
-        BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch {} });
+        BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     }
     return result;
 });
@@ -1347,9 +1387,9 @@ ipcMain.handle('check-for-updates', async () => {
         const needsUpdate = await updateMgr.needsUpdate();
         const currentVersion = await getCurrentVersion();
         const appVersion = await updateMgr.getAppVersion();
-        
-        return { 
-            success: true, 
+
+        return {
+            success: true,
             needsUpdate,
             currentVersion,
             appVersion
@@ -1374,12 +1414,12 @@ ipcMain.handle('import-settings-json', async (_event, filePath: string, replaceE
     try {
         const adapter = await ensureDatabaseAdapter();
         const result = await adapter.importSettingsFromJson(filePath, replaceExisting);
-        
+
         // Notify all windows about settings update
         BrowserWindow.getAllWindows().forEach(w => {
-            try { w.webContents.send('settings-updated'); } catch {}
+            try { w.webContents.send('settings-updated'); } catch { }
         });
-        
+
         return result;
     } catch (error) {
         throw error;
@@ -1421,14 +1461,14 @@ ipcMain.handle('import-duty-roster', async (_event, filePath: string, year: numb
     try {
         const adapter = await ensureDatabaseAdapter();
         const result = await adapter.importDutyRoster(filePath, year, month, options);
-        
+
         if (result.success) {
             // Notify all windows about the update
             BrowserWindow.getAllWindows().forEach(w => {
-                try { w.webContents.send('duty-roster-updated'); } catch {}
+                try { w.webContents.send('duty-roster-updated'); } catch { }
             });
         }
-        
+
         return result;
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Ein unbekannter Fehler ist aufgetreten.';
@@ -1461,7 +1501,7 @@ ipcMain.handle('get-diagnostics', async () => {
             headerPngs = files.map(f => {
                 const absPath = path.join(assetsDir, f);
                 let size: number | undefined = undefined;
-                try { size = fs.statSync(absPath).size; } catch {}
+                try { size = fs.statSync(absPath).size; } catch { }
                 return { file: f, absPath, size };
             });
         } catch (e) {
@@ -1490,21 +1530,21 @@ ipcMain.handle('test-qualification-periods', async () => {
     try {
         const adapter = await ensureDatabaseAdapter();
         const results = [];
-        
+
         // Test 1: Create test person
         await adapter.addPersonnel({
             name: 'TestPerson',
             vorname: 'Qualification',
             teilzeit: 100
         });
-        
+
         // Find the test person ID by querying
         const personnel = await adapter.getPersonnel();
         const testPerson = personnel.find(p => p.name === 'TestPerson' && p.vorname === 'Qualification');
         if (!testPerson) throw new Error('Test person not found after creation');
         const testPersonId = testPerson.id;
         results.push(`✓ Created test person with ID: ${testPersonId}`);
-        
+
         // Test 2: Add qualification periods
         const period1 = {
             person_id: testPersonId,
@@ -1513,27 +1553,27 @@ ipcMain.handle('test-qualification-periods', async () => {
             end_ym: '2024-12',
             active: true
         };
-        
+
         await adapter.addQualificationPeriod(period1);
         results.push(`✓ Created qualification period`);
-        
+
         // Test 3: Load periods
         const periods = await adapter.getQualificationPeriods(testPersonId);
         results.push(`✓ Found ${periods.length} qualification periods`);
-        
+
         if (periods.length > 0) {
             // Test 4: Test validation
             const hasQual = await adapter.hasQualificationInMonth(testPersonId, 'Fahrzeugführer', '2024-06');
             results.push(`✓ Has qualification in 2024-06: ${hasQual}`);
-            
+
             // Cleanup - delete the qualification period
             await adapter.deleteQualificationPeriod(periods[0].id);
         }
-        
+
         // Delete test personnel
         await adapter.deletePersonnel(testPersonId);
         results.push(`✓ Cleanup completed`);
-        
+
         return { success: true, results };
     } catch (e: any) {
         return { success: false, message: e?.message || String(e), stack: e?.stack };
@@ -1557,7 +1597,7 @@ ipcMain.handle('get-db-config', async () => {
                 const json = JSON.parse(raw || '{}');
                 if (json && typeof json.dbDir === 'string' && json.dbDir.trim()) configuredDir = json.dbDir.trim();
             }
-        } catch {}
+        } catch { }
         const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
         const exePath = app.getPath('exe');
         const appRoot = (portableDir && portableDir.trim()) ? portableDir : path.dirname(exePath);
@@ -1584,28 +1624,28 @@ ipcMain.handle('set-db-dir', async (_event, targetDir: string) => {
         if (!targetDir || typeof targetDir !== 'string') throw new Error('Ungültiges Zielverzeichnis');
         const userData = app.getPath('userData');
         const cfgPath = path.join(userData, 'db-config.json');
-        
+
         // Ensure target directory exists
-        try { fs.mkdirSync(targetDir, { recursive: true }); } catch {}
+        try { fs.mkdirSync(targetDir, { recursive: true }); } catch { }
         try { fs.accessSync(targetDir, fs.constants.W_OK); } catch { throw new Error('Kein Schreibzugriff auf das Zielverzeichnis'); }
-        
+
         // NICHT kopieren! Alte DB bleibt am alten Speicherort.
         // Wenn am neuen Speicherort keine DB existiert → wird beim Neustart neu angelegt
         // Wenn dort bereits eine DB existiert → wird diese verwendet
-        
+
         // Write local config (db-config.json in userData)
         try {
             fs.writeFileSync(cfgPath, JSON.stringify({ dbDir: targetDir }, null, 2), 'utf-8');
         } catch (e) {
             throw new Error('Konfiguration konnte nicht geschrieben werden');
         }
-        
+
         // Write global config (db-config.json next to executable)
         try {
             const res = writeGlobalDbConfig(targetDir);
         } catch (e) {
         }
-        
+
         // Relaunch app to use new database location
         app.relaunch();
         app.exit(0);
@@ -1754,7 +1794,7 @@ ipcMain.on('open-vehicles-window', () => {
 
 ipcMain.on('open-values-window', () => {
     const win = openWindow('values.html', 'valuesWindow', 1000, 700);
-    try { win.focus(); } catch {}
+    try { win.focus(); } catch { }
 });
 
 // Add/Edit windows (Personen/Azubis/ITW/Fahrzeuge) + Confirm Delete
@@ -1831,13 +1871,22 @@ app.whenReady().then(async () => {
 
     // 1. Prüfe IMMER zuerst auf eine lokale Konfigurationsdatei (neben der Exe) und erzwinge deren Nutzung
     // Das ermöglicht es, durch Ablegen einer db-config.json neben der App den Datenbank-Pfad vorzugeben (z.B. für USB-Stick)
-    
-    // Splash Screen anzeigen
-    createSplashScreen();
-    updateSplashStatus('RD-Plan wird gestartet...', 'Initialisierung...');
-    
+
+    // Check CLI arguments for auto-login
+    // Format: ... RD-Plan.exe -h383392 ...
+    const args = process.argv;
+    const personnelArg = args.find(arg => arg.startsWith('-h'));
+    const personnelNumber = personnelArg ? personnelArg.substring(2) : null;
+    const skipSplash = !!personnelNumber;
+
+    // Splash Screen anzeigen (nur wenn kein Auto-Login)
+    if (!skipSplash) {
+        createSplashScreen();
+        updateSplashStatus('RD-Plan wird gestartet...', 'Initialisierung...');
+    }
+
     try {
-        updateSplashStatus('Konfiguration wird geladen...', 'Prüfe Datenbank-Pfad...');
+        if (!skipSplash) updateSplashStatus('Konfiguration wird geladen...', 'Prüfe Datenbank-Pfad...');
         const globalCfgPath = getGlobalDbConfigPath();
         if (globalCfgPath) {
             const dir = readDbDirFromConfigFile(globalCfgPath);
@@ -1849,7 +1898,7 @@ app.whenReady().then(async () => {
                     if (fs.existsSync(userCfgPath)) {
                         currentDir = readDbDirFromConfigFile(userCfgPath);
                     }
-                } catch {}
+                } catch { }
 
                 if (currentDir !== dir) {
                     fs.mkdirSync(path.dirname(userCfgPath), { recursive: true });
@@ -1868,19 +1917,49 @@ app.whenReady().then(async () => {
     }
 
     // WICHTIG: Datenbank initialisieren (kann bei Netzlaufwerk langsam sein)
-    updateSplashStatus('Datenbank wird geladen...', 'Dies kann bei Netzlaufwerken etwas dauern...');
+    if (!skipSplash) updateSplashStatus('Datenbank wird geladen...', 'Dies kann bei Netzlaufwerken etwas dauern...');
     await ensureDatabaseAdapter();
+
+    // Auto-Login Logik: Wenn Personalnummer übergeben wurde, versuchen einzuloggen
+    if (personnelNumber) {
+        console.log(`[Main] CLI Auto-Login Versuch für: ${personnelNumber}`);
+        // Auth Service initialisieren (falls noch nicht geschehen durch ensureDatabaseAdapter -> initializeDatabaseManager -> initializeAuthService)
+        // ensureDatabaseAdapter ruft initializeDatabaseManager auf, welches initializeAuthService aufruft?
+        // Checken wir initializeDatabaseManager: importiert initializeAuthService aber wir rufen es hier explizit in createWindow auf.
+        // Wir müssen sicherstellen, dass Auth Service bereit ist.
+
+        try {
+            // Sicherstellen dass Auth initialisiert ist
+            let auth: ReturnType<typeof getAuthService>;
+            try {
+                auth = getAuthService();
+            } catch {
+                initializeAuthService(databaseAdapter!);
+                auth = getAuthService();
+            }
+
+            // Login versuchen
+            const result = await auth.login(personnelNumber);
+            if (result.success) {
+                console.log(`[Main] Auto-Login erfolgreich für ${personnelNumber}`);
+            } else {
+                console.error(`[Main] Auto-Login fehlgeschlagen für ${personnelNumber}: ${result.error}`);
+            }
+        } catch (e) {
+            console.error(`[Main] Fehler bei Auto-Login:`, e);
+        }
+    }
 
     // Update-Prüfung und automatisches Update mit Backup
     try {
-        updateSplashStatus('Prüfe auf Updates...', 'Versionsprüfung läuft...');
+        if (!skipSplash) updateSplashStatus('Prüfe auf Updates...', 'Versionsprüfung läuft...');
         const updateMgr = getUpdateManager();
         const needsUpdate = await updateMgr.needsUpdate();
-        
+
         if (needsUpdate) {
-            updateSplashStatus('Update wird installiert...', 'Bitte warten...');
+            if (!skipSplash) updateSplashStatus('Update wird installiert...', 'Bitte warten...');
             const result = await performUpdate();
-            
+
             if (result.success) {
             } else {
                 dialog.showErrorBox(
@@ -1893,8 +1972,8 @@ app.whenReady().then(async () => {
         // Bei Fehler: Weiter mit normaler Initialisierung
     }
 
-    updateSplashStatus('Hauptfenster wird vorbereitet...', 'Fast fertig...');
-    await createWindow();
+    if (!skipSplash) updateSplashStatus('Hauptfenster wird vorbereitet...', 'Fast fertig...');
+    await createWindow(skipSplash);
 });
 
 app.on('window-all-closed', async () => {

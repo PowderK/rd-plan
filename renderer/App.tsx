@@ -44,6 +44,7 @@ const AppContent: React.FC = () => {
 
     useEffect(() => {
         if (isAuthenticated) {
+            setActiveView('einteilung');
             loadHeaderInfo();
             
             // Reagiere auf Jahr-Änderungen von DutyRoster/Values

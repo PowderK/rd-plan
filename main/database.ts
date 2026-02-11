@@ -238,6 +238,12 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         if (!colsAfter.some((c: any) => c.name === 'roleId')) {
             await db.exec("ALTER TABLE personnel ADD COLUMN roleId INTEGER DEFAULT NULL");
         }
+
+        // Migration: add 'old_rtw_shifts' if missing
+        if (!colsAfter.some((c: any) => c.name === 'old_rtw_shifts')) {
+            await db.exec("ALTER TABLE personnel ADD COLUMN old_rtw_shifts INTEGER DEFAULT 0");
+            await db.exec("UPDATE personnel SET old_rtw_shifts = 0 WHERE old_rtw_shifts IS NULL");
+        }
     } catch (e) {
     }
 
@@ -284,6 +290,46 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
             name TEXT NOT NULL DEFAULT ''
         )
     `);
+
+    // Schichtübernahmen-Tabelle (Issue #21)
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS shift_transfers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_person_id INTEGER NOT NULL,
+            to_person_id INTEGER NOT NULL,
+            shift_count REAL NOT NULL,
+            position_type TEXT NOT NULL,
+            month TEXT NOT NULL,
+            reason TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(from_person_id) REFERENCES personnel(id) ON DELETE CASCADE,
+            FOREIGN KEY(to_person_id) REFERENCES personnel(id) ON DELETE CASCADE
+        )
+    `);
+
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_from ON shift_transfers(from_person_id)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_to ON shift_transfers(to_person_id)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_month ON shift_transfers(month)`);
+
+    // Migration: add 'month' column to shift_transfers if missing (Issue #21 cleanup)
+    const stCols = await db.all("PRAGMA table_info('shift_transfers')");
+    if (!stCols.some((c: any) => c.name === 'month')) {
+        await db.exec("ALTER TABLE shift_transfers ADD COLUMN month TEXT DEFAULT ''");
+        // Migrate data from 'valid_from' (take YYYY-MM)
+        if (stCols.some((c: any) => c.name === 'valid_from')) {
+            await db.exec("UPDATE shift_transfers SET month = SUBSTR(valid_from, 1, 7) WHERE month = '' OR month IS NULL");
+        }
+    }
+
+    // Default-Wert für Shift Transfers Feature (standardmäßig aus)
+    try {
+        const row = await db.get("SELECT value FROM settings WHERE key = 'feature_shift_transfers'");
+        if (!row) {
+            await db.run("INSERT INTO settings (key, value) VALUES ('feature_shift_transfers', 'false')");
+        }
+    } catch (e) {
+        // Ignore error
+    }
 
     // Hilfsfunktionen: Ostersonntag berechnen (Gregorianischer Algorithmus)
     function calcEasterSunday(year: number): Date {
@@ -850,21 +896,21 @@ export const getPersonnel = async (db: AsyncDB, includeInactive: boolean = false
 
 export const addPersonnel = async (db: AsyncDB, person: any) => {
     // Contact fields removed
-    const { name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, personnelNumber, roleId } = person;
+    const { name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, personnelNumber, roleId, oldRtwShifts } = person;
 
     return await db.run(
-        'INSERT INTO personnel (name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, personnelNumber, roleId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [name, vorname, active !== false ? 1 : 0, teilzeit || 0, fahrzeugfuehrer ? 1 : 0, fahrzeugfuehrerHLFB ? 1 : 0, nef ? 1 : 0, itwMaschinist ? 1 : 0, itwFahrzeugfuehrer ? 1 : 0, sort || 0, personnelNumber || null, roleId || null]
+        'INSERT INTO personnel (name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, personnelNumber, roleId, old_rtw_shifts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [name, vorname, active !== false ? 1 : 0, teilzeit || 0, fahrzeugfuehrer ? 1 : 0, fahrzeugfuehrerHLFB ? 1 : 0, nef ? 1 : 0, itwMaschinist ? 1 : 0, itwFahrzeugfuehrer ? 1 : 0, sort || 0, personnelNumber || null, roleId || null, oldRtwShifts || 0]
     );
 };
 
 export const updatePersonnel = async (db: AsyncDB, person: any) => {
     // Contact fields removed
-    const { id, name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, personnelNumber, roleId } = person;
+    const { id, name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, personnelNumber, roleId, oldRtwShifts } = person;
 
     await db.run(
-        'UPDATE personnel SET name = ?, vorname = ?, active = ?, teilzeit = ?, fahrzeugfuehrer = ?, fahrzeugfuehrerHLFB = ?, nef = ?, itwMaschinist = ?, itwFahrzeugfuehrer = ?, personnelNumber = ?, roleId = ? WHERE id = ?',
-        [name, vorname, active !== false ? 1 : 0, teilzeit || 0, fahrzeugfuehrer ? 1 : 0, fahrzeugfuehrerHLFB ? 1 : 0, nef ? 1 : 0, itwMaschinist ? 1 : 0, itwFahrzeugfuehrer ? 1 : 0, personnelNumber || null, roleId || null, id]
+        'UPDATE personnel SET name = ?, vorname = ?, active = ?, teilzeit = ?, fahrzeugfuehrer = ?, fahrzeugfuehrerHLFB = ?, nef = ?, itwMaschinist = ?, itwFahrzeugfuehrer = ?, personnelNumber = ?, roleId = ?, old_rtw_shifts = ? WHERE id = ?',
+        [name, vorname, active !== false ? 1 : 0, teilzeit || 0, fahrzeugfuehrer ? 1 : 0, fahrzeugfuehrerHLFB ? 1 : 0, nef ? 1 : 0, itwMaschinist ? 1 : 0, itwFahrzeugfuehrer ? 1 : 0, personnelNumber || null, roleId || null, oldRtwShifts || 0, id]
     );
 };
 
@@ -1853,6 +1899,63 @@ export const clearDutyRosterForMonth = async (db: AsyncDB, year: number, month: 
     const start = `${year}-${mm}-01`;
     const end = `${year}-${mm}-${String(last).padStart(2, '0')}`;
     await db.run('DELETE FROM duty_roster WHERE date >= ? AND date <= ?', [start, end]);
+};
+
+// --- Shift Transfers (Issue #21) ---
+export const getShiftTransfers = async (db: AsyncDB, year?: number, month?: number) => {
+    let sql = `
+        SELECT st.*, 
+               fp.name as from_name, fp.vorname as from_vorname,
+               tp.name as to_name, tp.vorname as to_vorname
+        FROM shift_transfers st
+        LEFT JOIN personnel fp ON st.from_person_id = fp.id
+        LEFT JOIN personnel tp ON st.to_person_id = tp.id
+    `;
+    const params: any[] = [];
+    const conditions: string[] = [];
+
+    if (year !== undefined) {
+        if (month !== undefined) {
+            // Exact month match
+            const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+            conditions.push(`st.month = ?`);
+            params.push(monthStr);
+        } else {
+            // All months in year
+            conditions.push(`st.month LIKE ?`);
+            params.push(`${year}-%`);
+        }
+    }
+
+    if (conditions.length > 0) {
+        sql += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    sql += ' ORDER BY st.month DESC, st.created_at DESC';
+
+    return db.all(sql, params);
+};
+
+export const addShiftTransfer = async (db: AsyncDB, transfer: any) => {
+    const { from_person_id, to_person_id, shift_count, position_type, month, reason } = transfer;
+    const result = await db.run(`
+        INSERT INTO shift_transfers (from_person_id, to_person_id, shift_count, position_type, month, reason)
+        VALUES (?, ?, ?, ?, ?, ?)
+    `, [from_person_id, to_person_id, shift_count, position_type, month, reason]);
+    return result.lastInsertRowid;
+};
+
+export const updateShiftTransfer = async (db: AsyncDB, id: number, transfer: any) => {
+    const { from_person_id, to_person_id, shift_count, position_type, month, reason } = transfer;
+    await db.run(`
+        UPDATE shift_transfers
+        SET from_person_id = ?, to_person_id = ?, shift_count = ?, position_type = ?, month = ?, reason = ?
+        WHERE id = ?
+    `, [from_person_id, to_person_id, shift_count, position_type, month, reason, id]);
+};
+
+export const deleteShiftTransfer = async (db: AsyncDB, id: number) => {
+    await db.run('DELETE FROM shift_transfers WHERE id = ?', [id]);
 };
 
 // --- Qualification Validation for Duty Roster ---

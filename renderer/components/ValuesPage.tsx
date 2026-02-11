@@ -409,6 +409,16 @@ const ValuesPage: React.FC = () => {
   const { rtwActs, nefActs } = useActivations(year);
   const department = useDepartment();
   const deptPatternSeqs = useDeptPatterns();
+  const [shiftTransfers, setShiftTransfers] = useState<any[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const transfers = await (window as any).api.getShiftTransfers(year);
+        setShiftTransfers(Array.isArray(transfers) ? transfers : []);
+      } catch { setShiftTransfers([]); }
+    })();
+  }, [year]);
 
   // Reagiere auf Jahr-Änderungen von DutyRoster
   useEffect(() => {
@@ -684,15 +694,50 @@ const ValuesPage: React.FC = () => {
       const active = weights.filter(x => x.w > 0);
       const totalW = active.reduce((a, b) => a + b.w, 0);
 
-      if (totalW <= 0) {
-        idList.forEach(id => {
-          detailsById[id].push({ month: m, required, totalWeight: 0, personWeight: 0, exact: 0, floor: 0, bonus: 0, final: 0 });
-        });
-        continue;
+      const parts: Record<number, number> = {};
+      for (const a of active) {
+        parts[a.id] = (required * a.w) / totalW;
       }
 
-      const parts = active.map(a => ({ id: a.id, exact: (required * a.w) / totalW, w: a.w }));
-      const floors = parts.map(p => ({ id: p.id, v: Math.floor(p.exact), frac: p.exact - Math.floor(p.exact), exact: p.exact, w: p.w }));
+      // Integration von Schichtübernahmen auf Exakt-Ebene
+      const monthTransfers = (shiftTransfers || []).filter((t: any) => {
+        const [ty, tm] = (t.month || '').split('-').map(Number);
+        return ty === year && tm === (m + 1);
+      });
+
+      const transfersByPerson: Record<number, number> = {};
+      if (monthTransfers.length > 0) {
+        let totalTransferred = 0;
+        const excludedIds = new Set<number>();
+
+        for (const t of monthTransfers) {
+          totalTransferred += t.shift_count;
+          if (t.from_person_id) excludedIds.add(t.from_person_id);
+          excludedIds.add(t.to_person_id);
+
+          parts[t.to_person_id] = (parts[t.to_person_id] || 0) + t.shift_count;
+          transfersByPerson[t.to_person_id] = (transfersByPerson[t.to_person_id] || 0) + t.shift_count;
+        }
+
+        const pool = active.filter(a => !excludedIds.has(a.id));
+        const poolWeight = pool.reduce((sum, a) => sum + a.w, 0);
+
+        if (poolWeight > 0 && totalTransferred > 0) {
+          for (const p of pool) {
+            const reduction = (totalTransferred * p.w) / poolWeight;
+            parts[p.id] = Math.max(0, (parts[p.id] || 0) - reduction);
+          }
+        }
+      }
+
+      const exactList = idList.map(id => ({ id, exact: parts[id] || 0, w: Number((byId[id] || [])[m] || 0) }));
+      const floors = exactList.filter(e => e.w > 0 || transfersByPerson[e.id]).map(p => ({
+        id: p.id,
+        v: Math.floor(p.exact),
+        frac: p.exact - Math.floor(p.exact),
+        exact: p.exact,
+        w: p.w
+      }));
 
       let assigned = floors.reduce((s, f) => s + f.v, 0);
       let rest = required - assigned;
@@ -704,8 +749,10 @@ const ValuesPage: React.FC = () => {
         bonuses[floors[i].id] = 1;
       }
 
-      // Fill details for active
+      // Fill details for those who have entries (active or transfer)
+      const processedIds = new Set<number>();
       floors.forEach(f => {
+        processedIds.add(f.id);
         detailsById[f.id].push({
           month: m,
           required,
@@ -718,25 +765,24 @@ const ValuesPage: React.FC = () => {
         });
       });
 
-      // Fill details for inactive (weight 0)
-      const activeIds = new Set(active.map(a => a.id));
+      // Fill details for others (weight 0 and no transfer)
       idList.forEach(id => {
-        if (!activeIds.has(id)) {
+        if (!processedIds.has(id)) {
           detailsById[id].push({
             month: m,
             required,
             totalWeight: totalW,
             personWeight: 0,
-            exact: 0,
+            exact: parts[id] || 0,
             floor: 0,
             bonus: 0,
-            final: 0
+            final: Math.floor(parts[id] || 0) + (bonuses[id] || 0)
           });
         }
       });
     }
     return detailsById;
-  }, [perPersonPresenceWeighted, row1Adj]);
+  }, [perPersonPresenceWeighted, row1Adj, shiftTransfers, year]);
 
   const perPersonTargets = useMemo(() => {
     return Object.entries(calculationDetails).map(([idStr, details]) => ({
@@ -850,16 +896,21 @@ const ValuesPage: React.FC = () => {
             <tbody>
               {details.map((d, i) => {
                 const isHlfbMonth = person.hlfbMonthly ? person.hlfbMonthly[d.month] : false;
+                const hasTransfer = (shiftTransfers || []).some((t: any) => {
+                  if (t.to_person_id !== selectedPersonId) return false;
+                  const [ty, tm] = (t.month || '').split('-').map(Number);
+                  return ty === year && tm === (d.month + 1);
+                });
                 return (
                   <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
                     <td style={styles.tdLeft}>{monthNames[d.month]}</td>
                     <td style={styles.td}>{fmt(d.required)}</td>
                     <td style={styles.td}>{fmt(d.totalWeight)}</td>
                     <td style={{ ...styles.td, color: isHlfbMonth ? '#1565c0' : 'inherit', fontWeight: isHlfbMonth ? 'bold' : 'normal', background: isHlfbMonth ? '#f0f7ff' : 'transparent' }}>{fmt(d.personWeight)}</td>
-                    <td style={styles.td}>{fmtDec(d.exact)}</td>
+                    <td style={{ ...styles.td, color: hasTransfer ? '#3b82f6' : 'inherit', fontWeight: hasTransfer ? 'bold' : 'normal' }}>{fmtDec(d.exact)}</td>
                     <td style={styles.td}>{d.floor}</td>
                     <td style={styles.td}>{d.bonus > 0 ? '+1' : '-'}</td>
-                    <td style={{ ...styles.td, fontWeight: 'bold', color: '#0f766e' }}>{d.final}</td>
+                    <td style={{ ...styles.td, fontWeight: 'bold', color: hasTransfer ? '#3b82f6' : '#0f766e' }}>{d.final}</td>
                   </tr>
                 );
               })}
@@ -1020,19 +1071,31 @@ const ValuesPage: React.FC = () => {
                   >
                     {row.name}
                   </td>
-                  {row.counts.map((v, i) => (
-                    <td key={i} style={styles.td}>
-                      {v ? (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                          <span>{fmt(v)}</span>
-                          <span style={{ color: '#374151' }}>|</span>
-                          <span style={{ color: '#0f766e' }}>{targets[i] ? fmt(targets[i]) : ''}</span>
-                        </div>
-                      ) : (targets[i] ? (
-                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}><span style={{ color: '#0f766e' }}>{fmt(targets[i])}</span></div>
-                      ) : '')}
-                    </td>
-                  ))}
+                  {row.counts.map((v, i) => {
+                    const hasTransfer = (shiftTransfers || []).some((t: any) => {
+                      if (t.to_person_id !== row.id) return false;
+                      const [ty, tm] = (t.month || '').split('-').map(Number);
+                      return ty === year && tm === (i + 1);
+                    });
+                    const targetColor = hasTransfer ? '#3b82f6' : '#0f766e';
+                    const targetWeight = hasTransfer ? 'bold' : 'normal';
+
+                    return (
+                      <td key={i} style={styles.td}>
+                        {v ? (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                            <span>{fmt(v)}</span>
+                            <span style={{ color: '#374151' }}>|</span>
+                            <span style={{ color: targetColor, fontWeight: targetWeight }}>{targets[i] ? fmt(targets[i]) : ''}</span>
+                          </div>
+                        ) : (targets[i] ? (
+                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <span style={{ color: targetColor, fontWeight: targetWeight }}>{fmt(targets[i])}</span>
+                          </div>
+                        ) : '')}
+                      </td>
+                    );
+                  })}
                   <td style={styles.td}>
                     {(sumPresence || sumTargets) ? (
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>

@@ -174,7 +174,8 @@ const EinteilungPage: React.FC = () => {
             fahrzeugfuehrer: hasFahrzeugfuehrer ? 1 : person.fahrzeugfuehrer,
             nef: hasNef ? 1 : person.nef,
             fahrzeugfuehrerHLFB: hasHLFB ? 1 : person.fahrzeugfuehrerHLFB,
-            ue50: hasUe50 ? 1 : 0  // Neues Feld für Ü50-Status
+            ue50: hasUe50 ? 1 : 0,  // Neues Feld für Ü50-Status
+            oldRtwShifts: person.old_rtw_shifts || 0 // Aus Altsystem
           };
         } catch {
           return person;

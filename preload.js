@@ -48,6 +48,13 @@ catch (e) {
     // ipcRenderer might not be available in some contexts
 }
 electron_1.contextBridge.exposeInMainWorld('api', {
+    // Auth
+    authIsDevMode: () => electron_1.ipcRenderer.invoke('auth-is-dev-mode'),
+    authLogin: (personnelNumber) => electron_1.ipcRenderer.invoke('auth-login', personnelNumber),
+    authLogout: () => electron_1.ipcRenderer.invoke('auth-logout'),
+    authGetCurrentUser: () => electron_1.ipcRenderer.invoke('auth-get-current-user'),
+    authCheckPermission: (area, level) => electron_1.ipcRenderer.invoke('auth-check-permission', area, level),
+
     getShifts: () => electron_1.ipcRenderer.invoke('get-shifts'),
     getPersonnel: () => electron_1.ipcRenderer.invoke('get-personnel'),
     updateShift: (shift) => electron_1.ipcRenderer.invoke('update-shift', shift),

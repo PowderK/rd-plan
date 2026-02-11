@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import ImportYearTable from './ImportYearTable';
 import SettingsImportExport from './SettingsImportExport';
+import { ShiftTransferManager } from './ShiftTransferManager';
 import { BUILD_INFO } from '../buildInfo';
 import styles from './PersonnelOverview.module.css';
 
@@ -78,7 +79,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [hlfbQualificationType, setHlfbQualificationType] = useState<string>('FzF HLF B');
 
   // Rollen und Rechte Management
-  const [roles, setRoles] = useState<{ id: number; name: string; description?: string; permissions: Record<string, 'none' | 'read' | 'write'> }[]>([]);
+  const [roles, setRoles] = useState<{ id: number; name: string; description?: string; permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'> }[]>([]);
   const [editingRoles, setEditingRoles] = useState(false);
   const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
   const [originalRoles, setOriginalRoles] = useState<any[] | null>(null);
@@ -95,6 +96,11 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [yearImportUnknownAzubiNames, setYearImportUnknownAzubiNames] = useState<string[]>([]);
   // System Info
   const [systemUsername, setSystemUsername] = useState<string>('Lädt...');
+  // Feature toggles
+  const [featureOldRtwShifts, setFeatureOldRtwShifts] = useState(false);
+  const [featureShiftTransfers, setFeatureShiftTransfers] = useState(false);
+  const [showShiftTransferManager, setShowShiftTransferManager] = useState(false);
+
 
   useEffect(() => {
     (async () => {
@@ -173,7 +179,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       } catch { }
       // Feiertage laden
       try {
-        const list = await (window as any).api.getHolidaysForYear?.(Number(y || new Date().getFullYear()));
+        const list = await (window as any).api.getHolidaysForYear?.(Number(year || new Date().getFullYear()));
         setHolidays((list || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
       } catch { }
 
@@ -229,6 +235,22 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
           setDbDirInput((cfg.configuredDir || cfg.defaults?.appDir || ''));
         }
       } catch { }
+
+      // Load feature_old_rtw_shifts
+      try {
+        const feat = await (window as any).api.getSetting('feature_old_rtw_shifts');
+        setFeatureOldRtwShifts(feat === 'true' || feat === true);
+      } catch { }
+      try {
+        const feat = await (window as any).api.getSetting('feature_old_rtw_shifts');
+        setFeatureOldRtwShifts(feat === 'true' || feat === true);
+      } catch { }
+
+      // Load feature_shift_transfers
+      try {
+        const feats = await (window as any).api.getSetting('feature_shift_transfers');
+        setFeatureShiftTransfers(feats === 'true' || feats === true);
+      } catch { }
     })();
   }, []);    // Fahrzeug-UI entfernt
 
@@ -271,6 +293,15 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
       } catch { }
     } catch { }
+
+    // Save feature_old_rtw_shifts
+    await (window as any).api.setSetting('feature_old_rtw_shifts', String(featureOldRtwShifts));
+    // Save feature_old_rtw_shifts
+    await (window as any).api.setSetting('feature_old_rtw_shifts', String(featureOldRtwShifts));
+
+    // Save feature_shift_transfers
+    await (window as any).api.setSetting('feature_shift_transfers', String(featureShiftTransfers));
+
     onClose();
   };
 
@@ -656,6 +687,26 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               </div>
             </div>
 
+            {/* Feature Toggles */}
+            <div style={{ marginBottom: 16, padding: 12, background: '#f8f9fa', borderRadius: 8 }}>
+              <h3 style={{ marginTop: 0 }}>Funktionen</h3>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  id="featureOldRtwShifts"
+                  checked={featureOldRtwShifts}
+                  onChange={(e) => setFeatureOldRtwShifts(e.target.checked)}
+                  style={{ marginRight: 8 }}
+                />
+                <label htmlFor="featureOldRtwShifts" style={{ cursor: 'pointer' }}>
+                  <strong>Alte RTW-Schichten Tracking aktivieren</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                    Ermöglicht die Erfassung von Schichten aus einem Altsystem in den Personaleinstellungen und zeigt diese im Dienstplan an.
+                  </div>
+                </label>
+              </div>
+            </div>
+
             <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
               <button onClick={async () => {
                 try {
@@ -1009,6 +1060,35 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               )}
             </div>
 
+            {/* Shift Transfers */}
+            <div style={{ marginBottom: 24, padding: 12, background: '#f8f9fa', borderRadius: 8, border: '1px solid #dee2e6' }}>
+              <h3 style={{ marginTop: 0 }}>Schichtübernahmen</h3>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                <input
+                  type="checkbox"
+                  id="featureShiftTransfers"
+                  checked={featureShiftTransfers}
+                  onChange={(e) => setFeatureShiftTransfers(e.target.checked)}
+                  style={{ marginRight: 8 }}
+                />
+                <label htmlFor="featureShiftTransfers" style={{ cursor: 'pointer' }}>
+                  <strong>Gezielte Schichtübernahme aktivieren</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                    Erlaubt die Übertragung von SOLL-Schichten zwischen Mitarbeitern.
+                  </div>
+                </label>
+              </div>
+
+              {featureShiftTransfers && (
+                <button
+                  onClick={() => setShowShiftTransferManager(true)}
+                  style={{ padding: '6px 12px', background: '#007bff', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                >
+                  Verwalten…
+                </button>
+              )}
+            </div>
+
             {/* Import Dienstplan (Excel) - Monatsimport aus Settings entfernt */}
             <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1250,12 +1330,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                               if (!editingItwPatterns) return;
                               const v = e.target.value;
                               setItwPatternSeqs(prev => prev.map((x, i) => i === idx ? { ...x, startDate: v } : x).sort((a, b) => a.startDate.localeCompare(b.startDate)));
-                            }} />
+                            }}
+                            onClick={e => e.stopPropagation()} />
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             {Array.from({ length: 21 }).map((_, i) => (
                               <select key={i} value={s.pattern[i] || ''} disabled={!editingItwPatterns}
+                                onClick={e => e.stopPropagation()}
                                 onChange={e => {
                                   if (!editingItwPatterns) return;
                                   const v = e.target.value === 'IW' ? 'IW' : '';
@@ -1315,12 +1397,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                               if (!editingDeptPatterns) return;
                               const v = e.target.value;
                               setDeptPatternSeqs(prev => prev.map((x, i) => i === idx ? { ...x, startDate: v } : x).sort((a, b) => a.startDate.localeCompare(b.startDate)));
-                            }} />
+                            }}
+                            onClick={e => e.stopPropagation()} />
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             {Array.from({ length: 21 }).map((_, i) => (
                               <select key={i} value={s.pattern[i] || ''} disabled={!editingDeptPatterns}
+                                onClick={e => e.stopPropagation()}
                                 onChange={e => {
                                   if (!editingDeptPatterns) return;
                                   const v = ['1', '2', '3'].includes(e.target.value) ? e.target.value : '';
@@ -1400,6 +1484,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                           type="date"
                           value={h.date}
                           disabled={!editingHolidays}
+                          onClick={e => e.stopPropagation()}
                           onChange={e => {
                             if (!editingHolidays) return;
                             const v = e.target.value;
@@ -1412,6 +1497,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                           type="text"
                           value={h.name}
                           disabled={!editingHolidays}
+                          onClick={e => e.stopPropagation()}
                           onChange={e => {
                             if (!editingHolidays) return;
                             const v = e.target.value;
@@ -1467,13 +1553,15 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                                   setAuswertungByType(prev => prev[v] ? prev : ({ ...prev, [v]: prev[prevCode] || 'off' }));
                                   // Farbeintrag übertragen, falls noch nicht vorhanden
                                   setColorByType(prev => prev[v] ? prev : ({ ...prev, [v]: prev[prevCode] || '' }));
-                                }} />
+                                }}
+                                onClick={e => e.stopPropagation()} />
                             ) : st.code}
                           </td>
                           <td>
                             {editingShiftTypes ? (
                               <input value={st.description}
-                                onChange={e => setShiftTypes(prev => prev.map(x => x.id === st.id ? { ...x, description: e.target.value } : x))} />
+                                onChange={e => setShiftTypes(prev => prev.map(x => x.id === st.id ? { ...x, description: e.target.value } : x))}
+                                onClick={e => e.stopPropagation()} />
                             ) : st.description}
                           </td>
                           <td>
@@ -1485,6 +1573,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                                   const val = e.target.value;
                                   setColorByType(prev => ({ ...prev, [st.code]: val }));
                                 }}
+                                onClick={e => e.stopPropagation()}
                                 style={{ width: 48, height: 28, padding: 0, border: '1px solid var(--line)', borderRadius: 6, background: 'transparent' }}
                                 title="Farbe für diese Dienstart"
                               />
@@ -1498,7 +1587,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                                 onChange={e => {
                                   const val = e.target.value as any;
                                   setAuswertungByType(prev => ({ ...prev, [st.code]: val }));
-                                }}>
+                                }}
+                                onClick={e => e.stopPropagation()}>
                                 <option value="off">Aus</option>
                                 <option value="tag">Tag</option>
                                 <option value="nacht">Nacht</option>
@@ -1624,6 +1714,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                           <input
                             value={qt.name}
                             onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, name: e.target.value } : x))}
+                            onClick={e => e.stopPropagation()}
                             style={{
                               borderColor: (!qt.name || qt.name.trim() === '') ? '#ff4444' : '#ddd',
                               backgroundColor: (!qt.name || qt.name.trim() === '') ? '#fff5f5' : 'white'
@@ -1635,13 +1726,15 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                       <td>
                         {editingQualificationTypes ? (
                           <input value={qt.description || ''}
-                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, description: e.target.value } : x))} />
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, description: e.target.value } : x))}
+                            onClick={e => e.stopPropagation()} />
                         ) : (qt.description || '')}
                       </td>
                       <td>
                         {editingQualificationTypes ? (
                           <select value={qt.category}
-                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, category: e.target.value } : x))}>
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, category: e.target.value } : x))}
+                            onClick={e => e.stopPropagation()} >
                             <option value="Fahrzeugführung">Fahrzeugführung</option>
                             <option value="Notfall">Notfall</option>
                             <option value="Transport">Transport</option>
@@ -1653,13 +1746,15 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                       <td className={styles.center}>
                         {editingQualificationTypes ? (
                           <input type="checkbox" checked={qt.active}
-                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, active: e.target.checked } : x))} />
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, active: e.target.checked } : x))}
+                            onClick={e => e.stopPropagation()} />
                         ) : (qt.active ? '✓' : '✗')}
                       </td>
                       <td className={styles.center} title="Von Soll/Ist-Berechnung ausschließen (wie Azubis)">
                         {editingQualificationTypes ? (
                           <input type="checkbox" checked={qt.excludeFromStats || false}
-                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, excludeFromStats: e.target.checked } : x))} />
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, excludeFromStats: e.target.checked } : x))}
+                            onClick={e => e.stopPropagation()} />
                         ) : (qt.excludeFromStats ? '✓' : '✗')}
                       </td>
                       <td className={styles.center}>
@@ -1755,6 +1850,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                         <input
                           value={role.name}
                           onChange={e => setRoles(prev => prev.map(r => r.id === role.id ? { ...r, name: e.target.value } : r))}
+                          onClick={e => e.stopPropagation()}
                           style={{
                             borderColor: (!role.name || role.name.trim() === '') ? '#ff4444' : '#ddd',
                             backgroundColor: (!role.name || role.name.trim() === '') ? '#fff5f5' : 'white'
@@ -1768,6 +1864,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                         <input
                           value={role.description || ''}
                           onChange={e => setRoles(prev => prev.map(r => r.id === role.id ? { ...r, description: e.target.value } : r))}
+                          onClick={e => e.stopPropagation()}
                         />
                       ) : (role.description || '')}
                     </td>
@@ -1798,7 +1895,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 16 }}>
                   {[
                     { key: 'einteilung', label: 'Einteilung', allowRead: true, allowWrite: true },
-                    { key: 'dienstplan', label: 'Dienstplan', allowRead: true, allowWrite: true },
+                    { key: 'dienstplan', label: 'Dienstplan', allowRead: true, allowWrite: true, allowReadAll: true },
                     { key: 'werte', label: 'Werte', allowRead: true, allowWrite: false },
                     { key: 'personal', label: 'Personal', allowRead: false, allowWrite: true },
                     { key: 'fahrzeuge', label: 'Fahrzeuge', allowRead: false, allowWrite: true },
@@ -1811,17 +1908,19 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                         <select
                           value={currentPermission}
                           onChange={e => {
-                            const newPermission = e.target.value as 'none' | 'read' | 'write';
+                            const newPermission = e.target.value as 'none' | 'read' | 'read_all' | 'write';
                             setRoles(prev => prev.map(r =>
                               r.id === selectedRoleId
                                 ? { ...r, permissions: { ...r.permissions, [area.key]: newPermission } }
                                 : r
                             ));
                           }}
+                          onClick={e => e.stopPropagation()}
                           style={{ width: '100%', padding: 4 }}
                         >
                           <option value="none">Keine</option>
                           {area.allowRead && <option value="read">Lesen</option>}
+                          {area.allowReadAll && <option value="read_all">Lesen / alle</option>}
                           {area.allowWrite && <option value="write">Schreiben</option>}
                         </select>
                       </div>
@@ -1860,7 +1959,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                   <button onClick={() => {
                     // Neue Rolle hinzufügen
                     const newId = Math.max(0, ...roles.map(r => r.id)) + 1;
-                    const defaultPermissions: Record<string, 'none' | 'read' | 'write'> = {
+                    const defaultPermissions: Record<string, 'none' | 'read' | 'read_all' | 'write'> = {
                       einteilung: 'none',
                       dienstplan: 'none',
                       werte: 'none',
@@ -2189,6 +2288,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         )}
       </div>
       {/* Ende Content */}
+      {showShiftTransferManager && (
+        <ShiftTransferManager onClose={() => setShowShiftTransferManager(false)} />
+      )}
     </div>
   );
 };
@@ -2394,5 +2496,7 @@ const NewAzubiDialog: React.FC<NewAzubiDialogProps> = ({ unknownNames, onConfirm
     </div>
   );
 };
+
+
 
 export default SettingsMenu;
