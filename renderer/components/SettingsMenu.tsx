@@ -1330,12 +1330,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                               if (!editingItwPatterns) return;
                               const v = e.target.value;
                               setItwPatternSeqs(prev => prev.map((x, i) => i === idx ? { ...x, startDate: v } : x).sort((a, b) => a.startDate.localeCompare(b.startDate)));
-                            }} />
+                            }}
+                            onClick={e => e.stopPropagation()} />
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             {Array.from({ length: 21 }).map((_, i) => (
                               <select key={i} value={s.pattern[i] || ''} disabled={!editingItwPatterns}
+                                onClick={e => e.stopPropagation()}
                                 onChange={e => {
                                   if (!editingItwPatterns) return;
                                   const v = e.target.value === 'IW' ? 'IW' : '';
@@ -1395,12 +1397,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                               if (!editingDeptPatterns) return;
                               const v = e.target.value;
                               setDeptPatternSeqs(prev => prev.map((x, i) => i === idx ? { ...x, startDate: v } : x).sort((a, b) => a.startDate.localeCompare(b.startDate)));
-                            }} />
+                            }}
+                            onClick={e => e.stopPropagation()} />
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             {Array.from({ length: 21 }).map((_, i) => (
                               <select key={i} value={s.pattern[i] || ''} disabled={!editingDeptPatterns}
+                                onClick={e => e.stopPropagation()}
                                 onChange={e => {
                                   if (!editingDeptPatterns) return;
                                   const v = ['1', '2', '3'].includes(e.target.value) ? e.target.value : '';
@@ -1480,6 +1484,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                           type="date"
                           value={h.date}
                           disabled={!editingHolidays}
+                          onClick={e => e.stopPropagation()}
                           onChange={e => {
                             if (!editingHolidays) return;
                             const v = e.target.value;
@@ -1492,6 +1497,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                           type="text"
                           value={h.name}
                           disabled={!editingHolidays}
+                          onClick={e => e.stopPropagation()}
                           onChange={e => {
                             if (!editingHolidays) return;
                             const v = e.target.value;
@@ -1547,13 +1553,15 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                                   setAuswertungByType(prev => prev[v] ? prev : ({ ...prev, [v]: prev[prevCode] || 'off' }));
                                   // Farbeintrag übertragen, falls noch nicht vorhanden
                                   setColorByType(prev => prev[v] ? prev : ({ ...prev, [v]: prev[prevCode] || '' }));
-                                }} />
+                                }}
+                                onClick={e => e.stopPropagation()} />
                             ) : st.code}
                           </td>
                           <td>
                             {editingShiftTypes ? (
                               <input value={st.description}
-                                onChange={e => setShiftTypes(prev => prev.map(x => x.id === st.id ? { ...x, description: e.target.value } : x))} />
+                                onChange={e => setShiftTypes(prev => prev.map(x => x.id === st.id ? { ...x, description: e.target.value } : x))}
+                                onClick={e => e.stopPropagation()} />
                             ) : st.description}
                           </td>
                           <td>
@@ -1565,6 +1573,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                                   const val = e.target.value;
                                   setColorByType(prev => ({ ...prev, [st.code]: val }));
                                 }}
+                                onClick={e => e.stopPropagation()}
                                 style={{ width: 48, height: 28, padding: 0, border: '1px solid var(--line)', borderRadius: 6, background: 'transparent' }}
                                 title="Farbe für diese Dienstart"
                               />
@@ -1578,7 +1587,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                                 onChange={e => {
                                   const val = e.target.value as any;
                                   setAuswertungByType(prev => ({ ...prev, [st.code]: val }));
-                                }}>
+                                }}
+                                onClick={e => e.stopPropagation()}>
                                 <option value="off">Aus</option>
                                 <option value="tag">Tag</option>
                                 <option value="nacht">Nacht</option>
@@ -1704,6 +1714,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                           <input
                             value={qt.name}
                             onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, name: e.target.value } : x))}
+                            onClick={e => e.stopPropagation()}
                             style={{
                               borderColor: (!qt.name || qt.name.trim() === '') ? '#ff4444' : '#ddd',
                               backgroundColor: (!qt.name || qt.name.trim() === '') ? '#fff5f5' : 'white'
@@ -1715,13 +1726,15 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                       <td>
                         {editingQualificationTypes ? (
                           <input value={qt.description || ''}
-                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, description: e.target.value } : x))} />
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, description: e.target.value } : x))}
+                            onClick={e => e.stopPropagation()} />
                         ) : (qt.description || '')}
                       </td>
                       <td>
                         {editingQualificationTypes ? (
                           <select value={qt.category}
-                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, category: e.target.value } : x))}>
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, category: e.target.value } : x))}
+                            onClick={e => e.stopPropagation()} >
                             <option value="Fahrzeugführung">Fahrzeugführung</option>
                             <option value="Notfall">Notfall</option>
                             <option value="Transport">Transport</option>
@@ -1733,13 +1746,15 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                       <td className={styles.center}>
                         {editingQualificationTypes ? (
                           <input type="checkbox" checked={qt.active}
-                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, active: e.target.checked } : x))} />
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, active: e.target.checked } : x))}
+                            onClick={e => e.stopPropagation()} />
                         ) : (qt.active ? '✓' : '✗')}
                       </td>
                       <td className={styles.center} title="Von Soll/Ist-Berechnung ausschließen (wie Azubis)">
                         {editingQualificationTypes ? (
                           <input type="checkbox" checked={qt.excludeFromStats || false}
-                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, excludeFromStats: e.target.checked } : x))} />
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, excludeFromStats: e.target.checked } : x))}
+                            onClick={e => e.stopPropagation()} />
                         ) : (qt.excludeFromStats ? '✓' : '✗')}
                       </td>
                       <td className={styles.center}>
@@ -1835,6 +1850,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                         <input
                           value={role.name}
                           onChange={e => setRoles(prev => prev.map(r => r.id === role.id ? { ...r, name: e.target.value } : r))}
+                          onClick={e => e.stopPropagation()}
                           style={{
                             borderColor: (!role.name || role.name.trim() === '') ? '#ff4444' : '#ddd',
                             backgroundColor: (!role.name || role.name.trim() === '') ? '#fff5f5' : 'white'
@@ -1848,6 +1864,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                         <input
                           value={role.description || ''}
                           onChange={e => setRoles(prev => prev.map(r => r.id === role.id ? { ...r, description: e.target.value } : r))}
+                          onClick={e => e.stopPropagation()}
                         />
                       ) : (role.description || '')}
                     </td>
@@ -1898,6 +1915,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                                 : r
                             ));
                           }}
+                          onClick={e => e.stopPropagation()}
                           style={{ width: '100%', padding: 4 }}
                         >
                           <option value="none">Keine</option>
