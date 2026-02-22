@@ -1441,6 +1441,32 @@ export class DatabaseManager {
         );
         CREATE INDEX IF NOT EXISTS idx_vehicle_positions_vehicle ON vehicle_positions (vehicleType, vehicleId);
         CREATE INDEX IF NOT EXISTS idx_vehicle_positions_qual ON vehicle_positions (qualificationTypeId);
+
+        -- Kommentar-Tabellen (Issue #22)
+        CREATE TABLE IF NOT EXISTS roster_comments_personal (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            person_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            comment TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            created_by TEXT,
+            updated_at TEXT,
+            FOREIGN KEY(person_id) REFERENCES personnel(id) ON DELETE CASCADE,
+            UNIQUE(person_id, date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_roster_comments_personal_date ON roster_comments_personal(date);
+        CREATE INDEX IF NOT EXISTS idx_roster_comments_personal_person ON roster_comments_personal(person_id);
+
+        CREATE TABLE IF NOT EXISTS roster_comments_global (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            comment TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            created_by TEXT,
+            updated_at TEXT,
+            UNIQUE(date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_roster_comments_global_date ON roster_comments_global(date);
     `);
 
     // Initialize default qualification types if empty

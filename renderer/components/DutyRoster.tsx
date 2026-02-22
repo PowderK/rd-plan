@@ -1014,12 +1014,22 @@ const DutyRoster: React.FC = () => {
     } catch { }
   };
 
-  // Context menu schließen bei globalem Klick
+  // Context menu schließen bei globalem Klick/Touch
   useEffect(() => {
     if (!ctxMenu?.visible) return;
-    const close = () => setCtxMenu(null);
-    window.addEventListener('click', close, { once: true });
-    return () => window.removeEventListener('click', close);
+    const close = (ev: MouseEvent) => {
+      // Ignore right-clicks (button===2) so the menu doesn't close by the same event that opened it
+      if (ev.button === 2) return;
+      setCtxMenu(null);
+    };
+    // Use setTimeout to register AFTER the current event cycle, avoiding immediate close
+    const timeoutId = setTimeout(() => {
+      window.addEventListener('mousedown', close);
+    }, 50);
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('mousedown', close);
+    };
   }, [ctxMenu]);
 
   const handleCommentSave = async (comment: string) => {
@@ -1412,8 +1422,8 @@ const DutyRoster: React.FC = () => {
                     key={i}
                     style={{ border: '1px solid #d0d0d0', whiteSpace: 'nowrap', background: 'var(--bg)', cursor: 'context-menu', userSelect: 'none' }}
                     onContextMenu={(e) => {
-                      if (!canWrite) return;
                       e.preventDefault();
+                      e.stopPropagation();
                       setCtxMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'global', date: d.iso });
                     }}
                   >
@@ -1561,8 +1571,9 @@ const DutyRoster: React.FC = () => {
                               }
                             }}
                             onContextMenu={(e) => {
-                              if (!canWrite || person.isAzubi) return;
+                              if (person.isAzubi) return;
                               e.preventDefault();
+                              e.stopPropagation();
                               setCtxMenu({
                                 visible: true,
                                 x: e.clientX,
