@@ -1976,6 +1976,52 @@ app.whenReady().then(async () => {
     await createWindow(skipSplash);
 });
 
+// Roster Comments (Issue #22)
+ipcMain.handle('roster-comment-personal-add', async (_event, personId: number, date: string, comment: string) => {
+    const auth = getAuthService();
+    const currentUser = auth.getCurrentUser();
+    const createdBy = currentUser?.personnelNumber || 'unknown';
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addPersonalComment(personId, date, comment, createdBy);
+    return true;
+});
+
+ipcMain.handle('roster-comment-personal-delete', async (_event, personId: number, date: string) => {
+    const auth = getAuthService();
+    auth.requirePermission('dienstplan', 'read');
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deletePersonalComment(personId, date);
+    return true;
+});
+
+ipcMain.handle('roster-comment-personal-get-month', async (_event, year: number, month: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getPersonalCommentsForMonth(year, month);
+});
+
+ipcMain.handle('roster-comment-global-add', async (_event, date: string, comment: string) => {
+    const auth = getAuthService();
+    auth.requirePermission('dienstplan', 'write');
+    const currentUser = auth.getCurrentUser();
+    const createdBy = currentUser?.personnelNumber || 'unknown';
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addGlobalComment(date, comment, createdBy);
+    return true;
+});
+
+ipcMain.handle('roster-comment-global-delete', async (_event, date: string) => {
+    const auth = getAuthService();
+    auth.requirePermission('dienstplan', 'write');
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteGlobalComment(date);
+    return true;
+});
+
+ipcMain.handle('roster-comment-global-get-month', async (_event, year: number, month: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getGlobalCommentsForMonth(year, month);
+});
+
 app.on('window-all-closed', async () => {
     if (databaseAdapter) {
         await databaseAdapter.close();

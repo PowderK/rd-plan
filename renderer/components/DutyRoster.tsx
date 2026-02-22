@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
 // ImportMonthDialog entfällt für direkten Monatsimport
 import ImportTable from './ImportTable';
+import CommentDialog from './CommentDialog';
 // DepartmentDutyDaysTable entfernt
 // DepartmentDutyDaysTableData entfernt
 import { BUILD_INFO } from '../buildInfo';
@@ -146,6 +147,29 @@ const DutyRoster: React.FC = () => {
   const [nefActs, setNefActs] = useState<Record<number, boolean[]>>({});
   // Freigabe-Status pro Monat
   const [releasedMonths, setReleasedMonths] = useState<boolean[]>(Array(12).fill(false));
+
+  // --- Kommentar-System (Issue #22) ---
+  // personalComments: Map<`personId_date`, comment-row>
+  const [personalComments, setPersonalComments] = useState<Map<string, any>>(new Map());
+  // globalComments: Map<date, comment-row>
+  const [globalComments, setGlobalComments] = useState<Map<string, any>>(new Map());
+  // Context menu state
+  const [ctxMenu, setCtxMenu] = useState<{
+    visible: boolean;
+    x: number; y: number;
+    /** 'personal' or 'global' */
+    type: 'personal' | 'global';
+    personOrigId?: number;
+    personName?: string;
+    date: string;
+  } | null>(null);
+  // Comment dialog state
+  const [commentDialog, setCommentDialog] = useState<{
+    type: 'personal' | 'global';
+    personOrigId?: number;
+    personName?: string;
+    date: string;
+  } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -957,6 +981,77 @@ const DutyRoster: React.FC = () => {
     })();
   }, [year]);
 
+  // Kommentare für aktuellen Monat laden, wenn Monat oder Jahr wechselt
+  useEffect(() => {
+    (async () => {
+      try {
+        const [personal, global] = await Promise.all([
+          (window as any).api.getPersonalCommentsForMonth(year, currentMonth),
+          (window as any).api.getGlobalCommentsForMonth(year, currentMonth),
+        ]);
+        const pMap = new Map<string, any>();
+        (personal || []).forEach((c: any) => pMap.set(`${c.person_id}_${c.date}`, c));
+        setPersonalComments(pMap);
+        const gMap = new Map<string, any>();
+        (global || []).forEach((c: any) => gMap.set(c.date, c));
+        setGlobalComments(gMap);
+      } catch { }
+    })();
+  }, [year, currentMonth]);
+
+  const reloadComments = async () => {
+    try {
+      const [personal, global] = await Promise.all([
+        (window as any).api.getPersonalCommentsForMonth(year, currentMonth),
+        (window as any).api.getGlobalCommentsForMonth(year, currentMonth),
+      ]);
+      const pMap = new Map<string, any>();
+      (personal || []).forEach((c: any) => pMap.set(`${c.person_id}_${c.date}`, c));
+      setPersonalComments(pMap);
+      const gMap = new Map<string, any>();
+      (global || []).forEach((c: any) => gMap.set(c.date, c));
+      setGlobalComments(gMap);
+    } catch { }
+  };
+
+  // Context menu schließen bei globalem Klick
+  useEffect(() => {
+    if (!ctxMenu?.visible) return;
+    const close = () => setCtxMenu(null);
+    window.addEventListener('click', close, { once: true });
+    return () => window.removeEventListener('click', close);
+  }, [ctxMenu]);
+
+  const handleCommentSave = async (comment: string) => {
+    if (!commentDialog) return;
+    try {
+      if (commentDialog.type === 'personal' && commentDialog.personOrigId) {
+        await (window as any).api.addPersonalComment(commentDialog.personOrigId, commentDialog.date, comment);
+      } else if (commentDialog.type === 'global') {
+        await (window as any).api.addGlobalComment(commentDialog.date, comment);
+      }
+      await reloadComments();
+    } catch (e) {
+      console.error('[DutyRoster] Comment save error', e);
+    }
+    setCommentDialog(null);
+  };
+
+  const handleCommentDelete = async () => {
+    if (!commentDialog) return;
+    try {
+      if (commentDialog.type === 'personal' && commentDialog.personOrigId) {
+        await (window as any).api.deletePersonalComment(commentDialog.personOrigId, commentDialog.date);
+      } else if (commentDialog.type === 'global') {
+        await (window as any).api.deleteGlobalComment(commentDialog.date);
+      }
+      await reloadComments();
+    } catch (e) {
+      console.error('[DutyRoster] Comment delete error', e);
+    }
+    setCommentDialog(null);
+  };
+
   // KPI-Hilfswerte für aktuellen Monat berechnen
   // console.log('[DEBUG] KPI calculation start, roster keys:', Object.keys(roster).length, 'personnel:', personnel.length, 'filteredAzubis:', filteredAzubis.length);
   const monthIndex = currentMonth;
@@ -1313,7 +1408,17 @@ const DutyRoster: React.FC = () => {
                 <th style={{ border: '1px solid #d0d0d0', minWidth: 40, whiteSpace: 'nowrap', background: 'var(--bg)' }}>24h</th>
                 <th style={{ border: '1px solid #d0d0d0', minWidth: 40, whiteSpace: 'nowrap', background: 'var(--bg)' }}>IW</th>
                 {days.map((d, i) => (
-                  <th key={i} style={{ border: '1px solid #d0d0d0', whiteSpace: 'nowrap', background: 'var(--bg)' }}>{d.date}</th>
+                  <th
+                    key={i}
+                    style={{ border: '1px solid #d0d0d0', whiteSpace: 'nowrap', background: 'var(--bg)', cursor: 'context-menu', userSelect: 'none' }}
+                    onContextMenu={(e) => {
+                      if (!canWrite) return;
+                      e.preventDefault();
+                      setCtxMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'global', date: d.iso });
+                    }}
+                  >
+                    {d.date}{globalComments.has(d.iso) && <span title="Globaler Kommentar vorhanden" style={{ marginLeft: 2, fontSize: 10 }}>🌐</span>}
+                  </th>
                 ))}
               </tr>
               <tr>
@@ -1388,7 +1493,14 @@ const DutyRoster: React.FC = () => {
                   ) : null,
                   (
                     <tr key={person.id} style={{ background: rowIdx % 2 === 1 ? 'var(--hover)' : undefined }}>
-                      <td style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 1, border: '1px solid #d0d0d0', fontStyle: person.isAzubi ? 'italic' : undefined, color: (!person.isAzubi && !!(personnel.find(p => p.id === person.origId)?.fahrzeugfuehrerHLFB)) ? '#1565c0' : undefined }}>
+                      <td style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 1, border: '1px solid #d0d0d0', fontStyle: person.isAzubi ? 'italic' : undefined, color: (!person.isAzubi && !!(personnel.find(p => p.id === person.origId)?.fahrzeugfuehrerHLFB)) ? '#1565c0' : undefined }}
+                        onContextMenu={(e) => {
+                          if (!canWrite || person.isAzubi) return;
+                          e.preventDefault();
+                          // right-click on name cell without a date: open for today's iso
+                          // We'll open the comment dialog without a specific date – skip
+                        }}
+                      >
                         {person.name}{person.isAzubi && person.lehrjahr !== undefined ? ` (Azubi, ${person.lehrjahr}. Lj.)` : ''}
                       </td>
                       <td style={{ border: '1px solid #d0d0d0', textAlign: 'center', minWidth: 30 }}>
@@ -1445,10 +1557,23 @@ const DutyRoster: React.FC = () => {
                           <td key={dayIdx} style={cellStyle}
                             onClick={() => {
                               if (!isEditing) {
-                                // console.log('[DEBUG] Zellenklick:', { dayIdx, iso: days[dayIdx].iso, date: days[dayIdx].date });
                                 startEdit(getStateKey(person), dayIdx);
                               }
-                            }}>
+                            }}
+                            onContextMenu={(e) => {
+                              if (!canWrite || person.isAzubi) return;
+                              e.preventDefault();
+                              setCtxMenu({
+                                visible: true,
+                                x: e.clientX,
+                                y: e.clientY,
+                                type: 'personal',
+                                personOrigId: person.origId,
+                                personName: `${person.name}, ${person.vorname}`,
+                                date: iso,
+                              });
+                            }}
+                          >
                             {isEditing ? (
                               (
                                 <select
@@ -1473,6 +1598,9 @@ const DutyRoster: React.FC = () => {
                             ) : (
                               <span style={{ color: cell.value ? undefined : '#bbb' }}>
                                 {cell.value || <i>–</i>}
+                                {!person.isAzubi && personalComments.has(`${person.origId}_${iso}`) && (
+                                  <span title={personalComments.get(`${person.origId}_${iso}`)?.comment} style={{ marginLeft: 2, fontSize: 9, opacity: 0.7 }}>💬</span>
+                                )}
                               </span>
                             )}
                           </td>
@@ -1486,6 +1614,90 @@ const DutyRoster: React.FC = () => {
           </table>
         )}
       </div>
+      {/* Context Menu for Comments */}
+      {ctxMenu?.visible && (
+        <div
+          style={{
+            position: 'fixed', top: ctxMenu.y, left: ctxMenu.x, zIndex: 20000,
+            background: 'var(--bg, #fff)', border: '1px solid var(--border, #e5e7eb)',
+            borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            minWidth: 220, fontSize: 13, padding: '4px 0',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {ctxMenu.type === 'global' ? (
+            <>
+              <div
+                style={{ padding: '8px 14px', cursor: 'pointer' }}
+                onMouseEnter={(e) => { (e.currentTarget as any).style.background = 'var(--hover, #f3f4f6)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as any).style.background = ''; }}
+                onClick={() => {
+                  setCommentDialog({ type: 'global', date: ctxMenu.date });
+                  setCtxMenu(null);
+                }}
+              >
+                {globalComments.has(ctxMenu.date) ? '✏️ Globalen Kommentar bearbeiten' : '✏️ Globalen Kommentar hinzufügen...'}
+              </div>
+              {globalComments.has(ctxMenu.date) && (
+                <div
+                  style={{ padding: '8px 14px', cursor: 'pointer', color: '#b91c1c' }}
+                  onMouseEnter={(e) => { (e.currentTarget as any).style.background = 'var(--hover, #f3f4f6)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as any).style.background = ''; }}
+                  onClick={() => {
+                    setCommentDialog({ type: 'global', date: ctxMenu.date });
+                    setCtxMenu(null);
+                  }}
+                >
+                  🗑️ Globalen Kommentar löschen
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div
+                style={{ padding: '8px 14px', cursor: 'pointer' }}
+                onMouseEnter={(e) => { (e.currentTarget as any).style.background = 'var(--hover, #f3f4f6)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as any).style.background = ''; }}
+                onClick={() => {
+                  setCommentDialog({ type: 'personal', personOrigId: ctxMenu.personOrigId, personName: ctxMenu.personName, date: ctxMenu.date });
+                  setCtxMenu(null);
+                }}
+              >
+                {personalComments.has(`${ctxMenu.personOrigId}_${ctxMenu.date}`) ? '✏️ Kommentar bearbeiten' : '💬 Kommentar hinzufügen...'}
+              </div>
+              {personalComments.has(`${ctxMenu.personOrigId}_${ctxMenu.date}`) && (
+                <div
+                  style={{ padding: '8px 14px', cursor: 'pointer', color: '#b91c1c' }}
+                  onMouseEnter={(e) => { (e.currentTarget as any).style.background = 'var(--hover, #f3f4f6)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as any).style.background = ''; }}
+                  onClick={() => {
+                    setCommentDialog({ type: 'personal', personOrigId: ctxMenu.personOrigId, personName: ctxMenu.personName, date: ctxMenu.date });
+                    setCtxMenu(null);
+                  }}
+                >
+                  🗑️ Kommentar löschen
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+      {/* Comment Dialog */}
+      {commentDialog && (
+        <CommentDialog
+          type={commentDialog.type}
+          personName={commentDialog.personName}
+          date={commentDialog.date}
+          existingComment={
+            commentDialog.type === 'personal'
+              ? personalComments.get(`${commentDialog.personOrigId}_${commentDialog.date}`)?.comment
+              : globalComments.get(commentDialog.date)?.comment
+          }
+          onSave={handleCommentSave}
+          onDelete={handleCommentDelete}
+          onClose={() => setCommentDialog(null)}
+        />
+      )}
       {/* Tabellen 'Diensttage Abteilung 1 (2025)' entfernt */}
       {showImportTable && importTableMonth !== null && (
         <div style={{

@@ -815,6 +815,36 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         `);
     }
 
+    // --- Kommentar-Tabellen (Issue #22) ---
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS roster_comments_personal (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            person_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            comment TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            created_by TEXT,
+            updated_at TEXT,
+            FOREIGN KEY(person_id) REFERENCES personnel(id) ON DELETE CASCADE,
+            UNIQUE(person_id, date)
+        )
+    `);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_roster_comments_personal_date ON roster_comments_personal(date)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_roster_comments_personal_person ON roster_comments_personal(person_id)`);
+
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS roster_comments_global (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            comment TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            created_by TEXT,
+            updated_at TEXT,
+            UNIQUE(date)
+        )
+    `);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_roster_comments_global_date ON roster_comments_global(date)`);
+
     return db;
 };
 
@@ -2586,3 +2616,50 @@ const ensureYearPlanningsTable = async (db: AsyncDB) => {
         `);
     }
 };
+
+// ---- Roster Comments (Issue #22) ----
+
+export const addPersonalComment = async (db: AsyncDB, personId: number, date: string, comment: string, createdBy: string) => {
+    await db.run(
+        `INSERT INTO roster_comments_personal (person_id, date, comment, created_by, updated_at)
+         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(person_id, date) DO UPDATE SET comment = excluded.comment, updated_at = CURRENT_TIMESTAMP, created_by = excluded.created_by`,
+        [personId, date, comment, createdBy]
+    );
+};
+
+export const deletePersonalComment = async (db: AsyncDB, personId: number, date: string) => {
+    await db.run('DELETE FROM roster_comments_personal WHERE person_id = ? AND date = ?', [personId, date]);
+};
+
+export const getPersonalCommentsForMonth = async (db: AsyncDB, year: number, month: number): Promise<any[]> => {
+    const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+    return db.all(
+        `SELECT rcp.*, p.name, p.vorname FROM roster_comments_personal rcp
+         LEFT JOIN personnel p ON p.id = rcp.person_id
+         WHERE rcp.date LIKE ? ORDER BY rcp.date`,
+        [`${prefix}-%`]
+    );
+};
+
+export const addGlobalComment = async (db: AsyncDB, date: string, comment: string, createdBy: string) => {
+    await db.run(
+        `INSERT INTO roster_comments_global (date, comment, created_by, updated_at)
+         VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(date) DO UPDATE SET comment = excluded.comment, updated_at = CURRENT_TIMESTAMP, created_by = excluded.created_by`,
+        [date, comment, createdBy]
+    );
+};
+
+export const deleteGlobalComment = async (db: AsyncDB, date: string) => {
+    await db.run('DELETE FROM roster_comments_global WHERE date = ?', [date]);
+};
+
+export const getGlobalCommentsForMonth = async (db: AsyncDB, year: number, month: number): Promise<any[]> => {
+    const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+    return db.all(
+        'SELECT * FROM roster_comments_global WHERE date LIKE ? ORDER BY date',
+        [`${prefix}-%`]
+    );
+};
+

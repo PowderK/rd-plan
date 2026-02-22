@@ -178,6 +178,14 @@ export interface DatabaseAdapter {
   updateShiftTransfer(id: number, transfer: any): Promise<void>;
   deleteShiftTransfer(id: number): Promise<void>;
 
+  // Roster Comments (Issue #22)
+  addPersonalComment(personId: number, date: string, comment: string, createdBy: string): Promise<void>;
+  deletePersonalComment(personId: number, date: string): Promise<void>;
+  getPersonalCommentsForMonth(year: number, month: number): Promise<any[]>;
+  addGlobalComment(date: string, comment: string, createdBy: string): Promise<void>;
+  deleteGlobalComment(date: string): Promise<void>;
+  getGlobalCommentsForMonth(year: number, month: number): Promise<any[]>;
+
   close(): Promise<void>;
 }
 
@@ -808,6 +816,36 @@ class SQLiteAdapter implements DatabaseAdapter {
     return deleteShiftTransfer(this.db, id);
   }
 
+  // Roster Comments (Issue #22)
+  async addPersonalComment(personId: number, date: string, comment: string, createdBy: string) {
+    const { addPersonalComment } = await import('./database');
+    return addPersonalComment(this.db, personId, date, comment, createdBy);
+  }
+
+  async deletePersonalComment(personId: number, date: string) {
+    const { deletePersonalComment } = await import('./database');
+    return deletePersonalComment(this.db, personId, date);
+  }
+
+  async getPersonalCommentsForMonth(year: number, month: number) {
+    const { getPersonalCommentsForMonth } = await import('./database');
+    return getPersonalCommentsForMonth(this.db, year, month);
+  }
+
+  async addGlobalComment(date: string, comment: string, createdBy: string) {
+    const { addGlobalComment } = await import('./database');
+    return addGlobalComment(this.db, date, comment, createdBy);
+  }
+
+  async deleteGlobalComment(date: string) {
+    const { deleteGlobalComment } = await import('./database');
+    return deleteGlobalComment(this.db, date);
+  }
+
+  async getGlobalCommentsForMonth(year: number, month: number) {
+    const { getGlobalCommentsForMonth } = await import('./database');
+    return getGlobalCommentsForMonth(this.db, year, month);
+  }
 
 }
 
