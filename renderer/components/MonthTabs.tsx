@@ -52,10 +52,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     const [highlightedPersonKey, setHighlightedPersonKey] = useState<string | null>(null);
     // Ü50-IDs für korrekte Berechnung (analog ValuesPage)
     const [ue50Ids, setUe50Ids] = useState<Set<number>>(new Set());
+    // LPAL-IDs (Leitender Praxisanleiter) - wie Ü50, aber orange
+    const [lpalIds, setLpalIds] = useState<Set<number>>(new Set());
     // HLF-B Perioden für korrekte Berechnung
     const [hlfbPeriodsByPerson, setHlfbPeriodsByPerson] = useState<Record<number, Array<{ startYM: string; endYM?: string }>>>({});
     // Performance: Debouncing für Roster-Updates
     const [updateTimeout, setUpdateTimeout] = useState<NodeJS.Timeout | null>(null);
+
+    const [showWeekendShifts, setShowWeekendShifts] = useState<boolean>(false);
     // Freigabe-Status pro Monat
     const [releasedMonths, setReleasedMonths] = useState<boolean[]>(Array(12).fill(false));
     // Sidebar Collapse Status
@@ -359,7 +363,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 const setting = await (window as any).api.getSetting('ue50_qualification_type');
                 if (setting) ue50QualName = String(setting);
 
-                const ids = new Set<number>();
+                let lpalQualName = 'LPAL';
+                const lpalSetting = await (window as any).api.getSetting('lpal_qualification_type');
+                if (lpalSetting) lpalQualName = String(lpalSetting);
+
+                const combinedIds = new Set<number>();
+                const lpalOnlyIds = new Set<number>();
                 for (const p of personnel) {
                     try {
                         const periods = await (window as any).api.getQualificationPeriods?.(p.id) || [];
@@ -371,15 +380,23 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 per.startYM <= yearMonth &&
                                 (!per.endYM || per.endYM >= yearMonth)
                             );
-                            if (hasUe50) {
-                                ids.add(p.id);
+                            const hasLpal = periods.some((per: any) =>
+                                per.active &&
+                                per.qualType === lpalQualName &&
+                                per.startYM <= yearMonth &&
+                                (!per.endYM || per.endYM >= yearMonth)
+                            );
+                            if (hasUe50 || hasLpal) {
+                                combinedIds.add(p.id);
+                                if (hasLpal) lpalOnlyIds.add(p.id);
                                 break;
                             }
                         }
                     } catch { }
                 }
-                setUe50Ids(ids);
-            } catch { setUe50Ids(new Set()); }
+                setUe50Ids(combinedIds);
+                setLpalIds(lpalOnlyIds);
+            } catch { setUe50Ids(new Set()); setLpalIds(new Set()); }
         };
         loadUe50();
     }, [year, personnel]);
@@ -389,6 +406,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
             try {
                 const dep = await (window as any).api.getSetting('department');
                 if (dep) setDepartment(Number(dep));
+            } catch { }
+            try {
+                const sws = await (window as any).api.getSetting('show_weekend_shifts');
+                setShowWeekendShifts(sws === 'true');
             } catch { }
             try { const r = await (window as any).api.getRtwVehicles?.(); if (Array.isArray(r)) setRtwVehicles(r); } catch { }
             try { const n = await (window as any).api.getNefVehicles?.(); if (Array.isArray(n)) setNefVehicles(n); } catch { }
@@ -773,12 +794,19 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     const fixedHeaderContainerRef = React.useRef<HTMLDivElement>(null);
     const [headerHeight, setHeaderHeight] = React.useState(280);
 
+    const [sidebarWidth, setSidebarWidth] = React.useState(512);
+
     // Messe die Höhe des Fixed Header Containers
     React.useEffect(() => {
         const measureHeader = () => {
             if (fixedHeaderContainerRef.current) {
                 const height = fixedHeaderContainerRef.current.offsetHeight;
                 setHeaderHeight(height + 10); // +10px Sicherheitsabstand
+            }
+
+            const sidebar = document.getElementById('einteilung-right-sidebar');
+            if (sidebar) {
+                setSidebarWidth(sidebar.offsetWidth + 12);
             }
         };
 
@@ -788,6 +816,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
         const resizeObserver = new ResizeObserver(measureHeader);
         if (fixedHeaderContainerRef.current) {
             resizeObserver.observe(fixedHeaderContainerRef.current);
+
+            // Auch die Sidebar beobachten, falls sie sich durch Namen vergrößert
+            const sidebar = document.getElementById('einteilung-right-sidebar');
+            if (sidebar) resizeObserver.observe(sidebar);
         }
 
         return () => {
@@ -811,7 +843,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                     position: 'fixed',
                     top: 'clamp(56px, 6.5vw, 90px)',
                     left: sidebarCollapsed ? 66 : 210,
-                    right: 392,
+                    right: sidebarWidth,
                     zIndex: 100,
                     background: 'var(--bg)',
                     paddingLeft: 25,
@@ -1199,6 +1231,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 const perPersonItwInMonth: Record<string, number> = {};
                                 const perPersonRtwTagNightYear: Record<string, { tag: number; nacht: number }> = {};
                                 const perPersonRtwTagNightInMonth: Record<string, { tag: number; nacht: number }> = {};
+                                const perPersonWeekendInYear: Record<string, number> = {};
 
                                 const daysInMonth = new Date(year, currentMonth + 1, 0).getDate();
                                 const allMonthDays: string[] = [];
@@ -1273,22 +1306,30 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                     let sumDrivenY = 0;
                                     let tagCntY = 0;
                                     let nachtCntY = 0;
+                                    let weekendCntY = 0;
                                     for (let mIdx = 0; mIdx < 12; mIdx++) {
                                         const dim = new Date(year, mIdx + 1, 0).getDate();
                                         for (let i = 1; i <= dim; i++) {
                                             const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0, 10);
                                             const cell = getCell(key, iso);
                                             const t = String(cell?.type || '');
-                                            if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) sumDrivenY += 1;
-                                            else if (t.startsWith('itw_row_')) sumDrivenY += 1;
-                                            else if (/^nef(\d+)?_assist$/.test(t)) sumDrivenY += 2;
+                                            let isShift = false;
+                                            if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) { sumDrivenY += 1; isShift = true; }
+                                            else if (t.startsWith('itw_row_')) { sumDrivenY += 1; isShift = true; }
+                                            else if (/^nef(\d+)?_assist$/.test(t)) { sumDrivenY += 2; isShift = true; }
 
                                             if (/^rtw\d+_tag_(1|2)$/.test(t)) tagCntY += 1;
                                             if (/^rtw\d+_nacht_(1|2)$/.test(t)) nachtCntY += 1;
+
+                                            if (isShift) {
+                                                const dow = new Date(iso).getDay();
+                                                if (dow === 0 || dow === 6) weekendCntY += 1;
+                                            }
                                         }
                                     }
                                     drivenYearMap[key] = sumDrivenY;
                                     perPersonRtwTagNightYear[key] = { tag: tagCntY, nacht: nachtCntY };
+                                    perPersonWeekendInYear[key] = weekendCntY;
 
                                     // Monthly Stats (aktueller Monat für Soll/Ist)
                                     let cntM = 0;
@@ -1381,6 +1422,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                     perPersonNefInMonth,
                                     perPersonItwInMonth,
                                     perPersonRtwTagNightYear,
+                                    perPersonWeekendInYear,
                                     targetCumulativeMap,
                                     drivenCumulativeMap
                                 };
@@ -1730,6 +1772,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         perPersonNefInMonth,
                                         perPersonItwInMonth,
                                         perPersonRtwTagNightYear,
+                                        perPersonWeekendInYear,
                                         targetCumulativeMap,
                                         drivenCumulativeMap
                                     } = (window as any).__sharedTargets || {};
@@ -1754,8 +1797,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
                                         const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                                         const ue50 = (p as any).ue50 === 1;
+                                        const lpal = lpalIds.has(p.id);
                                         const total = tn.tag + tn.nacht + nef + itw;
                                         const oldRtwShifts = (p as any).old_rtw_shifts || 0;
+                                        const weekend = perPersonWeekendInYear[key] || 0;
 
                                         // Prüfe ob für diesen Monat eine Übernahme vorliegt
                                         const hasTransfer = (shiftTransfers || []).some((t: any) => {
@@ -1764,7 +1809,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                             return ty === year && tm === (currentMonth + 1);
                                         });
 
-                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, cumDiff, teilzeit, hlfb, ue50, total, oldRtwShifts, hasTransfer } as { key: string, name: string, target: number | string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, cumDiff: number, teilzeit: number, hlfb: boolean, ue50: boolean, total: number, oldRtwShifts: number, hasTransfer: boolean };
+                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, weekend, rest, cumDiff, teilzeit, hlfb, ue50, lpal, total, oldRtwShifts, hasTransfer } as any;
                                     });
                                     // Farbliche Hervorhebung: nur Personen mit Monats-Soll > 0 berücksichtigen, Rest (Jahr) auf 100%-Äquivalent normalisieren
                                     const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
@@ -1847,6 +1892,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                             <Kontrollkasten
                                                 items={items}
                                                 showOldRtwShifts={featureOldRtwShifts}
+                                                showWeekendShifts={showWeekendShifts}
                                                 highlightedPersonKey={highlightedPersonKey}
                                                 setHighlightedPersonKey={setHighlightedPersonKey}
                                                 mixColor={mixColor}
@@ -2086,7 +2132,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         perPersonAssignedWeightedInMonth: {},
                                         perPersonNefInMonth: {},
                                         perPersonItwInMonth: {},
-                                        perPersonRtwTagNightYear: {}
+                                        perPersonRtwTagNightYear: {},
+                                        perPersonWeekendInYear: {}
                                     };
                                     const {
                                         targetYearMap,
@@ -2096,6 +2143,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         perPersonNefInMonth,
                                         perPersonItwInMonth,
                                         perPersonRtwTagNightYear,
+                                        perPersonWeekendInYear,
                                         targetCumulativeMap,
                                         drivenCumulativeMap
                                     } = sharedTargets;
@@ -2117,9 +2165,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
                                         const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                                         const ue50 = (p as any).ue50 === 1;
+                                        const lpal = lpalIds.has(p.id);
                                         const oldRtwShifts = (p as any).oldRtwShifts || 0;
+                                        const weekend = perPersonWeekendInYear[key] || 0;
                                         const total = tn.tag + tn.nacht + nef + itw;
-                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, cumDiff, teilzeit, hlfb, ue50, total, oldRtwShifts } as any;
+                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, weekend, rest, cumDiff, teilzeit, hlfb, ue50, lpal, total, oldRtwShifts } as any;
                                     });
                                     const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
                                     const eligible = itemsWithIndex.filter(it => typeof it.target === 'number' && (it.target as number) > 0);
