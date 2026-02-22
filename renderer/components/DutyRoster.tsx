@@ -1634,7 +1634,7 @@ const DutyRoster: React.FC = () => {
             borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
             minWidth: 220, fontSize: 13, padding: '4px 0',
           }}
-          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
         >
           {ctxMenu.type === 'global' ? (
             <>
@@ -1642,7 +1642,9 @@ const DutyRoster: React.FC = () => {
                 style={{ padding: '8px 14px', cursor: 'pointer' }}
                 onMouseEnter={(e) => { (e.currentTarget as any).style.background = 'var(--hover, #f3f4f6)'; }}
                 onMouseLeave={(e) => { (e.currentTarget as any).style.background = ''; }}
-                onClick={() => {
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
                   setCommentDialog({ type: 'global', date: ctxMenu.date });
                   setCtxMenu(null);
                 }}
@@ -1654,7 +1656,9 @@ const DutyRoster: React.FC = () => {
                   style={{ padding: '8px 14px', cursor: 'pointer', color: '#b91c1c' }}
                   onMouseEnter={(e) => { (e.currentTarget as any).style.background = 'var(--hover, #f3f4f6)'; }}
                   onMouseLeave={(e) => { (e.currentTarget as any).style.background = ''; }}
-                  onClick={() => {
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
                     setCommentDialog({ type: 'global', date: ctxMenu.date });
                     setCtxMenu(null);
                   }}
@@ -1669,7 +1673,9 @@ const DutyRoster: React.FC = () => {
                 style={{ padding: '8px 14px', cursor: 'pointer' }}
                 onMouseEnter={(e) => { (e.currentTarget as any).style.background = 'var(--hover, #f3f4f6)'; }}
                 onMouseLeave={(e) => { (e.currentTarget as any).style.background = ''; }}
-                onClick={() => {
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
                   setCommentDialog({ type: 'personal', personOrigId: ctxMenu.personOrigId, personName: ctxMenu.personName, date: ctxMenu.date });
                   setCtxMenu(null);
                 }}
@@ -1681,7 +1687,9 @@ const DutyRoster: React.FC = () => {
                   style={{ padding: '8px 14px', cursor: 'pointer', color: '#b91c1c' }}
                   onMouseEnter={(e) => { (e.currentTarget as any).style.background = 'var(--hover, #f3f4f6)'; }}
                   onMouseLeave={(e) => { (e.currentTarget as any).style.background = ''; }}
-                  onClick={() => {
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
                     setCommentDialog({ type: 'personal', personOrigId: ctxMenu.personOrigId, personName: ctxMenu.personName, date: ctxMenu.date });
                     setCtxMenu(null);
                   }}
