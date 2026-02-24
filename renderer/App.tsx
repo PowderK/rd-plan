@@ -23,18 +23,19 @@ const AppContent: React.FC = () => {
     const [rescueStation, setRescueStation] = useState<string>('');
     const [department, setDepartment] = useState<number>(1);
     const [year, setYear] = useState<number>(new Date().getFullYear());
-    const [activeView, setActiveView] = useState<'einteilung'|'dienstplan'|'werte'|'personal'|'fahrzeuge'|'einstellungen'>('einteilung');
+    const [activeView, setActiveView] = useState<'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge' | 'einstellungen'>('einteilung');
+    const [lastActiveView, setLastActiveView] = useState<'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge'>('einteilung');
     const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
 
     async function loadHeaderInfo() {
         try {
             const rs = await (window as any).api.getSetting('rescueStation');
             if (rs != null) setRescueStation(String(rs));
-        } catch {}
+        } catch { }
         try {
             const dep = await (window as any).api.getSetting('department');
             if (dep != null) setDepartment(Number(dep));
-        } catch {}
+        } catch { }
         // Jahr wird nicht mehr aus Settings geladen - wird von DutyRoster/Values gesteuert
         // Setze initial auf aktuelles Jahr oder bereits gesetztes window.rdPlanYear
         if ((window as any).rdPlanYear) {
@@ -46,7 +47,7 @@ const AppContent: React.FC = () => {
         if (isAuthenticated) {
             setActiveView('einteilung');
             loadHeaderInfo();
-            
+
             // Reagiere auf Jahr-Änderungen von DutyRoster/Values
             const handleYearChange = (e: any) => {
                 if (e.detail?.year) {
@@ -54,100 +55,107 @@ const AppContent: React.FC = () => {
                 }
             };
             window.addEventListener('rdplan-year-changed', handleYearChange);
-            
+
             return () => window.removeEventListener('rdplan-year-changed', handleYearChange);
         }
     }, [isAuthenticated]);
 
     // Navigation via CustomEvent 'navigate' und via API (falls Main etwas triggert)
     useEffect(() => {
-      if (!isAuthenticated) return;
-      
-      const handler = (e: Event) => {
-        const ce = e as CustomEvent;
-        const view = (ce.detail?.view || '') as string;
-                if (['einteilung','dienstplan','werte','personal','fahrzeuge','einstellungen'].includes(view)) {
-          setActiveView(view as any);
-        }
-      };
-      window.addEventListener('navigate', handler as EventListener);
-                    (window as any).api?.onNavigate?.((v: any) => {
-                        if (typeof v === 'string' && ['einteilung','dienstplan','werte','personal','fahrzeuge','einstellungen'].includes(v)) setActiveView(v as any);
-                        else if (v && typeof v.view === 'string' && ['einteilung','dienstplan','werte','personal','fahrzeuge','einstellungen'].includes(v.view)) setActiveView(v.view as any);
-            });
-      return () => {
-        (window as any).api?.offNavigate?.();
-        window.removeEventListener('navigate', handler as EventListener);
-      };
+        if (!isAuthenticated) return;
+
+        const handler = (e: Event) => {
+            const ce = e as CustomEvent;
+            const view = (ce.detail?.view || '') as string;
+            if (['einteilung', 'dienstplan', 'werte', 'personal', 'fahrzeuge', 'einstellungen'].includes(view)) {
+                setActiveView(view as any);
+            }
+        };
+        window.addEventListener('navigate', handler as EventListener);
+        (window as any).api?.onNavigate?.((v: any) => {
+            if (typeof v === 'string' && ['einteilung', 'dienstplan', 'werte', 'personal', 'fahrzeuge', 'einstellungen'].includes(v)) setActiveView(v as any);
+            else if (v && typeof v.view === 'string' && ['einteilung', 'dienstplan', 'werte', 'personal', 'fahrzeuge', 'einstellungen'].includes(v.view)) setActiveView(v.view as any);
+        });
+        return () => {
+            (window as any).api?.offNavigate?.();
+            window.removeEventListener('navigate', handler as EventListener);
+        };
     }, [isAuthenticated]);
 
-        // Reagiere auf Settings-Änderungen (Rettungswache/Abteilung/Jahr für Header)
-        useEffect(() => {
-            if (!isAuthenticated) return;
-            
-            const handler = async () => {
-                try { await loadHeaderInfo(); } catch {}
-            };
-            (window as any).api?.onSettingsUpdated?.(handler);
-            return () => (window as any).api?.offSettingsUpdated?.(handler);
-        }, [isAuthenticated]);
-
-        const onNavigate = (view: typeof activeView) => setActiveView(view);
-
-        const content = useMemo(() => {
-                    switch (activeView) {
-                        case 'einteilung':
-                                    return <EinteilungPage />;
-                case 'dienstplan':
-                    return <DutyRoster />;
-                case 'werte':
-                    return <ValuesPage />;
-                case 'personal':
-                    return <PersonnelOverview />;
-                case 'fahrzeuge':
-                    return <Vehicles />;
-                case 'einstellungen':
-                    return <SettingsMenu onClose={() => setActiveView('dienstplan')} />;
-                default:
-                    return null;
-            }
-        }, [activeView]);
-
-        // Reagiere auf Sidebar Collapse Events
-        useEffect(() => {
-            if (!isAuthenticated) return;
-            
-            const handler = (e: Event) => {
-                const ce = e as CustomEvent;
-                if (typeof ce.detail?.collapsed === 'boolean') {
-                    setSidebarCollapsed(ce.detail.collapsed);
-                }
-            };
-            window.addEventListener('sidebar-collapsed', handler as EventListener);
-            return () => window.removeEventListener('sidebar-collapsed', handler as EventListener);
-        }, [isAuthenticated]);
-
-        // Zeige Login-Dialog wenn nicht authentifiziert und nicht im Dev-Mode
-        if (!isAuthenticated && !isDevMode) {
-            return <Login onLoginSuccess={() => {}} onLogin={login} />;
+    // Merke den letzten Tab vor den Einstellungen
+    useEffect(() => {
+        if (activeView !== 'einstellungen') {
+            setLastActiveView(activeView as any);
         }
+    }, [activeView]);
 
-        return (
-            <div style={{ display: 'grid', gridTemplateColumns: `${sidebarCollapsed ? '56px' : '200px'} 1fr`, gridTemplateRows: 'auto 1fr auto', height: '100vh', transition: 'grid-template-columns 0.15s' }}>
-                <div style={{ gridRow: 1, gridColumn: '1 / span 2' }}>
-                    <Header rescueStation={rescueStation} department={department} year={year} />
-                </div>
-                <div style={{ gridRow: 2, gridColumn: 1 }}>
-                    <Sidebar active={activeView} />
-                </div>
-                <main style={{ gridRow: 2, gridColumn: 2, overflow: 'auto' }}>
-                    {content}
-                </main>
-                <div style={{ gridRow: 3, gridColumn: 2 }}>
-                    <Footer />
-                </div>
+    // Reagiere auf Settings-Änderungen (Rettungswache/Abteilung/Jahr für Header)
+    useEffect(() => {
+        if (!isAuthenticated) return;
+
+        const handler = async () => {
+            try { await loadHeaderInfo(); } catch { }
+        };
+        (window as any).api?.onSettingsUpdated?.(handler);
+        return () => (window as any).api?.offSettingsUpdated?.(handler);
+    }, [isAuthenticated]);
+
+    const onNavigate = (view: typeof activeView) => setActiveView(view);
+
+    const content = useMemo(() => {
+        switch (activeView) {
+            case 'einteilung':
+                return <EinteilungPage />;
+            case 'dienstplan':
+                return <DutyRoster />;
+            case 'werte':
+                return <ValuesPage />;
+            case 'personal':
+                return <PersonnelOverview />;
+            case 'fahrzeuge':
+                return <Vehicles />;
+            case 'einstellungen':
+                return <SettingsMenu onClose={() => setActiveView(lastActiveView)} />;
+            default:
+                return null;
+        }
+    }, [activeView]);
+
+    // Reagiere auf Sidebar Collapse Events
+    useEffect(() => {
+        if (!isAuthenticated) return;
+
+        const handler = (e: Event) => {
+            const ce = e as CustomEvent;
+            if (typeof ce.detail?.collapsed === 'boolean') {
+                setSidebarCollapsed(ce.detail.collapsed);
+            }
+        };
+        window.addEventListener('sidebar-collapsed', handler as EventListener);
+        return () => window.removeEventListener('sidebar-collapsed', handler as EventListener);
+    }, [isAuthenticated]);
+
+    // Zeige Login-Dialog wenn nicht authentifiziert und nicht im Dev-Mode
+    if (!isAuthenticated && !isDevMode) {
+        return <Login onLoginSuccess={() => { }} onLogin={login} />;
+    }
+
+    return (
+        <div style={{ display: 'grid', gridTemplateColumns: `${sidebarCollapsed ? '56px' : '200px'} 1fr`, gridTemplateRows: 'auto 1fr auto', height: '100vh', transition: 'grid-template-columns 0.15s' }}>
+            <div style={{ gridRow: 1, gridColumn: '1 / span 2' }}>
+                <Header rescueStation={rescueStation} department={department} year={year} />
             </div>
-        );
+            <div style={{ gridRow: 2, gridColumn: 1 }}>
+                <Sidebar active={activeView} />
+            </div>
+            <main style={{ gridRow: 2, gridColumn: 2, overflow: 'auto' }}>
+                {content}
+            </main>
+            <div style={{ gridRow: 3, gridColumn: 2 }}>
+                <Footer />
+            </div>
+        </div>
+    );
 };
 
 const App: React.FC = () => {
