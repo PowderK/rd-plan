@@ -23,8 +23,28 @@ const AppContent: React.FC = () => {
     const [rescueStation, setRescueStation] = useState<string>('');
     const [department, setDepartment] = useState<number>(1);
     const [year, setYear] = useState<number>(new Date().getFullYear());
-    const [activeView, setActiveView] = useState<'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge' | 'einstellungen'>('einteilung');
-    const [lastActiveView, setLastActiveView] = useState<'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge'>('einteilung');
+
+    // Initialisierung aus localStorage für Persistenz (z.B. nach Save/Reload)
+    const [activeView, setActiveView] = useState<'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge' | 'einstellungen'>(() => {
+        try {
+            const saved = localStorage.getItem('rdplan.activeView');
+            if (saved && ['einteilung', 'dienstplan', 'werte', 'personal', 'fahrzeuge', 'einstellungen'].includes(saved)) {
+                return saved as any;
+            }
+        } catch { }
+        return 'einteilung';
+    });
+
+    const [lastActiveView, setLastActiveView] = useState<'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge'>(() => {
+        try {
+            const saved = localStorage.getItem('rdplan.lastActiveView');
+            if (saved && ['einteilung', 'dienstplan', 'werte', 'personal', 'fahrzeuge'].includes(saved)) {
+                return saved as any;
+            }
+        } catch { }
+        return 'einteilung';
+    });
+
     const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
 
     async function loadHeaderInfo() {
@@ -45,7 +65,11 @@ const AppContent: React.FC = () => {
 
     useEffect(() => {
         if (isAuthenticated) {
-            setActiveView('einteilung');
+            // Nur initial auf 'einteilung' setzen, wenn KEIN gespeicherter View vorhanden ist
+            // (Um zu verhindern, dass bei jedem initialen Login-Check auf Einteilung gesprungen wird)
+            if (!localStorage.getItem('rdplan.activeView')) {
+                setActiveView('einteilung');
+            }
             loadHeaderInfo();
 
             // Reagiere auf Jahr-Änderungen von DutyRoster/Values
@@ -82,10 +106,17 @@ const AppContent: React.FC = () => {
         };
     }, [isAuthenticated]);
 
-    // Merke den letzten Tab vor den Einstellungen
+    // Merke den letzten Tab vor den Einstellungen und speichere in localStorage
     useEffect(() => {
+        try {
+            localStorage.setItem('rdplan.activeView', activeView);
+        } catch { }
+
         if (activeView !== 'einstellungen') {
             setLastActiveView(activeView as any);
+            try {
+                localStorage.setItem('rdplan.lastActiveView', activeView);
+            } catch { }
         }
     }, [activeView]);
 
