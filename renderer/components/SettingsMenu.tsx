@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import ImportYearTable from './ImportYearTable';
 import SettingsImportExport from './SettingsImportExport';
+import { ShiftTransferManager } from './ShiftTransferManager';
 import { BUILD_INFO } from '../buildInfo';
 import styles from './PersonnelOverview.module.css';
 
@@ -97,8 +98,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
 
   const [showYearImportAzubiDialog, setShowYearImportAzubiDialog] = useState(false);
   const [yearImportUnknownAzubiNames, setYearImportUnknownAzubiNames] = useState<string[]>([]);
+  // Feature toggles
+  const [featureOldRtwShifts, setFeatureOldRtwShifts] = useState(false);
+  const [featureShiftTransfers, setFeatureShiftTransfers] = useState(false);
+  const [showShiftTransferManager, setShowShiftTransferManager] = useState(false);
   // System Info
-  const [systemUsername, setSystemUsername] = useState<string>('Lädt...');
+  const [systemUsername, setSystemUsername] = useState<'Lädt...' | string>('Lädt...');
 
   useEffect(() => {
     (async () => {
@@ -240,6 +245,17 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         // console.error('Failed to load roles:', e);
       }
 
+      // Load feature toggles
+      try {
+        const val = await (window as any).api.getSetting('feature_old_rtw_shifts');
+        setFeatureOldRtwShifts(val === 'true');
+      } catch { }
+
+      try {
+        const val = await (window as any).api.getSetting('feature_shift_transfers');
+        setFeatureShiftTransfers(val === 'true');
+      } catch { }
+
       setShiftTypesLoading(false);
       setLoading(false);
       try {
@@ -264,6 +280,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     // ITW wird im Fahrzeuge-Menü gesetzt
     await (window as any).api.setSetting('department', String(department));
     await (window as any).api.setSetting('show_weekend_shifts', showWeekendShifts ? 'true' : 'false');
+    await (window as any).api.setSetting('feature_old_rtw_shifts', featureOldRtwShifts ? 'true' : 'false');
+    await (window as any).api.setSetting('feature_shift_transfers', featureShiftTransfers ? 'true' : 'false');
     // save per-shift-type auswertung settings
     for (const code of Object.keys(auswertungByType)) {
       await (window as any).api.setSetting(`auswertung_${code}`, auswertungByType[code]);
@@ -859,6 +877,55 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                   Wochenend-Schichten (Sa/So) im Kontrollkasten zählen und farblich (Ampel) anzeigen
                 </label>
               </div>
+            </div>
+
+            {/* Zusätzliche Funktionen */}
+            <div style={{ marginBottom: 24, padding: 12, background: '#f8f9fa', borderRadius: 8 }}>
+              <h3 style={{ marginTop: 0 }}>Funktionen</h3>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  id="featureOldRtwShifts"
+                  checked={featureOldRtwShifts}
+                  onChange={(e) => setFeatureOldRtwShifts(e.target.checked)}
+                  style={{ marginRight: 8 }}
+                />
+                <label htmlFor="featureOldRtwShifts" style={{ cursor: 'pointer' }}>
+                  <strong>Alte RTW-Schichten Tracking aktivieren</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                    Ermöglicht die Erfassung von Schichten aus einem Altsystem in den Personaleinstellungen und zeigt diese im Dienstplan an.
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* Schichtübernahmen */}
+            <div style={{ marginBottom: 24, padding: 12, background: '#f8f9fa', borderRadius: 8, border: '1px solid #dee2e6' }}>
+              <h3 style={{ marginTop: 0 }}>Schichtübernahmen</h3>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                <input
+                  type="checkbox"
+                  id="featureShiftTransfers"
+                  checked={featureShiftTransfers}
+                  onChange={(e) => setFeatureShiftTransfers(e.target.checked)}
+                  style={{ marginRight: 8 }}
+                />
+                <label htmlFor="featureShiftTransfers" style={{ cursor: 'pointer' }}>
+                  <strong>Gezielte Schichtübernahme aktivieren</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                    Erlaubt die Übertragung von SOLL-Schichten zwischen Mitarbeitern.
+                  </div>
+                </label>
+              </div>
+
+              {featureShiftTransfers && (
+                <button
+                  onClick={() => setShowShiftTransferManager(true)}
+                  style={{ padding: '6px 12px', background: '#007bff', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                >
+                  Verwalten…
+                </button>
+              )}
             </div>
 
             {/* Jahresspezifische Vorplanungsdateien */}
@@ -2242,6 +2309,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         )}
       </div>
       {/* Ende Content */}
+      {showShiftTransferManager && (
+        <ShiftTransferManager onClose={() => setShowShiftTransferManager(false)} />
+      )}
     </div>
   );
 };
