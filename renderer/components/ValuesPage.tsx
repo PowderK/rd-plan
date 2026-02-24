@@ -21,19 +21,21 @@ function useRoster(year: number) {
 }
 
 function usePersonnel(year: number) {
-  const [list, setList] = useState<{ id: number; name: string; vorname: string; fahrzeugfuehrerHLFB?: boolean; hlfbMonthly?: boolean[]; ue50?: boolean; ue50Monthly?: boolean[]; rettungsdienst?: boolean; rettungsdienstMonthly?: boolean[] }[]>([]);
+  const [list, setList] = useState<{ id: number; name: string; vorname: string; fahrzeugfuehrerHLFB?: boolean; hlfbMonthly?: boolean[]; ue50?: boolean; ue50Monthly?: boolean[]; lpal?: boolean; lpalMonthly?: boolean[]; rettungsdienst?: boolean; rettungsdienstMonthly?: boolean[] }[]>([]);
   const fetch = async () => {
     try {
-      const [rawList, allPeriods, hlfbQualSetting, ue50QualSetting, rdQualSetting] = await Promise.all([
+      const [rawList, allPeriods, hlfbQualSetting, ue50QualSetting, lpalQualSetting, rdQualSetting] = await Promise.all([
         (window as any).api.getPersonnelList?.(),
         (window as any).api.getAllQualificationPeriods?.(),
         (window as any).api.getSetting?.('hlfb_qualification_type'),
         (window as any).api.getSetting?.('ue50_qualification_type'),
+        (window as any).api.getSetting?.('lpal_qualification_type'),
         (window as any).api.getSetting?.('rettungsdienst_qualification_type')
       ]);
 
       const hlfbQualName = String(hlfbQualSetting || 'FzF HLF B');
       const ue50QualName = String(ue50QualSetting || 'Ü50');
+      const lpalQualName = String(lpalQualSetting || 'LPAL');
       const rettungsdienstQualName = String(rdQualSetting || 'Rettungsdienst'); // Neue Grundqualifikation
 
       const periodsByPerson: Record<number, any[]> = {};
@@ -49,6 +51,7 @@ function usePersonnel(year: number) {
 
         const hlfbMonthly = Array(12).fill(false);
         const ue50Monthly = Array(12).fill(false);
+        const lpalMonthly = Array(12).fill(false);
         const rettungsdienstMonthly = Array(12).fill(false);
 
         // Filter periods relevant for HLF-B
@@ -58,6 +61,10 @@ function usePersonnel(year: number) {
         // Filter periods relevant for Ü50
         const ue50Periods = pPeriods.filter((per: any) => per.qualType === ue50QualName);
         const hasUe50Period = ue50Periods.length > 0;
+
+        // Filter periods relevant for LPAL
+        const lpalPeriods = pPeriods.filter((per: any) => per.qualType === lpalQualName);
+        const hasLpalPeriod = lpalPeriods.length > 0;
 
         // Filter periods relevant for Rettungsdienst
         const rettungsdienstPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
@@ -89,6 +96,19 @@ function usePersonnel(year: number) {
           }
         }
 
+        // Prüfe auf LPAL Qualifikation pro Monat
+        if (hasLpalPeriod) {
+          for (let m = 0; m < 12; m++) {
+            const ym = `${year}-${String(m + 1).padStart(2, '0')}`;
+            const isActive = lpalPeriods.some((per: any) =>
+              per.active &&
+              per.startYM <= ym &&
+              (!per.endYM || per.endYM >= ym)
+            );
+            lpalMonthly[m] = isActive;
+          }
+        }
+
         // Prüfe auf Rettungsdienst Qualifikation pro Monat
         if (hasRettungsdienstPeriod) {
           for (let m = 0; m < 12; m++) {
@@ -117,6 +137,8 @@ function usePersonnel(year: number) {
           hlfbMonthly,
           ue50: ue50Monthly.some(b => b),
           ue50Monthly,
+          lpal: lpalMonthly.some(b => b),
+          lpalMonthly,
           rettungsdienst: rettungsdienstMonthly.some(b => b),
           rettungsdienstMonthly
         };
@@ -154,30 +176,34 @@ function useUe50PersonnelIds(year: number) {
   useEffect(() => {
     (async () => {
       try {
-        // Lade Ü50 Qualifikationstyp aus Settings
+        // Lade Ü50 und LPAL Qualifikationstypen aus Settings
         let ue50QualName = 'Ü50';
         const setting = await (window as any).api.getSetting('ue50_qualification_type');
         if (setting) ue50QualName = String(setting);
+
+        let lpalQualName = 'LPAL';
+        const lpalSetting = await (window as any).api.getSetting('lpal_qualification_type');
+        if (lpalSetting) lpalQualName = String(lpalSetting);
 
         // Lade alle Personen
         const personnel = await (window as any).api.getPersonnelList?.() || [];
         const ids = new Set<number>();
 
-        // Für jede Person prüfen, ob sie Ü50-Qualifikation hat
+        // Für jede Person prüfen, ob sie Ü50- oder LPAL-Qualifikation hat
         for (const person of personnel) {
           try {
             const periods = await (window as any).api.getQualificationPeriods?.(person.id) || [];
 
-            // Prüfe für jeden Monat des Jahres, ob Ü50 aktiv ist
+            // Prüfe für jeden Monat des Jahres
             for (let month = 0; month < 12; month++) {
               const yearMonth = `${year}-${String(month + 1).padStart(2, '0')}`;
-              const hasUe50 = periods.some((p: any) =>
+              const hasUe50OrLpal = periods.some((p: any) =>
                 p.active &&
-                p.qualType === ue50QualName &&
+                (p.qualType === ue50QualName || p.qualType === lpalQualName) &&
                 p.startYM <= yearMonth &&
                 (!p.endYM || p.endYM >= yearMonth)
               );
-              if (hasUe50) {
+              if (hasUe50OrLpal) {
                 ids.add(person.id);
                 break; // Einmal gefunden reicht
               }

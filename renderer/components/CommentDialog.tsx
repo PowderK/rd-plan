@@ -5,6 +5,8 @@ interface CommentDialogProps {
     personName?: string;
     date: string; // YYYY-MM-DD
     existingComment?: string;
+    canEdit?: boolean;
+    canDelete?: boolean;
     onSave: (comment: string) => void;
     onDelete?: () => void;
     onClose: () => void;
@@ -15,6 +17,8 @@ const CommentDialog: React.FC<CommentDialogProps> = ({
     personName,
     date,
     existingComment,
+    canEdit = true,
+    canDelete = true,
     onSave,
     onDelete,
     onClose,
@@ -80,7 +84,7 @@ const CommentDialog: React.FC<CommentDialogProps> = ({
                 {/* Header */}
                 <div>
                     <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text, #111)', marginBottom: subtitle ? 4 : 0 }}>
-                        {type === 'global' ? '🌐 ' : '💬 '}{title}
+                        {title}
                     </div>
                     {subtitle && (
                         <div style={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>{subtitle}</div>
@@ -94,6 +98,7 @@ const CommentDialog: React.FC<CommentDialogProps> = ({
                         autoFocus
                         value={comment}
                         onChange={(e) => setComment(e.target.value)}
+                        disabled={!canEdit}
                         maxLength={maxLength}
                         rows={4}
                         style={{
@@ -105,10 +110,12 @@ const CommentDialog: React.FC<CommentDialogProps> = ({
                             fontFamily: 'inherit',
                             resize: 'vertical',
                             minHeight: 80,
-                            background: 'var(--bg-input, #f9fafb)',
+                            background: canEdit ? 'var(--bg-input, #f9fafb)' : 'var(--bg, #fff)',
                             color: 'var(--text, #111)',
                             outline: 'none',
                             boxSizing: 'border-box',
+                            opacity: canEdit ? 1 : 0.8,
+                            cursor: canEdit ? 'text' : 'not-allowed',
                         }}
                         placeholder={type === 'global'
                             ? 'z.B. Betriebsversammlung 14:00 Uhr – alle Schichten enden 13:30'
@@ -121,7 +128,7 @@ const CommentDialog: React.FC<CommentDialogProps> = ({
 
                 {/* Buttons */}
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-                    {onDelete && existingComment && (
+                    {canDelete && onDelete && existingComment && (
                         <button
                             onClick={onDelete}
                             style={{
@@ -140,19 +147,21 @@ const CommentDialog: React.FC<CommentDialogProps> = ({
                             background: 'var(--bg, #f3f4f6)', color: 'var(--text, #374151)', fontSize: 13, cursor: 'pointer',
                         }}
                     >
-                        Abbrechen
+                        {canEdit ? 'Abbrechen' : 'Schließen'}
                     </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={!comment.trim()}
-                        style={{
-                            padding: '6px 18px', borderRadius: 6, border: 'none',
-                            background: comment.trim() ? '#2563eb' : '#9ca3af', color: '#fff',
-                            fontSize: 13, cursor: comment.trim() ? 'pointer' : 'not-allowed', fontWeight: 600,
-                        }}
-                    >
-                        Speichern
-                    </button>
+                    {canEdit && (
+                        <button
+                            onClick={handleSave}
+                            disabled={!comment.trim()}
+                            style={{
+                                padding: '6px 18px', borderRadius: 6, border: 'none',
+                                background: comment.trim() ? '#2563eb' : '#9ca3af', color: '#fff',
+                                fontSize: 13, cursor: comment.trim() ? 'pointer' : 'not-allowed', fontWeight: 600,
+                            }}
+                        >
+                            Speichern
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

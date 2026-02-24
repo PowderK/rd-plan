@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RD-Plan Full UI Export</title>
+    <link rel="stylesheet" href="StaticStyles.css">
+    <style>
+        /* Interactive mock helper */
+        #login-overlay {
+            position: fixed;
+            inset: 0;
+            background: white;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-card {
+            width: 360px;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .login-logo {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--accent);
+            margin-bottom: 30px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Login View (Overlay) -->
+    <div id="login-overlay">
+        <div class="login-card card">
+            <div class="login-logo">RD-Plan</div>
+            <h2 style="margin-bottom: 24px;">Anmelden</h2>
+            <div style="text-align: left; margin-bottom: 16px;">
+                <label style="display:block; margin-bottom:6px;">Personalnummer</label>
+                <input type="text" value="12345" style="width:100%;">
+            </div>
+            <div style="text-align: left; margin-bottom: 24px;">
+                <label style="display:block; margin-bottom:6px;">Passwort</label>
+                <input type="password" value="********" style="width:100%;">
+            </div>
+            <button class="primary" style="width:100%; justify-content: center; height: 44px;"
+                onclick="document.getElementById('login-overlay').style.display='none'">Einloggen</button>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">RD-Plan</div>
+        <nav class="sidebar-nav">
+            <div class="nav-item active" onclick="showView('dienstplan', this)">Dienstplan</div>
+            <div class="nav-item" onclick="showView('einteilung', this)">Einteilung</div>
+            <div class="nav-item" onclick="showView('personal', this)">Personal</div>
+            <div class="nav-item" onclick="showView('werte', this)">Werte & Statistik</div>
+            <div class="nav-item" onclick="showView('fahrzeuge', this)">Fahrzeuge</div>
+            <div class="nav-item" onclick="showView('einstellungen', this)">Einstellungen</div>
+        </nav>
+        <div style="padding: 20px; font-size: 12px; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.1);">
+            v2.1.0 Beta | Build 1051
+        </div>
+    </aside>
+
+    <div class="main-wrapper">
+        <!-- Top Header -->
+        <header class="top-header">
+            <div id="view-title" style="font-weight: 600; font-size: 1.1rem;">Dienstplan</div>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <span style="font-size: 14px;">Benni (Administrator)</span>
+                <button onclick="location.reload()">Ausloggen</button>
+            </div>
+        </header>
+
+        <main class="content-scroll">
+            <div class="page-container">
+
+                <!-- VIEW: DIENSTPLAN -->
+                <div id="view-dienstplan" class="view active">
+                    <div
+                        style="display:flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+                        <div>
+                            <h2 style="margin:0;">Jahresübersicht 2026</h2>
+                            <p>Hauptdienstplan für alle Wachen</p>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <button>Exportieren (Excel)</button>
+                            <button class="primary">Neu laden</button>
+                        </div>
+                    </div>
+
+                    <div class="tab-navigation">
+                        <button class="tab-button active">Januar</button>
+                        <button class="tab-button">Februar</button>
+                        <button class="tab-button">März</button>
+                        <button class="tab-button">April</button>
+                    </div>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Mitarbeiter</th>
+                                <th>Kürzel</th>
+                                <th>01.</th>
+                                <th>02.</th>
+                                <th>03.</th>
+                                <th>04.</th>
+                                <th>05.</th>
+                                <th>06.</th>
+                                <th>07.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Mustermann, Max</td>
+                                <td>MP</td>
+                                <td style="background:#fef3c7;">U</td>
+                                <td>-</td>
+                                <td>24h</td>
+                                <td>-</td>
+                                <td>-</td>
+                                <td>T</td>
+                                <td>-</td>
+                            </tr>
+                            <tr>
+                                <td>Erika, Beispiel</td>
+                                <td>EB</td>
+                                <td>T</td>
+                                <td>-</td>
+                                <td>-</td>
+                                <td style="background:#fee2e2;">K</td>
+                                <td>-</td>
+                                <td>-</td>
+                                <td>N</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- VIEW: EINTEILUNG -->
+                <div id="view-einteilung" class="view">
+                    <h2>Fahrzeugeinteilung</h2>
+                    <div class="dashboard-grid" style="margin-bottom: 30px;">
+                        <div class="card">
+                            <div class="card-title">RTW 1 (Tag)</div>
+                            <div style="display:flex; flex-direction:column; gap:8px;">
+                                <div><span style="color:var(--muted)">FxF:</span> Mustermann, Max</div>
+                                <div><span style="color:var(--muted)">2. Person:</span> Azubi, Alex</div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">NEF 1 (Tag)</div>
+                            <div style="display:flex; flex-direction:column; gap:8px;">
+                                <div><span style="color:var(--muted)">Fahrer:</span> Tester, Tom</div>
+                                <div><span style="color:var(--muted)">Arzt:</span> Dr. Meyer</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-navigation">
+                        <button class="tab-button active">RTW / NEF</button>
+                        <button class="tab-button">ITW / Sonder</button>
+                    </div>
+
+                    <div
+                        style="background:white; padding:40px; border-radius:12px; border:1px solid var(--line); text-align:center; color:var(--muted);">
+                        Hier würde die interaktive Belegungstabelle erscheinen.
+                    </div>
+                </div>
+
+                <!-- VIEW: PERSONAL -->
+                <div id="view-personal" class="view">
+                    <div
+                        style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 style="margin:0;">Personalverwaltung</h2>
+                        <button class="primary">+ Neuer Mitarbeiter</button>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:40px;"><input type="checkbox"></th>
+                                <th>Name</th>
+                                <th>Vorname</th>
+                                <th>Status</th>
+                                <th>Qualifikation</th>
+                                <th>Aktionen</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><input type="checkbox"></td>
+                                <td>Mustermann</td>
+                                <td>Max</td>
+                                <td><span
+                                        style="background:#dcfce7; color:#166534; padding:2px 8px; border-radius:10px; font-size:12px;">Aktiv</span>
+                                </td>
+                                <td>Notfallsanitäter</td>
+                                <td><button>Bearbeiten</button></td>
+                            </tr>
+                            <tr>
+                                <td><input type="checkbox"></td>
+                                <td>Beispiel</td>
+                                <td>Erika</td>
+                                <td><span
+                                        style="background:#dcfce7; color:#166534; padding:2px 8px; border-radius:10px; font-size:12px;">Aktiv</span>
+                                </td>
+                                <td>Rettungssanitäter</td>
+                                <td><button>Bearbeiten</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- VIEW: WERTE -->
+                <div id="view-werte" class="view">
+                    <h2>Auswertungen & Statistiken</h2>
+                    <div class="dashboard-grid" style="margin-bottom: 40px;">
+                        <div class="card">
+                            <div class="card-title">Geleistete 24h Dienste</div>
+                            <div class="card-value">128</div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">Urlaubstage (Gesamt)</div>
+                            <div class="card-value">452</div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">Krankheitsquote</div>
+                            <div class="card-value">4.2%</div>
+                        </div>
+                    </div>
+
+                    <h3>Detailübersicht Personal</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Mitarbeiter</th>
+                                <th>Dienststunden</th>
+                                <th>Nachtzuschlag</th>
+                                <th>Urlaub</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Mustermann, Max</td>
+                                <td>160h</td>
+                                <td>32h</td>
+                                <td>2 / 30</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- VIEW: FAHRZEUGE -->
+                <div id="view-fahrzeuge" class="view">
+                    <h2>Fahrpark Management</h2>
+                    <div class="dashboard-grid">
+                        <div class="card">
+                            <div style="display:flex; justify-content:space-between;">
+                                <strong>RTW 1</strong>
+                                <span style="color:#166534;">Einsatzbereit</span>
+                            </div>
+                            <p style="margin:10px 0;">Funkrufname: 12/83/01</p>
+                            <button style="width:100%;">Details</button>
+                        </div>
+                        <div class="card">
+                            <div style="display:flex; justify-content:space-between;">
+                                <strong>NEF 2</strong>
+                                <span style="color:#991b1b;">Werkstatt</span>
+                            </div>
+                            <p style="margin:10px 0;">Funkrufname: 12/82/02</p>
+                            <button style="width:100%;">Details</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- VIEW: EINSTELLUNGEN -->
+                <div id="view-einstellungen" class="view">
+                    <h2>Systemeinstellungen</h2>
+                    <div class="settings-section card" style="background:#fff; padding:30px; margin-bottom: 24px;">
+                        <h3>Allgemein</h3>
+                        <div style="display:flex; flex-direction:column; gap:16px;">
+                            <div>
+                                <label style="display:block; margin-bottom:8px;">Rescue Station Name</label>
+                                <input type="text" value="Hauptwache Nord" style="width:100%; max-width:400px;">
+                            </div>
+                            <div style="display:flex; gap:12px; align-items:center;">
+                                <input type="checkbox" checked id="auto-save">
+                                <label for="auto-save">Automatisches Speichern aktivieren</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section card">
+                        <h3>Farbschema der Dienstarten</h3>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                            <div
+                                style="display:flex; justify-content:space-between; align-items:center; padding:8px; border:1px solid var(--line); border-radius:6px;">
+                                <span>Urlaub (U)</span>
+                                <input type="color" value="#fef3c7">
+                            </div>
+                            <div
+                                style="display:flex; justify-content:space-between; align-items:center; padding:8px; border:1px solid var(--line); border-radius:6px;">
+                                <span>Krank (K)</span>
+                                <input type="color" value="#fee2e2">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <script>
+        function showView(viewId, navEl) {
+            // Update Navigation
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            navEl.classList.add('active');
+
+            // Toggle Views
+            document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+            document.getElementById('view-' + viewId).classList.add('active');
+
+            // Update Header Title
+            const labels = {
+                'dienstplan': 'Dienstplan',
+                'einteilung': 'Fahrzeugeinteilung',
+                'personal': 'Personalverwaltung',
+                'werte': 'Auswertungen & Statistik',
+                'fahrzeuge': 'Fahrpark Management',
+                'einstellungen': 'Systemeinstellungen'
+            };
+            document.getElementById('view-title').innerText = labels[viewId] || 'RD-Plan';
+        }
+    </script>
+</body>
+
+</html>

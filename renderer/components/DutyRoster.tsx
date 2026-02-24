@@ -161,6 +161,7 @@ const DutyRoster: React.FC = () => {
     type: 'personal' | 'global';
     personOrigId?: number;
     personName?: string;
+    personIsOwnRow?: boolean;
     date: string;
   } | null>(null);
   // Comment dialog state
@@ -168,6 +169,7 @@ const DutyRoster: React.FC = () => {
     type: 'personal' | 'global';
     personOrigId?: number;
     personName?: string;
+    personIsOwnRow?: boolean;
     date: string;
   } | null>(null);
 
@@ -523,7 +525,11 @@ const DutyRoster: React.FC = () => {
   // console.log('[DEBUG] days[0-4]:', days.slice(0,5));
 
   // Kombiniere Personal und Azubis für die Dienstplan-Tabelle
-  type Row = { id: string; origId: number; name: string; vorname: string; isAzubi: boolean; lehrjahr?: number };
+  type Row = {
+    id: string; origId: number; name: string; vorname: string; isAzubi: boolean;
+    lehrjahr?: number;
+    personnelNumber?: string;
+  };
 
   // Filtere Personal basierend auf Berechtigungen
   let visiblePersonnel = personnel;
@@ -538,7 +544,7 @@ const DutyRoster: React.FC = () => {
   const visibleAzubis = canWrite ? filteredAzubis : [];
 
   const allRows: Row[] = [
-    ...visiblePersonnel.map(p => ({ id: `p_${p.id}`, origId: p.id, name: p.name, vorname: p.vorname, isAzubi: false })),
+    ...visiblePersonnel.map(p => ({ id: `p_${p.id}`, origId: p.id, name: p.name, vorname: p.vorname, isAzubi: false, personnelNumber: p.personnelNumber })),
     ...visibleAzubis.map(a => ({ id: `a_${a.id}`, origId: a.id, name: a.name, vorname: a.vorname, isAzubi: true, lehrjahr: a.lehrjahr }))
   ];
   // Sortiere Azubis nach Lehrjahr, Personal bleibt oben
@@ -1420,14 +1426,31 @@ const DutyRoster: React.FC = () => {
                 {days.map((d, i) => (
                   <th
                     key={i}
-                    style={{ border: '1px solid #d0d0d0', whiteSpace: 'nowrap', background: 'var(--bg)', cursor: 'context-menu', userSelect: 'none' }}
+                    style={{ position: 'relative', border: '1px solid #d0d0d0', whiteSpace: 'nowrap', background: 'var(--bg)', cursor: (canWrite || canReadAll || globalComments.has(d.iso)) ? 'context-menu' : 'default', userSelect: 'none' }}
                     onContextMenu={(e) => {
+                      if (!canWrite && !canReadAll && !globalComments.has(d.iso)) return;
                       e.preventDefault();
                       e.stopPropagation();
                       setCtxMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'global', date: d.iso });
                     }}
                   >
-                    {d.date}{globalComments.has(d.iso) && <span title="Globaler Kommentar vorhanden" style={{ marginLeft: 2, fontSize: 10 }}>🌐</span>}
+                    {d.date}
+                    {globalComments.has(d.iso) && (
+                      <div
+                        title="Globaler Kommentar vorhanden"
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          right: 0,
+                          width: 0,
+                          height: 0,
+                          borderStyle: 'solid',
+                          borderWidth: '0 8px 8px 0',
+                          borderColor: 'transparent #dc3545 transparent transparent',
+                          cursor: 'pointer'
+                        }}
+                      />
+                    )}
                   </th>
                 ))}
               </tr>
@@ -1564,7 +1587,7 @@ const DutyRoster: React.FC = () => {
                           ...(isManualEdit ? { borderLeft: '4px solid #1976d2' } : {})
                         };
                         return (
-                          <td key={dayIdx} style={cellStyle}
+                          <td key={dayIdx} style={{ ...cellStyle, position: 'relative' }}
                             onClick={() => {
                               if (!isEditing) {
                                 startEdit(getStateKey(person), dayIdx);
@@ -1572,6 +1595,11 @@ const DutyRoster: React.FC = () => {
                             }}
                             onContextMenu={(e) => {
                               if (person.isAzubi) return;
+                              // Check standard user personal comment permission
+                              const isOwnRow = !!(currentUser?.personnelNumber && person.personnelNumber === currentUser.personnelNumber);
+                              const canManagePersonal = canWrite || canReadAll || isOwnRow;
+                              if (!canManagePersonal && !personalComments.has(`${person.origId}_${iso}`)) return;
+
                               e.preventDefault();
                               e.stopPropagation();
                               setCtxMenu({
@@ -1581,6 +1609,7 @@ const DutyRoster: React.FC = () => {
                                 type: 'personal',
                                 personOrigId: person.origId,
                                 personName: `${person.name}, ${person.vorname}`,
+                                personIsOwnRow: isOwnRow,
                                 date: iso,
                               });
                             }}
@@ -1609,10 +1638,23 @@ const DutyRoster: React.FC = () => {
                             ) : (
                               <span style={{ color: cell.value ? undefined : '#bbb' }}>
                                 {cell.value || <i>–</i>}
-                                {!person.isAzubi && personalComments.has(`${person.origId}_${iso}`) && (
-                                  <span title={personalComments.get(`${person.origId}_${iso}`)?.comment} style={{ marginLeft: 2, fontSize: 9, opacity: 0.7 }}>💬</span>
-                                )}
                               </span>
+                            )}
+                            {!person.isAzubi && personalComments.has(`${person.origId}_${iso}`) && (
+                              <div
+                                title={personalComments.get(`${person.origId}_${iso}`)?.comment}
+                                style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  right: 0,
+                                  width: 0,
+                                  height: 0,
+                                  borderStyle: 'solid',
+                                  borderWidth: '0 8px 8px 0',
+                                  borderColor: 'transparent #dc3545 transparent transparent',
+                                  cursor: 'pointer'
+                                }}
+                              />
                             )}
                           </td>
                         );
@@ -1649,9 +1691,12 @@ const DutyRoster: React.FC = () => {
                   setCtxMenu(null);
                 }}
               >
-                {globalComments.has(ctxMenu.date) ? '✏️ Globalen Kommentar bearbeiten' : '✏️ Globalen Kommentar hinzufügen...'}
+                {globalComments.has(ctxMenu.date)
+                  ? ((canWrite || canReadAll) ? 'Globalen Kommentar bearbeiten' : 'Globalen Kommentar ansehen')
+                  : 'Globalen Kommentar hinzufügen...'
+                }
               </div>
-              {globalComments.has(ctxMenu.date) && (
+              {(canWrite || canReadAll) && globalComments.has(ctxMenu.date) && (
                 <div
                   style={{ padding: '8px 14px', cursor: 'pointer', color: '#b91c1c' }}
                   onMouseEnter={(e) => { (e.currentTarget as any).style.background = 'var(--hover, #f3f4f6)'; }}
@@ -1663,7 +1708,7 @@ const DutyRoster: React.FC = () => {
                     setCtxMenu(null);
                   }}
                 >
-                  🗑️ Globalen Kommentar löschen
+                  Globalen Kommentar löschen
                 </div>
               )}
             </>
@@ -1676,13 +1721,22 @@ const DutyRoster: React.FC = () => {
                 onMouseDown={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
-                  setCommentDialog({ type: 'personal', personOrigId: ctxMenu.personOrigId, personName: ctxMenu.personName, date: ctxMenu.date });
+                  setCommentDialog({
+                    type: 'personal',
+                    personOrigId: ctxMenu.personOrigId,
+                    personName: ctxMenu.personName,
+                    date: ctxMenu.date,
+                    personIsOwnRow: ctxMenu.personIsOwnRow
+                  });
                   setCtxMenu(null);
                 }}
               >
-                {personalComments.has(`${ctxMenu.personOrigId}_${ctxMenu.date}`) ? '✏️ Kommentar bearbeiten' : '💬 Kommentar hinzufügen...'}
+                {personalComments.has(`${ctxMenu.personOrigId}_${ctxMenu.date}`)
+                  ? ((canWrite || canReadAll || ctxMenu.personIsOwnRow) ? 'Kommentar bearbeiten' : 'Kommentar ansehen')
+                  : 'Kommentar hinzufügen...'
+                }
               </div>
-              {personalComments.has(`${ctxMenu.personOrigId}_${ctxMenu.date}`) && (
+              {(canWrite || canReadAll || ctxMenu.personIsOwnRow) && personalComments.has(`${ctxMenu.personOrigId}_${ctxMenu.date}`) && (
                 <div
                   style={{ padding: '8px 14px', cursor: 'pointer', color: '#b91c1c' }}
                   onMouseEnter={(e) => { (e.currentTarget as any).style.background = 'var(--hover, #f3f4f6)'; }}
@@ -1690,11 +1744,17 @@ const DutyRoster: React.FC = () => {
                   onMouseDown={(e) => {
                     e.stopPropagation();
                     e.preventDefault();
-                    setCommentDialog({ type: 'personal', personOrigId: ctxMenu.personOrigId, personName: ctxMenu.personName, date: ctxMenu.date });
+                    setCommentDialog({
+                      type: 'personal',
+                      personOrigId: ctxMenu.personOrigId,
+                      personName: ctxMenu.personName,
+                      date: ctxMenu.date,
+                      personIsOwnRow: ctxMenu.personIsOwnRow
+                    });
                     setCtxMenu(null);
                   }}
                 >
-                  🗑️ Kommentar löschen
+                  Kommentar löschen
                 </div>
               )}
             </>
@@ -1712,6 +1772,8 @@ const DutyRoster: React.FC = () => {
               ? personalComments.get(`${commentDialog.personOrigId}_${commentDialog.date}`)?.comment
               : globalComments.get(commentDialog.date)?.comment
           }
+          canEdit={commentDialog.type === 'global' ? (canWrite || canReadAll) : (canWrite || canReadAll || commentDialog.personIsOwnRow)}
+          canDelete={commentDialog.type === 'global' ? (canWrite || canReadAll) : (canWrite || canReadAll || commentDialog.personIsOwnRow)}
           onSave={handleCommentSave}
           onDelete={handleCommentDelete}
           onClose={() => setCommentDialog(null)}
