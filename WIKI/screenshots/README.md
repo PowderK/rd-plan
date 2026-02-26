@@ -1,19 +1,43 @@
-# Screenshots (Platzhalter)
+# Screenshot-Platzhalter für das Endnutzer-Wiki
 
-In diesem Ordner liegen Platzhalter-Dateinamen, die du durch echte Bildschirmfotos ersetzen kannst. Füge die Bilder ins Repo ein (z. B. `WIKI/screenshots/duty-roster.png`) oder lade sie später in das GitHub‑Wiki hoch.
+Diese Liste zeigt alle in den Wiki-Seiten referenzierten Bilddateien.
 
-Erwartete Dateinamen (empfohlen):
+## Empfohlene Qualität
 
-- `duty-roster.png` — Jahres-/Monatsübersicht (Einteilungsansicht)
-- `personnel-list.png` — Personalübersicht / Bearbeitungsdialog
-- `vehicles.png` — Fahrzeuginventar / Aktivierungsübersicht
-- `settings.png` — Einstellungen / Export‑Dialog
+- Format: PNG
+- Breite: mindestens 1280 px
+- Oberfläche vollständig sichtbar (ohne abgeschnittene Dialoge)
+- sensible Daten vor Veröffentlichung unkenntlich machen
 
-Empfohlene Auflösung: 1280×720 oder höher (wenn möglich), Dateiformat: PNG.
+## Platzhalter aus Home/Run
 
-Wie ersetzen:
-1. Erzeuge Screenshots lokal (z. B. mit macOS Screenshot-Tool).
-2. Benenne die Dateien wie oben und kopiere sie nach `WIKI/screenshots/`.
-3. Committe und pushe die Änderungen auf `wiki-pages` (oder auf einen neuen Branch und erstelle einen PR).
+- `run-01-download.png`
+- `run-02-login.png`
 
-Alternativ: Wenn du die echten Bilder nicht im Repo speichern willst, kannst du sie direkt im GitHub‑Wiki anlegen und dort per UI hochladen; passe dann die Pfade in `WIKI/Usage.md` an (oder lasse die PR offen und ich erledige das).
+## Platzhalter aus Usage
+
+- `usage-01-navigation.png`
+- `usage-02-duty-plan-edit.png`
+- `usage-03-kontrollkasten.png`
+- `usage-04-personnel-overview.png`
+- `usage-05-azubi-doctors.png`
+- `usage-06-vehicles.png`
+- `usage-07-values.png`
+- `usage-08-import.png`
+- `usage-09-settings.png`
+- `usage-10-itw.png`
+
+## Platzhalter aus Build/Release/Troubleshooting
+
+- `data-01-backup-folder.png`
+- `release-01-update-file.png`
+- `trouble-01-error-message.png`
+
+## Vorgehen zum Ergänzen
+
+1. Screenshots erstellen.
+2. Dateien exakt wie oben benennen.
+3. In `WIKI/screenshots/` ablegen.
+4. Änderungen committen und pushen.
+
+Danach sind alle Bildlinks im Wiki ohne weitere Anpassung sofort sichtbar.

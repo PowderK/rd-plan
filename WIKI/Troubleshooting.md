@@ -1,33 +1,95 @@
-# Troubleshooting — häufige Probleme
+# Troubleshooting (Endnutzer)
 
-1) better-sqlite3: NODE_MODULE_VERSION mismatch
+Diese Seite hilft bei den häufigsten Problemen im Betrieb.
 
-Symptom: Beim Start oder Import einer nativen Bibliothek erscheint eine Fehlermeldung wie:
+## 1) Anwendung startet nicht
 
-```
-was compiled against a different Node.js version using NODE_MODULE_VERSION 127. This version of Node.js requires NODE_MODULE_VERSION 119.
-```
+### Symptome
 
-Lösungsschritte:
-- Versuche `npx electron-rebuild -f -w better-sqlite3`.
-- Wenn electron-rebuild an `node-abi` scheitert (neue Electron-Version), downgrade Electron auf die getestete Version and rebuild, z. B. `npm install --save-dev electron@28.3.3 --save-exact` und dann `npx electron-rebuild`.
-- Alternativ kannst du `npm_config_runtime=electron npm_config_target=<electron-version> npm rebuild better-sqlite3 --build-from-source` verwenden (benötigt node‑gyp, Python, Compiler).
+- EXE startet nicht
+- Fenster bleibt leer
+- Anwendung schließt sich sofort
 
-2) TypeScript: Cannot find type definition file for 'node'
+### Vorgehen
 
-Lösung: `npm install --save-dev @types/node`
+1. Anwendung komplett schließen.
+2. Rechner neu starten.
+3. Anwendung erneut starten.
+4. Wenn weiterhin Fehler: vorherige Version testen.
 
-3) Electron Security Warning (Insecure Content-Security-Policy)
+Wenn das Problem bleibt: Fehler mit Screenshot melden.
 
-Symptom: Renderer warnt über fehlende CSP oder `unsafe-eval`.
+## 2) Login nicht möglich
 
-Lösung: Das Projekt stellt jetzt eine CSP bereit:
-- Meta‑Tag in `renderer/index.html` sowie Header Injection im `main` Prozess, siehe Commit `csp‑fix`.
+### Prüfen
 
-4) CI/Build: Keine Artefakte gespeichert
+- Personalnummer korrekt eingegeben?
+- Tippfehler/Leerzeichen?
+- Richtiger Benutzer?
 
-Ursache: Workflow lud Artefakte bisher nur für Tags hoch. Wir haben das Workflow so angepasst, dass `workflow_dispatch` Runs ebenfalls Artefakte hochladen.
+### Maßnahme
 
-5) GitHub Wiki nicht erreichbar
+- Erneut anmelden.
+- Falls weiter gesperrt: zuständige Admin-Stelle kontaktieren.
 
-Wenn `git clone https://github.com/<owner>/<repo>.wiki.git` fehlschlägt, kann das an fehlender Wiki‑Erstellung oder Berechtigungen liegen. Workaround: Wiki‑Inhalte als Markdown im Repo (z. B. `WIKI/` oder `docs/`) ablegen und per PR in `main` mergen. Dann können die Seiten manuell ins Wiki übertragen.
+## 3) Menüpunkte fehlen
+
+Ursache ist meist die Rollenberechtigung.
+
+### Maßnahme
+
+- Mit zuständiger Stelle Rechte prüfen lassen.
+- Danach neu anmelden.
+
+## 4) Einträge im Dienstplan fehlen oder sind „weg“
+
+### Schnellcheck
+
+1. Richtiges Jahr eingestellt?
+2. Richtiger Monat aktiv?
+3. Filter aktiv, die Einträge ausblenden?
+
+### Danach
+
+- Stichprobe in anderen Monaten durchführen.
+- Falls nach Import aufgetreten: Backup prüfen.
+
+## 5) Import liefert unerwartete Ergebnisse
+
+### Vorbeugung
+
+- Vor jedem Import Backup erstellen.
+- Immer das richtige Jahr wählen.
+
+### Bei Fehlern
+
+1. Import abbrechen, wenn möglich.
+2. Ergebnis nicht weiter überarbeiten.
+3. Backup zurückspielen.
+4. Importdatei prüfen und erneut durchführen.
+
+## 6) Werte im Kontrollkasten wirken unplausibel
+
+### Prüfen
+
+- Wurden kurz vorher mehrere Einträge geändert/importiert?
+- Stimmen die eingetragenen Dienste und Rollen?
+- Sind ITW-/Sonderlogiken aktiv, die getrennt berechnet werden?
+
+### Maßnahme
+
+- Schrittweise letzte Änderungen prüfen.
+- Bei Bedarf auf vorherigen Datenstand zurückgehen.
+
+## 7) Was in einer Fehlermeldung enthalten sein sollte
+
+Für schnelle Hilfe immer mitgeben:
+
+- Zeitpunkt des Problems
+- betroffene Ansicht (z. B. Dienstplan, Personal)
+- genaue Schritte bis zum Fehler
+- Screenshot
+- verwendete Version
+
+![Screenshot-Platzhalter: Fehlermeldung](screenshots/trouble-01-error-message.png)
+*Platzhalter: Beispiel einer Fehlermeldung mit markierten relevanten Angaben.*
