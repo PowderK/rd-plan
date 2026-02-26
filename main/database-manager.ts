@@ -178,6 +178,14 @@ export interface DatabaseAdapter {
   updateShiftTransfer(id: number, transfer: any): Promise<void>;
   deleteShiftTransfer(id: number): Promise<void>;
 
+  // Roster Comments (Issue #22)
+  addPersonalComment(personId: number, date: string, comment: string, createdBy: string): Promise<void>;
+  deletePersonalComment(personId: number, date: string): Promise<void>;
+  getPersonalCommentsForMonth(year: number, month: number): Promise<any[]>;
+  addGlobalComment(date: string, comment: string, createdBy: string): Promise<void>;
+  deleteGlobalComment(date: string): Promise<void>;
+  getGlobalCommentsForMonth(year: number, month: number): Promise<any[]>;
+
   close(): Promise<void>;
 }
 
@@ -808,6 +816,36 @@ class SQLiteAdapter implements DatabaseAdapter {
     return deleteShiftTransfer(this.db, id);
   }
 
+  // Roster Comments (Issue #22)
+  async addPersonalComment(personId: number, date: string, comment: string, createdBy: string) {
+    const { addPersonalComment } = await import('./database');
+    return addPersonalComment(this.db, personId, date, comment, createdBy);
+  }
+
+  async deletePersonalComment(personId: number, date: string) {
+    const { deletePersonalComment } = await import('./database');
+    return deletePersonalComment(this.db, personId, date);
+  }
+
+  async getPersonalCommentsForMonth(year: number, month: number) {
+    const { getPersonalCommentsForMonth } = await import('./database');
+    return getPersonalCommentsForMonth(this.db, year, month);
+  }
+
+  async addGlobalComment(date: string, comment: string, createdBy: string) {
+    const { addGlobalComment } = await import('./database');
+    return addGlobalComment(this.db, date, comment, createdBy);
+  }
+
+  async deleteGlobalComment(date: string) {
+    const { deleteGlobalComment } = await import('./database');
+    return deleteGlobalComment(this.db, date);
+  }
+
+  async getGlobalCommentsForMonth(year: number, month: number) {
+    const { getGlobalCommentsForMonth } = await import('./database');
+    return getGlobalCommentsForMonth(this.db, year, month);
+  }
 
 }
 
@@ -1403,6 +1441,32 @@ export class DatabaseManager {
         );
         CREATE INDEX IF NOT EXISTS idx_vehicle_positions_vehicle ON vehicle_positions (vehicleType, vehicleId);
         CREATE INDEX IF NOT EXISTS idx_vehicle_positions_qual ON vehicle_positions (qualificationTypeId);
+
+        -- Kommentar-Tabellen (Issue #22)
+        CREATE TABLE IF NOT EXISTS roster_comments_personal (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            person_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            comment TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            created_by TEXT,
+            updated_at TEXT,
+            FOREIGN KEY(person_id) REFERENCES personnel(id) ON DELETE CASCADE,
+            UNIQUE(person_id, date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_roster_comments_personal_date ON roster_comments_personal(date);
+        CREATE INDEX IF NOT EXISTS idx_roster_comments_personal_person ON roster_comments_personal(person_id);
+
+        CREATE TABLE IF NOT EXISTS roster_comments_global (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            comment TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            created_by TEXT,
+            updated_at TEXT,
+            UNIQUE(date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_roster_comments_global_date ON roster_comments_global(date);
     `);
 
     // Initialize default qualification types if empty

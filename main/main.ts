@@ -240,7 +240,9 @@ async function ensureAdminRoleAndUser(adapter: DatabaseAdapter): Promise<void> {
 ipcMain.on('renderer-log', (_event, { level, args }) => {
     try {
         const payload = Array.isArray(args) ? args.join(' ') : String(args);
+        console.log(`[Renderer ${level}]`, payload);
     } catch (e) {
+        console.error('[Main] Error handling renderer log', e);
     }
 });
 
@@ -424,20 +426,28 @@ ipcMain.handle('get-setting', async (_event, key: string) => {
 });
 
 ipcMain.handle('set-setting', async (_event, key: string, value: string) => {
-    const auth = getAuthService();
+    try {
+        const auth = getAuthService();
 
-    // Unterschiedliche Berechtigungen je nach Setting-Key
-    if (key.startsWith('roster_released_')) {
-        // Monatsfreigabe gehört zu einteilung:write
-        auth.requirePermission('einteilung', 'write');
-    } else {
-        // Alle anderen Settings benötigen einstellungen:write
-        auth.requirePermission('einstellungen', 'write');
+        // Unterschiedliche Berechtigungen je nach Setting-Key
+        if (key.startsWith('roster_released_')) {
+            // Monatsfreigabe gehört zu einteilung:write
+            auth.requirePermission('einteilung', 'write');
+        } else if (['year', 'rescueStation', 'department'].includes(key)) {
+            // UI-State Parameter dürfen von jedem geändert werden, der die App nutzt
+            // Ggf. könnte man hier prüfen, ob der User eingeloggt ist, aber auth-check ist implizit
+        } else {
+            // Alle anderen Settings benötigen einstellungen:write
+            auth.requirePermission('einstellungen', 'write');
+        }
+
+        const adapter = await ensureDatabaseAdapter();
+        await adapter.setSetting(key, value);
+        return true;
+    } catch (e: any) {
+        console.warn(`[Main] Warning: Could not set setting ${key}:`, e.message);
+        return false;
     }
-
-    const adapter = await ensureDatabaseAdapter();
-    await adapter.setSetting(key, value);
-    return true;
 });
 
 // Personnel handlers
@@ -1974,6 +1984,52 @@ app.whenReady().then(async () => {
 
     if (!skipSplash) updateSplashStatus('Hauptfenster wird vorbereitet...', 'Fast fertig...');
     await createWindow(skipSplash);
+});
+
+// Roster Comments (Issue #22)
+ipcMain.handle('roster-comment-personal-add', async (_event, personId: number, date: string, comment: string) => {
+    const auth = getAuthService();
+    const currentUser = auth.getCurrentUser();
+    const createdBy = currentUser?.personnelNumber || 'unknown';
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addPersonalComment(personId, date, comment, createdBy);
+    return true;
+});
+
+ipcMain.handle('roster-comment-personal-delete', async (_event, personId: number, date: string) => {
+    const auth = getAuthService();
+    auth.requirePermission('dienstplan', 'read');
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deletePersonalComment(personId, date);
+    return true;
+});
+
+ipcMain.handle('roster-comment-personal-get-month', async (_event, year: number, month: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getPersonalCommentsForMonth(year, month);
+});
+
+ipcMain.handle('roster-comment-global-add', async (_event, date: string, comment: string) => {
+    const auth = getAuthService();
+    auth.requirePermission('dienstplan', 'write');
+    const currentUser = auth.getCurrentUser();
+    const createdBy = currentUser?.personnelNumber || 'unknown';
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addGlobalComment(date, comment, createdBy);
+    return true;
+});
+
+ipcMain.handle('roster-comment-global-delete', async (_event, date: string) => {
+    const auth = getAuthService();
+    auth.requirePermission('dienstplan', 'write');
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteGlobalComment(date);
+    return true;
+});
+
+ipcMain.handle('roster-comment-global-get-month', async (_event, year: number, month: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getGlobalCommentsForMonth(year, month);
 });
 
 app.on('window-all-closed', async () => {

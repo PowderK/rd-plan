@@ -22,11 +22,13 @@ interface KontrollkastenItem {
   cumDiff: number;
   nef: number;
   itw: number;
+  weekend?: number;
   total: number;
   tag?: number;
   nacht?: number;
   rest: number;
   ue50?: boolean;
+  lpal?: boolean;
   hlfb?: boolean;
   teilzeit?: number;
   presenceRemainingByPerson?: number;
@@ -45,6 +47,7 @@ interface KontrollkastenProps {
   assignedRemainingByPerson: Record<string, number>;
   renderPresenceMeter: (value: number, height: number) => JSX.Element;
   showOldRtwShifts?: boolean;
+  showWeekendShifts?: boolean;
 }
 
 export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
@@ -58,37 +61,39 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
   assignedRemainingByPerson,
   renderPresenceMeter,
   showOldRtwShifts = false,
+  showWeekendShifts = false,
 }) => {
   // Dynamisches Grid-Layout
-  const columns = showOldRtwShifts
-    ? 'minmax(80px, auto) 55px 20px 20px 35px 40px 72px'
-    : GRID_CONFIG.columns;
+  const wCol = showWeekendShifts ? '22px ' : '';
+  const altCol = showOldRtwShifts ? '24px ' : '';
+  const columns = `max-content 55px 20px 20px ${wCol}${altCol}40px 72px`;
+
+  const { minWeekend, maxWeekend } = React.useMemo(() => {
+    if (!showWeekendShifts) return { minWeekend: 0, maxWeekend: 0 };
+    const eligible = items.filter(it => typeof it.weekend === 'number' && !it.ue50 && !it.lpal && !it.hlfb);
+    const minW = eligible.length ? Math.min(...eligible.map(it => it.weekend!)) : 0;
+    const maxW = eligible.length ? Math.max(...eligible.map(it => it.weekend!)) : 0;
+    return { minWeekend: minW, maxWeekend: maxW };
+  }, [items, showWeekendShifts]);
 
   return (
-    <div className={styles.sidebarList}>
+    <div className={styles.sidebarList} style={{
+      display: 'grid',
+      gridTemplateColumns: columns,
+      alignItems: 'center',
+      columnGap: GRID_CONFIG.gap,
+      rowGap: GRID_CONFIG.marginBottom,
+    }}>
       {/* Header-Zeile */}
-      <div
-        style={{
-
-          display: 'grid',
-          gridTemplateColumns: columns,
-          alignItems: 'center',
-          gap: GRID_CONFIG.gap,
-          fontWeight: 600,
-          fontSize: 10,
-          color: '#374151',
-          marginBottom: GRID_CONFIG.marginBottom,
-          paddingBottom: 1,
-          borderBottom: '1px solid #e5e7eb',
-        }}
-      >
-        <span style={{ textAlign: 'right', paddingRight: 4 }}>Name</span>
-        <span style={{ textAlign: 'center', paddingRight: 4 }}>Soll | Ist</span>
-        <span style={{ textAlign: 'center', paddingRight: 4 }}>NEF</span>
-        <span style={{ textAlign: 'center', paddingRight: 4 }}>ITW</span>
-        {showOldRtwShifts && <span style={{ textAlign: 'center', paddingRight: 4, fontSize: 9 }}>Alt</span>}
-        <span style={{ textAlign: 'center', paddingRight: 4 }}>Gesamt</span>
-        <span style={{ textAlign: 'center' }}>T/N | Rest</span>
+      <div style={{ display: 'contents' }}>
+        <span style={{ textAlign: 'right', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>Name</span>
+        <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>Soll | Ist</span>
+        <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>NEF</span>
+        <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>ITW</span>
+        {showWeekendShifts && <span style={{ textAlign: 'center', paddingRight: 4, fontSize: 9, fontWeight: 600, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>WE</span>}
+        {showOldRtwShifts && <span style={{ textAlign: 'center', paddingRight: 4, fontSize: 9, fontWeight: 600, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>Alt</span>}
+        <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>Ges.</span>
+        <span style={{ textAlign: 'center', fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>T/N | Rest</span>
       </div>
 
       {/* Items */}
@@ -96,7 +101,6 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
         items.map((it, idx) => {
           const isEligible = typeof it.target === 'number' && (it.target as number) > 0;
           let restStyle: React.CSSProperties | undefined = undefined;
-
           if (isEligible && maxNR > minNR) {
             const fte = Math.max(0.01, (it.teilzeit || 100) / 100);
             const normRest = it.rest / fte;
@@ -107,23 +111,31 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
             restStyle = { background: bg, borderRadius: 4, border, padding: '2px 6px' };
           }
 
+          let weekendColor: string | undefined = undefined;
+          if (showWeekendShifts && typeof it.weekend === 'number' && !it.ue50 && !it.lpal && !it.hlfb) {
+            if (maxWeekend > minWeekend) {
+              // INVERTED: 1 = max (Grün), 0 = min (Rot)
+              const tW = (it.weekend - minWeekend) / (maxWeekend - minWeekend);
+              const colW = mixColor(tW);
+              weekendColor = `rgb(${colW.r}, ${colW.g}, ${colW.b})`;
+            } else {
+              const colW = mixColor(0.5);
+              weekendColor = `rgb(${colW.r}, ${colW.g}, ${colW.b})`;
+            }
+          }
+
           return (
-            <div key={idx} style={{ marginBottom: GRID_CONFIG.marginBottom }}>
+            <React.Fragment key={idx}>
               <div
                 className={styles.sidebarItem}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: columns,
-                  alignItems: 'center',
-                  gap: GRID_CONFIG.gap,
-                }}
+                style={{ display: 'contents' }}
               >
                 {/* Name */}
                 <span
                   className={styles.sidebarName}
                   onClick={() => setHighlightedPersonKey(highlightedPersonKey === it.key ? null : it.key)}
                   style={{
-                    color: it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : undefined,
+                    color: it.lpal ? '#fd7e14' : it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : undefined,
                     cursor: 'pointer',
                     fontWeight: highlightedPersonKey === it.key ? 700 : undefined,
                     textDecoration: highlightedPersonKey === it.key ? 'underline' : undefined,
@@ -154,6 +166,13 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                   {it.itw}
                 </span>
 
+                {/* WE */}
+                {showWeekendShifts && (
+                  <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4, color: weekendColor, fontWeight: weekendColor ? 600 : undefined }}>
+                    {typeof it.weekend === 'number' ? it.weekend : '–'}
+                  </span>
+                )}
+
                 {/* Alte RTW-Schichten */}
                 {showOldRtwShifts && (
                   <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4, color: '#666' }}>
@@ -162,15 +181,15 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                 )}
 
                 {/* Gesamt */}
-                {!it.ue50 && (
+                {!it.ue50 && !it.lpal && (
                   <span className={styles.sidebarVal} style={{ ...restStyle, textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4 }}>
                     {Number.isFinite(it.rest) ? it.rest : '–'}
                   </span>
                 )}
-                {it.ue50 && <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4 }}>–</span>}
+                {(it.ue50 || it.lpal) && <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4 }}>–</span>}
 
                 {/* Tag/Nacht Waage und Rest V untereinander */}
-                {!it.ue50 && (
+                {!it.ue50 && !it.lpal && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: WAAGE_CONFIG.gap, alignItems: 'center' }}>
                     {/* Tag/Nacht Waage */}
                     <div
@@ -206,23 +225,8 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
 
                         return (
                           <>
-                            {/* Wenn mehr Tag-Schichten: Balken nach rechts (rot) */}
+                            {/* Wenn mehr Tag-Schichten: Balken nach links (rot) */}
                             {diff > 0 && (
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  left: '50%',
-                                  width: `${width}%`,
-                                  top: 0,
-                                  bottom: 0,
-                                  background: '#ef4444',
-                                  borderTopRightRadius: 3,
-                                  borderBottomRightRadius: 3,
-                                }}
-                              />
-                            )}
-                            {/* Wenn mehr Nacht-Schichten: Balken nach links (blau) */}
-                            {diff < 0 && (
                               <div
                                 style={{
                                   position: 'absolute',
@@ -230,9 +234,24 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                                   width: `${width}%`,
                                   top: 0,
                                   bottom: 0,
-                                  background: '#3b82f6',
+                                  background: '#ef4444',
                                   borderTopLeftRadius: 3,
                                   borderBottomLeftRadius: 3,
+                                }}
+                              />
+                            )}
+                            {/* Wenn mehr Nacht-Schichten: Balken nach rechts (blau) */}
+                            {diff < 0 && (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  left: '50%',
+                                  width: `${width}%`,
+                                  top: 0,
+                                  bottom: 0,
+                                  background: '#3b82f6',
+                                  borderTopRightRadius: 3,
+                                  borderBottomRightRadius: 3,
                                 }}
                               />
                             )}
@@ -314,9 +333,9 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                     })()}
                   </div>
                 )}
-                {it.ue50 && <div></div>}
+                {(it.ue50 || it.lpal) && <div></div>}
               </div>
-            </div>
+            </React.Fragment>
           );
         })
       }

@@ -216,6 +216,13 @@ contextBridge.exposeInMainWorld('api', {
     addShiftTransfer: (transfer: any) => ipcRenderer.invoke('add-shift-transfer', transfer),
     updateShiftTransfer: (id: number, transfer: any) => ipcRenderer.invoke('update-shift-transfer', id, transfer),
     deleteShiftTransfer: (id: number) => ipcRenderer.invoke('delete-shift-transfer', id),
+    // Roster Comments (Issue #22)
+    addPersonalComment: (personId: number, date: string, comment: string) => ipcRenderer.invoke('roster-comment-personal-add', personId, date, comment),
+    deletePersonalComment: (personId: number, date: string) => ipcRenderer.invoke('roster-comment-personal-delete', personId, date),
+    getPersonalCommentsForMonth: (year: number, month: number) => ipcRenderer.invoke('roster-comment-personal-get-month', year, month),
+    addGlobalComment: (date: string, comment: string) => ipcRenderer.invoke('roster-comment-global-add', date, comment),
+    deleteGlobalComment: (date: string) => ipcRenderer.invoke('roster-comment-global-delete', date),
+    getGlobalCommentsForMonth: (year: number, month: number) => ipcRenderer.invoke('roster-comment-global-get-month', year, month),
     openItwWindow: () => ipcRenderer.send('open-itw-window'),
     openVehiclesWindow: () => ipcRenderer.send('open-vehicles-window'),
     openValuesWindow: () => ipcRenderer.send('open-values-window'),

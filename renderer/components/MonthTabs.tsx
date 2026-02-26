@@ -52,10 +52,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     const [highlightedPersonKey, setHighlightedPersonKey] = useState<string | null>(null);
     // Ü50-IDs für korrekte Berechnung (analog ValuesPage)
     const [ue50Ids, setUe50Ids] = useState<Set<number>>(new Set());
+    // LPAL-IDs (Leitender Praxisanleiter) - wie Ü50, aber orange
+    const [lpalIds, setLpalIds] = useState<Set<number>>(new Set());
     // HLF-B Perioden für korrekte Berechnung
     const [hlfbPeriodsByPerson, setHlfbPeriodsByPerson] = useState<Record<number, Array<{ startYM: string; endYM?: string }>>>({});
     // Performance: Debouncing für Roster-Updates
     const [updateTimeout, setUpdateTimeout] = useState<NodeJS.Timeout | null>(null);
+
+    const [showWeekendShifts, setShowWeekendShifts] = useState<boolean>(false);
     // Freigabe-Status pro Monat
     const [releasedMonths, setReleasedMonths] = useState<boolean[]>(Array(12).fill(false));
     // Sidebar Collapse Status
@@ -64,6 +68,34 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     const [featureOldRtwShifts, setFeatureOldRtwShifts] = useState(false);
     // Schichtübernahmen
     const [shiftTransfers, setShiftTransfers] = useState<any[]>([]);
+
+    // Kommentar-State für Einteilung (Issue #22 UI-Anpassungen)
+    const [personalComments, setPersonalComments] = useState<Map<string, { id: number; comment: string; created_by: string }>>(new Map());
+    const [globalComments, setGlobalComments] = useState<Map<string, { id: number; comment: string; created_by: string }>>(new Map());
+    const [activeCommentsData, setActiveCommentsData] = useState<{ dateStr: string; comments: string[] } | null>(null);
+
+    useEffect(() => {
+        const loadComments = async () => {
+            try {
+                const persRes = await (window as any).api.getPersonalCommentsForMonth(year, currentMonth);
+                if (Array.isArray(persRes)) {
+                    const map = new Map();
+                    persRes.forEach((c: any) => map.set(`${c.person_id}_${c.date}`, c));
+                    setPersonalComments(map);
+                }
+
+                const globRes = await (window as any).api.getGlobalCommentsForMonth(year, currentMonth);
+                if (Array.isArray(globRes)) {
+                    const map = new Map();
+                    globRes.forEach((c: any) => map.set(c.date, c));
+                    setGlobalComments(map);
+                }
+            } catch (err) {
+                console.error('[MonthTabs] Error loading comments:', err);
+            }
+        };
+        loadComments();
+    }, [year, currentMonth]);
 
     useEffect(() => {
         const loadHlfbPeriods = async () => {
@@ -359,7 +391,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 const setting = await (window as any).api.getSetting('ue50_qualification_type');
                 if (setting) ue50QualName = String(setting);
 
-                const ids = new Set<number>();
+                let lpalQualName = 'LPAL';
+                const lpalSetting = await (window as any).api.getSetting('lpal_qualification_type');
+                if (lpalSetting) lpalQualName = String(lpalSetting);
+
+                const combinedIds = new Set<number>();
+                const lpalOnlyIds = new Set<number>();
                 for (const p of personnel) {
                     try {
                         const periods = await (window as any).api.getQualificationPeriods?.(p.id) || [];
@@ -371,15 +408,23 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 per.startYM <= yearMonth &&
                                 (!per.endYM || per.endYM >= yearMonth)
                             );
-                            if (hasUe50) {
-                                ids.add(p.id);
+                            const hasLpal = periods.some((per: any) =>
+                                per.active &&
+                                per.qualType === lpalQualName &&
+                                per.startYM <= yearMonth &&
+                                (!per.endYM || per.endYM >= yearMonth)
+                            );
+                            if (hasUe50 || hasLpal) {
+                                combinedIds.add(p.id);
+                                if (hasLpal) lpalOnlyIds.add(p.id);
                                 break;
                             }
                         }
                     } catch { }
                 }
-                setUe50Ids(ids);
-            } catch { setUe50Ids(new Set()); }
+                setUe50Ids(combinedIds);
+                setLpalIds(lpalOnlyIds);
+            } catch { setUe50Ids(new Set()); setLpalIds(new Set()); }
         };
         loadUe50();
     }, [year, personnel]);
@@ -389,6 +434,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
             try {
                 const dep = await (window as any).api.getSetting('department');
                 if (dep) setDepartment(Number(dep));
+            } catch { }
+            try {
+                const sws = await (window as any).api.getSetting('show_weekend_shifts');
+                setShowWeekendShifts(sws === 'true');
             } catch { }
             try { const r = await (window as any).api.getRtwVehicles?.(); if (Array.isArray(r)) setRtwVehicles(r); } catch { }
             try { const n = await (window as any).api.getNefVehicles?.(); if (Array.isArray(n)) setNefVehicles(n); } catch { }
@@ -773,12 +822,19 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     const fixedHeaderContainerRef = React.useRef<HTMLDivElement>(null);
     const [headerHeight, setHeaderHeight] = React.useState(280);
 
+    const [sidebarWidth, setSidebarWidth] = React.useState(512);
+
     // Messe die Höhe des Fixed Header Containers
     React.useEffect(() => {
         const measureHeader = () => {
             if (fixedHeaderContainerRef.current) {
                 const height = fixedHeaderContainerRef.current.offsetHeight;
                 setHeaderHeight(height + 10); // +10px Sicherheitsabstand
+            }
+
+            const sidebar = document.getElementById('einteilung-right-sidebar');
+            if (sidebar) {
+                setSidebarWidth(sidebar.offsetWidth + 12);
             }
         };
 
@@ -788,6 +844,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
         const resizeObserver = new ResizeObserver(measureHeader);
         if (fixedHeaderContainerRef.current) {
             resizeObserver.observe(fixedHeaderContainerRef.current);
+
+            // Auch die Sidebar beobachten, falls sie sich durch Namen vergrößert
+            const sidebar = document.getElementById('einteilung-right-sidebar');
+            if (sidebar) resizeObserver.observe(sidebar);
         }
 
         return () => {
@@ -802,6 +862,272 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
         }
     };
 
+    {/* ========================================================== */ }
+    {/* GEMEINSAME SOLL-BERECHNUNG für RTW-Tab und ITW-Tab        */ }
+    {/* ========================================================== */ }
+    useMemo(() => {
+        const computeSharedTargets = () => {
+            // 1. Flatten Roster for Shared Calculation
+            const flattenedRoster: any[] = [];
+            const mergedKeys = Array.from(new Set([...Object.keys(roster || {}), ...Object.keys(localRoster || {})]));
+            for (const key of mergedKeys) {
+                const pid = Number(key.replace(/^[pa]_/, ''));
+                const pType = key.startsWith('p_') ? 'person' : 'azubi';
+                const rowMap = { ...(roster?.[key] || {}), ...(localRoster?.[key] || {}) };
+                for (const [date, cell] of Object.entries(rowMap)) {
+                    if (cell) {
+                        flattenedRoster.push({
+                            date,
+                            personId: pid,
+                            personType: pType,
+                            type: cell.type,
+                            value: cell.value
+                        });
+                    }
+                }
+            }
+
+            // 2. Calculate Targets using Shared Utility
+            const targetsByPersonId = calculateTargets(
+                year,
+                flattenedRoster,
+                personnel,
+                azubis,
+                ue50Ids,
+                auswertungByType,
+                {
+                    rtw: rtwVehicles,
+                    nef: nefVehicles.map(n => ({ ...n, occupancyMode: n.occupancy_mode }))
+                },
+                { rtwActs: rtwActivations, nefActs: nefActivations },
+                department,
+                deptPatternSeqs || [],
+                hlfbPeriodsByPerson,
+                shiftTransfers // <-- Pass loaded transfers here
+            );
+
+            // 3. Map Targets to MonthTabs format
+            const targetYearMap: Record<string, number> = {};
+            const allocTargetsInMonth: Record<string, number> = {};
+
+            for (const p of personnel) {
+                const key = `p_${p.id}`;
+                const t = targetsByPersonId[p.id] || Array(12).fill(0);
+                targetYearMap[key] = t.reduce((a, b) => a + b, 0);
+                allocTargetsInMonth[key] = t[currentMonth];
+            }
+
+            // 4. Calculate Driven/Assigned Stats (Local Logic preserved)
+            const drivenYearMap: Record<string, number> = {};
+            const perPersonAssignedWeightedInMonth: Record<string, number> = {};
+            const perPersonNefInMonth: Record<string, number> = {};
+            const perPersonItwInMonth: Record<string, number> = {};
+            const perPersonRtwTagNightYear: Record<string, { tag: number; nacht: number }> = {};
+            const perPersonRtwTagNightInMonth: Record<string, { tag: number; nacht: number }> = {};
+            const perPersonWeekendInYear: Record<string, number> = {};
+
+            const daysInMonth = new Date(year, currentMonth + 1, 0).getDate();
+            const allMonthDays: string[] = [];
+            for (let i = 1; i <= daysInMonth; i++) {
+                allMonthDays.push(new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0, 10));
+            }
+
+            // Helper to get cell from local or global roster
+            const getCell = (key: string, iso: string) => (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
+
+            // Berechne kumulative Soll/Ist-Werte bis zum aktuellen Monat (einschließlich)
+            const targetCumulativeMap: Record<string, number> = {};
+            const drivenCumulativeMap: Record<string, number> = {};
+
+            for (const p of personnel) {
+                const key = `p_${p.id}`;
+                const t = targetsByPersonId[p.id] || Array(12).fill(0);
+
+                // Summiere Soll-Schichten von Januar bis aktuellen Monat (einschließlich)
+                let cumTarget = 0;
+                for (let m = 0; m <= currentMonth; m++) {
+                    cumTarget += t[m];
+                }
+                targetCumulativeMap[key] = cumTarget;
+
+                // Summiere Ist-Schichten von Januar bis aktuellen Monat (einschließlich)
+                // Verwende die gleiche Logik wie bei der monatlichen Zählung (RTW/NEF nur an Abteilungstagen)
+                let cumDriven = 0;
+                for (let mIdx = 0; mIdx <= currentMonth; mIdx++) {
+                    const dim = new Date(year, mIdx + 1, 0).getDate();
+
+                    // Ermittle Abteilungstage für diesen Monat
+                    const deptDays: string[] = [];
+                    for (let i = 1; i <= dim; i++) {
+                        const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0, 10);
+                        const seqs = [...(deptPatternSeqs || [])].sort((a, b) => a.startDate.localeCompare(b.startDate));
+                        let active = seqs[0];
+                        for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
+                        const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
+                        const cur = new Date(iso + 'T00:00:00Z');
+                        const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                        const pat = active?.pattern || [];
+                        const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
+                        if (depDay && String(department) === depDay) deptDays.push(iso);
+                    }
+
+                    // Zähle RTW/NEF nur an Abteilungstagen
+                    for (const iso of deptDays) {
+                        const cell = getCell(key, iso);
+                        const t = String(cell?.type || '');
+                        if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) cumDriven += 1;
+                        else if (/^nef(\d+)?_assist$/.test(t)) cumDriven += 2;
+                    }
+
+                    // ITW zählt an allen Tagen des Monats
+                    for (let i = 1; i <= dim; i++) {
+                        const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0, 10);
+                        const cell = getCell(key, iso);
+                        const t = String(cell?.type || '');
+                        if (t.startsWith('itw_row_')) {
+                            cumDriven += 1;
+                        }
+                    }
+                }
+                drivenCumulativeMap[key] = cumDriven;
+            }
+
+            for (const p of (personnel || [])) {
+                const key = `p_${p.id}`;
+
+                // Yearly Stats
+                let sumDrivenY = 0;
+                let tagCntY = 0;
+                let nachtCntY = 0;
+                let weekendCntY = 0;
+                for (let mIdx = 0; mIdx < 12; mIdx++) {
+                    const dim = new Date(year, mIdx + 1, 0).getDate();
+                    for (let i = 1; i <= dim; i++) {
+                        const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0, 10);
+                        const cell = getCell(key, iso);
+                        const t = String(cell?.type || '');
+                        let isShift = false;
+                        if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) { sumDrivenY += 1; isShift = true; }
+                        else if (t.startsWith('itw_row_')) { sumDrivenY += 1; isShift = true; }
+                        else if (/^nef(\d+)?_assist$/.test(t)) { sumDrivenY += 2; isShift = true; }
+
+                        if (/^rtw\d+_tag_(1|2)$/.test(t)) tagCntY += 1;
+                        if (/^rtw\d+_nacht_(1|2)$/.test(t)) nachtCntY += 1;
+
+                        if (isShift) {
+                            const dow = new Date(iso).getDay();
+                            if (dow === 0 || dow === 6) weekendCntY += 1;
+                        }
+                    }
+                }
+                drivenYearMap[key] = sumDrivenY;
+                perPersonRtwTagNightYear[key] = { tag: tagCntY, nacht: nachtCntY };
+                perPersonWeekendInYear[key] = weekendCntY;
+
+                // Monthly Stats (aktueller Monat für Soll/Ist)
+                let cntM = 0;
+                let tagCntM = 0;
+                let nachtCntM = 0;
+
+                // NEF und ITW Stats für das GESAMTE JAHR
+                let nefCntYear = 0;
+                let itwCntYear = 0;
+
+                // Filter days where department is active (aktueller Monat)
+                const monthDeptIsos: string[] = (() => {
+                    const list: string[] = [];
+                    for (let i = 1; i <= daysInMonth; i++) {
+                        const iso = new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0, 10);
+                        const seqs = [...(deptPatternSeqs || [])].sort((a, b) => a.startDate.localeCompare(b.startDate));
+                        let active = seqs[0];
+                        for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
+                        const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
+                        const cur = new Date(iso + 'T00:00:00Z');
+                        const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                        const pat = active?.pattern || [];
+                        const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
+                        if (depDay && String(department) === depDay) list.push(iso);
+                    }
+                    return list;
+                })();
+
+                for (const iso of monthDeptIsos) {
+                    const cell = getCell(key, iso);
+                    const t = String(cell?.type || '');
+                    if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) cntM += 1;
+                    if (/^rtw\d+_tag_(1|2)$/.test(t)) tagCntM += 1;
+                    if (/^rtw\d+_nacht_(1|2)$/.test(t)) nachtCntM += 1;
+                    else if (/^nef(\d+)?_assist$/.test(t)) cntM += 2;
+                }
+                // ITW counts (aktueller Monat) - zählt für cntM
+                for (const iso of allMonthDays) {
+                    const cell = getCell(key, iso);
+                    const t = String(cell?.type || '');
+                    if (t.startsWith('itw_row_')) {
+                        cntM += 1;
+                    }
+                }
+
+                // NEF und ITW für GESAMTES JAHR zählen
+                for (let mIdx = 0; mIdx < 12; mIdx++) {
+                    const dim = new Date(year, mIdx + 1, 0).getDate();
+
+                    // NEF an Abteilungstagen
+                    for (let i = 1; i <= dim; i++) {
+                        const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0, 10);
+                        // Prüfe ob Abteilungstag
+                        const seqs = [...(deptPatternSeqs || [])].sort((a, b) => a.startDate.localeCompare(b.startDate));
+                        let active = seqs[0];
+                        for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
+                        const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
+                        const cur = new Date(iso + 'T00:00:00Z');
+                        const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                        const pat = active?.pattern || [];
+                        const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
+
+                        if (depDay && String(department) === depDay) {
+                            const cell = getCell(key, iso);
+                            const t = String(cell?.type || '');
+                            if (/^nef(\d+)?_assist$/.test(t)) nefCntYear += 2;
+                        }
+                    }
+
+                    // ITW an allen Tagen
+                    for (let i = 1; i <= dim; i++) {
+                        const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0, 10);
+                        const cell = getCell(key, iso);
+                        const t = String(cell?.type || '');
+                        if (t.startsWith('itw_row_')) itwCntYear += 1;
+                    }
+                }
+
+                perPersonAssignedWeightedInMonth[key] = cntM;
+                perPersonRtwTagNightInMonth[key] = { tag: tagCntM, nacht: nachtCntM };
+                perPersonNefInMonth[key] = nefCntYear;  // Jetzt Jahressumme
+                perPersonItwInMonth[key] = itwCntYear;  // Jetzt Jahressumme
+            }
+
+            return {
+                targetYearMap,
+                drivenYearMap,
+                allocTargetsInMonth,
+                perPersonAssignedWeightedInMonth,
+                perPersonNefInMonth,
+                perPersonItwInMonth,
+                perPersonRtwTagNightYear,
+                perPersonWeekendInYear,
+                targetCumulativeMap,
+                drivenCumulativeMap
+            };
+        };
+
+        const result = computeSharedTargets();
+        (window as any).__sharedTargets = result;
+
+    }, [year, roster, localRoster, personnel, azubis, ue50Ids, auswertungByType,
+        rtwVehicles, nefVehicles, rtwActivations, nefActivations, department,
+        deptPatternSeqs, hlfbPeriodsByPerson, shiftTransfers, currentMonth]);
+
     return (
         <div key={forceUpdateCounter}>
             {/* Gemeinsamer Fixed Header Container */}
@@ -811,7 +1137,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                     position: 'fixed',
                     top: 'clamp(56px, 6.5vw, 90px)',
                     left: sidebarCollapsed ? 66 : 210,
-                    right: 392,
+                    right: sidebarWidth,
                     zIndex: 100,
                     background: 'var(--bg)',
                     paddingLeft: 25,
@@ -1137,261 +1463,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 ) : (
                     <>
 
-                        {/* ========================================================== */}
-                        {/* GEMEINSAME SOLL-BERECHNUNG für RTW-Tab und ITW-Tab        */}
-                        {/* ========================================================== */}
-                        {useMemo(() => {
-                            const computeSharedTargets = () => {
-                                // 1. Flatten Roster for Shared Calculation
-                                const flattenedRoster: any[] = [];
-                                const mergedKeys = Array.from(new Set([...Object.keys(roster || {}), ...Object.keys(localRoster || {})]));
-                                for (const key of mergedKeys) {
-                                    const pid = Number(key.replace(/^[pa]_/, ''));
-                                    const pType = key.startsWith('p_') ? 'person' : 'azubi';
-                                    const rowMap = { ...(roster?.[key] || {}), ...(localRoster?.[key] || {}) };
-                                    for (const [date, cell] of Object.entries(rowMap)) {
-                                        if (cell) {
-                                            flattenedRoster.push({
-                                                date,
-                                                personId: pid,
-                                                personType: pType,
-                                                type: cell.type,
-                                                value: cell.value
-                                            });
-                                        }
-                                    }
-                                }
 
-                                // 2. Calculate Targets using Shared Utility
-                                const targetsByPersonId = calculateTargets(
-                                    year,
-                                    flattenedRoster,
-                                    personnel,
-                                    azubis,
-                                    ue50Ids,
-                                    auswertungByType,
-                                    {
-                                        rtw: rtwVehicles,
-                                        nef: nefVehicles.map(n => ({ ...n, occupancyMode: n.occupancy_mode }))
-                                    },
-                                    { rtwActs: rtwActivations, nefActs: nefActivations },
-                                    department,
-                                    deptPatternSeqs || [],
-                                    hlfbPeriodsByPerson,
-                                    shiftTransfers // <-- Pass loaded transfers here
-                                );
-
-                                // 3. Map Targets to MonthTabs format
-                                const targetYearMap: Record<string, number> = {};
-                                const allocTargetsInMonth: Record<string, number> = {};
-
-                                for (const p of personnel) {
-                                    const key = `p_${p.id}`;
-                                    const t = targetsByPersonId[p.id] || Array(12).fill(0);
-                                    targetYearMap[key] = t.reduce((a, b) => a + b, 0);
-                                    allocTargetsInMonth[key] = t[currentMonth];
-                                }
-
-                                // 4. Calculate Driven/Assigned Stats (Local Logic preserved)
-                                const drivenYearMap: Record<string, number> = {};
-                                const perPersonAssignedWeightedInMonth: Record<string, number> = {};
-                                const perPersonNefInMonth: Record<string, number> = {};
-                                const perPersonItwInMonth: Record<string, number> = {};
-                                const perPersonRtwTagNightYear: Record<string, { tag: number; nacht: number }> = {};
-                                const perPersonRtwTagNightInMonth: Record<string, { tag: number; nacht: number }> = {};
-
-                                const daysInMonth = new Date(year, currentMonth + 1, 0).getDate();
-                                const allMonthDays: string[] = [];
-                                for (let i = 1; i <= daysInMonth; i++) {
-                                    allMonthDays.push(new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0, 10));
-                                }
-
-                                // Helper to get cell from local or global roster
-                                const getCell = (key: string, iso: string) => (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-
-                                // Berechne kumulative Soll/Ist-Werte bis zum aktuellen Monat (einschließlich)
-                                const targetCumulativeMap: Record<string, number> = {};
-                                const drivenCumulativeMap: Record<string, number> = {};
-
-                                for (const p of personnel) {
-                                    const key = `p_${p.id}`;
-                                    const t = targetsByPersonId[p.id] || Array(12).fill(0);
-
-                                    // Summiere Soll-Schichten von Januar bis aktuellen Monat (einschließlich)
-                                    let cumTarget = 0;
-                                    for (let m = 0; m <= currentMonth; m++) {
-                                        cumTarget += t[m];
-                                    }
-                                    targetCumulativeMap[key] = cumTarget;
-
-                                    // Summiere Ist-Schichten von Januar bis aktuellen Monat (einschließlich)
-                                    // Verwende die gleiche Logik wie bei der monatlichen Zählung (RTW/NEF nur an Abteilungstagen)
-                                    let cumDriven = 0;
-                                    for (let mIdx = 0; mIdx <= currentMonth; mIdx++) {
-                                        const dim = new Date(year, mIdx + 1, 0).getDate();
-
-                                        // Ermittle Abteilungstage für diesen Monat
-                                        const deptDays: string[] = [];
-                                        for (let i = 1; i <= dim; i++) {
-                                            const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0, 10);
-                                            const seqs = [...(deptPatternSeqs || [])].sort((a, b) => a.startDate.localeCompare(b.startDate));
-                                            let active = seqs[0];
-                                            for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
-                                            const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
-                                            const cur = new Date(iso + 'T00:00:00Z');
-                                            const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-                                            const pat = active?.pattern || [];
-                                            const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
-                                            if (depDay && String(department) === depDay) deptDays.push(iso);
-                                        }
-
-                                        // Zähle RTW/NEF nur an Abteilungstagen
-                                        for (const iso of deptDays) {
-                                            const cell = getCell(key, iso);
-                                            const t = String(cell?.type || '');
-                                            if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) cumDriven += 1;
-                                            else if (/^nef(\d+)?_assist$/.test(t)) cumDriven += 2;
-                                        }
-
-                                        // ITW zählt an allen Tagen des Monats
-                                        for (let i = 1; i <= dim; i++) {
-                                            const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0, 10);
-                                            const cell = getCell(key, iso);
-                                            const t = String(cell?.type || '');
-                                            if (t.startsWith('itw_row_')) {
-                                                cumDriven += 1;
-                                            }
-                                        }
-                                    }
-                                    drivenCumulativeMap[key] = cumDriven;
-                                }
-
-                                for (const p of (personnel || [])) {
-                                    const key = `p_${p.id}`;
-
-                                    // Yearly Stats
-                                    let sumDrivenY = 0;
-                                    let tagCntY = 0;
-                                    let nachtCntY = 0;
-                                    for (let mIdx = 0; mIdx < 12; mIdx++) {
-                                        const dim = new Date(year, mIdx + 1, 0).getDate();
-                                        for (let i = 1; i <= dim; i++) {
-                                            const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0, 10);
-                                            const cell = getCell(key, iso);
-                                            const t = String(cell?.type || '');
-                                            if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) sumDrivenY += 1;
-                                            else if (t.startsWith('itw_row_')) sumDrivenY += 1;
-                                            else if (/^nef(\d+)?_assist$/.test(t)) sumDrivenY += 2;
-
-                                            if (/^rtw\d+_tag_(1|2)$/.test(t)) tagCntY += 1;
-                                            if (/^rtw\d+_nacht_(1|2)$/.test(t)) nachtCntY += 1;
-                                        }
-                                    }
-                                    drivenYearMap[key] = sumDrivenY;
-                                    perPersonRtwTagNightYear[key] = { tag: tagCntY, nacht: nachtCntY };
-
-                                    // Monthly Stats (aktueller Monat für Soll/Ist)
-                                    let cntM = 0;
-                                    let tagCntM = 0;
-                                    let nachtCntM = 0;
-
-                                    // NEF und ITW Stats für das GESAMTE JAHR
-                                    let nefCntYear = 0;
-                                    let itwCntYear = 0;
-
-                                    // Filter days where department is active (aktueller Monat)
-                                    const monthDeptIsos: string[] = (() => {
-                                        const list: string[] = [];
-                                        for (let i = 1; i <= daysInMonth; i++) {
-                                            const iso = new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0, 10);
-                                            const seqs = [...(deptPatternSeqs || [])].sort((a, b) => a.startDate.localeCompare(b.startDate));
-                                            let active = seqs[0];
-                                            for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
-                                            const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
-                                            const cur = new Date(iso + 'T00:00:00Z');
-                                            const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-                                            const pat = active?.pattern || [];
-                                            const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
-                                            if (depDay && String(department) === depDay) list.push(iso);
-                                        }
-                                        return list;
-                                    })();
-
-                                    for (const iso of monthDeptIsos) {
-                                        const cell = getCell(key, iso);
-                                        const t = String(cell?.type || '');
-                                        if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) cntM += 1;
-                                        if (/^rtw\d+_tag_(1|2)$/.test(t)) tagCntM += 1;
-                                        if (/^rtw\d+_nacht_(1|2)$/.test(t)) nachtCntM += 1;
-                                        else if (/^nef(\d+)?_assist$/.test(t)) cntM += 2;
-                                    }
-                                    // ITW counts (aktueller Monat) - zählt für cntM
-                                    for (const iso of allMonthDays) {
-                                        const cell = getCell(key, iso);
-                                        const t = String(cell?.type || '');
-                                        if (t.startsWith('itw_row_')) {
-                                            cntM += 1;
-                                        }
-                                    }
-
-                                    // NEF und ITW für GESAMTES JAHR zählen
-                                    for (let mIdx = 0; mIdx < 12; mIdx++) {
-                                        const dim = new Date(year, mIdx + 1, 0).getDate();
-
-                                        // NEF an Abteilungstagen
-                                        for (let i = 1; i <= dim; i++) {
-                                            const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0, 10);
-                                            // Prüfe ob Abteilungstag
-                                            const seqs = [...(deptPatternSeqs || [])].sort((a, b) => a.startDate.localeCompare(b.startDate));
-                                            let active = seqs[0];
-                                            for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
-                                            const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
-                                            const cur = new Date(iso + 'T00:00:00Z');
-                                            const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-                                            const pat = active?.pattern || [];
-                                            const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
-
-                                            if (depDay && String(department) === depDay) {
-                                                const cell = getCell(key, iso);
-                                                const t = String(cell?.type || '');
-                                                if (/^nef(\d+)?_assist$/.test(t)) nefCntYear += 2;
-                                            }
-                                        }
-
-                                        // ITW an allen Tagen
-                                        for (let i = 1; i <= dim; i++) {
-                                            const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0, 10);
-                                            const cell = getCell(key, iso);
-                                            const t = String(cell?.type || '');
-                                            if (t.startsWith('itw_row_')) itwCntYear += 1;
-                                        }
-                                    }
-
-                                    perPersonAssignedWeightedInMonth[key] = cntM;
-                                    perPersonRtwTagNightInMonth[key] = { tag: tagCntM, nacht: nachtCntM };
-                                    perPersonNefInMonth[key] = nefCntYear;  // Jetzt Jahressumme
-                                    perPersonItwInMonth[key] = itwCntYear;  // Jetzt Jahressumme
-                                }
-
-                                return {
-                                    targetYearMap,
-                                    drivenYearMap,
-                                    allocTargetsInMonth,
-                                    perPersonAssignedWeightedInMonth,
-                                    perPersonNefInMonth,
-                                    perPersonItwInMonth,
-                                    perPersonRtwTagNightYear,
-                                    targetCumulativeMap,
-                                    drivenCumulativeMap
-                                };
-                            };
-
-                            const result = computeSharedTargets();
-                            (window as any).__sharedTargets = result;
-                            return null;
-                        }, [year, roster, localRoster, personnel, azubis, ue50Ids, auswertungByType,
-                            rtwVehicles, nefVehicles, rtwActivations, nefActivations, department,
-                            deptPatternSeqs, hlfbPeriodsByPerson, shiftTransfers, currentMonth])}
 
                         {viewMode === 'rtwnef' && (
                             <>
@@ -1461,6 +1533,26 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                             {(() => {
                                                 const dt = new Date(d.date + 'T00:00:00');
                                                 const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }); // DD.MM
+
+                                                let commentCount = 0;
+                                                let tooltipParts: string[] = [];
+
+                                                if (globalComments.has(d.date)) {
+                                                    commentCount++;
+                                                    tooltipParts.push(`Global: ${globalComments.get(d.date)?.comment}`);
+                                                }
+
+                                                personalComments.forEach((c, key) => {
+                                                    if (key.endsWith(`_${d.date}`)) {
+                                                        commentCount++;
+                                                        const pId = Number(key.split('_')[0]);
+                                                        const pName = personnel.find(p => p.id === pId)?.name || 'Jemand';
+                                                        tooltipParts.push(`${pName}: ${c.comment}`);
+                                                    }
+                                                });
+
+                                                const tooltipText = tooltipParts.join('\n');
+
                                                 return (
                                                     <div style={{
                                                         position: 'sticky',
@@ -1473,9 +1565,33 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                         padding: '2px 0',
                                                         borderRadius: dayHighlightColor ? 4 : 0,
                                                         paddingLeft: dayHighlightColor ? 6 : 0,
-                                                        paddingRight: dayHighlightColor ? 6 : 0
+                                                        paddingRight: dayHighlightColor ? 6 : 0,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px'
                                                     }}>
-                                                        {label} <small style={{ fontWeight: 400 }}>({d.weekday})</small>
+                                                        <span>{label} <small style={{ fontWeight: 400 }}>({d.weekday})</small></span>
+                                                        {commentCount > 0 && (
+                                                            <div
+                                                                title={tooltipText}
+                                                                onClick={() => setActiveCommentsData({ dateStr: label, comments: tooltipParts })}
+                                                                style={{
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    width: '16px',
+                                                                    height: '16px',
+                                                                    background: '#dc3545',
+                                                                    color: 'white',
+                                                                    borderRadius: '50%',
+                                                                    fontSize: '10px',
+                                                                    fontWeight: 'bold',
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                            >
+                                                                {commentCount}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 );
                                             })()}
@@ -1730,6 +1846,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         perPersonNefInMonth,
                                         perPersonItwInMonth,
                                         perPersonRtwTagNightYear,
+                                        perPersonWeekendInYear,
                                         targetCumulativeMap,
                                         drivenCumulativeMap
                                     } = (window as any).__sharedTargets || {};
@@ -1754,8 +1871,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
                                         const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                                         const ue50 = (p as any).ue50 === 1;
+                                        const lpal = lpalIds.has(p.id);
                                         const total = tn.tag + tn.nacht + nef + itw;
                                         const oldRtwShifts = (p as any).old_rtw_shifts || 0;
+                                        const weekend = perPersonWeekendInYear[key] || 0;
 
                                         // Prüfe ob für diesen Monat eine Übernahme vorliegt
                                         const hasTransfer = (shiftTransfers || []).some((t: any) => {
@@ -1764,7 +1883,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                             return ty === year && tm === (currentMonth + 1);
                                         });
 
-                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, cumDiff, teilzeit, hlfb, ue50, total, oldRtwShifts, hasTransfer } as { key: string, name: string, target: number | string, count: number, tag: number, nacht: number, nef: number, itw: number, rest: number, cumDiff: number, teilzeit: number, hlfb: boolean, ue50: boolean, total: number, oldRtwShifts: number, hasTransfer: boolean };
+                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, weekend, rest, cumDiff, teilzeit, hlfb, ue50, lpal, total, oldRtwShifts, hasTransfer } as any;
                                     });
                                     // Farbliche Hervorhebung: nur Personen mit Monats-Soll > 0 berücksichtigen, Rest (Jahr) auf 100%-Äquivalent normalisieren
                                     const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
@@ -1847,6 +1966,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                             <Kontrollkasten
                                                 items={items}
                                                 showOldRtwShifts={featureOldRtwShifts}
+                                                showWeekendShifts={showWeekendShifts}
                                                 highlightedPersonKey={highlightedPersonKey}
                                                 setHighlightedPersonKey={setHighlightedPersonKey}
                                                 mixColor={mixColor}
@@ -2086,7 +2206,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         perPersonAssignedWeightedInMonth: {},
                                         perPersonNefInMonth: {},
                                         perPersonItwInMonth: {},
-                                        perPersonRtwTagNightYear: {}
+                                        perPersonRtwTagNightYear: {},
+                                        perPersonWeekendInYear: {}
                                     };
                                     const {
                                         targetYearMap,
@@ -2096,6 +2217,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         perPersonNefInMonth,
                                         perPersonItwInMonth,
                                         perPersonRtwTagNightYear,
+                                        perPersonWeekendInYear,
                                         targetCumulativeMap,
                                         drivenCumulativeMap
                                     } = sharedTargets;
@@ -2117,9 +2239,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
                                         const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                                         const ue50 = (p as any).ue50 === 1;
+                                        const lpal = lpalIds.has(p.id);
                                         const oldRtwShifts = (p as any).oldRtwShifts || 0;
+                                        const weekend = perPersonWeekendInYear[key] || 0;
                                         const total = tn.tag + tn.nacht + nef + itw;
-                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, rest, cumDiff, teilzeit, hlfb, ue50, total, oldRtwShifts } as any;
+                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, weekend, rest, cumDiff, teilzeit, hlfb, ue50, lpal, total, oldRtwShifts } as any;
                                     });
                                     const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
                                     const eligible = itemsWithIndex.filter(it => typeof it.target === 'number' && (it.target as number) > 0);
@@ -2258,6 +2382,53 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 )}
             </div>
             {/* Ende Content-Bereich mit padding-top */}
+
+            {/* Kommentar-Modal */}
+            {activeCommentsData && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 9999
+                }} onClick={() => setActiveCommentsData(null)}>
+                    <div style={{
+                        background: 'var(--bg)',
+                        color: 'var(--fg)',
+                        padding: '20px',
+                        borderRadius: '8px',
+                        minWidth: '300px',
+                        maxWidth: '500px',
+                        boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
+                    }} onClick={e => e.stopPropagation()}>
+                        <h3 style={{ marginTop: 0, marginBottom: '15px' }}>Kommentare ({activeCommentsData.dateStr})</h3>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '60vh', overflowY: 'auto' }}>
+                            {activeCommentsData.comments.map((comment, idx) => (
+                                <div key={idx} style={{
+                                    padding: '10px',
+                                    background: idx % 2 === 1 ? 'var(--hover, #f3f4f6)' : 'transparent',
+                                    borderRadius: '6px',
+                                    whiteSpace: 'pre-wrap'
+                                }}>
+                                    {comment}
+                                </div>
+                            ))}
+                        </div>
+                        <div style={{ marginTop: '20px', textAlign: 'right' }}>
+                            <button onClick={() => setActiveCommentsData(null)} style={{
+                                padding: '8px 16px',
+                                background: '#dc3545',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer'
+                            }}>Schließen</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

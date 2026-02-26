@@ -94,6 +94,13 @@ const EinteilungPage: React.FC = () => {
         if (setting) ue50QualName = String(setting);
       } catch { }
 
+      // Lade LPAL Qualifikationstyp aus Settings
+      let lpalQualName = 'LPAL'; // Fallback
+      try {
+        const setting = await (window as any).api.getSetting('lpal_qualification_type');
+        if (setting) lpalQualName = String(setting);
+      } catch { }
+
       // Lade RTW und NEF Fahrzeuge um die konfigurierten Qualifikationen zu ermitteln
       const rtwVehicles = await (window as any).api.getRtwVehicles?.() || [];
       const nefVehicles = await (window as any).api.getNefVehicles?.() || [];
@@ -169,12 +176,21 @@ const EinteilungPage: React.FC = () => {
             (!p.endYM || p.endYM >= yearMonth)
           );
 
+          // Prüfe, ob Person LPAL-Qualifikation hat (wie Ü50, aber orange)
+          const hasLpal = periods.some((p: any) =>
+            p.active &&
+            p.qualType === lpalQualName &&
+            p.startYM <= yearMonth &&
+            (!p.endYM || p.endYM >= yearMonth)
+          );
+
           return {
             ...person,
             fahrzeugfuehrer: hasFahrzeugfuehrer ? 1 : person.fahrzeugfuehrer,
             nef: hasNef ? 1 : person.nef,
             fahrzeugfuehrerHLFB: hasHLFB ? 1 : person.fahrzeugfuehrerHLFB,
-            ue50: hasUe50 ? 1 : 0,  // Neues Feld für Ü50-Status
+            ue50: hasUe50 ? 1 : 0,  // Ü50-Status
+            lpal: hasLpal ? 1 : 0,  // LPAL-Status
             oldRtwShifts: person.old_rtw_shifts || 0 // Aus Altsystem
           };
         } catch {
@@ -256,7 +272,7 @@ const EinteilungPage: React.FC = () => {
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '1fr 380px',
+        gridTemplateColumns: '1fr auto',
         gap: 12,
         alignItems: 'start'
       }}
@@ -280,13 +296,13 @@ const EinteilungPage: React.FC = () => {
       <div
         id="einteilung-right-sidebar"
         style={{
-          position: 'fixed',
+          position: 'sticky',
           top: 'clamp(56px, 6.5vw, 90px)',
-          right: 8,
-          width: 380,
+          justifySelf: 'end',
+          width: 'max-content',
           height: 'calc(100vh - clamp(56px, 6.5vw, 90px))',
           overflowY: 'auto',
-          overflowX: 'hidden'
+          overflowX: 'auto'
         }}
       />
     </div>

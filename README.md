@@ -7,7 +7,7 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v1.0.5 RC** - Schichtübernahme (Shift Transfer) mit monatsbasierter Logik und Persistenz-Fixes
+**v1.0.8 RC** - Stabilisierte Kommentar-Workflows, vereinfachter Jahresimport und erweiterte Import/Export-Integrität
 
 ## Funktionen
 
@@ -130,13 +130,19 @@ Hinweis für Administratoren: Wenn du die Anwendung paketieren oder für andere 
 
 ## Entwicklungsstatus
 
-**Version 1.0.5 RC** - Aktive Entwicklung (Release Candidate)
+**Version 1.0.8 RC** - Aktive Entwicklung (Release Candidate)
 
-Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangreichen Feature-Set. Die aktuelle Version 1.0.5 RC führt die **Schichtübernahme (Shift Transfer)**, das **Authentifizierungs- & Rechteverwaltungssystem**, das **Azubi-Zeiträume-Management**, das **Person-Highlighting** und die **Cross-Tab-Navigation** ein. Zudem bietet sie erweiterte Import-Funktionen mit Datenschutz und eine moderne Tab-basierte Personal-Verwaltung.
+Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangreichen Feature-Set. Die aktuelle Version 1.0.8 RC erweitert die bestehenden Kernfunktionen um stabilere Kommentar-Dialoge im Dienstplan, eine vereinfachte Jahresimport-UX in den Einstellungen und einen verlustfreien Personal-Import/Export-Roundtrip (inkl. Zeiträumen und Qualifikationen).
 
 **Produktionstauglichkeit**: Die Anwendung wird bereits in mehreren Rettungswachen erfolgreich eingesetzt. Für kritische Umgebungen wird empfohlen, die Funktionen vorab zu testen und regelmäßige Datensicherungen durchzuführen.
 
-**Neue Features in v1.0.5 RC**:
+**Neue Features in v1.0.8 RC**:
+- ✅ **Kommentar-Dialoge im Dienstplan**: Hinzufügen/Bearbeiten/Löschen ohne Browser-`prompt()`, robust in Electron-Umgebungen
+- ✅ **Kommentar-Badge in der Einteilung**: Roter iOS-ähnlicher Zählerpunkt mit Anzahl der Kommentare pro Tag (`99+`)
+- ✅ **Vereinfachter Jahresimport (Einstellungen)**: Fokus auf Jahr + Importbutton, Backup-Erstellung automatisch vor Import
+- ✅ **Aufgeräumte Import-Aktionen in Settings**: Entfernte nicht mehr benötigte Schnellaktionen (Import/Export, Vorschau, Backup-Wiederherstellung)
+- ✅ **Import/Export-Integrität Personal**: Qualifikations- und Aktivitätszeiträume bleiben beim Roundtrip erhalten
+- ✅ **Robustes Azubi-Periodenhandling**: Kein `NULL end_date` nach Import
 - ✅ **Schichtübernahme (Shift Transfer)**: Gezielte Übertragung von SOLL-Schichten zwischen Kollegen
 - ✅ **Monats-basierte Logik**: Einfache Verwaltung pro Monat (YYYY-MM)
 - ✅ **Performance-Optimierung**: Gecachte Berechnungen via `useMemo` für maximale Responsivität
@@ -159,7 +165,6 @@ Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangrei
 
 
 **In Vorbereitung**:
-- 🔄 **Kommentar-System**: Erweiterte Funktionen für globale Hinweise (Issue #22)
 - 🔄 **Makros**: Wiederkehrende Dienstplan-Einträge automatisieren (Issue #23)
 
 ## Verwendung
@@ -168,7 +173,7 @@ Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangrei
 Starte die portable EXE direkt (Windows):
 
 ```bash
-./RD-Plan-1.0.5-RC.exe
+./RD-Plan-1.0.8-RC.exe
 ```
 
 ### Erste Schritte
@@ -297,6 +302,14 @@ Die Schichtübernahme ermöglicht es, SOLL-Schichten gezielt zwischen Mitarbeite
 - ✅ **Sichere IPC**: Erweiterte Electron preload APIs für Auth-Kommunikation
 - ✅ **UI-Verbesserungen**: Login-Seite, Benutzer-Anzeige in Header, Logout-Funktion
 
+### Version 1.0.8 RC (Februar 2026) - Aktuell
+- ✅ **Kommentar-Dialog statt Browser-Prompt**: Stabiler Workflow für globale und individuelle Kommentare im Dienstplan
+- ✅ **Kommentaranzeige in Einteilung**: Roter Badge mit Kommentaranzahl pro Tag (iOS-ähnlich)
+- ✅ **Jahresimport vereinfacht**: In den Einstellungen nur noch Jahrsauswahl + Import, Backup wird immer erstellt
+- ✅ **Settings-UI aufgeräumt**: Nicht mehr benötigte Import/Export-/Vorschau-/Restore-Schnellaktionen entfernt
+- ✅ **Personal-Roundtrip stabilisiert**: `qualification_periods` und `personnel_active_periods` bleiben vollständig erhalten
+- ✅ **Import-Mapping gehärtet**: Kollisionsfreie Header für Personal-Aktivitätsfelder inkl. Rückwärtskompatibilität
+
 ### Version 1.0.0 Build 494 (Dezember 2025)
 - ✅ **Tab-Navigation Personal**: Übersichtliche Aufteilung in Stammpersonal, Azubis und Ärzte
 - ✅ **Qualifikationsmanagement**: Direkte Verwaltung von Qualifikationen beim Erstellen von Personen
@@ -320,11 +333,10 @@ Die Schichtübernahme ermöglicht es, SOLL-Schichten gezielt zwischen Mitarbeite
 - ✅ **Teilzeit-Support**: Excel-Export/-Import mit Teilzeit-Prozentangaben
 
 ### Geplante Features
-- 🔄 **Kommentar-System** (Issue #22): Persönliche und globale Kommentare für Dienstplan-Tage
-  - Persönliche Notizen pro Kollege und Tag
-  - Globale Hinweise für alle Kollegen
+- ✅ **Kommentar-System** (Issue #22): Persönliche und globale Kommentare für Dienstplan-Tage
   - Kontextmenü-Integration im Dienstplan-Grid
-  - Visuelle Indikatoren für kommentierte Tage
+  - Dialog-basierte Erfassung/Bearbeitung
+  - Visuelle Indikatoren inklusive Badge in der Einteilung
 - ✅ **Schichtübernahme-Feature** (Issue #21): Gezielte Verteilung von Zusatzschichten
   - Übertragung von Schichten zwischen Kollegen pro Monat
   - Automatische SOLL-Anpassung für Übernehmer

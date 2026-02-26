@@ -4,34 +4,41 @@
   flex-wrap: nowrap;
   align-items: flex-start;
 }
+
 .rtw {
   display: flex;
   gap: 8px;
   align-items: flex-start;
 }
+
 .rtwLabel {
   font-size: 11px;
   color: var(--muted);
   width: 60px;
 }
+
 .col {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
+
 .colHeader {
   font-size: 11px;
   color: var(--text);
 }
+
 .select {
   min-width: 120px;
   height: 28px;
   padding: 2px 6px;
   box-sizing: border-box;
 }
+
 .selectWide {
   min-width: 180px;
 }
+
 .nef {
   display: flex;
   flex-direction: column;
@@ -50,7 +57,8 @@
 /* row labels removed - left column placeholder removed from markup */
 
 .rtwWrapper {
-  width: 332px; /* two selects (160 + 160) + gap (12) */
+  width: 332px;
+  /* two selects (160 + 160) + gap (12) */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -75,8 +83,10 @@
 /* Neue Tabellen-Layouts für RTW/NEF-Ansicht */
 .rtwTable {
   display: grid;
-  grid-template-columns: 60px 1fr 1fr; /* Label | Tag | Nacht */
-  gap: 6px; /* wie ITW */
+  grid-template-columns: 60px 1fr 1fr;
+  /* Label | Tag | Nacht */
+  gap: 6px;
+  /* wie ITW */
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -84,11 +94,13 @@
   margin-bottom: 8px;
   min-width: 320px;
   background: var(--bg);
-  border-right: 2px solid #ef4444; 
+  border-right: 2px solid #ef4444;
 }
+
 .nefTable {
   display: grid;
-  grid-template-columns: 60px 1fr; /* Label | Spalte ohne Überschrift */
+  grid-template-columns: 60px 1fr;
+  /* Label | Spalte ohne Überschrift */
   gap: 6px 6px;
   padding: 8px;
   border: 1px solid var(--line);
@@ -97,14 +109,16 @@
   margin-bottom: 8px;
   min-width: 220px;
   background: var(--bg);
-  border-right: 2px solid #ef4444; 
+  border-right: 2px solid #ef4444;
 }
+
 .tableHead {
   font-size: 11px;
   color: var(--muted);
   text-align: center;
   font-weight: 600;
 }
+
 .tableHeadFull {
   grid-column: 1 / -1;
   font-size: 12px;
@@ -112,6 +126,7 @@
   text-align: left;
   margin-bottom: 2px;
 }
+
 .vehicleNameHeader {
   grid-column: 1 / -1;
   font-size: 13px;
@@ -122,7 +137,11 @@
   padding-bottom: 4px;
   border-bottom: 1px solid var(--line);
 }
-.tableHeadEmpty { min-height: 1px; }
+
+.tableHeadEmpty {
+  min-height: 1px;
+}
+
 .rowLabel {
   font-size: 11px;
   color: var(--text);
@@ -138,29 +157,34 @@
   align-items: flex-end;
   margin: 4px 0 8px 0;
 }
+
 .globalHeaderGroup {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
 }
+
 .globalHeaderTitle {
   font-size: 12px;
   color: var(--muted);
   font-weight: 600;
   text-align: center;
 }
+
 .globalHeaderCols {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-  width: 332px; /* exakt zwei Select-Spalten inkl. Gap */
+  width: 332px;
+  /* exakt zwei Select-Spalten inkl. Gap */
 }
 
 .globalHeaderColsSingle {
   display: grid;
   grid-template-columns: 1fr;
-  width: 160px; /* exakt eine Select-Spalte */
+  width: 160px;
+  /* exakt eine Select-Spalte */
 }
 
 /* ITW Rack Grid (3 x 5 Karten) */
@@ -169,12 +193,14 @@
   flex-direction: column;
   gap: 16px;
 }
+
 /* ITW Raster: 3 Spalten mit fester Mindestbreite */
 .itwRack {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 220px));
   gap: 12px;
 }
+
 .itwCard {
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -186,6 +212,7 @@
   border-right: 2px solid #f59e0b;
   margin-right: 8px;
 }
+
 .itwCardHeader {
   font-size: inherit;
   color: var(--text);
@@ -194,32 +221,49 @@
   margin-bottom: 6px;
   padding: 2px 0;
 }
+
 .itwCardWrap {
   display: flex;
   flex-direction: column;
   min-width: 220px;
   flex-shrink: 0;
 }
+
 .itwDivider {
   height: 2px;
-  background: #f59e0b; /* amber-500 */
+  background: #f59e0b;
+  /* amber-500 */
   border-radius: 1px;
   width: 100%;
   margin: 4px 0 8px 0;
 }
-.itwRow { display: grid; grid-template-columns: 60px 1fr; gap: 6px; align-items: center; }
-.itwRoleLabel { font-size: 11px; color: var(--text); text-align: right; padding-right: 6px; }
+
+.itwRow {
+  display: grid;
+  grid-template-columns: 60px 1fr;
+  gap: 6px;
+  align-items: center;
+}
+
+.itwRoleLabel {
+  font-size: 11px;
+  color: var(--text);
+  text-align: right;
+  padding-right: 6px;
+}
 
 /* Layout: Einteilung + Kontrollkasten */
 .layoutRow {
   display: grid;
-  grid-template-columns: 1fr 300px;
+  grid-template-columns: 1fr auto;
   gap: 12px;
   align-items: start;
 }
+
 .assignCol {
   min-width: 0;
 }
+
 .sidebar {
   border-left: 1px solid var(--line);
   background: var(--bg);
@@ -231,29 +275,35 @@
   width: 100%;
   z-index: 1;
 }
+
 .sidebarTitle {
   font-weight: 700;
   font-size: 14px;
   color: var(--text);
 }
+
 .sidebarSub {
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 6px;
 }
+
 .sidebarList {
   display: flex;
   flex-direction: column;
   gap: 0;
 }
+
 .sidebarItem {
   /* Grid layout is defined inline */
   display: grid;
 }
+
 .sidebarName {
   font-size: 12px;
   color: var(--text);
 }
+
 .sidebarVal {
   font-size: 12px;
   color: var(--text);
@@ -268,6 +318,7 @@
   gap: 6px;
   margin-bottom: 10px;
 }
+
 .tab,
 .toggleBtn {
   display: inline-flex;
@@ -280,15 +331,27 @@
   color: var(--text);
   cursor: pointer;
 }
+
 .tab:hover,
-.toggleBtn:hover { background: var(--hover); }
-.tabActive { background: var(--hover); }
-.toggleGroup { display: flex; gap: 8px; margin-bottom: 12px; }
+.toggleBtn:hover {
+  background: var(--hover);
+}
+
+.tabActive {
+  background: var(--hover);
+}
+
+.toggleGroup {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
 
 /* Rote Trennlinie unter dem Datum (RTW/NEF) */
 .dayDivider {
   height: 2px;
-  background: #ef4444; /* red-500 */
+  background: #ef4444;
+  /* red-500 */
   border-radius: 1px;
   width: 100%;
   margin: 4px 0 8px 0;

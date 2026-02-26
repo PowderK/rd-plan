@@ -85,6 +85,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [originalRoles, setOriginalRoles] = useState<any[] | null>(null);
   // Ü50 Qualifikationszuordnung (keine Soll/Ist-Berechnung, rot im Kontrollfeld)
   const [ue50QualificationType, setUe50QualificationType] = useState<string>('Ü50');
+  // LPAL Qualifikationszuordnung (wie Ü50, aber orange im Kontrollfeld)
+  const [lpalQualificationType, setLpalQualificationType] = useState<string>('LPAL');
   // Rettungsdienst Qualifikationszuordnung (Grundvoraussetzung)
   const [rettungsdienstQualificationType, setRettungsdienstQualificationType] = useState<string>('Rettungsdienst');
   // Year Import Dialog States
@@ -92,15 +94,16 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [yearImportUnknownShiftTypes, setYearImportUnknownShiftTypes] = useState<string[]>([]);
   const [yearImportPendingYear, setYearImportPendingYear] = useState<number>(0);
 
+  const [showWeekendShifts, setShowWeekendShifts] = useState<boolean>(false);
+
   const [showYearImportAzubiDialog, setShowYearImportAzubiDialog] = useState(false);
   const [yearImportUnknownAzubiNames, setYearImportUnknownAzubiNames] = useState<string[]>([]);
-  // System Info
-  const [systemUsername, setSystemUsername] = useState<string>('Lädt...');
   // Feature toggles
   const [featureOldRtwShifts, setFeatureOldRtwShifts] = useState(false);
   const [featureShiftTransfers, setFeatureShiftTransfers] = useState(false);
   const [showShiftTransferManager, setShowShiftTransferManager] = useState(false);
-
+  // System Info
+  const [systemUsername, setSystemUsername] = useState<'Lädt...' | string>('Lädt...');
 
   useEffect(() => {
     (async () => {
@@ -179,7 +182,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       } catch { }
       // Feiertage laden
       try {
-        const list = await (window as any).api.getHolidaysForYear?.(Number(year || new Date().getFullYear()));
+        const list = await (window as any).api.getHolidaysForYear?.(new Date().getFullYear());
         setHolidays((list || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
       } catch { }
 
@@ -207,12 +210,28 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         // console.error('Failed to load Ü50 qualification type:', e);
       }
 
+      // Load LPAL qualification type setting
+      try {
+        const lpalQual = await (window as any).api.getSetting('lpal_qualification_type');
+        if (lpalQual) setLpalQualificationType(String(lpalQual));
+      } catch (e) {
+        // console.error('Failed to load LPAL qualification type:', e);
+      }
+
       // Load Rettungsdienst qualification type setting
       try {
         const rdQual = await (window as any).api.getSetting('rettungsdienst_qualification_type');
         if (rdQual) setRettungsdienstQualificationType(String(rdQual));
       } catch (e) {
         // console.error('Failed to load Rettungsdienst qualification type:', e);
+      }
+
+      // Load show weekend shifts setting
+      try {
+        const sws = await (window as any).api.getSetting('show_weekend_shifts');
+        if (sws === 'true') setShowWeekendShifts(true);
+      } catch (e) {
+        // console.error('Failed to load show_weekend_shifts:', e);
       }
 
       // Load roles
@@ -226,6 +245,17 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         // console.error('Failed to load roles:', e);
       }
 
+      // Load feature toggles
+      try {
+        const val = await (window as any).api.getSetting('feature_old_rtw_shifts');
+        setFeatureOldRtwShifts(val === 'true');
+      } catch { }
+
+      try {
+        const val = await (window as any).api.getSetting('feature_shift_transfers');
+        setFeatureShiftTransfers(val === 'true');
+      } catch { }
+
       setShiftTypesLoading(false);
       setLoading(false);
       try {
@@ -234,22 +264,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
           setDbConfig({ currentPath: cfg.currentPath || null, configuredDir: cfg.configuredDir || null, defaults: cfg.defaults });
           setDbDirInput((cfg.configuredDir || cfg.defaults?.appDir || ''));
         }
-      } catch { }
-
-      // Load feature_old_rtw_shifts
-      try {
-        const feat = await (window as any).api.getSetting('feature_old_rtw_shifts');
-        setFeatureOldRtwShifts(feat === 'true' || feat === true);
-      } catch { }
-      try {
-        const feat = await (window as any).api.getSetting('feature_old_rtw_shifts');
-        setFeatureOldRtwShifts(feat === 'true' || feat === true);
-      } catch { }
-
-      // Load feature_shift_transfers
-      try {
-        const feats = await (window as any).api.getSetting('feature_shift_transfers');
-        setFeatureShiftTransfers(feats === 'true' || feats === true);
       } catch { }
     })();
   }, []);    // Fahrzeug-UI entfernt
@@ -260,10 +274,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     // year wird nicht mehr als Setting gespeichert - direkt im Dienstplan/Werte gewählt
     await (window as any).api.setSetting('hlfb_qualification_type', hlfbQualificationType);
     await (window as any).api.setSetting('ue50_qualification_type', ue50QualificationType);
+    await (window as any).api.setSetting('lpal_qualification_type', lpalQualificationType);
     await (window as any).api.setSetting('rettungsdienst_qualification_type', rettungsdienstQualificationType);
     // Anzahl RTW/NEF leitet sich aus den Einträgen ab – keine separaten Settings mehr
     // ITW wird im Fahrzeuge-Menü gesetzt
     await (window as any).api.setSetting('department', String(department));
+    await (window as any).api.setSetting('show_weekend_shifts', showWeekendShifts ? 'true' : 'false');
+    await (window as any).api.setSetting('feature_old_rtw_shifts', featureOldRtwShifts ? 'true' : 'false');
+    await (window as any).api.setSetting('feature_shift_transfers', featureShiftTransfers ? 'true' : 'false');
     // save per-shift-type auswertung settings
     for (const code of Object.keys(auswertungByType)) {
       await (window as any).api.setSetting(`auswertung_${code}`, auswertungByType[code]);
@@ -293,15 +311,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
       } catch { }
     } catch { }
-
-    // Save feature_old_rtw_shifts
-    await (window as any).api.setSetting('feature_old_rtw_shifts', String(featureOldRtwShifts));
-    // Save feature_old_rtw_shifts
-    await (window as any).api.setSetting('feature_old_rtw_shifts', String(featureOldRtwShifts));
-
-    // Save feature_shift_transfers
-    await (window as any).api.setSetting('feature_shift_transfers', String(featureShiftTransfers));
-
     onClose();
   };
 
@@ -687,26 +696,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               </div>
             </div>
 
-            {/* Feature Toggles */}
-            <div style={{ marginBottom: 16, padding: 12, background: '#f8f9fa', borderRadius: 8 }}>
-              <h3 style={{ marginTop: 0 }}>Funktionen</h3>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-                <input
-                  type="checkbox"
-                  id="featureOldRtwShifts"
-                  checked={featureOldRtwShifts}
-                  onChange={(e) => setFeatureOldRtwShifts(e.target.checked)}
-                  style={{ marginRight: 8 }}
-                />
-                <label htmlFor="featureOldRtwShifts" style={{ cursor: 'pointer' }}>
-                  <strong>Alte RTW-Schichten Tracking aktivieren</strong>
-                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
-                    Ermöglicht die Erfassung von Schichten aus einem Altsystem in den Personaleinstellungen und zeigt diese im Dienstplan an.
-                  </div>
-                </label>
-              </div>
-            </div>
-
             <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
               <button onClick={async () => {
                 try {
@@ -877,6 +866,66 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                   </select>
                 </label>
               </div>
+            </div>
+
+            {/* Darstellung / Optionen */}
+            <div style={{ marginBottom: 24 }}>
+              <h3>Darstellung</h3>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input type="checkbox" checked={showWeekendShifts} onChange={e => setShowWeekendShifts(e.target.checked)} />
+                  Wochenend-Schichten (Sa/So) im Kontrollkasten zählen und farblich (Ampel) anzeigen
+                </label>
+              </div>
+            </div>
+
+            {/* Zusätzliche Funktionen */}
+            <div style={{ marginBottom: 24, padding: 12, background: '#f8f9fa', borderRadius: 8 }}>
+              <h3 style={{ marginTop: 0 }}>Funktionen</h3>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  id="featureOldRtwShifts"
+                  checked={featureOldRtwShifts}
+                  onChange={(e) => setFeatureOldRtwShifts(e.target.checked)}
+                  style={{ marginRight: 8 }}
+                />
+                <label htmlFor="featureOldRtwShifts" style={{ cursor: 'pointer' }}>
+                  <strong>Alte RTW-Schichten Tracking aktivieren</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                    Ermöglicht die Erfassung von Schichten aus einem Altsystem in den Personaleinstellungen und zeigt diese im Dienstplan an.
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* Schichtübernahmen */}
+            <div style={{ marginBottom: 24, padding: 12, background: '#f8f9fa', borderRadius: 8, border: '1px solid #dee2e6' }}>
+              <h3 style={{ marginTop: 0 }}>Schichtübernahmen</h3>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                <input
+                  type="checkbox"
+                  id="featureShiftTransfers"
+                  checked={featureShiftTransfers}
+                  onChange={(e) => setFeatureShiftTransfers(e.target.checked)}
+                  style={{ marginRight: 8 }}
+                />
+                <label htmlFor="featureShiftTransfers" style={{ cursor: 'pointer' }}>
+                  <strong>Gezielte Schichtübernahme aktivieren</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                    Erlaubt die Übertragung von SOLL-Schichten zwischen Mitarbeitern.
+                  </div>
+                </label>
+              </div>
+
+              {featureShiftTransfers && (
+                <button
+                  onClick={() => setShowShiftTransferManager(true)}
+                  style={{ padding: '6px 12px', background: '#007bff', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                >
+                  Verwalten…
+                </button>
+              )}
             </div>
 
             {/* Jahresspezifische Vorplanungsdateien */}
@@ -1057,35 +1106,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                     </button>
                   </div>
                 </div>
-              )}
-            </div>
-
-            {/* Shift Transfers */}
-            <div style={{ marginBottom: 24, padding: 12, background: '#f8f9fa', borderRadius: 8, border: '1px solid #dee2e6' }}>
-              <h3 style={{ marginTop: 0 }}>Schichtübernahmen</h3>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-                <input
-                  type="checkbox"
-                  id="featureShiftTransfers"
-                  checked={featureShiftTransfers}
-                  onChange={(e) => setFeatureShiftTransfers(e.target.checked)}
-                  style={{ marginRight: 8 }}
-                />
-                <label htmlFor="featureShiftTransfers" style={{ cursor: 'pointer' }}>
-                  <strong>Gezielte Schichtübernahme aktivieren</strong>
-                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
-                    Erlaubt die Übertragung von SOLL-Schichten zwischen Mitarbeitern.
-                  </div>
-                </label>
-              </div>
-
-              {featureShiftTransfers && (
-                <button
-                  onClick={() => setShowShiftTransferManager(true)}
-                  style={{ padding: '6px 12px', background: '#007bff', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-                >
-                  Verwalten…
-                </button>
               )}
             </div>
 
@@ -1330,14 +1350,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                               if (!editingItwPatterns) return;
                               const v = e.target.value;
                               setItwPatternSeqs(prev => prev.map((x, i) => i === idx ? { ...x, startDate: v } : x).sort((a, b) => a.startDate.localeCompare(b.startDate)));
-                            }}
-                            onClick={e => e.stopPropagation()} />
+                            }} />
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             {Array.from({ length: 21 }).map((_, i) => (
                               <select key={i} value={s.pattern[i] || ''} disabled={!editingItwPatterns}
-                                onClick={e => e.stopPropagation()}
                                 onChange={e => {
                                   if (!editingItwPatterns) return;
                                   const v = e.target.value === 'IW' ? 'IW' : '';
@@ -1397,14 +1415,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                               if (!editingDeptPatterns) return;
                               const v = e.target.value;
                               setDeptPatternSeqs(prev => prev.map((x, i) => i === idx ? { ...x, startDate: v } : x).sort((a, b) => a.startDate.localeCompare(b.startDate)));
-                            }}
-                            onClick={e => e.stopPropagation()} />
+                            }} />
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             {Array.from({ length: 21 }).map((_, i) => (
                               <select key={i} value={s.pattern[i] || ''} disabled={!editingDeptPatterns}
-                                onClick={e => e.stopPropagation()}
                                 onChange={e => {
                                   if (!editingDeptPatterns) return;
                                   const v = ['1', '2', '3'].includes(e.target.value) ? e.target.value : '';
@@ -1484,7 +1500,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                           type="date"
                           value={h.date}
                           disabled={!editingHolidays}
-                          onClick={e => e.stopPropagation()}
                           onChange={e => {
                             if (!editingHolidays) return;
                             const v = e.target.value;
@@ -1497,7 +1512,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                           type="text"
                           value={h.name}
                           disabled={!editingHolidays}
-                          onClick={e => e.stopPropagation()}
                           onChange={e => {
                             if (!editingHolidays) return;
                             const v = e.target.value;
@@ -1553,15 +1567,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                                   setAuswertungByType(prev => prev[v] ? prev : ({ ...prev, [v]: prev[prevCode] || 'off' }));
                                   // Farbeintrag übertragen, falls noch nicht vorhanden
                                   setColorByType(prev => prev[v] ? prev : ({ ...prev, [v]: prev[prevCode] || '' }));
-                                }}
-                                onClick={e => e.stopPropagation()} />
+                                }} />
                             ) : st.code}
                           </td>
                           <td>
                             {editingShiftTypes ? (
                               <input value={st.description}
-                                onChange={e => setShiftTypes(prev => prev.map(x => x.id === st.id ? { ...x, description: e.target.value } : x))}
-                                onClick={e => e.stopPropagation()} />
+                                onChange={e => setShiftTypes(prev => prev.map(x => x.id === st.id ? { ...x, description: e.target.value } : x))} />
                             ) : st.description}
                           </td>
                           <td>
@@ -1573,7 +1585,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                                   const val = e.target.value;
                                   setColorByType(prev => ({ ...prev, [st.code]: val }));
                                 }}
-                                onClick={e => e.stopPropagation()}
                                 style={{ width: 48, height: 28, padding: 0, border: '1px solid var(--line)', borderRadius: 6, background: 'transparent' }}
                                 title="Farbe für diese Dienstart"
                               />
@@ -1587,8 +1598,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                                 onChange={e => {
                                   const val = e.target.value as any;
                                   setAuswertungByType(prev => ({ ...prev, [st.code]: val }));
-                                }}
-                                onClick={e => e.stopPropagation()}>
+                                }}>
                                 <option value="off">Aus</option>
                                 <option value="tag">Tag</option>
                                 <option value="nacht">Nacht</option>
@@ -1672,6 +1682,25 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               </p>
             </div>
 
+            {/* LPAL Zuordnung (Leitender Praxisanleiter – wie Ü50, aber orange) */}
+            <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#fff3e0', borderRadius: 6, border: '1px solid #fd7e14' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <strong style={{ minWidth: 250 }}>Qualifikation für LPAL (wie Ü50):</strong>
+                <select
+                  value={lpalQualificationType}
+                  onChange={e => setLpalQualificationType(e.target.value)}
+                  style={{ flex: 1, maxWidth: 400 }}
+                >
+                  {qualificationTypes.filter(qt => qt.active).map(qt => (
+                    <option key={qt.id} value={qt.name}>{qt.name}</option>
+                  ))}
+                </select>
+              </label>
+              <p style={{ margin: '8px 0 0', fontSize: '0.9em', color: '#7d3c00' }}>
+                Personen mit dieser Qualifikation (Leitender Praxisanleiter) haben <strong>keine Soll/Ist-Berechnung</strong> (wie Ü50), werden aber <strong style={{ color: '#fd7e14' }}>orange</strong> im Kontrollfeld angezeigt.
+              </p>
+            </div>
+
             {/* Rettungsdienst Grundqualifikation Zuordnung */}
             <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#d1ecf1', borderRadius: 6, border: '1px solid #17a2b8' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1714,7 +1743,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                           <input
                             value={qt.name}
                             onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, name: e.target.value } : x))}
-                            onClick={e => e.stopPropagation()}
                             style={{
                               borderColor: (!qt.name || qt.name.trim() === '') ? '#ff4444' : '#ddd',
                               backgroundColor: (!qt.name || qt.name.trim() === '') ? '#fff5f5' : 'white'
@@ -1726,15 +1754,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                       <td>
                         {editingQualificationTypes ? (
                           <input value={qt.description || ''}
-                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, description: e.target.value } : x))}
-                            onClick={e => e.stopPropagation()} />
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, description: e.target.value } : x))} />
                         ) : (qt.description || '')}
                       </td>
                       <td>
                         {editingQualificationTypes ? (
                           <select value={qt.category}
-                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, category: e.target.value } : x))}
-                            onClick={e => e.stopPropagation()} >
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, category: e.target.value } : x))}>
                             <option value="Fahrzeugführung">Fahrzeugführung</option>
                             <option value="Notfall">Notfall</option>
                             <option value="Transport">Transport</option>
@@ -1746,15 +1772,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                       <td className={styles.center}>
                         {editingQualificationTypes ? (
                           <input type="checkbox" checked={qt.active}
-                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, active: e.target.checked } : x))}
-                            onClick={e => e.stopPropagation()} />
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, active: e.target.checked } : x))} />
                         ) : (qt.active ? '✓' : '✗')}
                       </td>
                       <td className={styles.center} title="Von Soll/Ist-Berechnung ausschließen (wie Azubis)">
                         {editingQualificationTypes ? (
                           <input type="checkbox" checked={qt.excludeFromStats || false}
-                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, excludeFromStats: e.target.checked } : x))}
-                            onClick={e => e.stopPropagation()} />
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, excludeFromStats: e.target.checked } : x))} />
                         ) : (qt.excludeFromStats ? '✓' : '✗')}
                       </td>
                       <td className={styles.center}>
@@ -1850,7 +1874,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                         <input
                           value={role.name}
                           onChange={e => setRoles(prev => prev.map(r => r.id === role.id ? { ...r, name: e.target.value } : r))}
-                          onClick={e => e.stopPropagation()}
                           style={{
                             borderColor: (!role.name || role.name.trim() === '') ? '#ff4444' : '#ddd',
                             backgroundColor: (!role.name || role.name.trim() === '') ? '#fff5f5' : 'white'
@@ -1864,7 +1887,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                         <input
                           value={role.description || ''}
                           onChange={e => setRoles(prev => prev.map(r => r.id === role.id ? { ...r, description: e.target.value } : r))}
-                          onClick={e => e.stopPropagation()}
                         />
                       ) : (role.description || '')}
                     </td>
@@ -1915,7 +1937,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                                 : r
                             ));
                           }}
-                          onClick={e => e.stopPropagation()}
                           style={{ width: '100%', padding: 4 }}
                         >
                           <option value="none">Keine</option>
@@ -2496,7 +2517,5 @@ const NewAzubiDialog: React.FC<NewAzubiDialogProps> = ({ unknownNames, onConfirm
     </div>
   );
 };
-
-
 
 export default SettingsMenu;
