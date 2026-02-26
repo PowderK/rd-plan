@@ -1,25 +1,35 @@
-# RD‑Plan — Projekt‑Wiki
+# RD-Plan Wiki (Endnutzer)
 
-Dies ist eine automatisch erstellte Wiki‑Alternative (Markdown im Repository) mit dem aktuellen Stand der Software.
+Dieses Wiki ist die zentrale Bedienungsanleitung für Anwender:innen im täglichen Betrieb.
 
-Kurzüberblick
+## Zielgruppe
 
-- Name: RD‑Plan
-- Repo: https://github.com/PowderK/rd-plan
-- Aktueller Branch mit Wiki‑Seiten: `wiki-pages` (falls du die Seiten per PR prüfen möchtest)
+- Dienstplanverantwortliche
+- Wachleitung / Teamleitung
+- Kolleg:innen mit Schreibrechten in der Planung
 
-Seiten
+## Schnellnavigation
 
-- Home — Diese Seite
-- Build — Wie man lokal baut
-- Run — Starten und Entwickeln
-- CI — Wie das GitHub CI (build-windows) funktioniert
-- Troubleshooting — Häufige Probleme und Lösungen (native Addons, ABI, CSP)
-- Release — Wie Artefakte erstellt und Releases angelegt werden
+- [Run](Run.md) — Installation und erster Start
+- [Usage](Usage.md) — Vollständige Bedienungsanleitung
+- [Build](Build.md) — Datenablage, Backup und Wiederherstellung
+- [Release](Release.md) — Updates sicher einspielen
+- [Troubleshooting](Troubleshooting.md) — Häufige Probleme im Alltag
+- [FAQ](FAQ.md) — Häufige Fragen für Endnutzer
 
-Letzte Änderungen
+## Was in diesem Wiki bewusst nicht enthalten ist
 
-- CSP-Fix: Content-Security-Policy wurde in `main` eingeführt (Meta‑Tag + Header‑Injection im Main‑Prozess).
-- CI: Workflow aktualisiert, damit manuelle `workflow_dispatch` Runs Artefakte hochladen.
+- Entwickler-Details (Build-Pipeline, CI-Workflows, Electron/Node-Interna)
+- Technische Implementierungsdetails im Quellcode
 
-Wenn du möchtest, kann ich diese Seiten als echte GitHub‑Wiki importieren, sobald Zugriff/SSH oder Wiki‑Remote möglich ist.
+## Empfohlene Lesereihenfolge für neue Nutzer:innen
+
+1. [Run](Run.md)
+2. [Usage](Usage.md)
+3. [Build](Build.md)
+4. [Troubleshooting](Troubleshooting.md)
+
+## Screenshot-Platzhalter
+
+Alle Seiten enthalten Platzhalter für Bildschirmfotos.
+Die Übersicht der benötigten Bilder findest du in [screenshots/README.md](screenshots/README.md).

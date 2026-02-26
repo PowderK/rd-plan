@@ -1,37 +1,58 @@
-# Build (lokal)
+# Datenablage, Backup und Wiederherstellung
 
-Schritte um das Projekt lokal zu bauen:
+Diese Seite beschreibt, wie Endnutzer:innen ihre RD-Plan-Daten sicher verwalten.
 
-1. Dependencies installieren
+## 1) Wo liegen die Daten?
 
-```bash
-npm install
-```
+RD-Plan speichert Daten lokal pro Benutzerprofil.
 
-2. TypeScript + Renderer bauen
+- Einstellungen
+- Planungsdaten
+- Import-/Export-bezogene Daten
 
-```bash
-npm run build
-```
+Je nach Installation kann der genaue Speicherort leicht abweichen.
 
-Das Skript führt aus: `rm -rf dist && npm run bump-build && npm run build:main && npm run build:renderer`.
+## 2) Wann sollte ein Backup erstellt werden?
 
-Hinweis: Wenn TypeScript einen Fehler wegen fehlenden Node‑Typen wirft (TS2688), installiere die Typen:
+Empfehlung:
 
-```bash
-npm install --save-dev @types/node
-```
+- vor einem großen Import
+- vor Versionswechseln/Updates
+- vor strukturellen Änderungen (z. B. neue Planungslogik)
+- mindestens regelmäßig (z. B. wöchentlich)
 
-Native Addons (better-sqlite3)
+## 3) Backup-Standardprozess
 
-- Native Module wie `better-sqlite3` müssen für die Electron‑ABI kompiliert werden. Falls du einen ABI‑Mismatch siehst (`NODE_MODULE_VERSION` mismatch), nutze:
+1. RD-Plan schließen.
+2. Datenordner auf ein Sicherungslaufwerk kopieren.
+3. Backup mit Datum benennen (z. B. `RD-Plan-Backup-2026-02-26`).
+4. Kurz prüfen, ob Dateien vollständig kopiert wurden.
 
-```bash
-npx electron-rebuild -f -w better-sqlite3
-```
+![Screenshot-Platzhalter: Backup-Ordner](screenshots/data-01-backup-folder.png)
+*Platzhalter: Datenordner + Zielordner mit Datumsbackup.*
 
-oder baue manuell gegen die Electron‑Header / downgrades auf eine kompatible Electron‑Version (z. B. `electron@28.3.3`) wie im Projektverlauf geschehen.
+## 4) Wiederherstellung (Restore)
 
-3. Artefakte
+1. RD-Plan vollständig schließen.
+2. Aktuellen Datenordner sichern (Sicherheitskopie vom Ist-Zustand).
+3. Inhalte aus einem funktionierenden Backup zurückkopieren.
+4. RD-Plan starten und stichprobenartig prüfen.
 
-Die gebauten Renderer/Assets landen in `dist/renderer`. Packaging (Windows exe) erfolgt via `npm run dist` in der CI (electron-builder).
+## 5) Prüfliste nach Restore
+
+- Sind Personaldaten vorhanden?
+- Sind aktuelle Monate im Dienstplan sichtbar?
+- Stimmen Fahrzeuge/Werte mit dem erwarteten Stand?
+- Lassen sich Einträge normal speichern?
+
+## 6) Backup-Strategie für Teams
+
+- Ein gemeinsamer, klar benannter Speicherort
+- Verbindliche Backup-Routine (z. B. Wochenabschluss)
+- Aufbewahrungsregel (z. B. Tagesbackups 14 Tage, Monatsbackups 12 Monate)
+
+## 7) Typische Fehler vermeiden
+
+- Kein Backup während die App noch geöffnet ist.
+- Keine Sicherung auf nur ein einziges Laufwerk.
+- Nach Importen nicht ohne Plausibilitätsprüfung weiterarbeiten.
