@@ -112,6 +112,8 @@ const DutyRoster: React.FC = () => {
   const canWrite = hasPermission('dienstplan', 'write');
   const canRead = hasPermission('dienstplan', 'read');
   const canReadAll = currentUser?.permissions['dienstplan'] === 'read_all';
+  const canWriteGlobalComments = hasPermission('kommentar_global', 'write') || canWrite;
+  const canWritePersonalComments = hasPermission('kommentar_individuell', 'write') || canWrite;
 
   const [personnel, setPersonnel] = useState<Person[]>([]);
   const [year, setYear] = useState<number>((window as any).rdPlanYear || new Date().getFullYear());
@@ -220,13 +222,13 @@ const DutyRoster: React.FC = () => {
   };
 
   const openGlobalCommentMenu = (e: React.MouseEvent, dateIso: string) => {
-    if (!canWrite) return;
+    if (!canWriteGlobalComments) return;
     e.preventDefault();
     setCommentMenu({ x: e.clientX, y: e.clientY, scope: 'global', dateIso });
   };
 
   const openPersonalCommentMenu = (e: React.MouseEvent, personId: number, dateIso: string) => {
-    if (!canWrite) return;
+    if (!canWritePersonalComments) return;
     e.preventDefault();
     setCommentMenu({ x: e.clientX, y: e.clientY, scope: 'personal', dateIso, personId });
   };
@@ -1427,8 +1429,8 @@ const DutyRoster: React.FC = () => {
           }
         }}
       >
-        {/* View Protection: Hide content if read-only and not released, unless user has read_all */}
-        {!canWrite && !canReadAll && !releasedMonths[currentMonth] ? (
+        {/* Alle Monate sichtbar lassen, damit Kommentare auch in nicht freigegebenen Monaten möglich sind */}
+        {false ? (
           <div style={{
             display: 'flex',
             flexDirection: 'column',
@@ -1457,7 +1459,7 @@ const DutyRoster: React.FC = () => {
                       key={i}
                       onContextMenu={(e) => openGlobalCommentMenu(e, d.iso)}
                       title={gComment?.comment || ''}
-                      style={{ borderBottom: '1px solid #dbe7ff', whiteSpace: 'nowrap', background: 'var(--bg)', position: 'relative', cursor: canWrite ? 'context-menu' : 'default' }}
+                      style={{ borderBottom: '1px solid #dbe7ff', whiteSpace: 'nowrap', background: 'var(--bg)', position: 'relative', cursor: canWriteGlobalComments ? 'context-menu' : 'default' }}
                     >
                       {d.date}
                       {gComment && (
@@ -1797,8 +1799,8 @@ const DutyRoster: React.FC = () => {
             : (typeof commentEditor.personId === 'number'
               ? (personalComments.get(getPersonalCommentKey(commentEditor.personId, commentEditor.dateIso))?.comment || '')
               : '')}
-          canEdit={canWrite}
-          canDelete={canWrite}
+          canEdit={commentEditor.scope === 'global' ? canWriteGlobalComments : canWritePersonalComments}
+          canDelete={commentEditor.scope === 'global' ? canWriteGlobalComments : canWritePersonalComments}
           onSave={async (comment) => {
             if (commentEditor.scope === 'global') {
               await handleUpsertGlobalComment(commentEditor.dateIso, comment);

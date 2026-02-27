@@ -39,7 +39,9 @@ export class AuthService {
         werte: 'none',
         personal: 'none',
         fahrzeuge: 'none',
-        einstellungen: 'none'
+        einstellungen: 'none',
+        kommentar_global: 'none',
+        kommentar_individuell: 'none'
       };
 
       if (person.roleId) {

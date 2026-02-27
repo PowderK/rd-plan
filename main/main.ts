@@ -1991,6 +1991,10 @@ app.whenReady().then(async () => {
 // Roster Comments (Issue #22)
 ipcMain.handle('roster-comment-personal-add', async (_event, personId: number, date: string, comment: string) => {
     const auth = getAuthService();
+    const canWritePersonalComment = auth.checkPermission('kommentar_individuell', 'write') || auth.checkPermission('dienstplan', 'write');
+    if (!canWritePersonalComment) {
+        throw new Error('PERMISSION_DENIED: Keine Berechtigung für individuelle Kommentare (write)');
+    }
     const currentUser = auth.getCurrentUser();
     const createdBy = currentUser?.personnelNumber || 'unknown';
     const adapter = await ensureDatabaseAdapter();
@@ -2000,7 +2004,10 @@ ipcMain.handle('roster-comment-personal-add', async (_event, personId: number, d
 
 ipcMain.handle('roster-comment-personal-delete', async (_event, personId: number, date: string) => {
     const auth = getAuthService();
-    auth.requirePermission('dienstplan', 'read');
+    const canWritePersonalComment = auth.checkPermission('kommentar_individuell', 'write') || auth.checkPermission('dienstplan', 'write');
+    if (!canWritePersonalComment) {
+        throw new Error('PERMISSION_DENIED: Keine Berechtigung für individuelle Kommentare (write)');
+    }
     const adapter = await ensureDatabaseAdapter();
     await adapter.deletePersonalComment(personId, date);
     return true;
@@ -2013,7 +2020,10 @@ ipcMain.handle('roster-comment-personal-get-month', async (_event, year: number,
 
 ipcMain.handle('roster-comment-global-add', async (_event, date: string, comment: string) => {
     const auth = getAuthService();
-    auth.requirePermission('dienstplan', 'write');
+    const canWriteGlobalComment = auth.checkPermission('kommentar_global', 'write') || auth.checkPermission('dienstplan', 'write');
+    if (!canWriteGlobalComment) {
+        throw new Error('PERMISSION_DENIED: Keine Berechtigung für globale Kommentare (write)');
+    }
     const currentUser = auth.getCurrentUser();
     const createdBy = currentUser?.personnelNumber || 'unknown';
     const adapter = await ensureDatabaseAdapter();
@@ -2023,7 +2033,10 @@ ipcMain.handle('roster-comment-global-add', async (_event, date: string, comment
 
 ipcMain.handle('roster-comment-global-delete', async (_event, date: string) => {
     const auth = getAuthService();
-    auth.requirePermission('dienstplan', 'write');
+    const canWriteGlobalComment = auth.checkPermission('kommentar_global', 'write') || auth.checkPermission('dienstplan', 'write');
+    if (!canWriteGlobalComment) {
+        throw new Error('PERMISSION_DENIED: Keine Berechtigung für globale Kommentare (write)');
+    }
     const adapter = await ensureDatabaseAdapter();
     await adapter.deleteGlobalComment(date);
     return true;
