@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import './styles.css';
 
 interface QualificationPeriod {
   qualType: string;
@@ -265,14 +266,24 @@ const AddPerson: React.FC = () => {
       return;
     }
 
+    if (!personnelNumber.trim()) {
+      alert('Bitte eine Personalnummer eingeben.');
+      return;
+    }
+
+    if (roleId === '') {
+      alert('Bitte eine Rolle auswählen.');
+      return;
+    }
+
     try {
       // Person erstellen
       const result = await (window as any).api.addPerson({ 
         name, 
         vorname, 
         teilzeit,
-        personnelNumber: personnelNumber.trim() || null,
-        roleId: roleId === '' ? null : roleId,
+        personnelNumber: personnelNumber.trim(),
+        roleId,
         fahrzeugfuehrer: false,
         fahrzeugfuehrerHLFB: false,
         nef: false,
@@ -379,7 +390,7 @@ const AddPerson: React.FC = () => {
 
       <div style={{ marginBottom: '16px' }}>
         <label style={{ display: 'block', marginBottom: '6px', fontWeight: 500 }}>
-          Personalnummer
+          Personalnummer *
         </label>
         <input
           type="text"
@@ -399,7 +410,7 @@ const AddPerson: React.FC = () => {
 
       <div style={{ marginBottom: '24px' }}>
         <label style={{ display: 'block', marginBottom: '6px', fontWeight: 500 }}>
-          Rolle
+          Rolle *
         </label>
         <select
           value={roleId}
@@ -414,7 +425,7 @@ const AddPerson: React.FC = () => {
             boxSizing: 'border-box'
           }}
         >
-          <option value="">{rolesLoading ? 'Lade Rollen...' : 'Bitte wählen (optional)'}</option>
+          <option value="">{rolesLoading ? 'Lade Rollen...' : 'Bitte wählen'}</option>
           {roles.map(r => (
             <option key={r.id} value={r.id}>{r.name}</option>
           ))}

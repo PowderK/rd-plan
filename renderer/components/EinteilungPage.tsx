@@ -260,6 +260,19 @@ const EinteilungPage: React.FC = () => {
 
   const handleMonthChange = (m: number) => setCurrentMonth(m);
 
+  const handleYearChange = async (newYear: number) => {
+    if (!Number.isFinite(newYear) || newYear === year) return;
+
+    setYear(newYear);
+    (window as any).rdPlanYear = newYear;
+    window.dispatchEvent(new CustomEvent('rdplan-year-changed', { detail: { year: newYear } }));
+
+    const currentYear = new Date().getFullYear();
+    setCurrentMonth(newYear === currentYear ? new Date().getMonth() : 0);
+
+    await loadRoster(newYear);
+  };
+
   const handleRosterChanged = async () => {
     await loadRoster(year);
   };
@@ -272,7 +285,7 @@ const EinteilungPage: React.FC = () => {
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '1fr auto',
+        gridTemplateColumns: 'minmax(0, 1fr) 440px',
         gap: 12,
         alignItems: 'start'
       }}
@@ -282,6 +295,7 @@ const EinteilungPage: React.FC = () => {
         <MonthTabs
           currentMonth={currentMonth}
           onMonthChange={handleMonthChange}
+          onYearChange={handleYearChange}
           personnel={personnel}
           azubis={azubis}
           roster={roster}
@@ -296,13 +310,15 @@ const EinteilungPage: React.FC = () => {
       <div
         id="einteilung-right-sidebar"
         style={{
-          position: 'sticky',
-          top: 'clamp(56px, 6.5vw, 90px)',
-          justifySelf: 'end',
-          width: 'max-content',
-          height: 'calc(100vh - clamp(56px, 6.5vw, 90px))',
-          overflowY: 'auto',
-          overflowX: 'auto'
+          position: 'fixed',
+          top: 'clamp(140px, 14vh, 190px)',
+          right: 24,
+          width: 440,
+          maxWidth: 'calc(100vw - 320px)',
+          height: 'calc(100vh - clamp(140px, 14vh, 190px) - 52px)',
+          overflowY: 'hidden',
+          overflowX: 'hidden',
+          zIndex: 102
         }}
       />
     </div>

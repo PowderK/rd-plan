@@ -25,13 +25,19 @@ interface VehiclePositionEditorProps {
     vehicleName: string;
     vehicleType: 'rtw' | 'nef' | 'itw';
     onClose: () => void;
+    embedded?: boolean;
+    externalSaveControls?: boolean;
+    onEmbeddedSaveStateChange?: (canSave: boolean, saveHandler: (() => Promise<void>) | null) => void;
 }
 
 export const VehiclePositionEditor: React.FC<VehiclePositionEditorProps> = ({
     vehicleId,
     vehicleName,
     vehicleType,
-    onClose
+    onClose,
+    embedded = false,
+    externalSaveControls = false,
+    onEmbeddedSaveStateChange
 }) => {
     const [positions, setPositions] = useState<VehiclePosition[]>([]);
     const [qualificationTypes, setQualificationTypes] = useState<QualificationType[]>([]);
@@ -114,6 +120,12 @@ export const VehiclePositionEditor: React.FC<VehiclePositionEditorProps> = ({
             // console.warn('[VehiclePositionEditor] saveEditing error:', e);
         }
     };
+
+    useEffect(() => {
+        if (!externalSaveControls || !onEmbeddedSaveStateChange) return;
+        onEmbeddedSaveStateChange(editing, editing ? saveEditing : null);
+        return () => onEmbeddedSaveStateChange(false, null);
+    }, [externalSaveControls, onEmbeddedSaveStateChange, editing, saveEditing]);
 
     const addPosition = () => {
         const maxSort = positions.length > 0 ? Math.max(...positions.map(p => p.sort)) : -1;
@@ -223,24 +235,17 @@ export const VehiclePositionEditor: React.FC<VehiclePositionEditorProps> = ({
         }
     };
 
-    return (
-        <div 
-            style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                backgroundColor: 'rgba(0,0,0,0.5)',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                zIndex: 1000
-            }}
-            onClick={onClose}
-        >
-            <div 
-                style={{
+    const content = (
+            <div
+                style={embedded ? {
+                    backgroundColor: 'transparent',
+                    padding: 0,
+                    borderRadius: 0,
+                    width: '100%',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    overflow: 'auto'
+                } : {
                     backgroundColor: 'white',
                     padding: 24,
                     borderRadius: 8,
@@ -249,10 +254,11 @@ export const VehiclePositionEditor: React.FC<VehiclePositionEditorProps> = ({
                     maxHeight: '90%',
                     overflow: 'auto'
                 }}
-                onClick={(e) => e.stopPropagation()}
             >
-                <h3>Positionen für {vehicleName} ({vehicleType.toUpperCase()})</h3>
-                <p style={{ marginBottom: 16, color: '#666' }}>
+                <h3 style={{ margin: 0, color: '#007bff' }}>
+                    Positionen für {vehicleName} ({vehicleType.toUpperCase()})
+                </h3>
+                <p style={{ marginTop: 8, marginBottom: 16, color: '#666' }}>
                     Definieren Sie die Positionen für dieses Fahrzeug und ordnen Sie ihnen optional Qualifikationen zu.
                 </p>
 
@@ -261,7 +267,6 @@ export const VehiclePositionEditor: React.FC<VehiclePositionEditorProps> = ({
                         <tr className={styles.thead}>
                             <th>Positionsname</th>
                             <th style={{ width: 300 }}>Erforderliche Qualifikation</th>
-                            <th className={styles.center} style={{ width: 60 }}>#</th>
                         </tr>
                     </thead>
                     <tbody className={styles.tbody}>
@@ -325,9 +330,6 @@ export const VehiclePositionEditor: React.FC<VehiclePositionEditorProps> = ({
                                             </span>
                                         )}
                                     </td>
-                                    <td className={styles.center}>
-                                        {selectedPositionId === pos.id ? '✓' : ''}
-                                    </td>
                                 </tr>
                             );
                         })}
@@ -339,14 +341,51 @@ export const VehiclePositionEditor: React.FC<VehiclePositionEditorProps> = ({
                         <button onClick={addPosition}>Hinzufügen</button>
                         <button onClick={startEditing} disabled={positions.length === 0}>Ändern</button>
                         <button onClick={deleteSelectedPosition} disabled={selectedPositionId === null}>Löschen</button>
-                        <button onClick={onClose} style={{ marginLeft: 'auto' }}>Schließen</button>
+                        {!embedded && <button onClick={onClose} style={{ marginLeft: 'auto' }}>Schließen</button>}
                     </div>
                 ) : (
                     <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                        <button onClick={saveEditing}>Speichern</button>
-                        <button onClick={cancelEditing}>Abbrechen</button>
+                        {!externalSaveControls && (
+                            <button
+                                onClick={saveEditing}
+                                style={{ backgroundColor: '#007acc', color: 'white', padding: '8px 16px', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                            >
+                                Speichern
+                            </button>
+                        )}
+                        <button
+                            onClick={cancelEditing}
+                            style={{ padding: '8px 16px', border: '1px solid #ccc', borderRadius: 4, cursor: 'pointer' }}
+                        >
+                            Abbrechen
+                        </button>
                     </div>
                 )}
+            </div>
+    );
+
+    if (embedded) {
+        return content;
+    }
+
+    return (
+        <div 
+            style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                zIndex: 1000
+            }}
+            onClick={onClose}
+        >
+            <div onClick={(e) => e.stopPropagation()}>
+                {content}
             </div>
         </div>
     );

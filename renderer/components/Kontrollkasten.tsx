@@ -48,6 +48,7 @@ interface KontrollkastenProps {
   renderPresenceMeter: (value: number, height: number) => JSX.Element;
   showOldRtwShifts?: boolean;
   showWeekendShifts?: boolean;
+  showItw?: boolean;
 }
 
 export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
@@ -62,11 +63,13 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
   renderPresenceMeter,
   showOldRtwShifts = false,
   showWeekendShifts = false,
+  showItw = true,
 }) => {
   // Dynamisches Grid-Layout
   const wCol = showWeekendShifts ? '22px ' : '';
   const altCol = showOldRtwShifts ? '24px ' : '';
-  const columns = `max-content 55px 20px 20px ${wCol}${altCol}40px 72px`;
+  const itwCol = showItw ? '20px ' : '';
+  const columns = `max-content 55px 20px ${itwCol}${wCol}${altCol}40px 72px`;
 
   const { minWeekend, maxWeekend } = React.useMemo(() => {
     if (!showWeekendShifts) return { minWeekend: 0, maxWeekend: 0 };
@@ -89,7 +92,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
         <span style={{ textAlign: 'right', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>Name</span>
         <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>Soll | Ist</span>
         <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>NEF</span>
-        <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>ITW</span>
+        {showItw && <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>ITW</span>}
         {showWeekendShifts && <span style={{ textAlign: 'center', paddingRight: 4, fontSize: 9, fontWeight: 600, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>WE</span>}
         {showOldRtwShifts && <span style={{ textAlign: 'center', paddingRight: 4, fontSize: 9, fontWeight: 600, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>Alt</span>}
         <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>Ges.</span>
@@ -161,10 +164,11 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                   {it.nef}
                 </span>
 
-                {/* ITW */}
-                <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4 }}>
-                  {it.itw}
-                </span>
+                {showItw && (
+                  <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4 }}>
+                    {it.itw}
+                  </span>
+                )}
 
                 {/* WE */}
                 {showWeekendShifts && (
@@ -279,19 +283,23 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                       const pres = presenceRemainingByPerson[it.key] || 0;
                       const assigned = assignedRemainingByPerson[it.key] || 0;
                       const remain = Math.max(0, pres - assigned);
-                      const frac = pres > 0 ? Math.min(1, remain / pres) : 0;
                       const needed = Math.max(0, Number(it.rest || 0));
+                      const distance = remain - needed;
+
+                      const yellowThreshold = 10;
+                      const redThreshold = 5;
+                      const widthStartDistance = 15;
 
                       let barColor = '#34c759';
-                      if (needed > 0) {
-                        if (remain < needed) {
-                          barColor = '#ef4444';
-                        } else {
-                          const diff = remain - needed;
-                          const threshold = 0.2 * needed;
-                          barColor = (diff <= threshold) ? '#f59e0b' : '#34c759';
-                        }
+                      if (distance <= redThreshold) {
+                        barColor = '#ef4444';
+                      } else if (distance <= yellowThreshold) {
+                        barColor = '#f59e0b';
                       }
+
+                      const widthFraction = needed <= 0
+                        ? 1
+                        : Math.max(0, Math.min(1, distance / widthStartDistance));
 
                       return (
                         <div
@@ -309,7 +317,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                               left: 0,
                               top: 0,
                               bottom: 0,
-                              width: `${frac * 100}%`,
+                              width: `${widthFraction * 100}%`,
                               background: barColor,
                               borderRadius: 3,
                             }}

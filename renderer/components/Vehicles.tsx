@@ -3,39 +3,313 @@ import styles from './PersonnelOverview.module.css';
 import { VehiclePeriodList } from './VehiclePeriodEditor';
 import { VehiclePositionEditor } from './VehiclePositionEditor';
 
-const Vehicles: React.FC = () => {
+interface VehiclesProps {
+  setFooterActions?: (actions: React.ReactNode) => void;
+}
+
+const VehicleConfigDialog: React.FC<{
+  vehicleId: number;
+  vehicleName: string;
+  vehicleType: 'rtw' | 'nef' | 'itw';
+  occupancyMode?: '24h' | 'tag';
+  initialTab: 'stammdaten' | 'positionen' | 'zeitraeume';
+  onSave: (data: { name: string; occupancyMode?: '24h' | 'tag' }) => Promise<void>;
+  onDelete: () => Promise<void>;
+  onClose: () => void;
+}> = ({ vehicleId, vehicleName, vehicleType, occupancyMode, initialTab, onSave, onDelete, onClose }) => {
+  const [activeTab, setActiveTab] = useState<'stammdaten' | 'positionen' | 'zeitraeume'>(initialTab);
+  const [name, setName] = useState(vehicleName);
+  const [nefOccupancyMode, setNefOccupancyMode] = useState<'24h' | 'tag'>(occupancyMode || '24h');
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [contextSaving, setContextSaving] = useState(false);
+  const [contextCanSave, setContextCanSave] = useState(false);
+  const [contextSaveHandler, setContextSaveHandler] = useState<(() => Promise<void>) | null>(null);
+
+  useEffect(() => {
+    setName(vehicleName);
+    setNefOccupancyMode(occupancyMode || '24h');
+  }, [vehicleName, occupancyMode]);
+
+  const handleSave = async () => {
+    if (!name.trim()) {
+      alert('Bitte eine Bezeichnung eingeben.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onSave({
+        name: name.trim(),
+        occupancyMode: vehicleType === 'nef' ? nefOccupancyMode : undefined
+      });
+      onClose();
+    } catch (error) {
+      alert(`Fehler beim Speichern: ${error}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    const label = vehicleType.toUpperCase();
+    if (!confirm(`Möchten Sie das ${label}-Fahrzeug "${name}" wirklich löschen?\n\nAlle zugehörigen Zeiträume und Positionen werden ebenfalls gelöscht.`)) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await onDelete();
+      onClose();
+    } catch (error) {
+      alert(`Fehler beim Löschen: ${error}`);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleContextSave = async () => {
+    if (!contextCanSave || !contextSaveHandler) return;
+    setContextSaving(true);
+    try {
+      await contextSaveHandler();
+    } catch (error) {
+      alert(`Fehler beim Speichern: ${error}`);
+    } finally {
+      setContextSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    setContextCanSave(false);
+    setContextSaveHandler(null);
+  }, [activeTab]);
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 1000
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          backgroundColor: 'white',
+          padding: 24,
+          borderRadius: 8,
+          width: 'min(620px, 96vw)',
+          height: 'min(520px, 90vh)',
+          boxSizing: 'border-box',
+          display: 'flex',
+          flexDirection: 'column'
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 style={{ marginTop: 0, marginBottom: 12, flexShrink: 0 }}>
+          Fahrzeug verwalten: {vehicleName} ({vehicleType.toUpperCase()})
+        </h2>
+
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: 4 }}>
+          <div style={{
+            display: 'flex',
+            gap: 4,
+            borderBottom: '2px solid #dee2e6',
+            marginBottom: 16,
+            position: 'sticky',
+            top: 0,
+            background: 'var(--bg)',
+            zIndex: 20,
+            paddingTop: 4,
+            paddingBottom: 4
+          }}>
+            <button
+              type="button"
+              onClick={() => setActiveTab('stammdaten')}
+              style={{
+                padding: '8px 16px',
+                border: 'none',
+                borderBottom: activeTab === 'stammdaten' ? '3px solid #0d6efd' : '3px solid transparent',
+                background: activeTab === 'stammdaten' ? '#f8f9fa' : 'transparent',
+                fontWeight: activeTab === 'stammdaten' ? 600 : 400,
+                cursor: 'pointer'
+              }}
+            >
+              Stammdaten
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('positionen')}
+              style={{
+                padding: '8px 16px',
+                border: 'none',
+                borderBottom: activeTab === 'positionen' ? '3px solid #0d6efd' : '3px solid transparent',
+                background: activeTab === 'positionen' ? '#f8f9fa' : 'transparent',
+                fontWeight: activeTab === 'positionen' ? 600 : 400,
+                cursor: 'pointer'
+              }}
+            >
+              Positionen
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('zeitraeume')}
+              style={{
+                padding: '8px 16px',
+                border: 'none',
+                borderBottom: activeTab === 'zeitraeume' ? '3px solid #0d6efd' : '3px solid transparent',
+                background: activeTab === 'zeitraeume' ? '#f8f9fa' : 'transparent',
+                fontWeight: activeTab === 'zeitraeume' ? 600 : 400,
+                cursor: 'pointer'
+              }}
+            >
+              Zeiträume
+            </button>
+          </div>
+
+          {activeTab === 'stammdaten' && (
+            <div style={{ display: 'grid', gap: 12 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span>Bezeichnung</span>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </label>
+
+              {vehicleType === 'nef' && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span>Besetzung</span>
+                  <select
+                    value={nefOccupancyMode}
+                    onChange={(e) => setNefOccupancyMode(e.target.value === 'tag' ? 'tag' : '24h')}
+                  >
+                    <option value="24h">24h besetzt</option>
+                    <option value="tag">Tag</option>
+                  </select>
+                </label>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'positionen' && (
+            <VehiclePositionEditor
+              vehicleId={vehicleId}
+              vehicleName={vehicleName}
+              vehicleType={vehicleType}
+              embedded
+              externalSaveControls
+              onEmbeddedSaveStateChange={(canSave, saveHandler) => {
+                setContextCanSave(canSave);
+                setContextSaveHandler(() => saveHandler);
+              }}
+              onClose={() => {}}
+            />
+          )}
+
+          {activeTab === 'zeitraeume' && (
+            <VehiclePeriodList
+              vehicleId={vehicleId}
+              vehicleName={vehicleName}
+              vehicleType={vehicleType}
+              embedded
+              externalSaveControls
+              onEmbeddedSaveStateChange={(canSave, saveHandler) => {
+                setContextCanSave(canSave);
+                setContextSaveHandler(() => saveHandler);
+              }}
+              onClose={() => {}}
+            />
+          )}
+        </div>
+
+        <div style={{
+          borderTop: '1px solid #eee',
+          paddingTop: 12,
+          paddingBottom: 12,
+          background: 'var(--bg)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          flexShrink: 0
+        }}>
+          <button
+            onClick={handleDelete}
+            disabled={deleting || saving || contextSaving}
+            style={{
+              backgroundColor: '#dc3545',
+              color: 'white',
+              border: 'none',
+              padding: '8px 12px',
+              borderRadius: '4px',
+              cursor: deleting || saving || contextSaving ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {deleting ? 'Löschen ...' : 'Löschen'}
+          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onClose} disabled={deleting || saving || contextSaving}>Schließen</button>
+            <button
+              onClick={activeTab === 'stammdaten' ? handleSave : handleContextSave}
+              disabled={
+                deleting ||
+                saving ||
+                contextSaving ||
+                (activeTab !== 'stammdaten' && !contextCanSave)
+              }
+            >
+              {saving || contextSaving ? 'Speichern ...' : 'Speichern'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const Vehicles: React.FC<VehiclesProps> = ({ setFooterActions }) => {
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [activeTab, setActiveTab] = useState<'rtw' | 'nef' | 'itw'>('rtw');
+  const [itwEnabled, setItwEnabled] = useState<boolean>(false);
   const [rtwVehicles, setRtwVehicles] = useState<{ id: number; name: string }[]>([]);
   const [nefVehicles, setNefVehicles] = useState<{ id: number; name: string; occupancy_mode?: '24h' | 'tag' }[]>([]);
   const [itwVehicles, setItwVehicles] = useState<{ id: number; name: string }[]>([]);
-  // Edit/Select/Drag State RTW
-  const [editingRtw, setEditingRtw] = useState(false);
-  const [selectedRtwId, setSelectedRtwId] = useState<number | null>(null);
-  const [originalRtw, setOriginalRtw] = useState<{ id:number; name:string }[] | null>(null);
+  // Drag State RTW
   const [draggedRtwId, setDraggedRtwId] = useState<number | null>(null);
-  // Edit/Select/Drag State NEF
-  const [editingNef, setEditingNef] = useState(false);
-  const [selectedNefId, setSelectedNefId] = useState<number | null>(null);
-  const [originalNef, setOriginalNef] = useState<{ id:number; name:string }[] | null>(null);
+  // Drag State NEF
   const [draggedNefId, setDraggedNefId] = useState<number | null>(null);
-  // Edit/Select/Drag State ITW
-  const [editingItw, setEditingItw] = useState(false);
-  const [selectedItwId, setSelectedItwId] = useState<number | null>(null);
-  const [originalItw, setOriginalItw] = useState<{ id:number; name:string }[] | null>(null);
+  // Drag State ITW
   const [draggedItwId, setDraggedItwId] = useState<number | null>(null);
   // Gemeinsame Drag-Over-Vorschau
   const [dragOverId, setDragOverId] = useState<number | null>(null);
   const [dragPosition, setDragPosition] = useState<'above'|'below'|null>(null);
   const [dragContext, setDragContext] = useState<'rtw'|'nef'|'itw'|null>(null);
-  // Period Editor State
-  const [showRtwPeriodEditor, setShowRtwPeriodEditor] = useState<{ vehicleId: number; name: string } | null>(null);
-  const [showNefPeriodEditor, setShowNefPeriodEditor] = useState<{ vehicleId: number; name: string } | null>(null);
-  const [showItwPeriodEditor, setShowItwPeriodEditor] = useState<{ vehicleId: number; name: string } | null>(null);
-  // Position Editor State
-  const [showRtwPositionEditor, setShowRtwPositionEditor] = useState<{ vehicleId: number; name: string } | null>(null);
-  const [showNefPositionEditor, setShowNefPositionEditor] = useState<{ vehicleId: number; name: string } | null>(null);
-  const [showItwPositionEditor, setShowItwPositionEditor] = useState<{ vehicleId: number; name: string } | null>(null);
+  const [vehicleConfigDialog, setVehicleConfigDialog] = useState<{
+    vehicleId: number;
+    name: string;
+    vehicleType: 'rtw' | 'nef' | 'itw';
+    occupancyMode?: '24h' | 'tag';
+    initialTab: 'stammdaten' | 'positionen' | 'zeitraeume';
+  } | null>(null);
+
+  const loadItwEnabled = useCallback(async () => {
+    try {
+      const itwVal = await (window as any).api.getSetting('itw');
+      const enabled = itwVal === 'true' || itwVal === '1';
+      setItwEnabled(enabled);
+      if (!enabled) {
+        setActiveTab(prev => prev === 'itw' ? 'rtw' : prev);
+      }
+    } catch {}
+  }, []);
 
   // Jahr aus globalen Einstellungen übernehmen (beim Start und wenn Settings geändert werden)
   useEffect(() => {
@@ -44,6 +318,7 @@ const Vehicles: React.FC = () => {
         const y = await (window as any).api.getSetting('year');
         setYear(Number(y || new Date().getFullYear()));
       } catch {}
+      await loadItwEnabled();
       try { setRtwVehicles(await (window as any).api.getRtwVehicles()); } catch {}
       try { setNefVehicles(await (window as any).api.getNefVehicles()); } catch {}
       try { setItwVehicles(await (window as any).api.getItwVehicles()); } catch {}
@@ -53,6 +328,7 @@ const Vehicles: React.FC = () => {
         const y = await (window as any).api.getSetting('year');
         setYear(Number(y || new Date().getFullYear()));
       } catch {}
+      await loadItwEnabled();
       // Fahrzeuge ggf. neu laden (falls geändert)
       try { setRtwVehicles(await (window as any).api.getRtwVehicles()); } catch {}
       try { setNefVehicles(await (window as any).api.getNefVehicles()); } catch {}
@@ -60,7 +336,7 @@ const Vehicles: React.FC = () => {
     };
     (window as any).api?.onSettingsUpdated?.(onSettingsUpdated);
     return () => (window as any).api?.offSettingsUpdated?.(onSettingsUpdated);
-  }, []);
+  }, [loadItwEnabled]);
 
   // Listen for messages from popups (e.g. add vehicle windows)
   useEffect(() => {
@@ -97,117 +373,46 @@ const Vehicles: React.FC = () => {
     try { setItwVehicles(await (window as any).api.getItwVehicles()); } catch {}
   }, []);
 
-  // --- RTW Edit/Select/Save ---
-  const startEditingRtw = () => { setOriginalRtw(JSON.parse(JSON.stringify(rtwVehicles))); setEditingRtw(true); };
-  const cancelEditingRtw = () => { if (originalRtw) setRtwVehicles(originalRtw); setEditingRtw(false); };
-  const saveEditingRtw = async () => {
-    try {
-      for (const v of rtwVehicles) {
-        const orig = originalRtw?.find(o => o.id === v.id);
-        if (!orig || orig.name !== v.name) {
-          await (window as any).api.updateRtwVehicle({ id: v.id, name: v.name });
-        }
-      }
-      setEditingRtw(false);
-      setOriginalRtw(null);
-      reloadRtw();
-    } catch (e) { console.warn('[Vehicles] saveEditingRtw', e); }
-  };
-  const onRtwRowClick = (id:number) => setSelectedRtwId(prev => prev === id ? null : id);
-  const handleDeleteSelectedRtw = async () => {
-    if (selectedRtwId == null) return;
-    const vehicle = rtwVehicles.find(v => v.id === selectedRtwId);
-    if (!vehicle) return;
-    
-    if (!confirm(`Möchten Sie das RTW-Fahrzeug "${vehicle.name}" wirklich löschen?\n\nAlle zugehörigen Zeiträume und Positionen werden ebenfalls gelöscht.`)) {
+  const handleSaveVehicleFromDialog = useCallback(async (
+    vehicleId: number,
+    vehicleType: 'rtw' | 'nef' | 'itw',
+    data: { name: string; occupancyMode?: '24h' | 'tag' }
+  ) => {
+    if (vehicleType === 'rtw') {
+      await (window as any).api.updateRtwVehicle({ id: vehicleId, name: data.name });
+      await reloadRtw();
       return;
     }
-    
-    try {
-      await (window as any).api.deleteRtwVehicle(selectedRtwId);
-      setSelectedRtwId(null);
-      reloadRtw();
-    } catch (error) {
-      alert(`Fehler beim Löschen: ${error}`);
-    }
-  };
-  const updateRtwName = (id:number, name:string) => setRtwVehicles(prev => prev.map(v => v.id === id ? { ...v, name } : v));
 
-  // --- NEF Edit/Select/Save ---
-  const startEditingNef = () => { setOriginalNef(JSON.parse(JSON.stringify(nefVehicles))); setEditingNef(true); };
-  const cancelEditingNef = () => { if (originalNef) setNefVehicles(originalNef); setEditingNef(false); };
-  const saveEditingNef = async () => {
-    try {
-      for (const v of nefVehicles) {
-        const orig = originalNef?.find(o => o.id === v.id);
-        if (!orig || orig.name !== v.name) {
-          await (window as any).api.updateNefVehicle({ id: v.id, name: v.name });
-        }
+    if (vehicleType === 'nef') {
+      await (window as any).api.updateNefVehicle({ id: vehicleId, name: data.name });
+      if (data.occupancyMode) {
+        await (window as any).api.setNefOccupancy?.(vehicleId, data.occupancyMode);
       }
-      setEditingNef(false);
-      setOriginalNef(null);
-      reloadNef();
-    } catch (e) { console.warn('[Vehicles] saveEditingNef', e); }
-  };
-  const onNefRowClick = (id:number) => setSelectedNefId(prev => prev === id ? null : id);
-  const handleDeleteSelectedNef = async () => {
-    if (selectedNefId == null) return;
-    const vehicle = nefVehicles.find(v => v.id === selectedNefId);
-    if (!vehicle) return;
-    
-    if (!confirm(`Möchten Sie das NEF-Fahrzeug "${vehicle.name}" wirklich löschen?\n\nAlle zugehörigen Zeiträume und Positionen werden ebenfalls gelöscht.`)) {
+      await reloadNef();
       return;
     }
-    
-    try {
-      await (window as any).api.deleteNefVehicle(selectedNefId);
-      setSelectedNefId(null);
-      reloadNef();
-    } catch (error) {
-      alert(`Fehler beim Löschen: ${error}`);
-    }
-  };
-  const updateNefName = (id:number, name:string) => setNefVehicles(prev => prev.map(v => v.id === id ? { ...v, name } : v));
-  const updateNefOccupancy = async (id:number, mode: '24h'|'tag') => {
-    setNefVehicles(prev => prev.map(v => v.id === id ? { ...v, occupancy_mode: mode } : v));
-    try { await (window as any).api.setNefOccupancy?.(id, mode); } catch {}
-  };
 
-  // --- ITW Edit/Select/Save ---
-  const startEditingItw = () => { setOriginalItw(JSON.parse(JSON.stringify(itwVehicles))); setEditingItw(true); };
-  const cancelEditingItw = () => { if (originalItw) setItwVehicles(originalItw); setEditingItw(false); };
-  const saveEditingItw = async () => {
-    try {
-      for (const v of itwVehicles) {
-        const orig = originalItw?.find(o => o.id === v.id);
-        if (!orig || orig.name !== v.name) {
-          await (window as any).api.updateItwVehicle({ id: v.id, name: v.name });
-        }
-      }
-      setEditingItw(false);
-      setOriginalItw(null);
-      reloadItw();
-    } catch (e) { console.warn('[Vehicles] saveEditingItw', e); }
-  };
-  const onItwRowClick = (id:number) => setSelectedItwId(prev => prev === id ? null : id);
-  const handleDeleteSelectedItw = async () => {
-    if (selectedItwId == null) return;
-    const vehicle = itwVehicles.find(v => v.id === selectedItwId);
-    if (!vehicle) return;
-    
-    if (!confirm(`Möchten Sie das ITW-Fahrzeug "${vehicle.name}" wirklich löschen?\n\nAlle zugehörigen Zeiträume und Positionen werden ebenfalls gelöscht.`)) {
+    await (window as any).api.updateItwVehicle({ id: vehicleId, name: data.name });
+    await reloadItw();
+  }, [reloadRtw, reloadNef, reloadItw]);
+
+  const handleDeleteVehicleFromDialog = useCallback(async (vehicleId: number, vehicleType: 'rtw' | 'nef' | 'itw') => {
+    if (vehicleType === 'rtw') {
+      await (window as any).api.deleteRtwVehicle(vehicleId);
+      await reloadRtw();
       return;
     }
-    
-    try {
-      await (window as any).api.deleteItwVehicle(selectedItwId);
-      setSelectedItwId(null);
-      reloadItw();
-    } catch (error) {
-      alert(`Fehler beim Löschen: ${error}`);
+
+    if (vehicleType === 'nef') {
+      await (window as any).api.deleteNefVehicle(vehicleId);
+      await reloadNef();
+      return;
     }
-  };
-  const updateItwName = (id:number, name:string) => setItwVehicles(prev => prev.map(v => v.id === id ? { ...v, name } : v));
+
+    await (window as any).api.deleteItwVehicle(vehicleId);
+    await reloadItw();
+  }, [reloadRtw, reloadNef, reloadItw]);
 
   // --- Drag & Drop ---
   const onDragOver = (e: React.DragEvent<HTMLTableRowElement>, overId: number, ctx:'rtw'|'nef'|'itw') => {
@@ -268,39 +473,34 @@ const Vehicles: React.FC = () => {
   const addNef = () => { (window as any).api.openAddNefWindow(); };
   const addItw = () => { (window as any).api.openAddItwVehicleWindow(); };
 
-  return (
-    <div style={{ 
-      paddingRight: 24,
-      paddingLeft: 24,
-      paddingTop: 0,
-      paddingBottom: 24
-    }}>
-      {/* Überschrift - ROT */}
-      <h2 style={{ 
-        marginTop: 0, 
-        marginBottom: 0,
-        position: 'sticky',
-        top: 0,
-        background: 'var(--bg)',
-        zIndex: 101,
-        paddingTop: 8,
-        paddingBottom: 8
-      }}>Fahrzeuge</h2>
+  const handleFooterAdd = useCallback(() => {
+    if (activeTab === 'nef') {
+      addNef();
+      return;
+    }
+    if (activeTab === 'itw') {
+      addItw();
+      return;
+    }
+    addRtw();
+  }, [activeTab]);
 
-      {/* Tab Navigation - GRÜN */}
-      <div style={{ 
-        display: 'flex', 
-        gap: 4, 
-        marginTop: 0, 
-        borderBottom: '2px solid #dee2e6',
-        marginBottom: 0,
-        position: 'sticky',
-        top: 52,
-        background: 'var(--bg)',
-        zIndex: 100,
-        paddingTop: 0,
-        paddingBottom: 0
-      }}>
+  useEffect(() => {
+    if (!setFooterActions) return;
+    setFooterActions(
+      <button onClick={handleFooterAdd}>
+        Hinzufügen
+      </button>
+    );
+    return () => setFooterActions(null);
+  }, [setFooterActions, handleFooterAdd]);
+
+  return (
+    <div className="page-container">
+      <div className="sticky-header-container">
+        <h2 className="page-header">Fahrzeuge</h2>
+        {/* Tab Navigation - GRÜN */}
+        <div className="tab-navigation" style={{ paddingTop: 0, paddingBottom: 0 }}>
         <button
           onClick={() => setActiveTab('rtw')}
           style={{
@@ -329,20 +529,23 @@ const Vehicles: React.FC = () => {
         >
           NEF
         </button>
-        <button
-          onClick={() => setActiveTab('itw')}
-          style={{
-            padding: '8px 16px',
-            border: 'none',
-            borderBottom: activeTab === 'itw' ? '3px solid #ffc107' : '3px solid transparent',
-            background: activeTab === 'itw' ? '#f8f9fa' : 'transparent',
-            fontWeight: activeTab === 'itw' ? 600 : 400,
-            cursor: 'pointer',
-            transition: 'all 0.2s'
-          }}
-        >
-          ITW
-        </button>
+        {itwEnabled && (
+          <button
+            onClick={() => setActiveTab('itw')}
+            style={{
+              padding: '8px 16px',
+              border: 'none',
+              borderBottom: activeTab === 'itw' ? '3px solid #ffc107' : '3px solid transparent',
+              background: activeTab === 'itw' ? '#f8f9fa' : 'transparent',
+              fontWeight: activeTab === 'itw' ? 600 : 400,
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            ITW
+          </button>
+        )}
+        </div>
       </div>
 
       {/* Content - GRAU */}
@@ -351,93 +554,55 @@ const Vehicles: React.FC = () => {
       {/* RTW Tab */}
       {activeTab === 'rtw' && (
       <div>
-        <h3>RTW Fahrzeuge</h3>
         <table className={styles.table}>
           <thead>
             <tr className={styles.thead}>
               <th>Bezeichnung</th>
-              <th className={styles.center} style={{ width: 150 }}>Positionen</th>
-              <th className={styles.center} style={{ width: 150 }}>Einsatzzeiträume</th>
-              <th className={styles.center} style={{ width: 60 }}>#</th>
+              <th className={styles.center} style={{ width: 100 }}>Aktionen</th>
             </tr>
           </thead>
           <tbody className={styles.tbody}>
             {rtwVehicles.map(v => {
               const isOver = dragContext === 'rtw' && dragOverId === v.id;
-              const rowClass = [styles.row, selectedRtwId === v.id ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
+              const rowClass = [styles.row, isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
               return (
                 <tr key={v.id}
-                    draggable={!editingRtw}
-                    onDragStart={() => !editingRtw && onRtwDragStart(v.id)}
-                    onDragOver={(e) => !editingRtw && onDragOver(e, v.id, 'rtw')}
-                    onDragLeave={() => !editingRtw && onDragLeave()}
-                    onDrop={() => !editingRtw && onRtwDrop(v.id)}
-                    onClick={() => onRtwRowClick(v.id)}
+                    draggable={true}
+                    onDragStart={() => onRtwDragStart(v.id)}
+                    onDragOver={(e) => onDragOver(e, v.id, 'rtw')}
+                    onDragLeave={() => onDragLeave()}
+                    onDrop={() => onRtwDrop(v.id)}
                     className={rowClass}
-                    style={{ cursor: editingRtw ? 'default' : 'move' }}>
-                  <td>{editingRtw ? <input value={v.name} onChange={e => updateRtwName(v.id, e.target.value)} /> : v.name}</td>
+                    style={{ cursor: 'move' }}>
+                  <td>{v.name}</td>
                   <td className={styles.center}>
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
-                        setShowRtwPositionEditor({ vehicleId: v.id, name: v.name });
-                      }}
-                      style={{
-                        background: '#28a745',
-                        color: 'white',
-                        border: 'none',
-                        padding: '4px 12px',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Positionen
-                    </button>
-                  </td>
-                  <td className={styles.center}>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowRtwPeriodEditor({ vehicleId: v.id, name: v.name });
+                        setVehicleConfigDialog({ vehicleId: v.id, name: v.name, vehicleType: 'rtw', initialTab: 'stammdaten' });
                       }}
                       style={{
                         background: '#007bff',
                         color: 'white',
                         border: 'none',
-                        padding: '4px 12px',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
+                        padding: '4px 8px',
+                        borderRadius: '3px',
+                        cursor: 'pointer',
+                        fontSize: '11px'
                       }}
+                      title="Fahrzeug bearbeiten"
                     >
-                      Zeiträume
+                      ✏️
                     </button>
                   </td>
-                  <td className={styles.center}>{selectedRtwId === v.id ? '✓' : ''}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-        {!editingRtw ? (
+        {!setFooterActions && (
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button onClick={addRtw}>Hinzufügen</button>
-            <button onClick={startEditingRtw} disabled={rtwVehicles.length === 0}>Ändern</button>
-            <button 
-              onClick={handleDeleteSelectedRtw} 
-              disabled={selectedRtwId == null}
-              style={{
-                background: selectedRtwId != null ? '#dc3545' : '#6c757d',
-                color: 'white',
-                cursor: selectedRtwId != null ? 'pointer' : 'not-allowed'
-              }}
-            >
-              Löschen
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button onClick={saveEditingRtw}>Speichern</button>
-            <button onClick={cancelEditingRtw}>Abbrechen</button>
           </div>
         )}
       </div>
@@ -445,196 +610,123 @@ const Vehicles: React.FC = () => {
 
       {/* NEF Tab */}
       {activeTab === 'nef' && (
-      <div style={{ marginTop: 16 }}>
-        <h3>NEF Fahrzeuge</h3>
+      <div>
         <table className={styles.table}>
           <thead>
             <tr className={styles.thead}>
               <th>Bezeichnung</th>
               <th>Besetzung</th>
-              <th className={styles.center} style={{ width: 150 }}>Positionen</th>
-              <th className={styles.center} style={{ width: 150 }}>Einsatzzeiträume</th>
-              <th className={styles.center} style={{ width: 60 }}>#</th>
+              <th className={styles.center} style={{ width: 100 }}>Aktionen</th>
             </tr>
           </thead>
           <tbody className={styles.tbody}>
             {nefVehicles.map(v => {
               const isOver = dragContext === 'nef' && dragOverId === v.id;
-              const rowClass = [styles.row, selectedNefId === v.id ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
+              const rowClass = [styles.row, isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
               return (
                 <tr key={v.id}
-                    draggable={!editingNef}
-                    onDragStart={() => !editingNef && onNefDragStart(v.id)}
-                    onDragOver={(e) => !editingNef && onDragOver(e, v.id, 'nef')}
-                    onDragLeave={() => !editingNef && onDragLeave()}
-                    onDrop={() => !editingNef && onNefDrop(v.id)}
-                    onClick={() => onNefRowClick(v.id)}
+                    draggable={true}
+                    onDragStart={() => onNefDragStart(v.id)}
+                    onDragOver={(e) => onDragOver(e, v.id, 'nef')}
+                    onDragLeave={() => onDragLeave()}
+                    onDrop={() => onNefDrop(v.id)}
                     className={rowClass}
-                    style={{ cursor: editingNef ? 'default' : 'move' }}>
-                  <td>{editingNef ? <input value={v.name} onChange={e => updateNefName(v.id, e.target.value)} /> : v.name}</td>
+                    style={{ cursor: 'move' }}>
+                  <td>{v.name}</td>
                   <td className={styles.center}>
-                    <select disabled={!editingNef} value={v.occupancy_mode || '24h'} onChange={e => updateNefOccupancy(v.id, (e.target.value === 'tag' ? 'tag' : '24h'))}>
-                      <option value="24h">24h besetzt</option>
-                      <option value="tag">Tagsüber besetzt</option>
-                    </select>
+                    {v.occupancy_mode === 'tag' ? 'Tag' : '24h besetzt'}
                   </td>
                   <td className={styles.center}>
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
-                        setShowNefPositionEditor({ vehicleId: v.id, name: v.name });
-                      }}
-                      style={{
-                        background: '#28a745',
-                        color: 'white',
-                        border: 'none',
-                        padding: '4px 12px',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Positionen
-                    </button>
-                  </td>
-                  <td className={styles.center}>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowNefPeriodEditor({ vehicleId: v.id, name: v.name });
+                        setVehicleConfigDialog({
+                          vehicleId: v.id,
+                          name: v.name,
+                          vehicleType: 'nef',
+                          occupancyMode: v.occupancy_mode || '24h',
+                          initialTab: 'stammdaten'
+                        });
                       }}
                       style={{
                         background: '#007bff',
                         color: 'white',
                         border: 'none',
-                        padding: '4px 12px',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
+                        padding: '4px 8px',
+                        borderRadius: '3px',
+                        cursor: 'pointer',
+                        fontSize: '11px'
                       }}
+                      title="Fahrzeug bearbeiten"
                     >
-                      Zeiträume
+                      ✏️
                     </button>
                   </td>
-                  <td className={styles.center}>{selectedNefId === v.id ? '✓' : ''}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-        {!editingNef ? (
+        {!setFooterActions && (
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button onClick={addNef}>Hinzufügen</button>
-            <button onClick={startEditingNef} disabled={nefVehicles.length === 0}>Ändern</button>
-            <button 
-              onClick={handleDeleteSelectedNef} 
-              disabled={selectedNefId == null}
-              style={{
-                background: selectedNefId != null ? '#dc3545' : '#6c757d',
-                color: 'white',
-                cursor: selectedNefId != null ? 'pointer' : 'not-allowed'
-              }}
-            >
-              Löschen
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button onClick={saveEditingNef}>Speichern</button>
-            <button onClick={cancelEditingNef}>Abbrechen</button>
           </div>
         )}
       </div>
       )}
 
       {/* ITW Tab */}
-      {activeTab === 'itw' && (
-      <div style={{ marginTop: 16 }}>
-        <h3>ITW Fahrzeuge</h3>
+      {itwEnabled && activeTab === 'itw' && (
+      <div>
         <table className={styles.table}>
           <thead>
             <tr className={styles.thead}>
               <th>Bezeichnung</th>
-              <th className={styles.center} style={{ width: 150 }}>Positionen</th>
-              <th className={styles.center} style={{ width: 150 }}>Einsatzzeiträume</th>
-              <th className={styles.center} style={{ width: 60 }}>#</th>
+              <th className={styles.center} style={{ width: 100 }}>Aktionen</th>
             </tr>
           </thead>
           <tbody className={styles.tbody}>
             {itwVehicles.map(v => {
               const isOver = dragContext === 'itw' && dragOverId === v.id;
-              const rowClass = [styles.row, selectedItwId === v.id ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
+              const rowClass = [styles.row, isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
               return (
                 <tr key={v.id}
-                    draggable={!editingItw}
-                    onDragStart={() => !editingItw && onItwDragStart(v.id)}
-                    onDragOver={(e) => !editingItw && onDragOver(e, v.id, 'itw')}
-                    onDragLeave={() => !editingItw && onDragLeave()}
-                    onDrop={() => !editingItw && onItwDrop(v.id)}
-                    onClick={() => onItwRowClick(v.id)}
+                    draggable={true}
+                    onDragStart={() => onItwDragStart(v.id)}
+                    onDragOver={(e) => onDragOver(e, v.id, 'itw')}
+                    onDragLeave={() => onDragLeave()}
+                    onDrop={() => onItwDrop(v.id)}
                     className={rowClass}
-                    style={{ cursor: editingItw ? 'default' : 'move' }}>
-                  <td>{editingItw ? <input value={v.name} onChange={e => updateItwName(v.id, e.target.value)} /> : v.name}</td>
+                    style={{ cursor: 'move' }}>
+                  <td>{v.name}</td>
                   <td className={styles.center}>
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
-                        setShowItwPositionEditor({ vehicleId: v.id, name: v.name });
-                      }}
-                      style={{
-                        background: '#28a745',
-                        color: 'white',
-                        border: 'none',
-                        padding: '4px 12px',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Positionen
-                    </button>
-                  </td>
-                  <td className={styles.center}>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowItwPeriodEditor({ vehicleId: v.id, name: v.name });
+                        setVehicleConfigDialog({ vehicleId: v.id, name: v.name, vehicleType: 'itw', initialTab: 'stammdaten' });
                       }}
                       style={{
                         background: '#007bff',
                         color: 'white',
                         border: 'none',
-                        padding: '4px 12px',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
+                        padding: '4px 8px',
+                        borderRadius: '3px',
+                        cursor: 'pointer',
+                        fontSize: '11px'
                       }}
+                      title="Fahrzeug bearbeiten"
                     >
-                      Zeiträume
+                      ✏️
                     </button>
                   </td>
-                  <td className={styles.center}>{selectedItwId === v.id ? '✓' : ''}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-        {!editingItw ? (
+        {!setFooterActions && (
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button onClick={addItw}>Hinzufügen</button>
-            <button onClick={startEditingItw} disabled={itwVehicles.length === 0}>Ändern</button>
-            <button 
-              onClick={handleDeleteSelectedItw} 
-              disabled={selectedItwId == null}
-              style={{
-                background: selectedItwId != null ? '#dc3545' : '#6c757d',
-                color: 'white',
-                cursor: selectedItwId != null ? 'pointer' : 'not-allowed'
-              }}
-            >
-              Löschen
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button onClick={saveEditingItw}>Speichern</button>
-            <button onClick={cancelEditingItw}>Abbrechen</button>
           </div>
         )}
       </div>
@@ -642,63 +734,16 @@ const Vehicles: React.FC = () => {
 
       {/* Schließen-Button entfernt: Seite läuft im Hauptfenster */}
 
-      {/* RTW Period Editor */}
-      {showRtwPeriodEditor && (
-        <VehiclePeriodList
-          vehicleId={showRtwPeriodEditor.vehicleId}
-          vehicleName={showRtwPeriodEditor.name}
-          vehicleType="rtw"
-          onClose={() => setShowRtwPeriodEditor(null)}
-        />
-      )}
-
-      {/* NEF Period Editor */}
-      {showNefPeriodEditor && (
-        <VehiclePeriodList
-          vehicleId={showNefPeriodEditor.vehicleId}
-          vehicleName={showNefPeriodEditor.name}
-          vehicleType="nef"
-          onClose={() => setShowNefPeriodEditor(null)}
-        />
-      )}
-
-      {/* ITW Period Editor */}
-      {showItwPeriodEditor && (
-        <VehiclePeriodList
-          vehicleId={showItwPeriodEditor.vehicleId}
-          vehicleName={showItwPeriodEditor.name}
-          vehicleType="itw"
-          onClose={() => setShowItwPeriodEditor(null)}
-        />
-      )}
-
-      {/* RTW Position Editor */}
-      {showRtwPositionEditor && (
-        <VehiclePositionEditor
-          vehicleId={showRtwPositionEditor.vehicleId}
-          vehicleName={showRtwPositionEditor.name}
-          vehicleType="rtw"
-          onClose={() => setShowRtwPositionEditor(null)}
-        />
-      )}
-
-      {/* NEF Position Editor */}
-      {showNefPositionEditor && (
-        <VehiclePositionEditor
-          vehicleId={showNefPositionEditor.vehicleId}
-          vehicleName={showNefPositionEditor.name}
-          vehicleType="nef"
-          onClose={() => setShowNefPositionEditor(null)}
-        />
-      )}
-
-      {/* ITW Position Editor */}
-      {showItwPositionEditor && (
-        <VehiclePositionEditor
-          vehicleId={showItwPositionEditor.vehicleId}
-          vehicleName={showItwPositionEditor.name}
-          vehicleType="itw"
-          onClose={() => setShowItwPositionEditor(null)}
+      {vehicleConfigDialog && (
+        <VehicleConfigDialog
+          vehicleId={vehicleConfigDialog.vehicleId}
+          vehicleName={vehicleConfigDialog.name}
+          vehicleType={vehicleConfigDialog.vehicleType}
+          occupancyMode={vehicleConfigDialog.occupancyMode}
+          initialTab={vehicleConfigDialog.initialTab}
+          onSave={(data) => handleSaveVehicleFromDialog(vehicleConfigDialog.vehicleId, vehicleConfigDialog.vehicleType, data)}
+          onDelete={() => handleDeleteVehicleFromDialog(vehicleConfigDialog.vehicleId, vehicleConfigDialog.vehicleType)}
+          onClose={() => setVehicleConfigDialog(null)}
         />
       )}
       </div>

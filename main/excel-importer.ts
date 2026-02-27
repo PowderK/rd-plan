@@ -15,7 +15,7 @@ export interface PersonnelImportData {
   itwMaschinist?: boolean;
   itwFahrzeugfuehrer?: boolean;
   // Neue Qualifikations-Zeiträume für Export-Format
-  qualifications?: Array<{ qualType: string; startYM: string; endYM: string | null }>;
+  qualifications?: Array<{ qualType: string; startYM: string; endYM: string | null; active?: boolean }>;
   // Neue Aktivitäts-Zeiträume
   activePeriods?: Array<{ startYM: string; endYM: string | null; description?: string }>;
 }
@@ -42,6 +42,50 @@ export class ExcelPersonnelImporter {
 
   constructor(db: AsyncDB) {
     this.db = db;
+  }
+
+  private parsePeriodsJson(value: any, context: string): Array<{ startYM: string; endYM: string | null; description: string; active?: boolean }> {
+    if (value === undefined || value === null || String(value).trim() === '') {
+      return [];
+    }
+
+    try {
+      const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+
+      const result: Array<{ startYM: string; endYM: string | null; description: string; active?: boolean }> = [];
+      for (const entry of parsed) {
+        const startYM = entry?.startYM ? String(entry.startYM).trim() : '';
+        if (!startYM) {
+          continue;
+        }
+
+        const endYMRaw = entry?.endYM;
+        const endYM = endYMRaw === undefined || endYMRaw === null || String(endYMRaw).trim() === ''
+          ? null
+          : String(endYMRaw).trim();
+        const description = entry?.description !== undefined && entry?.description !== null
+          ? String(entry.description).trim()
+          : '';
+        const active = entry?.active === undefined
+          ? undefined
+          : entry.active === true || entry.active === 1 || String(entry.active).toLowerCase() === 'true';
+
+        result.push({
+          startYM,
+          endYM,
+          description,
+          active
+        });
+      }
+
+      return result;
+    } catch (error) {
+      console.warn(`[ExcelImporter] Konnte JSON-Perioden in ${context} nicht parsen:`, error);
+      return [];
+    }
   }
 
   /**
@@ -206,17 +250,40 @@ export class ExcelPersonnelImporter {
     console.log(`[ExcelImporter] Person: "${name}" "${vorname}" | Raw Name=${row['Name']}, Vorname=${row['Vorname']}, Teilzeit=${teilzeit}, Rolle=${role}`);
 
     // Extrahiere Qualifikationen aus den _Von/_Bis Spalten
-    const qualifications: Array<{ qualType: string; startYM: string; endYM: string }> = [];
+    const qualifications: Array<{ qualType: string; startYM: string; endYM: string | null; active?: boolean }> = [];
+    const qualificationSet = new Set<string>();
 
     // Finde alle Qualifikations-Spalten
     const qualTypes = new Set<string>();
+    const hasDedicatedActiveColumns = headerRow.some((h: any) => h === 'Personal_Aktiv_Von' || h === 'Personal_Aktiv_Zeiträume_JSON');
+
     for (const header of headerRow) {
-      if (typeof header === 'string' && header.includes('_Von')) {
-        if (header === 'Aktiv_Von' || header.startsWith('Aktiv_')) {
+      if (typeof header !== 'string') {
+        continue;
+      }
+
+      if (header.includes('_Von')) {
+        if (header === 'Personal_Aktiv_Von') {
+          continue;
+        }
+        if (header === 'Aktiv_Von' && !hasDedicatedActiveColumns) {
           continue;
         }
         const qualType = header.replace('_Von', '');
         qualTypes.add(qualType);
+      }
+
+      if (header.endsWith('_Zeiträume_JSON')) {
+        if (header === 'Personal_Aktiv_Zeiträume_JSON') {
+          continue;
+        }
+        if (header === 'Aktiv_Zeiträume_JSON' && !hasDedicatedActiveColumns) {
+          continue;
+        }
+        const qualType = header.replace('_Zeiträume_JSON', '');
+        if (qualType) {
+          qualTypes.add(qualType);
+        }
       }
     }
 
@@ -224,6 +291,21 @@ export class ExcelPersonnelImporter {
 
     // Extrahiere Zeiträume für jede Qualifikation
     for (const qualType of qualTypes) {
+      const jsonPeriods = this.parsePeriodsJson(row[`${qualType}_Zeiträume_JSON`], `${qualType}_Zeiträume_JSON`);
+      for (const period of jsonPeriods) {
+        const key = `${qualType}|${period.startYM}|${period.endYM || ''}|${period.active !== false ? 1 : 0}`;
+        if (!qualificationSet.has(key)) {
+          qualifications.push({
+            qualType,
+            startYM: period.startYM,
+            endYM: period.endYM,
+            active: period.active !== false
+          });
+          qualificationSet.add(key);
+          console.log(`[ExcelImporter] Added qualification(JSON): ${qualType}, ${period.startYM} - ${period.endYM}`);
+        }
+      }
+
       const startYM = row[`${qualType}_Von`];
       const endYM = row[`${qualType}_Bis`];
 
@@ -232,33 +314,58 @@ export class ExcelPersonnelImporter {
         const startYMStr = String(startYM).trim();
         const endYMStr = endYM && endYM.toString().trim() !== '' ? String(endYM).trim() : null;
 
-        qualifications.push({
-          qualType,
-          startYM: startYMStr,
-          endYM: endYMStr as any
-        });
-
-        console.log(`[ExcelImporter] Added qualification: ${qualType}, ${startYMStr} - ${endYMStr}`);
+        const key = `${qualType}|${startYMStr}|${endYMStr || ''}|1`;
+        if (!qualificationSet.has(key)) {
+          qualifications.push({
+            qualType,
+            startYM: startYMStr,
+            endYM: endYMStr,
+            active: true
+          });
+          qualificationSet.add(key);
+          console.log(`[ExcelImporter] Added qualification: ${qualType}, ${startYMStr} - ${endYMStr}`);
+        }
       }
     }
 
     // Extrahiere Aktivitäts-Zeiträume (Aktiv_Von, Aktiv_Bis, Aktiv_Beschreibung)
-    const activePeriods: Array<{ startYM: string; endYM: string; description?: string }> = [];
-    const activeStart = row['Aktiv_Von'];
-    const activeEnd = row['Aktiv_Bis'];
-    const activeDesc = row['Aktiv_Beschreibung'];
+    const activePeriods: Array<{ startYM: string; endYM: string | null; description?: string }> = [];
+    const activePeriodSet = new Set<string>();
+
+    const activeJsonRaw = row['Personal_Aktiv_Zeiträume_JSON'] ?? row['Aktiv_Zeiträume_JSON'];
+    const activeJsonPeriods = this.parsePeriodsJson(activeJsonRaw, 'Personal_Aktiv_Zeiträume_JSON');
+    for (const period of activeJsonPeriods) {
+      const key = `${period.startYM}|${period.endYM || ''}|${period.description || ''}`;
+      if (!activePeriodSet.has(key)) {
+        activePeriods.push({
+          startYM: period.startYM,
+          endYM: period.endYM,
+          description: period.description || ''
+        });
+        activePeriodSet.add(key);
+        console.log(`[ExcelImporter] Added active period(JSON): ${period.startYM} - ${period.endYM}`);
+      }
+    }
+
+    const activeStart = row['Personal_Aktiv_Von'] ?? row['Aktiv_Von'];
+    const activeEnd = row['Personal_Aktiv_Bis'] ?? row['Aktiv_Bis'];
+    const activeDesc = row['Personal_Aktiv_Beschreibung'] ?? row['Aktiv_Beschreibung'];
 
     if (activeStart && activeStart.toString().trim() !== '') {
       const startYMStr = String(activeStart).trim();
       const endYMStr = activeEnd && activeEnd.toString().trim() !== '' ? String(activeEnd).trim() : null;
       const descStr = activeDesc ? String(activeDesc).trim() : '';
 
-      activePeriods.push({
-        startYM: startYMStr,
-        endYM: endYMStr as any,
-        description: descStr
-      });
-      console.log(`[ExcelImporter] Added active period: ${startYMStr} - ${endYMStr}`);
+      const key = `${startYMStr}|${endYMStr || ''}|${descStr}`;
+      if (!activePeriodSet.has(key)) {
+        activePeriods.push({
+          startYM: startYMStr,
+          endYM: endYMStr,
+          description: descStr
+        });
+        activePeriodSet.add(key);
+        console.log(`[ExcelImporter] Added active period: ${startYMStr} - ${endYMStr}`);
+      }
     }
 
     return {
@@ -435,22 +542,22 @@ export class ExcelPersonnelImporter {
                 try {
                   // Check if exact qualification type exists for this person
                   const existingQual = await this.db.get(
-                    'SELECT id FROM qualification_periods WHERE personId = ? AND qualType = ?',
-                    [personId, qual.qualType]
+                    'SELECT id FROM qualification_periods WHERE personId = ? AND qualType = ? AND startYM = ? AND IFNULL(endYM, \'\') = IFNULL(?, \'\') AND active = ?',
+                    [personId, qual.qualType, qual.startYM, qual.endYM, qual.active !== false ? 1 : 0]
                   );
 
                   if (existingQual) {
-                    // Update existing qualification
+                    // Bereits vorhanden: nur aktiv halten
                     await this.db.run(
-                      'UPDATE qualification_periods SET startYM = ?, endYM = ?, active = 1 WHERE id = ?',
-                      [qual.startYM, qual.endYM, existingQual.id]
+                      'UPDATE qualification_periods SET active = ? WHERE id = ?',
+                      [qual.active !== false ? 1 : 0, existingQual.id]
                     );
                     console.log(`[ExcelImporter] Updated qualification ${qual.qualType} for ${personId}`);
                   } else {
                     // Insert new qualification
                     await this.db.run(
                       'INSERT INTO qualification_periods (personId, qualType, startYM, endYM, active) VALUES (?, ?, ?, ?, ?)',
-                      [personId, qual.qualType, qual.startYM, qual.endYM, 1]
+                      [personId, qual.qualType, qual.startYM, qual.endYM, qual.active !== false ? 1 : 0]
                     );
                     console.log(`[ExcelImporter] Added new qualification ${qual.qualType} for ${personId}`);
                   }
@@ -466,8 +573,8 @@ export class ExcelPersonnelImporter {
                 try {
                   // Check for duplicate period (same start/end) to avoid double insertion
                   const existingPeriod = await this.db.get(
-                    'SELECT id FROM personnel_active_periods WHERE personId = ? AND startYM = ? AND (endYM = ? OR (endYM IS NULL AND ? IS NULL))',
-                    [personId, period.startYM, period.endYM, period.endYM]
+                    'SELECT id FROM personnel_active_periods WHERE personId = ? AND startYM = ? AND IFNULL(endYM, \'\') = IFNULL(?, \'\')',
+                    [personId, period.startYM, period.endYM]
                   );
 
                   if (existingPeriod) {
@@ -544,7 +651,7 @@ export class ExcelPersonnelImporter {
               try {
                 await this.db.run(
                   'INSERT INTO qualification_periods (personId, qualType, startYM, endYM, active) VALUES (?, ?, ?, ?, ?)',
-                  [personId, qual.qualType, qual.startYM, qual.endYM, 1]
+                  [personId, qual.qualType, qual.startYM, qual.endYM, qual.active !== false ? 1 : 0]
                 );
               } catch (error) {
                 console.error(`[ExcelImporter] ✗ Konnte Qualifikation ${qual.qualType} für Person ${personId} nicht importieren:`, error);
@@ -629,9 +736,17 @@ export class ExcelPersonnelImporter {
             console.log(`[ExcelImporter] Importing ${azubi.periods.length} periods for azubi ${azubi.name}`);
             for (const period of azubi.periods) {
               try {
+                const normalizedEndDate = period.end_date && String(period.end_date).trim() !== ''
+                  ? period.end_date
+                  : period.start_date;
+
+                if (!period.end_date || String(period.end_date).trim() === '') {
+                  console.warn(`[ExcelImporter] Azubi ${azubi.name}: end_date leer, verwende start_date als Fallback (${period.start_date})`);
+                }
+
                 await this.db.run(
                   'INSERT INTO azubi_periods (azubi_id, start_date, end_date, description, lehrjahr) VALUES (?, ?, ?, ?, ?)',
-                  [azubiId, period.start_date, period.end_date || null, period.description || '', azubi.lehrjahr]
+                  [azubiId, period.start_date, normalizedEndDate, period.description || '', azubi.lehrjahr]
                 );
                 console.log(`[ExcelImporter] ✓ Zeitraum importiert: ${period.start_date} - ${period.end_date || 'offen'} (Lehrjahr: ${azubi.lehrjahr})`);
               } catch (error) {
@@ -711,7 +826,13 @@ export class ExcelPersonnelImporter {
       const personnel = await this.db.all('SELECT * FROM personnel ORDER BY sort ASC, name ASC');
 
       // Lade alle verfügbaren Qualifikationstypen
-      const qualTypes = await this.db.all('SELECT name FROM qualification_types WHERE active = 1 ORDER BY sort, name');
+      const qualTypesFromMaster = await this.db.all('SELECT name FROM qualification_types WHERE active = 1 ORDER BY sort, name');
+      const qualTypesFromPeriods = await this.db.all('SELECT DISTINCT qualType as name FROM qualification_periods ORDER BY qualType');
+      const qualTypeNames = Array.from(new Set([
+        ...qualTypesFromMaster.map((q: any) => q.name),
+        ...qualTypesFromPeriods.map((q: any) => q.name)
+      ])).filter(Boolean);
+      const qualTypes = qualTypeNames.map(name => ({ name }));
       console.log('[ExcelImporter] Available qualification types:', qualTypes.map(q => q.name));
 
 
@@ -725,12 +846,13 @@ export class ExcelPersonnelImporter {
       } catch (e) { }
 
       // Erstelle Header mit separaten Spalten für jede Qualifikation
-      const headers = ['Name', 'Vorname', 'Aktiv', 'Teilzeit', 'Personalnummer', 'Rolle', 'Aktiv_Von', 'Aktiv_Bis', 'Aktiv_Beschreibung'];
+      const headers = ['Name', 'Vorname', 'Aktiv', 'Teilzeit', 'Personalnummer', 'Rolle', 'Personal_Aktiv_Von', 'Personal_Aktiv_Bis', 'Personal_Aktiv_Beschreibung', 'Personal_Aktiv_Zeiträume_JSON'];
       const qualHeaders: string[] = [];
 
       for (const qualType of qualTypes) {
         qualHeaders.push(`${qualType.name}_Von`);
         qualHeaders.push(`${qualType.name}_Bis`);
+        qualHeaders.push(`${qualType.name}_Zeiträume_JSON`);
       }
 
       headers.push(...qualHeaders);
@@ -741,16 +863,23 @@ export class ExcelPersonnelImporter {
         console.log(`[ExcelImporter] Loading qualifications for person ${person.id} (${person.name})`);
 
         const allQuals = await this.db.all(
-          'SELECT qualType, startYM, endYM FROM qualification_periods WHERE personId = ? AND active = 1',
+          'SELECT qualType, startYM, endYM, active FROM qualification_periods WHERE personId = ? ORDER BY qualType ASC, startYM ASC',
           [person.id]
         );
 
         // Lade Aktivitäts-Zeiträume
         const activePeriods = await this.db.all(
-          'SELECT startYM, endYM, description FROM personnel_active_periods WHERE personId = ? AND active = 1 ORDER BY startYM DESC LIMIT 1',
+          'SELECT startYM, endYM, description FROM personnel_active_periods WHERE personId = ? AND active = 1 ORDER BY startYM DESC',
           [person.id]
         );
         const activePeriod = activePeriods.length > 0 ? activePeriods[0] : null;
+        const activePeriodsJson = activePeriods.length > 0
+          ? JSON.stringify(activePeriods.map((p: any) => ({
+            startYM: p.startYM || '',
+            endYM: p.endYM || null,
+            description: p.description || ''
+          })))
+          : '';
 
         console.log(`[ExcelImporter] All qualifications for person ${person.id}:`, allQuals);
 
@@ -766,18 +895,30 @@ export class ExcelPersonnelImporter {
           roleName,
           activePeriod ? activePeriod.startYM : '',
           activePeriod ? (activePeriod.endYM || '') : '',
-          activePeriod ? (activePeriod.description || '') : ''
+          activePeriod ? (activePeriod.description || '') : '',
+          activePeriodsJson
         ];
 
         // Füge für jede Qualifikation die Zeiträume hinzu
         for (const qualType of qualTypes) {
-          const qual = allQuals.find(q => q.qualType === qualType.name);
-          if (qual) {
-            row.push(qual.startYM || ''); // Von-Datum
-            row.push(qual.endYM || ''); // Bis-Datum (leer = unbegrenzt)
+          const qualPeriods = allQuals.filter(q => q.qualType === qualType.name);
+          const latestQual = qualPeriods.length > 0 ? qualPeriods[qualPeriods.length - 1] : null;
+          const qualPeriodsJson = qualPeriods.length > 0
+            ? JSON.stringify(qualPeriods.map((p: any) => ({
+              startYM: p.startYM || '',
+              endYM: p.endYM || null,
+              active: p.active === 1 || p.active === true
+            })))
+            : '';
+
+          if (latestQual) {
+            row.push(latestQual.startYM || ''); // Von-Datum (neuester Zeitraum)
+            row.push(latestQual.endYM || ''); // Bis-Datum (leer = unbegrenzt)
+            row.push(qualPeriodsJson); // vollständige Historie
           } else {
             row.push(''); // Kein Von-Datum
             row.push(''); // Kein Bis-Datum
+            row.push(''); // Keine JSON-Zeiträume
           }
         }
 
@@ -796,13 +937,15 @@ export class ExcelPersonnelImporter {
         { width: 20 }, // Rolle
         { width: 12 }, // Aktiv_Von
         { width: 12 }, // Aktiv_Bis
-        { width: 20 }  // Aktiv_Beschreibung
+        { width: 20 }, // Aktiv_Beschreibung
+        { width: 30 }  // Aktiv_Zeiträume_JSON
       ];
 
-      // Füge Spaltenbreiten für jede Qualifikation hinzu (Von/Bis Spalten)
+      // Füge Spaltenbreiten für jede Qualifikation hinzu (Von/Bis/JSON)
       for (const qualType of qualTypes) {
         colWidths.push({ width: 15 }); // Von-Spalte
         colWidths.push({ width: 15 }); // Bis-Spalte
+        colWidths.push({ width: 30 }); // JSON-Historie
       }
 
       worksheet['!cols'] = colWidths;

@@ -7,6 +7,7 @@ import { Kontrollkasten } from './Kontrollkasten';
 interface MonthTabsProps {
     currentMonth: number;
     onMonthChange: (month: number) => void;
+    onYearChange?: (year: number) => void;
     personnel: { id: number; name: string; vorname: string; fahrzeugfuehrer?: boolean; nef?: boolean; fahrzeugfuehrerHLFB?: boolean | number; teilzeit?: number }[];
     azubis: { id: number; name: string; vorname: string; lehrjahr: number }[];
     roster: Record<string, Record<string, { value: string; type: string }>>;
@@ -23,8 +24,8 @@ const months = [
     'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'
 ];
 
-const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, personnel, azubis, roster, year, shiftPattern, deptPatternSeqs = [], onRosterChanged, onEntryAssigned }) => {
-    const { hasPermission } = useAuth();
+const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYearChange, personnel, azubis, roster, year, shiftPattern, deptPatternSeqs = [], onRosterChanged, onEntryAssigned }) => {
+    const { hasPermission, currentUser } = useAuth();
     const canWrite = hasPermission('einteilung', 'write');
     // Read permission is implicit if they can see the page, but we use it to check for "read-only" status
     // If they have write permission, they are not read-only.
@@ -68,34 +69,79 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
     const [featureOldRtwShifts, setFeatureOldRtwShifts] = useState(false);
     // Schichtübernahmen
     const [shiftTransfers, setShiftTransfers] = useState<any[]>([]);
+    const [availableYears, setAvailableYears] = useState<number[]>([]);
+
+    useEffect(() => {
+        const loadYearOptions = async () => {
+            try {
+                const plannings = await (window as any).api.getYearPlannings?.();
+                const years = Array.isArray(plannings)
+                    ? plannings
+                        .map((p: any) => Number(p.year))
+                        .filter((y: number) => Number.isFinite(y))
+                    : [];
+                const merged = Array.from(new Set([year, ...years])).sort((a, b) => b - a);
+                setAvailableYears(merged);
+            } catch {
+                setAvailableYears([year]);
+            }
+        };
+
+        loadYearOptions();
+    }, [year]);
+
+    useEffect(() => {
+        if (!itwEnabled && viewMode === 'itw') {
+            setViewMode('rtwnef');
+        }
+    }, [itwEnabled, viewMode]);
 
     // Kommentar-State für Einteilung (Issue #22 UI-Anpassungen)
     const [personalComments, setPersonalComments] = useState<Map<string, { id: number; comment: string; created_by: string }>>(new Map());
     const [globalComments, setGlobalComments] = useState<Map<string, { id: number; comment: string; created_by: string }>>(new Map());
     const [activeCommentsData, setActiveCommentsData] = useState<{ dateStr: string; comments: string[] } | null>(null);
 
-    useEffect(() => {
-        const loadComments = async () => {
-            try {
-                const persRes = await (window as any).api.getPersonalCommentsForMonth(year, currentMonth);
-                if (Array.isArray(persRes)) {
-                    const map = new Map();
-                    persRes.forEach((c: any) => map.set(`${c.person_id}_${c.date}`, c));
-                    setPersonalComments(map);
-                }
-
-                const globRes = await (window as any).api.getGlobalCommentsForMonth(year, currentMonth);
-                if (Array.isArray(globRes)) {
-                    const map = new Map();
-                    globRes.forEach((c: any) => map.set(c.date, c));
-                    setGlobalComments(map);
-                }
-            } catch (err) {
-                console.error('[MonthTabs] Error loading comments:', err);
+    const loadComments = useCallback(async () => {
+        try {
+            const persRes = await (window as any).api.getPersonalCommentsForMonth(year, currentMonth);
+            if (Array.isArray(persRes)) {
+                const map = new Map();
+                persRes.forEach((c: any) => map.set(`${c.person_id}_${c.date}`, c));
+                setPersonalComments(map);
             }
-        };
-        loadComments();
+
+            const globRes = await (window as any).api.getGlobalCommentsForMonth(year, currentMonth);
+            if (Array.isArray(globRes)) {
+                const map = new Map();
+                globRes.forEach((c: any) => map.set(c.date, c));
+                setGlobalComments(map);
+            }
+        } catch (err) {
+            console.error('[MonthTabs] Error loading comments:', err);
+        }
     }, [year, currentMonth]);
+
+    const getCommentLinesForDate = useCallback((isoDate: string): string[] => {
+        const lines: string[] = [];
+
+        if (globalComments.has(isoDate)) {
+            lines.push(`Global: ${globalComments.get(isoDate)?.comment}`);
+        }
+
+        personalComments.forEach((c, key) => {
+            if (key.endsWith(`_${isoDate}`)) {
+                const pId = Number(key.split('_')[0]);
+                const pName = personnel.find(p => p.id === pId)?.name || 'Jemand';
+                lines.push(`${pName}: ${c.comment}`);
+            }
+        });
+
+        return lines;
+    }, [globalComments, personalComments, personnel]);
+
+    useEffect(() => {
+        loadComments();
+    }, [loadComments]);
 
     useEffect(() => {
         const loadHlfbPeriods = async () => {
@@ -862,6 +908,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
         }
     };
 
+    const getNefAssistWeight = useCallback((slotType: string): number => {
+        const match = String(slotType || '').match(/^nef(\d+)?_assist$/);
+        if (!match) return 0;
+        const idx = match[1] ? Math.max(0, Number(match[1]) - 1) : 0;
+        const mode = nefVehicles[idx]?.occupancy_mode || '24h';
+        return mode === 'tag' ? 1 : 2;
+    }, [nefVehicles]);
+
     {/* ========================================================== */ }
     {/* GEMEINSAME SOLL-BERECHNUNG für RTW-Tab und ITW-Tab        */ }
     {/* ========================================================== */ }
@@ -976,7 +1030,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         const cell = getCell(key, iso);
                         const t = String(cell?.type || '');
                         if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) cumDriven += 1;
-                        else if (/^nef(\d+)?_assist$/.test(t)) cumDriven += 2;
+                        else if (/^nef(\d+)?_assist$/.test(t)) cumDriven += getNefAssistWeight(t);
                     }
 
                     // ITW zählt an allen Tagen des Monats
@@ -1009,7 +1063,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         let isShift = false;
                         if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) { sumDrivenY += 1; isShift = true; }
                         else if (t.startsWith('itw_row_')) { sumDrivenY += 1; isShift = true; }
-                        else if (/^nef(\d+)?_assist$/.test(t)) { sumDrivenY += 2; isShift = true; }
+                        else if (/^nef(\d+)?_assist$/.test(t)) { sumDrivenY += getNefAssistWeight(t); isShift = true; }
 
                         if (/^rtw\d+_tag_(1|2)$/.test(t)) tagCntY += 1;
                         if (/^rtw\d+_nacht_(1|2)$/.test(t)) nachtCntY += 1;
@@ -1057,7 +1111,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                     if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) cntM += 1;
                     if (/^rtw\d+_tag_(1|2)$/.test(t)) tagCntM += 1;
                     if (/^rtw\d+_nacht_(1|2)$/.test(t)) nachtCntM += 1;
-                    else if (/^nef(\d+)?_assist$/.test(t)) cntM += 2;
+                    else if (/^nef(\d+)?_assist$/.test(t)) cntM += getNefAssistWeight(t);
                 }
                 // ITW counts (aktueller Monat) - zählt für cntM
                 for (const iso of allMonthDays) {
@@ -1088,7 +1142,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         if (depDay && String(department) === depDay) {
                             const cell = getCell(key, iso);
                             const t = String(cell?.type || '');
-                            if (/^nef(\d+)?_assist$/.test(t)) nefCntYear += 2;
+                            if (/^nef(\d+)?_assist$/.test(t)) nefCntYear += getNefAssistWeight(t);
                         }
                     }
 
@@ -1136,27 +1190,67 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 style={{
                     position: 'fixed',
                     top: 'clamp(56px, 6.5vw, 90px)',
-                    left: sidebarCollapsed ? 66 : 210,
-                    right: sidebarWidth,
+                    left: sidebarCollapsed ? 56 : 200,
+                    right: sidebarWidth + 16,
                     zIndex: 100,
                     background: 'var(--bg)',
-                    paddingLeft: 25,
-                    paddingRight: 25,
+                    paddingLeft: 24,
+                    paddingRight: 24,
                     transition: 'left 0.15s'
                 }}
             >
-                {/* Sub‑Header: RTW/ITW Einteilung (Monat) */}
                 <div style={{
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
-                    paddingTop: 8,
+                    justifyContent: 'flex-start',
+                    gap: 12,
+                    paddingTop: 12,
                     paddingBottom: 14
                 }}>
-                    <span style={{ fontSize: 18, fontWeight: 700 }}>
+                    <h2 style={{ margin: 0 }}>Einteilung</h2>
+                    <span style={{ fontSize: 22, fontWeight: 700, whiteSpace: 'nowrap' }}>
                         {viewMode === 'rtwnef' ? 'RTW Einteilung' : 'ITW Einteilung'} ({months[currentMonth]})
                     </span>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+                    <div style={{
+                        position: 'absolute',
+                        top: 8,
+                        right: `-${Math.max(0, sidebarWidth - 28)}px`,
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 16,
+                        zIndex: 103
+                    }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 140, justifyContent: 'flex-end' }}>
+                            Jahr:
+                            <select
+                                value={year}
+                                onChange={e => onYearChange?.(Number(e.target.value))}
+                                style={{
+                                    padding: '6px 10px',
+                                    fontSize: 14,
+                                    borderRadius: 6,
+                                    border: '1px solid #bbb',
+                                    background: '#fff',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                {(availableYears.length > 0 ? availableYears : [year]).map(y => (
+                                    <option key={y} value={y}>{y}</option>
+                                ))}
+                            </select>
+                        </label>
+                        <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        minWidth: 200,
+                        justifyContent: 'flex-end',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        flexShrink: 0,
+                        zIndex: 103
+                    }}>
                         <span style={{ fontSize: 14, color: '#666' }}>Status:</span>
                         <div style={{
                             position: 'relative',
@@ -1185,10 +1279,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             disabled={!canWrite}
                             style={{ display: 'none' }}
                         />
-                        <span style={{ fontSize: 14, fontWeight: 600, color: releasedMonths[currentMonth] ? '#28a745' : '#dc3545', minWidth: 120 }}>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: releasedMonths[currentMonth] ? '#28a745' : '#dc3545', minWidth: 110, whiteSpace: 'nowrap' }}>
                             {releasedMonths[currentMonth] ? 'Freigegeben' : 'In Bearbeitung'}
                         </span>
                     </label>
+                    </div>
                 </div>
                 {/* Monats-Tabs */}
                 <div style={{
@@ -1284,7 +1379,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         }
 
                         const showRtwNefIndicator = viewMode === 'itw' && hasRtwNefAssignments;
-                        const showItwIndicator = viewMode === 'rtwnef' && hasItwAssignments;
+                        const showItwIndicator = itwEnabled && viewMode === 'rtwnef' && hasItwAssignments;
 
                         return (
                             <>
@@ -1317,37 +1412,37 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 >
                                     RTW/NEF
                                 </button>
-                                <button
-                                    onClick={() => setViewMode('itw')}
-                                    disabled={!itwEnabled}
-                                    style={{
-                                        padding: '8px 16px',
-                                        background: viewMode === 'itw' ? '#f8f9fa' : (showItwIndicator ? '#fefce8' : 'transparent'),
-                                        border: 'none',
-                                        borderBottom: viewMode === 'itw' ? '3px solid #ffc107' : '3px solid transparent',
-                                        cursor: itwEnabled ? 'pointer' : 'not-allowed',
-                                        fontWeight: viewMode === 'itw' ? 600 : (showItwIndicator ? 600 : 400),
-                                        color: viewMode === 'itw' ? '#ffc107' : (showItwIndicator ? '#ca8a04' : '#6b7280'),
-                                        transition: 'all 0.2s',
-                                        fontSize: '14px',
-                                        opacity: itwEnabled ? 1 : 0.5,
-                                        position: 'relative'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        if (viewMode !== 'itw' && itwEnabled) {
-                                            e.currentTarget.style.background = '#f3f4f6';
-                                            e.currentTarget.style.color = '#374151';
-                                        }
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        if (viewMode !== 'itw' && itwEnabled) {
-                                            e.currentTarget.style.background = showItwIndicator ? '#fefce8' : 'transparent';
-                                            e.currentTarget.style.color = showItwIndicator ? '#ca8a04' : '#6b7280';
-                                        }
-                                    }}
-                                >
-                                    ITW
-                                </button>
+                                {itwEnabled && (
+                                    <button
+                                        onClick={() => setViewMode('itw')}
+                                        style={{
+                                            padding: '8px 16px',
+                                            background: viewMode === 'itw' ? '#f8f9fa' : (showItwIndicator ? '#fefce8' : 'transparent'),
+                                            border: 'none',
+                                            borderBottom: viewMode === 'itw' ? '3px solid #ffc107' : '3px solid transparent',
+                                            cursor: 'pointer',
+                                            fontWeight: viewMode === 'itw' ? 600 : (showItwIndicator ? 600 : 400),
+                                            color: viewMode === 'itw' ? '#ffc107' : (showItwIndicator ? '#ca8a04' : '#6b7280'),
+                                            transition: 'all 0.2s',
+                                            fontSize: '14px',
+                                            position: 'relative'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            if (viewMode !== 'itw') {
+                                                e.currentTarget.style.background = '#f3f4f6';
+                                                e.currentTarget.style.color = '#374151';
+                                            }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            if (viewMode !== 'itw') {
+                                                e.currentTarget.style.background = showItwIndicator ? '#fefce8' : 'transparent';
+                                                e.currentTarget.style.color = showItwIndicator ? '#ca8a04' : '#6b7280';
+                                            }
+                                        }}
+                                    >
+                                        ITW
+                                    </button>
+                                )}
                             </>
                         );
                     })()}
@@ -1375,7 +1470,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         marginBottom: 8,
                                         minWidth: 339,
                                         paddingTop: 8,
-                                        paddingLeft: 8,
+                                        paddingLeft: 0,
                                         background: 'var(--bg)'
                                     }}>
                                         <div style={{ paddingBottom: 4, borderBottom: '2px solid #ef4444' }}>
@@ -1395,7 +1490,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                 const nefLabel = v.occupancy_mode === '24h' ? '24h' : 'Tag';
                                 return (
                                     <div key={`nef_header_${nIdx}`} style={{
-                                        marginLeft: 8,
+                                        marginLeft: 0,
                                         marginBottom: 8,
                                         minWidth: 239,
                                         paddingTop: 8,
@@ -1432,8 +1527,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                 style={{
                     paddingTop: headerHeight,
                     paddingBottom: 12,
-                    paddingLeft: sidebarCollapsed ? 46 : 46,
-                    paddingRight: 25,
+                    paddingLeft: 24,
+                    paddingRight: 24,
                     overflowX: 'auto',
                     overflowY: 'visible',
                     transition: 'padding-left 0.15s',
@@ -1534,22 +1629,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                 const dt = new Date(d.date + 'T00:00:00');
                                                 const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }); // DD.MM
 
-                                                let commentCount = 0;
-                                                let tooltipParts: string[] = [];
-
-                                                if (globalComments.has(d.date)) {
-                                                    commentCount++;
-                                                    tooltipParts.push(`Global: ${globalComments.get(d.date)?.comment}`);
-                                                }
-
-                                                personalComments.forEach((c, key) => {
-                                                    if (key.endsWith(`_${d.date}`)) {
-                                                        commentCount++;
-                                                        const pId = Number(key.split('_')[0]);
-                                                        const pName = personnel.find(p => p.id === pId)?.name || 'Jemand';
-                                                        tooltipParts.push(`${pName}: ${c.comment}`);
-                                                    }
-                                                });
+                                                const tooltipParts = getCommentLinesForDate(d.date);
+                                                const commentCount = tooltipParts.length;
 
                                                 const tooltipText = tooltipParts.join('\n');
 
@@ -1573,23 +1654,27 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                         <span>{label} <small style={{ fontWeight: 400 }}>({d.weekday})</small></span>
                                                         {commentCount > 0 && (
                                                             <div
-                                                                title={tooltipText}
-                                                                onClick={() => setActiveCommentsData({ dateStr: label, comments: tooltipParts })}
+                                                                title={tooltipText || 'Kommentare anzeigen'}
+                                                                onClick={() => {
+                                                                    setActiveCommentsData({ dateStr: label, comments: tooltipParts });
+                                                                }}
                                                                 style={{
                                                                     display: 'inline-flex',
                                                                     alignItems: 'center',
                                                                     justifyContent: 'center',
-                                                                    width: '16px',
-                                                                    height: '16px',
+                                                                    minWidth: '18px',
+                                                                    height: '18px',
+                                                                    padding: '0 5px',
                                                                     background: '#dc3545',
                                                                     color: 'white',
-                                                                    borderRadius: '50%',
-                                                                    fontSize: '10px',
-                                                                    fontWeight: 'bold',
+                                                                    borderRadius: '999px',
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 700,
+                                                                    lineHeight: 1,
                                                                     cursor: 'pointer'
                                                                 }}
                                                             >
-                                                                {commentCount}
+                                                                {commentCount > 99 ? '99+' : commentCount}
                                                             </div>
                                                         )}
                                                     </div>
@@ -1858,7 +1943,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         const count = perPersonAssignedWeightedInMonth[key] || 0;
                                         const tn = perPersonRtwTagNightYear[key] || { tag: 0, nacht: 0 };
                                         const nef = perPersonNefInMonth[key] || 0;
-                                        const itw = perPersonItwInMonth[key] || 0;
+                                        const itw = itwEnabled ? (perPersonItwInMonth[key] || 0) : 0;
                                         const rest = (() => {
                                             const ty = targetYearMap[key] || 0;
                                             const dy = drivenYearMap[key] || 0;
@@ -1951,8 +2036,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                 const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
                                                 const t = String(cell?.type || '');
                                                 if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) sum += 1;
-                                                else if (/^itw_row_[12]$/.test(t)) sum += 1;
-                                                else if (/^nef(\d+)?_assist$/.test(t)) sum += 2;
+                                                else if (itwEnabled && /^itw_row_[12]$/.test(t)) sum += 1;
+                                                else if (/^nef(\d+)?_assist$/.test(t)) sum += getNefAssistWeight(t);
                                             }
                                             map[key] = sum;
                                         }
@@ -1967,6 +2052,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                 items={items}
                                                 showOldRtwShifts={featureOldRtwShifts}
                                                 showWeekendShifts={showWeekendShifts}
+                                                showItw={itwEnabled}
                                                 highlightedPersonKey={highlightedPersonKey}
                                                 setHighlightedPersonKey={setHighlightedPersonKey}
                                                 mixColor={mixColor}
@@ -2227,7 +2313,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                         const count = perPersonAssignedWeightedInMonth[key] || 0;
                                         const tn = perPersonRtwTagNightYear[key] || { tag: 0, nacht: 0 };
                                         const nef = perPersonNefInMonth[key] || 0;
-                                        const itw = perPersonItwInMonth[key] || 0;
+                                        const itw = itwEnabled ? (perPersonItwInMonth[key] || 0) : 0;
                                         const rest = (() => {
                                             const ty = targetYearMap[key] || 0;
                                             const dy = drivenYearMap[key] || 0;
@@ -2308,8 +2394,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                                 const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
                                                 const t = String(cell?.type || '');
                                                 if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) sum += 1;
-                                                else if (/^itw_row_[12]$/.test(t)) sum += 1;
-                                                else if (/^nef(\d+)?_assist$/.test(t)) sum += 2;
+                                                else if (itwEnabled && /^itw_row_[12]$/.test(t)) sum += 1;
+                                                else if (/^nef(\d+)?_assist$/.test(t)) sum += getNefAssistWeight(t);
                                             }
                                             map[key] = sum;
                                         }
@@ -2322,6 +2408,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                                             <Kontrollkasten
                                                 items={items}
                                                 showOldRtwShifts={featureOldRtwShifts}
+                                                showItw={itwEnabled}
                                                 highlightedPersonKey={highlightedPersonKey}
                                                 setHighlightedPersonKey={setHighlightedPersonKey}
                                                 mixColor={mixColor}
@@ -2393,7 +2480,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                     alignItems: 'center',
                     justifyContent: 'center',
                     zIndex: 9999
-                }} onClick={() => setActiveCommentsData(null)}>
+                }} onClick={() => { setActiveCommentsData(null); }}>
                     <div style={{
                         background: 'var(--bg)',
                         color: 'var(--fg)',
@@ -2404,7 +2491,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                         boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
                     }} onClick={e => e.stopPropagation()}>
                         <h3 style={{ marginTop: 0, marginBottom: '15px' }}>Kommentare ({activeCommentsData.dateStr})</h3>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '60vh', overflowY: 'auto' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '45vh', overflowY: 'auto' }}>
+                            {activeCommentsData.comments.length === 0 && (
+                                <div style={{ padding: '10px', color: 'var(--muted)' }}>Keine Kommentare vorhanden.</div>
+                            )}
                             {activeCommentsData.comments.map((comment, idx) => (
                                 <div key={idx} style={{
                                     padding: '10px',
@@ -2417,7 +2507,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, pers
                             ))}
                         </div>
                         <div style={{ marginTop: '20px', textAlign: 'right' }}>
-                            <button onClick={() => setActiveCommentsData(null)} style={{
+                            <button onClick={() => { setActiveCommentsData(null); }} style={{
                                 padding: '8px 16px',
                                 background: '#dc3545',
                                 color: 'white',

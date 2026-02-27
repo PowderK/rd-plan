@@ -1,9 +1,17 @@
 import React from 'react';
 
-const Footer: React.FC = () => {
+interface FooterProps {
+    actions?: React.ReactNode;
+}
+
+const Footer: React.FC<FooterProps> = ({ actions }) => {
     return (
         <footer style={{ textAlign: 'center', padding: '10px', borderTop: '1px solid #ccc' }}>
-            {/* Fußleiste ohne Versions-/Datumsanzeige */}
+            {actions ? (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
+                    {actions}
+                </div>
+            ) : null}
         </footer>
     );
 };

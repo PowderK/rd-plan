@@ -1,20 +1,25 @@
 /// <reference path="../types/cssmodule.d.ts" />
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ImportYearTable from './ImportYearTable';
 import SettingsImportExport from './SettingsImportExport';
-import { ShiftTransferManager } from './ShiftTransferManager';
 import { BUILD_INFO } from '../buildInfo';
+import appVersionInfo from '../../version.json';
+import './SettingsMenuTables.css';
 import styles from './PersonnelOverview.module.css';
 
 interface SettingsMenuProps {
   onClose: () => void;
+  setFooterActions?: (actions: React.ReactNode) => void;
 }
 
-const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
+const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }) => {
+  const defaultQualificationCategories = ['Fahrzeugführung', 'Notfall', 'Transport', 'Ausbildung', 'Sonstiges'];
   const [rescueStation, setRescueStation] = useState('1');
   const [year, setYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [displayVersion] = useState<string>(String((appVersionInfo as any)?.version || BUILD_INFO.version));
+  const [displayBuild, setDisplayBuild] = useState<number>(BUILD_INFO.build);
   const [shiftTypes, setShiftTypes] = useState<{ id: number, code: string, description: string; _isNew?: boolean }[]>([]);
   const [shiftTypesLoading, setShiftTypesLoading] = useState(true);
   // ShiftTypes: Auswahl + Editiermodus
@@ -52,7 +57,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [selectedYearPlanningIndex, setSelectedYearPlanningIndex] = useState<number | null>(null);
   const [yearImportSelectedYear, setYearImportSelectedYear] = useState<number>(year); // Jahr für Excel-Import
   const [currentImportPath, setCurrentImportPath] = useState<string | null>(null); // Aktueller Import-Pfad für Retry-Logik
-  const [doBackup, setDoBackup] = useState<boolean>(true);
   const [showRestore, setShowRestore] = useState<boolean>(false);
   const [backups, setBackups] = useState<Array<{ path: string; year: string; ym: string; timestamp: string; label: string }>>([]);
   const [previewCounts, setPreviewCounts] = useState<Record<string, { personnel: number; azubis: number; dutyRoster: number }>>({});
@@ -72,17 +76,18 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [dbDirInput, setDbDirInput] = useState<string>('');
   // Qualification Types Management UI
   const [qualificationTypes, setQualificationTypes] = useState<{ id: number; name: string; description?: string; category?: string; active: boolean; sort: number; excludeFromStats?: boolean }[]>([]);
+  const [qualificationCategories, setQualificationCategories] = useState<string[]>(defaultQualificationCategories);
   const [editingQualificationTypes, setEditingQualificationTypes] = useState(false);
+  const [editingQualificationCategories, setEditingQualificationCategories] = useState(false);
   const [selectedQualificationTypeId, setSelectedQualificationTypeId] = useState<number | null>(null);
   const [originalQualificationTypes, setOriginalQualificationTypes] = useState<any[] | null>(null);
+  const [originalQualificationCategories, setOriginalQualificationCategories] = useState<string[] | null>(null);
   // HLFB 75%-Regel Qualifikationszuordnung
   const [hlfbQualificationType, setHlfbQualificationType] = useState<string>('FzF HLF B');
 
   // Rollen und Rechte Management
   const [roles, setRoles] = useState<{ id: number; name: string; description?: string; permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'> }[]>([]);
-  const [editingRoles, setEditingRoles] = useState(false);
-  const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
-  const [originalRoles, setOriginalRoles] = useState<any[] | null>(null);
+  const [addedRoleIds, setAddedRoleIds] = useState<number[]>([]);
   // Ü50 Qualifikationszuordnung (keine Soll/Ist-Berechnung, rot im Kontrollfeld)
   const [ue50QualificationType, setUe50QualificationType] = useState<string>('Ü50');
   // LPAL Qualifikationszuordnung (wie Ü50, aber orange im Kontrollfeld)
@@ -93,7 +98,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   const [showYearImportShiftTypeDialog, setShowYearImportShiftTypeDialog] = useState(false);
   const [yearImportUnknownShiftTypes, setYearImportUnknownShiftTypes] = useState<string[]>([]);
   const [yearImportPendingYear, setYearImportPendingYear] = useState<number>(0);
-
   const [showWeekendShifts, setShowWeekendShifts] = useState<boolean>(false);
 
   const [showYearImportAzubiDialog, setShowYearImportAzubiDialog] = useState(false);
@@ -101,9 +105,87 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
   // Feature toggles
   const [featureOldRtwShifts, setFeatureOldRtwShifts] = useState(false);
   const [featureShiftTransfers, setFeatureShiftTransfers] = useState(false);
-  const [showShiftTransferManager, setShowShiftTransferManager] = useState(false);
+  const [itwFeatureEnabled, setItwFeatureEnabled] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<'general' | 'roster' | 'features' | 'itw' | 'qualifications' | 'roles'>('general');
   // System Info
-  const [systemUsername, setSystemUsername] = useState<'Lädt...' | string>('Lädt...');
+  const [systemUsername, setSystemUsername] = useState<string>('Lädt...');
+  const [initialSaveSnapshot, setInitialSaveSnapshot] = useState<string>('');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const bypassNavigationGuardRef = useRef(false);
+
+  const currentSaveSnapshot = useMemo(() => {
+    const sortedAuswertung = Object.keys(auswertungByType || {}).sort().reduce((acc, key) => {
+      acc[key] = auswertungByType[key];
+      return acc;
+    }, {} as Record<string, 'off' | 'tag' | 'nacht' | '24h' | 'itw'>);
+
+    const sortedColors = Object.keys(colorByType || {}).sort().reduce((acc, key) => {
+      acc[key] = colorByType[key] || '';
+      return acc;
+    }, {} as Record<string, string>);
+
+    const normalizedItwPatterns = (itwPatternSeqs || [])
+      .map(p => ({ startDate: p.startDate, pattern: [...(p.pattern || [])] }))
+      .sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+    const normalizedDeptPatterns = (deptPatternSeqs || [])
+      .map(p => ({ startDate: p.startDate, pattern: [...(p.pattern || [])] }))
+      .sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+    const normalizedHolidays = (holidays || [])
+      .map(h => ({ date: h.date, name: h.name || '' }))
+      .sort((a, b) => (a.date + a.name).localeCompare(b.date + b.name));
+
+    const normalizedRoles = (roles || [])
+      .map(r => ({
+        id: r.id,
+        name: r.name || '',
+        description: r.description || '',
+        permissions: Object.keys(r.permissions || {}).sort().reduce((acc, key) => {
+          acc[key] = r.permissions[key];
+          return acc;
+        }, {} as Record<string, 'none' | 'read' | 'read_all' | 'write'>)
+      }))
+      .sort((a, b) => a.id - b.id);
+
+    return JSON.stringify({
+      rescueStation,
+      year,
+      department,
+      hlfbQualificationType,
+      ue50QualificationType,
+      lpalQualificationType,
+      rettungsdienstQualificationType,
+      showWeekendShifts,
+      featureOldRtwShifts,
+      featureShiftTransfers,
+      itwFeatureEnabled,
+      roles: normalizedRoles,
+      auswertungByType: sortedAuswertung,
+      colorByType: sortedColors,
+      itwPatternSeqs: normalizedItwPatterns,
+      deptPatternSeqs: normalizedDeptPatterns,
+      holidays: normalizedHolidays
+    });
+  }, [
+    rescueStation,
+    year,
+    department,
+    hlfbQualificationType,
+    ue50QualificationType,
+    lpalQualificationType,
+    rettungsdienstQualificationType,
+    showWeekendShifts,
+    featureOldRtwShifts,
+    featureShiftTransfers,
+    itwFeatureEnabled,
+    roles,
+    auswertungByType,
+    colorByType,
+    itwPatternSeqs,
+    deptPatternSeqs,
+    holidays
+  ]);
 
   useEffect(() => {
     (async () => {
@@ -182,14 +264,25 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       } catch { }
       // Feiertage laden
       try {
-        const list = await (window as any).api.getHolidaysForYear?.(new Date().getFullYear());
+        const list = await (window as any).api.getHolidaysForYear?.(Number(y || new Date().getFullYear()));
         setHolidays((list || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
       } catch { }
 
       // Load qualification types
       try {
         const qualTypes = await (window as any).api.getQualificationTypes();
-        setQualificationTypes(qualTypes || []);
+        const normalizedTypes = (qualTypes || []).map((qt: any) => ({
+          ...qt,
+          category: (qt?.category && String(qt.category).trim()) ? String(qt.category).trim() : 'Sonstiges',
+          active: true,
+          excludeFromStats: false
+        }));
+        setQualificationTypes(normalizedTypes);
+        const categories = Array.from(new Set([
+          ...defaultQualificationCategories,
+          ...normalizedTypes.map((qt: any) => String(qt.category || '').trim()).filter(Boolean)
+        ]));
+        setQualificationCategories(categories);
       } catch (e) {
         // console.error('Failed to load qualification types:', e);
       }
@@ -256,6 +349,11 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         setFeatureShiftTransfers(val === 'true');
       } catch { }
 
+      try {
+        const val = await (window as any).api.getSetting('itw');
+        setItwFeatureEnabled(val === 'true' || val === '1');
+      } catch { }
+
       setShiftTypesLoading(false);
       setLoading(false);
       try {
@@ -268,51 +366,131 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     })();
   }, []);    // Fahrzeug-UI entfernt
 
+  useEffect(() => {
+    if (!loading && !initialSaveSnapshot) {
+      setInitialSaveSnapshot(currentSaveSnapshot);
+      setHasUnsavedChanges(false);
+    }
+  }, [loading, initialSaveSnapshot, currentSaveSnapshot]);
+
+  useEffect(() => {
+    if (!initialSaveSnapshot) return;
+    setHasUnsavedChanges(currentSaveSnapshot !== initialSaveSnapshot);
+  }, [currentSaveSnapshot, initialSaveSnapshot]);
+
   const handleSave = async () => {
     setSaving(true);
-    await (window as any).api.setSetting('rescueStation', rescueStation);
-    // year wird nicht mehr als Setting gespeichert - direkt im Dienstplan/Werte gewählt
-    await (window as any).api.setSetting('hlfb_qualification_type', hlfbQualificationType);
-    await (window as any).api.setSetting('ue50_qualification_type', ue50QualificationType);
-    await (window as any).api.setSetting('lpal_qualification_type', lpalQualificationType);
-    await (window as any).api.setSetting('rettungsdienst_qualification_type', rettungsdienstQualificationType);
-    // Anzahl RTW/NEF leitet sich aus den Einträgen ab – keine separaten Settings mehr
-    // ITW wird im Fahrzeuge-Menü gesetzt
-    await (window as any).api.setSetting('department', String(department));
-    await (window as any).api.setSetting('show_weekend_shifts', showWeekendShifts ? 'true' : 'false');
-    await (window as any).api.setSetting('feature_old_rtw_shifts', featureOldRtwShifts ? 'true' : 'false');
-    await (window as any).api.setSetting('feature_shift_transfers', featureShiftTransfers ? 'true' : 'false');
-    // save per-shift-type auswertung settings
-    for (const code of Object.keys(auswertungByType)) {
-      await (window as any).api.setSetting(`auswertung_${code}`, auswertungByType[code]);
-    }
-    // save per-shift-type color settings
-    for (const code of Object.keys(colorByType)) {
-      const raw = colorByType[code] || '';
-      const v = raw ? (raw.startsWith('#') ? raw : `#${raw}`) : '';
-      await (window as any).api.setSetting(`color_${code}`, v);
-    }
-    // Sequenzen speichern
     try {
-      const payload = (itwPatternSeqs || []).map(s => ({ startDate: s.startDate, pattern: (s.pattern || []).map(v => (v === 'IW' ? 'IW' : '')).join(',') }));
-      await (window as any).api.setItwPatterns?.(payload);
-    } catch { }
-    // Dept Sequenzen speichern
-    try {
-      const payloadDept = (deptPatternSeqs || []).map(s => ({ startDate: s.startDate, pattern: (s.pattern || []).map(v => (v === '1' || v === '2' || v === '3') ? v : '').join(',') }));
-      await (window as any).api.setDeptPatterns?.(payloadDept);
-    } catch { }
-    // Feiertage speichern (überschreibt Jahr komplett). Danach Liste für Zieljahr neu laden
-    try {
-      await (window as any).api.setHolidaysForYear?.(year, holidays.map(h => ({ date: h.date, name: h.name })));
-      // Nach dem Speichern direkt neu laden, um UI-Sicherheit zu erhöhen
+      // Offene Bearbeitungen im Dienstplan-Tab zentral persistieren
+      if (editingShiftTypes || originalShiftTypes) {
+        await saveEditingShiftTypes();
+      }
+      if (editingQualificationTypes || originalQualificationTypes || editingQualificationCategories || originalQualificationCategories) {
+        const ok = await saveQualificationTypes(true);
+        if (!ok) return;
+      }
       try {
-        const fresh = await (window as any).api.getHolidaysForYear?.(year);
-        setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
+        await (window as any).api.saveYearPlannings?.(yearPlannings);
       } catch { }
-    } catch { }
-    onClose();
+
+      await (window as any).api.setSetting('rescueStation', rescueStation);
+      // year wird nicht mehr als Setting gespeichert - direkt im Dienstplan/Werte gewählt
+      await (window as any).api.setSetting('hlfb_qualification_type', hlfbQualificationType);
+      await (window as any).api.setSetting('ue50_qualification_type', ue50QualificationType);
+      await (window as any).api.setSetting('lpal_qualification_type', lpalQualificationType);
+      await (window as any).api.setSetting('rettungsdienst_qualification_type', rettungsdienstQualificationType);
+      // Anzahl RTW/NEF leitet sich aus den Einträgen ab – keine separaten Settings mehr
+      // ITW wird im Fahrzeuge-Menü gesetzt
+      await (window as any).api.setSetting('department', String(department));
+      await (window as any).api.setSetting('show_weekend_shifts', showWeekendShifts ? 'true' : 'false');
+      await (window as any).api.setSetting('feature_old_rtw_shifts', featureOldRtwShifts ? 'true' : 'false');
+      await (window as any).api.setSetting('feature_shift_transfers', featureShiftTransfers ? 'true' : 'false');
+      await (window as any).api.setSetting('itw', itwFeatureEnabled ? 'true' : 'false');
+      await saveRoles(true);
+      setAddedRoleIds([]);
+      // save per-shift-type auswertung settings
+      for (const code of Object.keys(auswertungByType)) {
+        await (window as any).api.setSetting(`auswertung_${code}`, auswertungByType[code]);
+      }
+      // save per-shift-type color settings
+      for (const code of Object.keys(colorByType)) {
+        const raw = colorByType[code] || '';
+        const v = raw ? (raw.startsWith('#') ? raw : `#${raw}`) : '';
+        await (window as any).api.setSetting(`color_${code}`, v);
+      }
+      // Sequenzen speichern
+      try {
+        const payload = (itwPatternSeqs || []).map(s => ({ startDate: s.startDate, pattern: (s.pattern || []).map(v => (v === 'IW' ? 'IW' : '')).join(',') }));
+        await (window as any).api.setItwPatterns?.(payload);
+      } catch { }
+      // Dept Sequenzen speichern
+      try {
+        const payloadDept = (deptPatternSeqs || []).map(s => ({ startDate: s.startDate, pattern: (s.pattern || []).map(v => (v === '1' || v === '2' || v === '3') ? v : '').join(',') }));
+        await (window as any).api.setDeptPatterns?.(payloadDept);
+      } catch { }
+      // Feiertage speichern (überschreibt Jahr komplett). Danach Liste für Zieljahr neu laden
+      try {
+        await (window as any).api.setHolidaysForYear?.(year, holidays.map(h => ({ date: h.date, name: h.name })));
+        // Nach dem Speichern direkt neu laden, um UI-Sicherheit zu erhöhen
+        try {
+          const fresh = await (window as any).api.getHolidaysForYear?.(year);
+          setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
+        } catch { }
+      } catch { }
+      setInitialSaveSnapshot(currentSaveSnapshot);
+      setHasUnsavedChanges(false);
+      setEditingYearPlannings(false);
+      setOriginalYearPlannings(null);
+      setSelectedYearPlanningIndex(null);
+      setEditingDeptPatterns(false);
+      setOriginalDeptPatterns(null);
+    } finally {
+      setSaving(false);
+    }
   };
+
+  useEffect(() => {
+    const handleNavigateWithUnsavedCheck = async (event: Event) => {
+      const ce = event as CustomEvent;
+      const targetView = ce?.detail?.view as string | undefined;
+      if (!targetView || targetView === 'einstellungen') return;
+      if (bypassNavigationGuardRef.current) return;
+      if (!hasUnsavedChanges) return;
+
+      event.preventDefault();
+      (event as any).stopImmediatePropagation?.();
+
+      const shouldSave = window.confirm('Sie haben ungespeicherte Änderungen in den Einstellungen. Möchten Sie diese vor dem Verlassen speichern?');
+      if (shouldSave) {
+        await handleSave();
+      }
+
+      bypassNavigationGuardRef.current = true;
+      window.dispatchEvent(new CustomEvent('navigate', { detail: { view: targetView } }));
+      setTimeout(() => {
+        bypassNavigationGuardRef.current = false;
+      }, 0);
+    };
+
+    window.addEventListener('navigate', handleNavigateWithUnsavedCheck as EventListener, true);
+    return () => window.removeEventListener('navigate', handleNavigateWithUnsavedCheck as EventListener, true);
+  }, [hasUnsavedChanges, currentSaveSnapshot]);
+
+  useEffect(() => {
+    if (!setFooterActions) return;
+    setFooterActions(
+      <button onClick={handleSave} disabled={saving}>
+        {saving ? 'Speichern ...' : 'Speichern'}
+      </button>
+    );
+    return () => setFooterActions(null);
+  }, [setFooterActions, handleSave, saving]);
+
+  useEffect(() => {
+    if (!itwFeatureEnabled && activeCategory === 'itw') {
+      setActiveCategory('features');
+    }
+  }, [itwFeatureEnabled, activeCategory]);
 
   // Wenn die Jahreszahl im Settings-Menü geändert wird, die Feiertage dieses Jahres anzeigen
   useEffect(() => {
@@ -350,9 +528,18 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     try {
       // Speichere Änderungen und neue Zeilen
       const orig = originalShiftTypes || [];
+      const currentPersisted = shiftTypes.filter(t => !t._isNew).map(t => t.id);
+      const deletedIds = orig.map(o => o.id).filter(id => !currentPersisted.includes(id));
       // Map für alte Codes -> auswertung Werte
       const ausMap = { ...(auswertungByType || {}) } as Record<string, 'off' | 'tag' | 'nacht' | '24h' | 'itw'>;
       const colMap = { ...(colorByType || {}) } as Record<string, string>;
+
+      for (const id of deletedIds) {
+        try {
+          await (window as any).api.deleteShiftType(id);
+        } catch { }
+      }
+
       for (const t of shiftTypes) {
         if (t._isNew) {
           if (!t.code.trim() || !t.description.trim()) continue;
@@ -402,6 +589,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     }
   };
   const addShiftTypeRow = () => {
+    if (!originalShiftTypes) {
+      setOriginalShiftTypes(JSON.parse(JSON.stringify(shiftTypes)));
+    }
     setEditingShiftTypes(true);
     setShiftTypes(prev => [...prev, { id: Math.floor(-Date.now() / 1000), code: '', description: '', _isNew: true }]);
   };
@@ -410,29 +600,53 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     // Nur echte DB-Einträge löschen
     const row = shiftTypes.find(t => t.id === selectedShiftTypeId);
     if (!row) return;
-    if (row._isNew) {
-      setShiftTypes(prev => prev.filter(t => t.id !== row.id));
-      setSelectedShiftTypeId(null);
-      return;
+    if (!originalShiftTypes) {
+      setOriginalShiftTypes(JSON.parse(JSON.stringify(shiftTypes)));
     }
-    await (window as any).api.deleteShiftType(row.id);
+    setEditingShiftTypes(true);
+    setShiftTypes(prev => prev.filter(t => t.id !== row.id));
     setSelectedShiftTypeId(null);
-    setShiftTypes(await (window as any).api.getShiftTypes());
   };
 
-  const saveQualificationTypes = async () => {
+  const saveQualificationTypes = async (suppressSuccessMessage = false): Promise<boolean> => {
     try {
       setLoading(true);
+
+      const cleanedCategories = qualificationCategories
+        .map(c => c.trim())
+        .filter(Boolean);
+
+      if (cleanedCategories.length === 0) {
+        alert('Mindestens eine Kategorie muss vorhanden sein.');
+        return false;
+      }
+
+      const lowered = cleanedCategories.map(c => c.toLowerCase());
+      if (new Set(lowered).size !== lowered.length) {
+        alert('Kategorien müssen eindeutig sein.');
+        return false;
+      }
 
       // Validierung: Alle Qualifikationen müssen einen Namen haben
       const invalidQualifications = qualificationTypes.filter(qt => !qt.name || qt.name.trim() === '');
       if (invalidQualifications.length > 0) {
         alert('Alle Qualifikationen müssen einen Namen haben. Bitte füllen Sie alle leeren Namen aus.');
-        return;
+        return false;
       }
 
+      const fallbackCategory = cleanedCategories[0];
+      const normalizedQualificationTypes = qualificationTypes.map(qt => {
+        const trimmedCategory = (qt.category || '').trim();
+        return {
+          ...qt,
+          category: cleanedCategories.includes(trimmedCategory) ? trimmedCategory : fallbackCategory,
+          active: true,
+          excludeFromStats: false
+        };
+      });
+
       // Lösche entfernte Qualifikationen
-      const currentIds = qualificationTypes.map(qt => qt.id);
+      const currentIds = normalizedQualificationTypes.map(qt => qt.id);
       const originalIds = originalQualificationTypes?.map(qt => qt.id) || [];
       for (const id of originalIds) {
         if (!currentIds.includes(id)) {
@@ -441,7 +655,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       }
 
       // Speichere/aktualisiere bestehende Qualifikationen
-      for (const qt of qualificationTypes) {
+      for (const qt of normalizedQualificationTypes) {
         const original = originalQualificationTypes?.find(o => o.id === qt.id);
         if (original) {
           // Update bestehende Qualifikation
@@ -452,27 +666,34 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         }
       }
 
-      // console.log('Qualifikationen gespeichert!');
-      alert('Qualifikationen gespeichert!');
+      setQualificationTypes(normalizedQualificationTypes);
+      setQualificationCategories(cleanedCategories);
+      if (!suppressSuccessMessage) {
+        alert('Qualifikationen gespeichert!');
+      }
       setEditingQualificationTypes(false);
+      setEditingQualificationCategories(false);
       setSelectedQualificationTypeId(null);
       setOriginalQualificationTypes(null);
+      setOriginalQualificationCategories(null);
+      return true;
     } catch (err) {
       // console.error('Fehler beim Speichern:', err);
       alert('Fehler beim Speichern: ' + (err as Error).message);
+      return false;
     } finally {
       setLoading(false);
     }
   };
 
-  const saveRoles = async () => {
+  const saveRoles = async (silent = false) => {
     try {
       setLoading(true);
 
       // Validierung: Alle Rollen müssen einen Namen haben
       const invalidRoles = roles.filter(r => !r.name || r.name.trim() === '');
       if (invalidRoles.length > 0) {
-        alert('Alle Rollen müssen einen Namen haben. Bitte füllen Sie alle leeren Namen aus.');
+        if (!silent) alert('Alle Rollen müssen einen Namen haben. Bitte füllen Sie alle leeren Namen aus.');
         setLoading(false);
         return;
       }
@@ -480,16 +701,35 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       // Speichere Rollen als JSON in Settings
       await (window as any).api.setSetting('roles', JSON.stringify(roles));
 
-      alert('Rollen gespeichert!');
-      setEditingRoles(false);
-      setSelectedRoleId(null);
-      setOriginalRoles(null);
+      if (!silent) alert('Rollen gespeichert!');
     } catch (err) {
       console.error('Fehler beim Speichern der Rollen:', err);
-      alert('Fehler beim Speichern: ' + (err as Error).message);
+      if (!silent) alert('Fehler beim Speichern: ' + (err as Error).message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const setRolePermission = (
+    roleId: number,
+    areaKey: 'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge' | 'einstellungen',
+    permission: 'read' | 'read_all' | 'write',
+    checked: boolean
+  ) => {
+    setRoles(prev => prev.map(role => {
+      if (role.id !== roleId) return role;
+      const current = role.permissions?.[areaKey] || 'none';
+      const nextValue: 'none' | 'read' | 'read_all' | 'write' = checked
+        ? permission
+        : (current === permission ? 'none' : current);
+      return {
+        ...role,
+        permissions: {
+          ...role.permissions,
+          [areaKey]: nextValue
+        }
+      };
+    }));
   };
 
   const handleSettingsImportComplete = (result: any) => {
@@ -600,20 +840,17 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
     setCurrentImportPath(null); // Reset bei Abbruch
   };
 
-  // State für Kategorie-Tabs
-  const [activeCategory, setActiveCategory] = useState<'general' | 'roster' | 'qualifications' | 'roles'>('general');
-
   if (loading) return <div style={{ padding: 24 }}><p>Lade Einstellungen ...</p></div>;
 
   return (
-    <div className="page-container">
+    <div className="page-container settings-table-theme" style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxSizing: 'border-box' }}>
       {/* Sticky Container für Header + Tabs */}
       <div className="sticky-header-container">
         {/* Überschrift - ROT */}
         <div className="page-header-with-version">
           <h2>Einstellungen</h2>
           <div className="page-header-version">
-            Version {BUILD_INFO.version} (Build {BUILD_INFO.build}) — © Benjamin Kreitz
+            Version {displayVersion} (Build {displayBuild}) — © Benjamin Kreitz
           </div>
         </div>
 
@@ -648,6 +885,36 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
             Dienstplan
           </button>
           <button
+            onClick={() => setActiveCategory('features')}
+            style={{
+              padding: '8px 16px',
+              border: 'none',
+              borderBottom: activeCategory === 'features' ? '3px solid #0d6efd' : '3px solid transparent',
+              background: activeCategory === 'features' ? '#f8f9fa' : 'transparent',
+              fontWeight: activeCategory === 'features' ? 600 : 400,
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            Features
+          </button>
+          {itwFeatureEnabled && (
+          <button
+            onClick={() => setActiveCategory('itw')}
+            style={{
+              padding: '8px 16px',
+              border: 'none',
+              borderBottom: activeCategory === 'itw' ? '3px solid #0d6efd' : '3px solid transparent',
+              background: activeCategory === 'itw' ? '#f8f9fa' : 'transparent',
+              fontWeight: activeCategory === 'itw' ? 600 : 400,
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            ITW
+          </button>
+          )}
+          <button
             onClick={() => setActiveCategory('qualifications')}
             style={{
               padding: '8px 16px',
@@ -680,7 +947,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
       {/* Ende Sticky Container */}
 
       {/* Content - GRAU */}
-      <div style={{ paddingTop: 16 }}>
+      <div style={{ paddingTop: 16, flex: 1, minHeight: 0, overflowY: 'auto' }}>
 
         {/* KATEGORIE: ALLGEMEIN */}
         {activeCategory === 'general' && (
@@ -745,6 +1012,31 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               </div>
             </div>
 
+            {/* Rettungswache und Abteilung */}
+            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
+              <h3>Rettungswache und Abteilung</h3>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <label>
+                  Feuer- und Rettungswache:
+                  <select value={rescueStation} onChange={e => setRescueStation(e.target.value)} style={{ marginLeft: 8 }}>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                  </select>
+                </label>
+                <label>
+                  Abteilung:
+                  <select value={department} onChange={e => setDepartment(Number(e.target.value))} style={{ marginLeft: 8 }}>
+                    <option value={1}>1</option>
+                    <option value={2}>2</option>
+                    <option value={3}>3</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
             {/* Einstellungen importieren/exportieren */}
             <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
               <h3>Einstellungen importieren/exportieren</h3>
@@ -779,7 +1071,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                     <p style={{ color: '#6b7280', fontSize: '14px' }}>Keine Backups gefunden.</p>
                   ) : (
                     <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                      <table style={{ width: '100%', fontSize: '14px' }}>
                         <thead>
                           <tr style={{ borderBottom: '2px solid #e5e7eb', backgroundColor: '#f9fafb' }}>
                             <th style={{ padding: '8px', textAlign: 'left' }}>Zeitpunkt</th>
@@ -843,91 +1135,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
         {/* KATEGORIE: DIENSTPLAN */}
         {activeCategory === 'roster' && (
           <div>
-            {/* Rettungswache und Abteilung */}
-            <div style={{ marginBottom: 24 }}>
-              <h3>Rettungswache und Abteilung</h3>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                <label>
-                  Feuer- und Rettungswache:
-                  <select value={rescueStation} onChange={e => setRescueStation(e.target.value)} style={{ marginLeft: 8 }}>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                  </select>
-                </label>
-                <label>
-                  Abteilung:
-                  <select value={department} onChange={e => setDepartment(Number(e.target.value))} style={{ marginLeft: 8 }}>
-                    <option value={1}>1</option>
-                    <option value={2}>2</option>
-                    <option value={3}>3</option>
-                  </select>
-                </label>
-              </div>
-            </div>
-
-            {/* Darstellung / Optionen */}
-            <div style={{ marginBottom: 24 }}>
-              <h3>Darstellung</h3>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input type="checkbox" checked={showWeekendShifts} onChange={e => setShowWeekendShifts(e.target.checked)} />
-                  Wochenend-Schichten (Sa/So) im Kontrollkasten zählen und farblich (Ampel) anzeigen
-                </label>
-              </div>
-            </div>
-
-            {/* Zusätzliche Funktionen */}
-            <div style={{ marginBottom: 24, padding: 12, background: '#f8f9fa', borderRadius: 8 }}>
-              <h3 style={{ marginTop: 0 }}>Funktionen</h3>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-                <input
-                  type="checkbox"
-                  id="featureOldRtwShifts"
-                  checked={featureOldRtwShifts}
-                  onChange={(e) => setFeatureOldRtwShifts(e.target.checked)}
-                  style={{ marginRight: 8 }}
-                />
-                <label htmlFor="featureOldRtwShifts" style={{ cursor: 'pointer' }}>
-                  <strong>Alte RTW-Schichten Tracking aktivieren</strong>
-                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
-                    Ermöglicht die Erfassung von Schichten aus einem Altsystem in den Personaleinstellungen und zeigt diese im Dienstplan an.
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            {/* Schichtübernahmen */}
-            <div style={{ marginBottom: 24, padding: 12, background: '#f8f9fa', borderRadius: 8, border: '1px solid #dee2e6' }}>
-              <h3 style={{ marginTop: 0 }}>Schichtübernahmen</h3>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-                <input
-                  type="checkbox"
-                  id="featureShiftTransfers"
-                  checked={featureShiftTransfers}
-                  onChange={(e) => setFeatureShiftTransfers(e.target.checked)}
-                  style={{ marginRight: 8 }}
-                />
-                <label htmlFor="featureShiftTransfers" style={{ cursor: 'pointer' }}>
-                  <strong>Gezielte Schichtübernahme aktivieren</strong>
-                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
-                    Erlaubt die Übertragung von SOLL-Schichten zwischen Mitarbeitern.
-                  </div>
-                </label>
-              </div>
-
-              {featureShiftTransfers && (
-                <button
-                  onClick={() => setShowShiftTransferManager(true)}
-                  style={{ padding: '6px 12px', background: '#007bff', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-                >
-                  Verwalten…
-                </button>
-              )}
-            </div>
-
             {/* Jahresspezifische Vorplanungsdateien */}
             <div style={{ marginBottom: 24 }}>
               <h3>Jahresspezifische Vorplanungsdateien</h3>
@@ -1075,23 +1282,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
 
                   <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #ddd', display: 'flex', gap: 8 }}>
                     <button
-                      onClick={async () => {
-                        // Speichern in Datenbank
-                        try {
-                          await (window as any).api.saveYearPlannings?.(yearPlannings);
-                          setEditingYearPlannings(false);
-                          setOriginalYearPlannings(null);
-                          setSelectedYearPlanningIndex(null);
-                          alert('Vorplanungen gespeichert!');
-                        } catch (e) {
-                          alert(`Fehler beim Speichern: ${e instanceof Error ? e.message : String(e)}`);
-                        }
-                      }}
-                      style={{ padding: '6px 12px', background: '#28a745', color: 'white', border: 'none', borderRadius: 4 }}
-                    >
-                      Speichern
-                    </button>
-                    <button
                       onClick={() => {
                         if (originalYearPlannings) {
                           setYearPlannings(originalYearPlannings);
@@ -1124,12 +1314,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                   {/* Fallback falls keine Jahr-Planungen definiert */}
                   {yearPlannings.length === 0 && <option value={year}>{year}</option>}
                 </select>
-              </label>
-            </div>
-            <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <input type="checkbox" checked={doBackup} onChange={e => setDoBackup(e.target.checked)} />
-                Backup vor Import erstellen
               </label>
             </div>
             <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -1184,15 +1368,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                     } catch { }
                     if (!proceed) return;
 
-                    // Optionales Backup
-                    if (doBackup) {
-                      try {
-                        const r = await (window as any).api.createDatabaseBackup?.({ year: yearImportSelectedYear });
-                        if (!r?.success) console.warn('[SettingsMenu] Backup fehlgeschlagen:', r?.message);
-                        else console.log('[SettingsMenu] Backup erstellt unter:', r.dir);
-                      } catch (e) {
-                        // console.warn('[SettingsMenu] Backup Fehler', e);
-                      }
+                    // Backup immer vor Import erstellen
+                    try {
+                      const r = await (window as any).api.createDatabaseBackup?.({ year: yearImportSelectedYear });
+                      if (!r?.success) console.warn('[SettingsMenu] Backup fehlgeschlagen:', r?.message);
+                      else console.log('[SettingsMenu] Backup erstellt unter:', r.dir);
+                    } catch (e) {
+                      // console.warn('[SettingsMenu] Backup Fehler', e);
                     }
 
                     // Browser-Confirm Fallback ist bereits im obigen try/catch abgedeckt
@@ -1249,148 +1431,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                   }
                 }}
               >Jahr importieren</button>
-              <button
-                onClick={() => setShowSettingsImportExport(true)}
-                style={{ backgroundColor: '#007bff', color: 'white' }}
-              >Import/Export…</button>
-              <button
-                onClick={async () => {
-                  try {
-                    // Versuche jahresspezifische Vorplanungsdatei zu laden
-                    let importPath = null;
-                    try {
-                      // console.log('[Vorschau] Lade Vorplanung für Jahr:', yearImportSelectedYear);
-                      const yearPlanning = await (window as any).api.getYearPlanningForYear?.(yearImportSelectedYear);
-                      // console.log('[Vorschau] Geladene Vorplanung:', yearPlanning);
-                      if (yearPlanning?.filePath) {
-                        importPath = yearPlanning.filePath;
-                        // console.log('[Vorschau] Verwende jahresspezifische Datei:', importPath);
-                      }
-                    } catch (e) {
-                      // console.warn('Fehler beim Laden der jahresspezifischen Vorplanung:', e);
-                    }
-
-                    // Fallback: alte rosterImportPath Einstellung
-                    if (!importPath) {
-                      importPath = rosterImportPath;
-                      // console.log('[Vorschau] Fallback auf rosterImportPath:', importPath);
-                    }
-
-                    if (!importPath) {
-                      alert('Bitte zuerst eine Vorplanungsdatei für das Jahr ' + yearImportSelectedYear + ' hinterlegen.');
-                      return;
-                    }
-
-                    // Speichere Import-Pfad für Retry-Logik
-                    setCurrentImportPath(importPath);
-
-                    // Lade Vorschau
-                    const prev = await (window as any).api.previewDutyRoster?.(importPath, yearImportSelectedYear);
-                    if (!prev?.success) {
-                      alert('Vorschau fehlgeschlagen: ' + (prev?.message || 'Unbekannt'));
-                      return;
-                    }
-                    setImportPreviewData({ total: prev.total, matched: prev.matched, unmatchedNames: prev.unmatchedNames || [], overwrites: prev.overwrites || 0 });
-                    // Lade Personen + Azubis für Mapping-Vorschläge
-                    const [pers, az] = await Promise.all([(window as any).api.getPersonnel?.(), (window as any).api.getAzubiList?.()]);
-                    const opts: Array<{ id: number; label: string; lastNameKey: string }> = [];
-                    const norm = (s: string) => String(s || '').toLowerCase().trim().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/\./g, '').replace(/\s+/g, ' ');
-                    for (const p of (pers || [])) opts.push({ id: p.id, label: `${p.name}, ${p.vorname} [P]`, lastNameKey: norm(p.name) });
-                    for (const a of (az || [])) opts.push({ id: a.id, label: `${a.name}, ${a.vorname} [A]`, lastNameKey: norm(a.name) });
-                    setPeopleOptions(opts);
-                    setNameMappings({});
-                    setShowImportPreview(true);
-                  } catch (e: any) {
-                    alert('Fehler bei der Vorschau: ' + (e?.message || String(e)));
-                  }
-                }}
-                style={{ backgroundColor: '#6c757d', color: 'white' }}
-              >Import-Vorschau…</button>
-              {/* Monatsimport entfernt – erfolgt in Monats-Tabs */}
-              <button
-                onClick={async () => {
-                  try {
-                    const res = await (window as any).api.listBackups?.(100);
-                    if (res?.success) setBackups(res.list || []);
-                    else setBackups([]);
-                  } catch {
-                    setBackups([]);
-                  } finally {
-                    setShowRestore(true);
-                  }
-                }}
-              >Backup wiederherstellen…</button>
-              <button
-                onClick={() => setShowSettingsImportExport(true)}
-                style={{ backgroundColor: '#007bff', color: 'white' }}
-              >Import/Export…</button>
             </div>
             {/* Buttons werden ans Seitenende verschoben */}
             {/* per-shift-type auswertung selector will be rendered as a column in the Dienstarten table below */}
-            {/* ITW Schichtfolgen */}
-            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
-              <h3>ITW Schichtfolgen</h3>
-              <p style={{ marginTop: 0, color: '#666' }}>Pflege hier beliebig viele 21‑Tage‑Schichtfolgen, die ab einem Datum gelten. Die Folge setzt sich jahresübergreifend fort, bis eine neuere Folge beginnt.</p>
-              <div>
-                <h4>Schichtfolgenwechsel (gültig ab)</h4>
-                <table className={styles.table}>
-                  <thead>
-                    <tr className={styles.thead}>
-                      <th style={{ width: 180, position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>Gültig ab (YYYY-MM-DD)</th>
-                      <th>Muster (21 Felder, "IW" oder leer)</th>
-                      <th className={styles.center} style={{ width: 60 }}>#</th>
-                    </tr>
-                  </thead>
-                  <tbody className={styles.tbody}>
-                    {(itwPatternSeqs || []).map((s, idx) => (
-                      <tr key={`${s.startDate}_${idx}`} className={[styles.row, selectedItwPatternIndex === idx ? styles.selected : ''].filter(Boolean).join(' ')} onClick={() => setSelectedItwPatternIndex(prev => prev === idx ? null : idx)}>
-                        <td>
-                          <input type="date" value={s.startDate} disabled={!editingItwPatterns}
-                            onChange={e => {
-                              if (!editingItwPatterns) return;
-                              const v = e.target.value;
-                              setItwPatternSeqs(prev => prev.map((x, i) => i === idx ? { ...x, startDate: v } : x).sort((a, b) => a.startDate.localeCompare(b.startDate)));
-                            }} />
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            {Array.from({ length: 21 }).map((_, i) => (
-                              <select key={i} value={s.pattern[i] || ''} disabled={!editingItwPatterns}
-                                onChange={e => {
-                                  if (!editingItwPatterns) return;
-                                  const v = e.target.value === 'IW' ? 'IW' : '';
-                                  setItwPatternSeqs(prev => prev.map((x, j) => {
-                                    if (j !== idx) return x;
-                                    const next = [...x.pattern];
-                                    next[i] = v;
-                                    return { ...x, pattern: next };
-                                  }));
-                                }}>
-                                <option value=""></option>
-                                <option value="IW">IW</option>
-                              </select>
-                            ))}
-                          </div>
-                        </td>
-                        <td className={styles.center}>{selectedItwPatternIndex === idx ? '✓' : ''}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {!editingItwPatterns ? (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    <button onClick={() => { setEditingItwPatterns(true); setOriginalItwPatterns(JSON.parse(JSON.stringify(itwPatternSeqs))); setItwPatternSeqs(prev => [...prev, { startDate: new Date().toISOString().slice(0, 10), pattern: Array(21).fill('') }].sort((a, b) => a.startDate.localeCompare(b.startDate))); setSelectedItwPatternIndex((itwPatternSeqs?.length ?? 0)); }}>Hinzufügen</button>
-                    <button onClick={() => { setEditingItwPatterns(true); setOriginalItwPatterns(JSON.parse(JSON.stringify(itwPatternSeqs))); }} disabled={(itwPatternSeqs || []).length === 0}>Ändern</button>
-                    <button onClick={() => { if (selectedItwPatternIndex != null) setItwPatternSeqs(prev => prev.filter((_, i) => i !== selectedItwPatternIndex)); setSelectedItwPatternIndex(null); }} disabled={selectedItwPatternIndex == null}>Löschen</button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    <button onClick={async () => { try { const payload = (itwPatternSeqs || []).map(s => ({ startDate: s.startDate, pattern: (s.pattern || []).map(v => (v === 'IW' ? 'IW' : '')).join(',') })); await (window as any).api.setItwPatterns?.(payload); } catch { } finally { setEditingItwPatterns(false); setOriginalItwPatterns(null); } }}>Speichern</button>
-                    <button onClick={() => { if (originalItwPatterns) setItwPatternSeqs(originalItwPatterns); setOriginalItwPatterns(null); setEditingItwPatterns(false); setSelectedItwPatternIndex(null); }}>Abbrechen</button>
-                  </div>
-                )}
-              </div>
-            </div>
 
             {/* Department Schichtfolgen */}
             <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
@@ -1403,7 +1446,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                     <tr className={styles.thead}>
                       <th style={{ width: 180, position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>Gültig ab (YYYY-MM-DD)</th>
                       <th>Muster (21 Felder, 1/2/3)</th>
-                      <th className={styles.center} style={{ width: 60 }}>#</th>
                     </tr>
                   </thead>
                   <tbody className={styles.tbody}>
@@ -1439,7 +1481,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                             ))}
                           </div>
                         </td>
-                        <td className={styles.center}>{selectedDeptPatternIndex === idx ? '✓' : ''}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1452,90 +1493,10 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    <button onClick={async () => { try { const payload = (deptPatternSeqs || []).map(s => ({ startDate: s.startDate, pattern: (s.pattern || []).map(v => (v === '1' || v === '2' || v === '3') ? v : '').join(',') })); await (window as any).api.setDeptPatterns?.(payload); } catch { } finally { setEditingDeptPatterns(false); setOriginalDeptPatterns(null); } }}>Speichern</button>
                     <button onClick={() => { if (originalDeptPatterns) setDeptPatternSeqs(originalDeptPatterns); setOriginalDeptPatterns(null); setEditingDeptPatterns(false); setSelectedDeptPatternIndex(null); }}>Abbrechen</button>
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* Feiertage (dieses Jahr) */}
-            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                <h3 style={{ margin: 0 }}>Feiertage</h3>
-                <select
-                  value={holidaysYear}
-                  onChange={async (e) => {
-                    const newYear = Number(e.target.value);
-                    setHolidaysYear(newYear);
-                    try {
-                      const fresh = await (window as any).api.getHolidaysForYear?.(newYear);
-                      setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
-                    } catch { }
-                    setEditingHolidays(false);
-                    setOriginalHolidays(null);
-                    setSelectedHolidayIndex(null);
-                  }}
-                  style={{ padding: '4px 8px', fontSize: '1em', fontWeight: 600 }}
-                >
-                  {yearPlannings.map(yp => (
-                    <option key={yp.year} value={yp.year}>{yp.year}</option>
-                  ))}
-                </select>
-              </div>
-              <p style={{ marginTop: 0, color: '#666' }}>An diesen Tagen wird der ITW nicht besetzt (IW entfällt). Du kannst Datum und (optional) Name pflegen.</p>
-              <table className={styles.table}>
-                <thead>
-                  <tr className={styles.thead}>
-                    <th style={{ width: 160 }}>Datum (YYYY-MM-DD)</th>
-                    <th>Name</th>
-                    <th className={styles.center} style={{ width: 60 }}>#</th>
-                  </tr>
-                </thead>
-                <tbody className={styles.tbody}>
-                  {holidays.map((h, idx) => (
-                    <tr key={`${h.date}_${idx}`} className={[styles.row, selectedHolidayIndex === idx ? styles.selected : ''].filter(Boolean).join(' ')} onClick={() => setSelectedHolidayIndex(prev => prev === idx ? null : idx)}>
-                      <td>
-                        <input
-                          type="date"
-                          value={h.date}
-                          disabled={!editingHolidays}
-                          onChange={e => {
-                            if (!editingHolidays) return;
-                            const v = e.target.value;
-                            setHolidays(prev => prev.map((x, i) => i === idx ? { ...x, date: v } : x));
-                          }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="text"
-                          value={h.name}
-                          disabled={!editingHolidays}
-                          onChange={e => {
-                            if (!editingHolidays) return;
-                            const v = e.target.value;
-                            setHolidays(prev => prev.map((x, i) => i === idx ? { ...x, name: v } : x));
-                          }}
-                        />
-                      </td>
-                      <td className={styles.center}>{selectedHolidayIndex === idx ? '✓' : ''}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {!editingHolidays ? (
-                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  <button onClick={() => { setEditingHolidays(true); setOriginalHolidays(JSON.parse(JSON.stringify(holidays))); setHolidays(prev => [...prev, { date: `${holidaysYear}-01-01`, name: '' }]); setSelectedHolidayIndex((holidays?.length ?? 0)); }}>Hinzufügen</button>
-                  <button onClick={() => setEditingHolidays(true)} disabled={holidays.length === 0}>Ändern</button>
-                  <button onClick={() => { if (selectedHolidayIndex != null) setHolidays(prev => prev.filter((_, i) => i !== selectedHolidayIndex)); setSelectedHolidayIndex(null); }} disabled={selectedHolidayIndex == null}>Löschen</button>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  <button onClick={async () => { try { await (window as any).api.setHolidaysForYear?.(holidaysYear, holidays.map(h => ({ date: h.date, name: h.name }))); const fresh = await (window as any).api.getHolidaysForYear?.(holidaysYear); setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') }))); } catch { } finally { setEditingHolidays(false); setOriginalHolidays(null); setSelectedHolidayIndex(null); } }}>Speichern</button>
-                  <button onClick={() => { if (originalHolidays) setHolidays(originalHolidays); setOriginalHolidays(null); setEditingHolidays(false); setSelectedHolidayIndex(null); }}>Abbrechen</button>
-                </div>
-              )}
             </div>
 
             {/* Dienstarten */}
@@ -1550,7 +1511,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                         <th>Beschreibung</th>
                         <th style={{ width: 140 }}>Farbe</th>
                         <th style={{ width: 220 }}>Auswertung</th>
-                        <th className={styles.center} style={{ width: 60 }}>#</th>
                       </tr>
                     </thead>
                     <tbody className={styles.tbody}>
@@ -1618,7 +1578,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                               })()
                             )}
                           </td>
-                          <td className={styles.center}>{selectedShiftTypeId === st.id ? '✓' : ''}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1631,11 +1590,228 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                      <button onClick={saveEditingShiftTypes}>Speichern</button>
                       <button onClick={cancelEditingShiftTypes}>Abbrechen</button>
                     </div>
                   )}
                 </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* KATEGORIE: FEATURES */}
+        {activeCategory === 'features' && (
+          <div>
+            <div style={{ marginBottom: 24 }}>
+              <h3>Darstellung</h3>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input type="checkbox" checked={showWeekendShifts} onChange={e => setShowWeekendShifts(e.target.checked)} />
+                  Wochenend-Schichten (Sa/So) im Kontrollkasten zählen und farblich (Ampel) anzeigen
+                </label>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 24, padding: 12, background: '#f8f9fa', borderRadius: 8 }}>
+              <h3 style={{ marginTop: 0 }}>Funktionen</h3>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  id="featureOldRtwShifts"
+                  checked={featureOldRtwShifts}
+                  onChange={(e) => setFeatureOldRtwShifts(e.target.checked)}
+                  style={{ marginRight: 8 }}
+                />
+                <label htmlFor="featureOldRtwShifts" style={{ cursor: 'pointer' }}>
+                  <strong>Alte RTW-Schichten Tracking aktivieren</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                    Ermöglicht die Erfassung von Schichten aus einem Altsystem in den Personaleinstellungen und zeigt diese im Dienstplan an.
+                  </div>
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <input
+                  type="checkbox"
+                  id="featureItw"
+                  checked={itwFeatureEnabled}
+                  onChange={(e) => setItwFeatureEnabled(e.target.checked)}
+                  style={{ marginRight: 8 }}
+                />
+                <label htmlFor="featureItw" style={{ cursor: 'pointer' }}>
+                  <strong>ITW aktivieren</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                    Blendet alle ITW-Bereiche in Dienstplan, Fahrzeuge und Personal ein oder aus.
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 24, padding: 12, background: '#f8f9fa', borderRadius: 8, border: '1px solid #dee2e6' }}>
+              <h3 style={{ marginTop: 0 }}>Schichtübernahmen</h3>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                <input
+                  type="checkbox"
+                  id="featureShiftTransfers"
+                  checked={featureShiftTransfers}
+                  onChange={(e) => setFeatureShiftTransfers(e.target.checked)}
+                  style={{ marginRight: 8 }}
+                />
+                <label htmlFor="featureShiftTransfers" style={{ cursor: 'pointer' }}>
+                  <strong>Gezielte Schichtübernahme aktivieren</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                    Erlaubt die Übertragung von SOLL-Schichten zwischen Mitarbeitern.
+                  </div>
+                </label>
+              </div>
+
+              <p style={{ margin: 0, color: '#666', fontSize: '0.9em' }}>
+                Die Verwaltung erfolgt in den Personeneinstellungen der jeweiligen Empfänger-Person.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* KATEGORIE: ITW */}
+        {activeCategory === 'itw' && itwFeatureEnabled && (
+          <div>
+            {/* ITW Schichtfolgen */}
+            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
+              <h3>ITW Schichtfolgen</h3>
+              <p style={{ marginTop: 0, color: '#666' }}>Pflege hier beliebig viele 21‑Tage‑Schichtfolgen, die ab einem Datum gelten. Die Folge setzt sich jahresübergreifend fort, bis eine neuere Folge beginnt.</p>
+              <div>
+                <h4>Schichtfolgenwechsel (gültig ab)</h4>
+                <table className={styles.table}>
+                  <thead>
+                    <tr className={styles.thead}>
+                      <th style={{ width: 180, position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>Gültig ab (YYYY-MM-DD)</th>
+                      <th>Muster (21 Felder, "IW" oder leer)</th>
+                    </tr>
+                  </thead>
+                  <tbody className={styles.tbody}>
+                    {(itwPatternSeqs || []).map((s, idx) => (
+                      <tr key={`${s.startDate}_${idx}`} className={[styles.row, selectedItwPatternIndex === idx ? styles.selected : ''].filter(Boolean).join(' ')} onClick={() => setSelectedItwPatternIndex(prev => prev === idx ? null : idx)}>
+                        <td>
+                          <input type="date" value={s.startDate} disabled={!editingItwPatterns}
+                            onChange={e => {
+                              if (!editingItwPatterns) return;
+                              const v = e.target.value;
+                              setItwPatternSeqs(prev => prev.map((x, i) => i === idx ? { ...x, startDate: v } : x).sort((a, b) => a.startDate.localeCompare(b.startDate)));
+                            }} />
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {Array.from({ length: 21 }).map((_, i) => (
+                              <select key={i} value={s.pattern[i] || ''} disabled={!editingItwPatterns}
+                                onChange={e => {
+                                  if (!editingItwPatterns) return;
+                                  const v = e.target.value === 'IW' ? 'IW' : '';
+                                  setItwPatternSeqs(prev => prev.map((x, j) => {
+                                    if (j !== idx) return x;
+                                    const next = [...x.pattern];
+                                    next[i] = v;
+                                    return { ...x, pattern: next };
+                                  }));
+                                }}>
+                                <option value=""></option>
+                                <option value="IW">IW</option>
+                              </select>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!editingItwPatterns ? (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button onClick={() => { setEditingItwPatterns(true); setOriginalItwPatterns(JSON.parse(JSON.stringify(itwPatternSeqs))); setItwPatternSeqs(prev => [...prev, { startDate: new Date().toISOString().slice(0, 10), pattern: Array(21).fill('') }].sort((a, b) => a.startDate.localeCompare(b.startDate))); setSelectedItwPatternIndex((itwPatternSeqs?.length ?? 0)); }}>Hinzufügen</button>
+                    <button onClick={() => { setEditingItwPatterns(true); setOriginalItwPatterns(JSON.parse(JSON.stringify(itwPatternSeqs))); }} disabled={(itwPatternSeqs || []).length === 0}>Ändern</button>
+                    <button onClick={() => { if (selectedItwPatternIndex != null) setItwPatternSeqs(prev => prev.filter((_, i) => i !== selectedItwPatternIndex)); setSelectedItwPatternIndex(null); }} disabled={selectedItwPatternIndex == null}>Löschen</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button onClick={async () => { try { const payload = (itwPatternSeqs || []).map(s => ({ startDate: s.startDate, pattern: (s.pattern || []).map(v => (v === 'IW' ? 'IW' : '')).join(',') })); await (window as any).api.setItwPatterns?.(payload); } catch { } finally { setEditingItwPatterns(false); setOriginalItwPatterns(null); } }}>Speichern</button>
+                    <button onClick={() => { if (originalItwPatterns) setItwPatternSeqs(originalItwPatterns); setOriginalItwPatterns(null); setEditingItwPatterns(false); setSelectedItwPatternIndex(null); }}>Abbrechen</button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Feiertage (ITW-relevant) */}
+            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <h3 style={{ margin: 0 }}>Feiertage</h3>
+                <select
+                  value={holidaysYear}
+                  onChange={async (e) => {
+                    const newYear = Number(e.target.value);
+                    setHolidaysYear(newYear);
+                    try {
+                      const fresh = await (window as any).api.getHolidaysForYear?.(newYear);
+                      setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
+                    } catch { }
+                    setEditingHolidays(false);
+                    setOriginalHolidays(null);
+                    setSelectedHolidayIndex(null);
+                  }}
+                  style={{ padding: '4px 8px', fontSize: '1em', fontWeight: 600 }}
+                >
+                  {yearPlannings.map(yp => (
+                    <option key={yp.year} value={yp.year}>{yp.year}</option>
+                  ))}
+                </select>
+              </div>
+              <p style={{ marginTop: 0, color: '#666' }}>An diesen Tagen wird der ITW nicht besetzt (IW entfällt). Du kannst Datum und (optional) Name pflegen.</p>
+              <table className={styles.table}>
+                <thead>
+                  <tr className={styles.thead}>
+                    <th style={{ width: 160 }}>Datum (YYYY-MM-DD)</th>
+                    <th>Name</th>
+                  </tr>
+                </thead>
+                <tbody className={styles.tbody}>
+                  {holidays.map((h, idx) => (
+                    <tr key={`${h.date}_${idx}`} className={[styles.row, selectedHolidayIndex === idx ? styles.selected : ''].filter(Boolean).join(' ')} onClick={() => setSelectedHolidayIndex(prev => prev === idx ? null : idx)}>
+                      <td>
+                        <input
+                          type="date"
+                          value={h.date}
+                          disabled={!editingHolidays}
+                          onChange={e => {
+                            if (!editingHolidays) return;
+                            const v = e.target.value;
+                            setHolidays(prev => prev.map((x, i) => i === idx ? { ...x, date: v } : x));
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          value={h.name}
+                          disabled={!editingHolidays}
+                          onChange={e => {
+                            if (!editingHolidays) return;
+                            const v = e.target.value;
+                            setHolidays(prev => prev.map((x, i) => i === idx ? { ...x, name: v } : x));
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!editingHolidays ? (
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <button onClick={() => { setEditingHolidays(true); setOriginalHolidays(JSON.parse(JSON.stringify(holidays))); setHolidays(prev => [...prev, { date: `${holidaysYear}-01-01`, name: '' }]); setSelectedHolidayIndex((holidays?.length ?? 0)); }}>Hinzufügen</button>
+                  <button onClick={() => setEditingHolidays(true)} disabled={holidays.length === 0}>Ändern</button>
+                  <button onClick={() => { if (selectedHolidayIndex != null) setHolidays(prev => prev.filter((_, i) => i !== selectedHolidayIndex)); setSelectedHolidayIndex(null); }} disabled={selectedHolidayIndex == null}>Löschen</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <button onClick={async () => { try { await (window as any).api.setHolidaysForYear?.(holidaysYear, holidays.map(h => ({ date: h.date, name: h.name }))); const fresh = await (window as any).api.getHolidaysForYear?.(holidaysYear); setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') }))); } catch { } finally { setEditingHolidays(false); setOriginalHolidays(null); setSelectedHolidayIndex(null); } }}>Speichern</button>
+                  <button onClick={() => { if (originalHolidays) setHolidays(originalHolidays); setOriginalHolidays(null); setEditingHolidays(false); setSelectedHolidayIndex(null); }}>Abbrechen</button>
+                </div>
               )}
             </div>
           </div>
@@ -1682,10 +1858,10 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               </p>
             </div>
 
-            {/* LPAL Zuordnung (Leitender Praxisanleiter – wie Ü50, aber orange) */}
-            <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#fff3e0', borderRadius: 6, border: '1px solid #fd7e14' }}>
+            {/* LPAL Zuordnung (zusätzlich zu Ü50, orange Markierung) */}
+            <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#fff4e6', borderRadius: 6, border: '1px solid #fd7e14' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <strong style={{ minWidth: 250 }}>Qualifikation für LPAL (wie Ü50):</strong>
+                <strong style={{ minWidth: 250 }}>Qualifikation für LPAL (zusätzlich zu Ü50):</strong>
                 <select
                   value={lpalQualificationType}
                   onChange={e => setLpalQualificationType(e.target.value)}
@@ -1696,8 +1872,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                   ))}
                 </select>
               </label>
-              <p style={{ margin: '8px 0 0', fontSize: '0.9em', color: '#7d3c00' }}>
-                Personen mit dieser Qualifikation (Leitender Praxisanleiter) haben <strong>keine Soll/Ist-Berechnung</strong> (wie Ü50), werden aber <strong style={{ color: '#fd7e14' }}>orange</strong> im Kontrollfeld angezeigt.
+              <p style={{ margin: '8px 0 0', fontSize: '0.9em', color: '#a04a00' }}>
+                Personen mit dieser Qualifikation werden wie Ü50 ohne Soll/Ist-Berechnung behandelt und im Kontrollfeld <strong style={{ color: '#fd7e14' }}>orange</strong> markiert.
               </p>
             </div>
 
@@ -1730,9 +1906,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                     <th>Name</th>
                     <th>Beschreibung</th>
                     <th>Kategorie</th>
-                    <th style={{ width: 80 }}>Aktiv</th>
-                    <th style={{ width: 120 }}>Statistik ausschl.</th>
-                    <th className={styles.center} style={{ width: 60 }}>#</th>
+                    <th className={styles.center} style={{ width: 90 }}>Aktion</th>
                   </tr>
                 </thead>
                 <tbody className={styles.tbody}>
@@ -1745,7 +1919,10 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                             onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, name: e.target.value } : x))}
                             style={{
                               borderColor: (!qt.name || qt.name.trim() === '') ? '#ff4444' : '#ddd',
-                              backgroundColor: (!qt.name || qt.name.trim() === '') ? '#fff5f5' : 'white'
+                              backgroundColor: (!qt.name || qt.name.trim() === '') ? '#fff5f5' : 'white',
+                              padding: '4px 6px',
+                              height: 28,
+                              boxSizing: 'border-box'
                             }}
                             placeholder="Name erforderlich"
                           />
@@ -1754,32 +1931,20 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                       <td>
                         {editingQualificationTypes ? (
                           <input value={qt.description || ''}
-                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, description: e.target.value } : x))} />
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, description: e.target.value } : x))}
+                            style={{ padding: '4px 6px', height: 28, boxSizing: 'border-box' }} />
                         ) : (qt.description || '')}
                       </td>
                       <td>
                         {editingQualificationTypes ? (
                           <select value={qt.category}
-                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, category: e.target.value } : x))}>
-                            <option value="Fahrzeugführung">Fahrzeugführung</option>
-                            <option value="Notfall">Notfall</option>
-                            <option value="Transport">Transport</option>
-                            <option value="Ausbildung">Ausbildung</option>
-                            <option value="Sonstiges">Sonstiges</option>
+                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, category: e.target.value } : x))}
+                            style={{ padding: '4px 6px', height: 28, boxSizing: 'border-box' }}>
+                            {qualificationCategories.map(cat => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
                           </select>
                         ) : qt.category}
-                      </td>
-                      <td className={styles.center}>
-                        {editingQualificationTypes ? (
-                          <input type="checkbox" checked={qt.active}
-                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, active: e.target.checked } : x))} />
-                        ) : (qt.active ? '✓' : '✗')}
-                      </td>
-                      <td className={styles.center} title="Von Soll/Ist-Berechnung ausschließen (wie Azubis)">
-                        {editingQualificationTypes ? (
-                          <input type="checkbox" checked={qt.excludeFromStats || false}
-                            onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, excludeFromStats: e.target.checked } : x))} />
-                        ) : (qt.excludeFromStats ? '✓' : '✗')}
                       </td>
                       <td className={styles.center}>
                         <button onClick={() => {
@@ -1798,18 +1963,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               </table>
 
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <button onClick={() => {
-                  if (editingQualificationTypes) {
-                    // Speichern
-                    saveQualificationTypes();
-                  } else {
-                    // Bearbeiten starten
+                {!editingQualificationTypes && (
+                  <button onClick={() => {
                     setEditingQualificationTypes(true);
                     setOriginalQualificationTypes([...qualificationTypes]);
-                  }
-                }}>
-                  {editingQualificationTypes ? 'Speichern' : 'Bearbeiten'}
-                </button>
+                  }}>
+                    Bearbeiten
+                  </button>
+                )}
 
                 {editingQualificationTypes && (
                   <>
@@ -1831,7 +1992,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                         id: newId,
                         name: 'Neue Qualifikation',
                         description: '',
-                        category: 'Sonstiges',
+                        category: qualificationCategories[0] || 'Sonstiges',
                         active: true,
                         sort: newSort
                       }]);
@@ -1841,6 +2002,112 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                     </button>
                   </>
                 )}
+              </div>
+
+              <div style={{ marginTop: 20, paddingTop: 12, borderTop: '1px solid #dbe7ff' }}>
+                <h3>Kategorienverwaltung</h3>
+                <div style={{ marginTop: 12 }}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr className={styles.thead}>
+                        <th>Kategorie</th>
+                        <th className={styles.center} style={{ width: 110 }}>Aktion</th>
+                      </tr>
+                    </thead>
+                    <tbody className={styles.tbody}>
+                      {qualificationCategories.map((cat, index) => (
+                        <tr key={`${cat}-${index}`} className={styles.row}>
+                          <td>
+                            {editingQualificationCategories ? (
+                              <input
+                                value={cat}
+                                onChange={e => {
+                                  const next = e.target.value;
+                                  setQualificationCategories(prev => prev.map((c, i) => i === index ? next : c));
+                                  setQualificationTypes(prev => prev.map(qt => qt.category === cat ? { ...qt, category: next } : qt));
+                                }}
+                                placeholder="Kategoriename"
+                                style={{ maxWidth: 320 }}
+                              />
+                            ) : (
+                              cat
+                            )}
+                          </td>
+                          <td className={styles.center}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!editingQualificationCategories) return;
+                                if (qualificationCategories.length <= 1) {
+                                  alert('Mindestens eine Kategorie muss bestehen bleiben.');
+                                  return;
+                                }
+                                const fallbackCategory = qualificationCategories.find((_, i) => i !== index) || 'Sonstiges';
+                                if (!confirm(`Kategorie "${cat}" löschen? Zugeordnete Qualifikationen werden auf "${fallbackCategory}" gesetzt.`)) {
+                                  return;
+                                }
+                                setQualificationCategories(prev => prev.filter((_, i) => i !== index));
+                                setQualificationTypes(prev => prev.map(qt => qt.category === cat ? { ...qt, category: fallbackCategory } : qt));
+                              }}
+                              disabled={!editingQualificationCategories}
+                              style={{
+                                color: '#cc0000',
+                                background: 'none',
+                                border: 'none',
+                                cursor: editingQualificationCategories ? 'pointer' : 'default',
+                                opacity: editingQualificationCategories ? 1 : 0.35
+                              }}
+                            >
+                              ✗
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                    {!editingQualificationCategories ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingQualificationCategories(true);
+                          setOriginalQualificationCategories([...qualificationCategories]);
+                        }}
+                      >
+                        Kategorien bearbeiten
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newCategoryBase = 'Neue Kategorie';
+                            let newCategory = newCategoryBase;
+                            let suffix = 2;
+                            while (qualificationCategories.some(c => c.toLowerCase() === newCategory.toLowerCase())) {
+                              newCategory = `${newCategoryBase} ${suffix}`;
+                              suffix += 1;
+                            }
+                            setQualificationCategories(prev => [...prev, newCategory]);
+                          }}
+                        >
+                          Neue Kategorie
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQualificationCategories(originalQualificationCategories ? [...originalQualificationCategories] : [...defaultQualificationCategories]);
+                            setEditingQualificationCategories(false);
+                            setOriginalQualificationCategories(null);
+                          }}
+                        >
+                          Abbrechen
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1859,48 +2126,110 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                 <tr className={styles.thead}>
                   <th>Rollenname</th>
                   <th>Beschreibung</th>
-                  <th style={{ width: 60 }}>#</th>
+                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Einteilung Lesen</th>
+                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Einteilung Schreiben</th>
+                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Dienstplan Lesen</th>
+                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Dienstplan Alle</th>
+                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Dienstplan Schreiben</th>
+                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Werte Lesen</th>
+                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Personal Schreiben</th>
+                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Fahrzeuge Schreiben</th>
+                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Einstellungen Schreiben</th>
+                  <th className={styles.center} style={{ width: 90 }}>Aktion</th>
                 </tr>
               </thead>
               <tbody className={styles.tbody}>
                 {roles.map(role => (
-                  <tr
-                    key={role.id}
-                    className={[styles.row, selectedRoleId === role.id ? styles.selected : ''].filter(Boolean).join(' ')}
-                    onClick={() => setSelectedRoleId(prev => prev === role.id ? null : role.id)}
-                  >
+                  <tr key={role.id} className={styles.row}>
                     <td>
-                      {editingRoles ? (
-                        <input
-                          value={role.name}
-                          onChange={e => setRoles(prev => prev.map(r => r.id === role.id ? { ...r, name: e.target.value } : r))}
-                          style={{
-                            borderColor: (!role.name || role.name.trim() === '') ? '#ff4444' : '#ddd',
-                            backgroundColor: (!role.name || role.name.trim() === '') ? '#fff5f5' : 'white'
-                          }}
-                          placeholder="Rollenname erforderlich"
-                        />
-                      ) : role.name}
+                      <input
+                        value={role.name}
+                        onChange={e => setRoles(prev => prev.map(r => r.id === role.id ? { ...r, name: e.target.value } : r))}
+                        style={{
+                          borderColor: (!role.name || role.name.trim() === '') ? '#ff4444' : '#ddd',
+                          backgroundColor: (!role.name || role.name.trim() === '') ? '#fff5f5' : 'white'
+                        }}
+                        placeholder="Rollenname erforderlich"
+                      />
                     </td>
                     <td>
-                      {editingRoles ? (
-                        <input
-                          value={role.description || ''}
-                          onChange={e => setRoles(prev => prev.map(r => r.id === role.id ? { ...r, description: e.target.value } : r))}
-                        />
-                      ) : (role.description || '')}
+                      <input
+                        value={role.description || ''}
+                        onChange={e => setRoles(prev => prev.map(r => r.id === role.id ? { ...r, description: e.target.value } : r))}
+                      />
+                    </td>
+                    <td className={styles.center}>
+                      <input
+                        type="checkbox"
+                        checked={(role.permissions?.einteilung || 'none') === 'read'}
+                        onChange={e => setRolePermission(role.id, 'einteilung', 'read', e.target.checked)}
+                      />
+                    </td>
+                    <td className={styles.center}>
+                      <input
+                        type="checkbox"
+                        checked={(role.permissions?.einteilung || 'none') === 'write'}
+                        onChange={e => setRolePermission(role.id, 'einteilung', 'write', e.target.checked)}
+                      />
+                    </td>
+                    <td className={styles.center}>
+                      <input
+                        type="checkbox"
+                        checked={(role.permissions?.dienstplan || 'none') === 'read'}
+                        onChange={e => setRolePermission(role.id, 'dienstplan', 'read', e.target.checked)}
+                      />
+                    </td>
+                    <td className={styles.center}>
+                      <input
+                        type="checkbox"
+                        checked={(role.permissions?.dienstplan || 'none') === 'read_all'}
+                        onChange={e => setRolePermission(role.id, 'dienstplan', 'read_all', e.target.checked)}
+                      />
+                    </td>
+                    <td className={styles.center}>
+                      <input
+                        type="checkbox"
+                        checked={(role.permissions?.dienstplan || 'none') === 'write'}
+                        onChange={e => setRolePermission(role.id, 'dienstplan', 'write', e.target.checked)}
+                      />
+                    </td>
+                    <td className={styles.center}>
+                      <input
+                        type="checkbox"
+                        checked={(role.permissions?.werte || 'none') === 'read'}
+                        onChange={e => setRolePermission(role.id, 'werte', 'read', e.target.checked)}
+                      />
+                    </td>
+                    <td className={styles.center}>
+                      <input
+                        type="checkbox"
+                        checked={(role.permissions?.personal || 'none') === 'write'}
+                        onChange={e => setRolePermission(role.id, 'personal', 'write', e.target.checked)}
+                      />
+                    </td>
+                    <td className={styles.center}>
+                      <input
+                        type="checkbox"
+                        checked={(role.permissions?.fahrzeuge || 'none') === 'write'}
+                        onChange={e => setRolePermission(role.id, 'fahrzeuge', 'write', e.target.checked)}
+                      />
+                    </td>
+                    <td className={styles.center}>
+                      <input
+                        type="checkbox"
+                        checked={(role.permissions?.einstellungen || 'none') === 'write'}
+                        onChange={e => setRolePermission(role.id, 'einstellungen', 'write', e.target.checked)}
+                      />
                     </td>
                     <td className={styles.center}>
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
+                        onClick={() => {
                           if (confirm(`Rolle "${role.name}" löschen?`)) {
                             setRoles(prev => prev.filter(r => r.id !== role.id));
-                            if (selectedRoleId === role.id) setSelectedRoleId(null);
+                            setAddedRoleIds(prev => prev.filter(id => id !== role.id));
                           }
                         }}
-                        disabled={!editingRoles}
-                        style={{ color: '#cc0000', background: 'none', border: 'none', cursor: editingRoles ? 'pointer' : 'default' }}
+                        style={{ color: '#cc0000', background: 'none', border: 'none', cursor: 'pointer' }}
                       >
                         ✗
                       </button>
@@ -1910,107 +2239,57 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
               </tbody>
             </table>
 
-            {/* Rechte-Editor für ausgewählte Rolle */}
-            {selectedRoleId !== null && editingRoles && (
-              <div style={{ marginTop: 24, padding: 16, backgroundColor: '#f8f9fa', borderRadius: 6, border: '1px solid #dee2e6' }}>
-                <h4 style={{ marginTop: 0 }}>Rechte für Rolle: {roles.find(r => r.id === selectedRoleId)?.name}</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 16 }}>
-                  {[
-                    { key: 'einteilung', label: 'Einteilung', allowRead: true, allowWrite: true },
-                    { key: 'dienstplan', label: 'Dienstplan', allowRead: true, allowWrite: true, allowReadAll: true },
-                    { key: 'werte', label: 'Werte', allowRead: true, allowWrite: false },
-                    { key: 'personal', label: 'Personal', allowRead: false, allowWrite: true },
-                    { key: 'fahrzeuge', label: 'Fahrzeuge', allowRead: false, allowWrite: true },
-                    { key: 'einstellungen', label: 'Einstellungen', allowRead: false, allowWrite: true }
-                  ].map(area => {
-                    const currentPermission = roles.find(r => r.id === selectedRoleId)?.permissions[area.key] || 'none';
-                    return (
-                      <div key={area.key} style={{ padding: 12, backgroundColor: 'white', borderRadius: 4, border: '1px solid #dee2e6' }}>
-                        <label style={{ display: 'block', fontWeight: 600, marginBottom: 8 }}>{area.label}</label>
-                        <select
-                          value={currentPermission}
-                          onChange={e => {
-                            const newPermission = e.target.value as 'none' | 'read' | 'read_all' | 'write';
-                            setRoles(prev => prev.map(r =>
-                              r.id === selectedRoleId
-                                ? { ...r, permissions: { ...r.permissions, [area.key]: newPermission } }
-                                : r
-                            ));
-                          }}
-                          style={{ width: '100%', padding: 4 }}
-                        >
-                          <option value="none">Keine</option>
-                          {area.allowRead && <option value="read">Lesen</option>}
-                          {area.allowReadAll && <option value="read_all">Lesen / alle</option>}
-                          {area.allowWrite && <option value="write">Schreiben</option>}
-                        </select>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
               <button onClick={() => {
-                if (editingRoles) {
-                  // Speichern
-                  saveRoles();
-                } else {
-                  // Bearbeiten starten
-                  setEditingRoles(true);
-                  setOriginalRoles([...roles]);
-                }
+                const newId = Math.max(0, ...roles.map(r => r.id)) + 1;
+                const defaultPermissions: Record<string, 'none' | 'read' | 'read_all' | 'write'> = {
+                  einteilung: 'none',
+                  dienstplan: 'none',
+                  werte: 'none',
+                  personal: 'none',
+                  fahrzeuge: 'none',
+                  einstellungen: 'none'
+                };
+                setRoles(prev => [...prev, {
+                  id: newId,
+                  name: 'Neue Rolle',
+                  description: '',
+                  permissions: defaultPermissions
+                }]);
+                setAddedRoleIds(prev => [...prev, newId]);
               }}>
-                {editingRoles ? 'Speichern' : 'Bearbeiten'}
+                Neue Rolle
               </button>
-
-              {editingRoles && (
-                <>
-                  <button onClick={() => {
-                    // Abbrechen
-                    setRoles(originalRoles ? [...originalRoles] : []);
-                    setEditingRoles(false);
-                    setSelectedRoleId(null);
-                    setOriginalRoles(null);
-                  }}>
-                    Abbrechen
-                  </button>
-
-                  <button onClick={() => {
-                    // Neue Rolle hinzufügen
-                    const newId = Math.max(0, ...roles.map(r => r.id)) + 1;
-                    const defaultPermissions: Record<string, 'none' | 'read' | 'read_all' | 'write'> = {
-                      einteilung: 'none',
-                      dienstplan: 'none',
-                      werte: 'none',
-                      personal: 'none',
-                      fahrzeuge: 'none',
-                      einstellungen: 'none'
-                    };
-                    setRoles(prev => [...prev, {
-                      id: newId,
-                      name: 'Neue Rolle',
-                      description: '',
-                      permissions: defaultPermissions
-                    }]);
-                    setSelectedRoleId(newId);
-                  }}>
-                    Neue Rolle
-                  </button>
-                </>
+              {addedRoleIds.length > 0 && (
+                <button onClick={() => {
+                  setRoles(prev => prev.filter(r => !addedRoleIds.includes(r.id)));
+                  setAddedRoleIds([]);
+                }}>
+                  Abbrechen
+                </button>
               )}
             </div>
           </div>
         )}
 
-        {/* Speichern/Abbrechen unten platzieren */}
-        <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{ marginRight: 8 }}>Abbrechen</button>
+      </div>
+      {/* Ende Content */}
+
+      {!setFooterActions && (
+        <div style={{
+          borderTop: '1px solid #eee',
+          paddingTop: 12,
+          paddingBottom: 12,
+          display: 'flex',
+          justifyContent: 'flex-end',
+          flexShrink: 0,
+          background: 'var(--bg)'
+        }}>
           <button onClick={handleSave} disabled={saving}>
             {saving ? 'Speichern ...' : 'Speichern'}
           </button>
         </div>
+      )}
         {showSettingsImportExport && (
           <div style={{
             position: 'fixed',
@@ -2122,9 +2401,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
                           proceed = !box || typeof box.response !== 'number' ? true : (box.response === 0);
                         } catch { }
                         if (!proceed) return;
-                        if (doBackup) {
-                          try { await (window as any).api.createDatabaseBackup?.({ year: Number(year) }); } catch { }
-                        }
+                        try { await (window as any).api.createDatabaseBackup?.({ year: Number(year) }); } catch { }
                         try { await (window as any).api.clearDutyRosterYear?.(Number(year)); } catch { }
                         const res = await (window as any).api.importDutyRoster(currentImportPath || rosterImportPath, Number(year), undefined, { mappings: nameMappings });
                         if (res?.success) {
@@ -2307,11 +2584,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose }) => {
             onCancel={handleYearImportAzubiCancel}
           />
         )}
-      </div>
-      {/* Ende Content */}
-      {showShiftTransferManager && (
-        <ShiftTransferManager onClose={() => setShowShiftTransferManager(false)} />
-      )}
     </div>
   );
 };
