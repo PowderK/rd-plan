@@ -259,20 +259,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                                 }}
                               />
                             )}
-                            <div
-                              style={{
-                                position: 'absolute',
-                                inset: 0,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: 8,
-                                color: '#111827',
-                                fontWeight: 600,
-                              }}
-                            >
-                              {nachtCount} • {tagCount}
-                            </div>
+                            
                           </>
                         );
                       })()}
@@ -322,20 +309,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                               borderRadius: 3,
                             }}
                           />
-                          <div
-                            style={{
-                              position: 'absolute',
-                              inset: 0,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: 8,
-                              color: '#111827',
-                              fontWeight: 600,
-                            }}
-                          >
-                            {remain}
-                          </div>
+                          
                         </div>
                       );
                     })()}
