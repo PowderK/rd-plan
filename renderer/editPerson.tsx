@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { ShiftTransferManager } from './components/ShiftTransferManager';
+import './styles.css';
 
 interface QualificationPeriod {
   id: number;
@@ -406,19 +408,20 @@ const EditPerson: React.FC = () => {
   const [roles, setRoles] = useState<{ id: number; name: string }[]>([]);
   const [oldRtwShifts, setOldRtwShifts] = useState<number>(0);
   const [showOldRtwShiftsFeature, setShowOldRtwShiftsFeature] = useState(false);
+  const [showShiftTransferFeature, setShowShiftTransferFeature] = useState(false);
+  const [showShiftTransferManager, setShowShiftTransferManager] = useState(false);
   // Alte Qualifikations-States entfernt - jetzt über Qualifikationsperioden verwaltet
   const [qualificationPeriods, setQualificationPeriods] = useState<QualificationPeriod[]>([]);
-  const [showQualifications, setShowQualifications] = useState(true);
   const [editingQualification, setEditingQualification] = useState<QualificationPeriod | null>(null);
   const [showAddQualification, setShowAddQualification] = useState(false);
 
   // Active Periods State
   const [activePeriods, setActivePeriods] = useState<ActivePeriod[]>([]);
-  const [showActivePeriods, setShowActivePeriods] = useState(true);
   const [editingActivePeriod, setEditingActivePeriod] = useState<ActivePeriod | null>(null);
   const [showAddActivePeriod, setShowAddActivePeriod] = useState(false);
 
   const [active, setActive] = useState(true);
+  const [activeTab, setActiveTab] = useState<'stammdaten' | 'qualifikationen' | 'zeitraeume'>('stammdaten');
 
   useEffect(() => {
     if (!id) {
@@ -466,6 +469,11 @@ const EditPerson: React.FC = () => {
           setShowOldRtwShiftsFeature(feat === 'true' || feat === true);
         } catch { }
 
+        try {
+          const feat = await (window as any).api.getSetting('feature_shift_transfers');
+          setShowShiftTransferFeature(feat === 'true' || feat === true);
+        } catch { }
+
         // Lade Qualifikationsperioden
         // console.log('Loading qualification periods for person ID:', id);
         const periods = await (window as any).api.getQualificationPeriods(id);
@@ -487,9 +495,19 @@ const EditPerson: React.FC = () => {
   }, [id]);
 
   const handleSave = async () => {
+    if (!personnelNumber.trim()) {
+      alert('Bitte eine Personalnummer eingeben.');
+      return;
+    }
+
+    if (roleId == null) {
+      alert('Bitte eine Rolle auswählen.');
+      return;
+    }
+
     try {
       // Nur noch Basisdaten speichern - Qualifikationen werden separat über Perioden verwaltet
-      await (window as any).api.updatePerson({ id, name, vorname, teilzeit, active, sort, personnelNumber, roleId, oldRtwShifts });
+      await (window as any).api.updatePerson({ id, name, vorname, teilzeit, active, sort, personnelNumber: personnelNumber.trim(), roleId, oldRtwShifts });
       if (window.opener) window.opener.postMessage('personnel-updated', '*');
       window.close();
     } catch (e) {
@@ -655,40 +673,115 @@ const EditPerson: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: 24 }}>
+    <div style={{ padding: 24, height: '100vh', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
       <h2>Personal ändern</h2>
-      <div style={{ marginBottom: 12 }}>
-        <label>Name: <input value={name} onChange={e => setName(e.target.value)} /></label>
+
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: 4 }}>
+
+      <div style={{
+        display: 'flex',
+        gap: 4,
+        borderBottom: '2px solid #dee2e6',
+        marginBottom: 16,
+        position: 'sticky',
+        top: 0,
+        background: 'var(--bg)',
+        zIndex: 20,
+        paddingTop: 4,
+        paddingBottom: 4
+      }}>
+        <button
+          type="button"
+          onClick={() => setActiveTab('stammdaten')}
+          style={{
+            padding: '8px 16px',
+            border: 'none',
+            borderBottom: activeTab === 'stammdaten' ? '3px solid #0d6efd' : '3px solid transparent',
+            background: activeTab === 'stammdaten' ? '#f8f9fa' : 'transparent',
+            fontWeight: activeTab === 'stammdaten' ? 600 : 400,
+            cursor: 'pointer'
+          }}
+        >
+          Stammdaten
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('qualifikationen')}
+          style={{
+            padding: '8px 16px',
+            border: 'none',
+            borderBottom: activeTab === 'qualifikationen' ? '3px solid #0d6efd' : '3px solid transparent',
+            background: activeTab === 'qualifikationen' ? '#f8f9fa' : 'transparent',
+            fontWeight: activeTab === 'qualifikationen' ? 600 : 400,
+            cursor: 'pointer'
+          }}
+        >
+          Qualifikationen
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('zeitraeume')}
+          style={{
+            padding: '8px 16px',
+            border: 'none',
+            borderBottom: activeTab === 'zeitraeume' ? '3px solid #0d6efd' : '3px solid transparent',
+            background: activeTab === 'zeitraeume' ? '#f8f9fa' : 'transparent',
+            fontWeight: activeTab === 'zeitraeume' ? 600 : 400,
+            cursor: 'pointer'
+          }}
+        >
+          Zeiträume
+        </button>
       </div>
-      <div style={{ marginBottom: 12 }}>
-        <label>Vorname: <input value={vorname} onChange={e => setVorname(e.target.value)} /></label>
-      </div>
-      <div style={{ marginBottom: 12 }}>
-        <label>Personalnummer: <input value={personnelNumber} onChange={e => setPersonnelNumber(e.target.value)} placeholder="Optional" /></label>
-      </div>
-      <div style={{ marginBottom: 12 }}>
-        <label>Rolle:
-          <select value={roleId || ''} onChange={e => setRoleId(e.target.value ? Number(e.target.value) : null)} style={{ marginLeft: 8 }}>
-            <option value="">Keine Rolle</option>
+
+      {activeTab === 'stammdaten' && (
+        <>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(280px, 1fr) minmax(280px, 1fr)',
+        gap: 12,
+        marginBottom: 16
+      }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span>Name</span>
+          <input value={name} onChange={e => setName(e.target.value)} />
+        </label>
+
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span>Vorname</span>
+          <input value={vorname} onChange={e => setVorname(e.target.value)} />
+        </label>
+
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span>Personalnummer *</span>
+          <input value={personnelNumber} onChange={e => setPersonnelNumber(e.target.value)} />
+        </label>
+
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span>Rolle *</span>
+          <select value={roleId || ''} onChange={e => setRoleId(e.target.value ? Number(e.target.value) : null)}>
+            <option value="">Bitte wählen</option>
             {roles.map(role => (
               <option key={role.id} value={role.id}>{role.name}</option>
             ))}
           </select>
         </label>
-      </div>
-      <div style={{ marginBottom: 24 }}>
-        <label>Teilzeit (%): <input type="number" value={teilzeit} min={0} max={100} onChange={e => setTeilzeit(Number(e.target.value))} /></label>
+
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 220 }}>
+          <span>Teilzeit (%)</span>
+          <input type="number" value={teilzeit} min={0} max={100} onChange={e => setTeilzeit(Number(e.target.value))} />
+        </label>
       </div>
 
       {showOldRtwShiftsFeature && (
-        <div style={{ marginBottom: 24 }}>
-          <label>Alte RTW-Schichten (aus Altsystem):
+        <div style={{ marginBottom: 16, padding: 12, border: '1px solid #dee2e6', borderRadius: 8, background: '#f8f9fa' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 280 }}>
+            <span>Alte RTW-Schichten (aus Altsystem)</span>
             <input
               type="number"
               value={oldRtwShifts === 0 ? '' : oldRtwShifts}
               onChange={(e) => setOldRtwShifts(e.target.value === '' ? 0 : Number(e.target.value))}
               min="0"
-              style={{ marginLeft: 8 }}
             />
           </label>
           <div style={{ fontSize: '0.85em', color: '#666', marginTop: 4 }}>
@@ -697,7 +790,35 @@ const EditPerson: React.FC = () => {
         </div>
       )}
 
+      {showShiftTransferFeature && (
+        <div style={{ marginBottom: 16, border: '1px solid #dee2e6', borderRadius: 8, padding: 12, background: '#f8f9fa' }}>
+          <h3 style={{ marginTop: 0, marginBottom: 6 }}>Gezielte Schichtübernahmen</h3>
+          <p style={{ marginTop: 0, marginBottom: 8, color: '#666' }}>
+            Neue Übernahmen aus dieser Ansicht setzen automatisch <strong>{name || 'diese Person'}</strong> als Empfänger.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowShiftTransferManager(true)}
+            style={{ padding: '8px 12px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            Übernahmen verwalten
+          </button>
+        </div>
+      )}
+
+      <div style={{ marginTop: 8 }}>
+        <button
+          onClick={handleDelete}
+          style={{ backgroundColor: '#dc3545', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+        >
+          Löschen
+        </button>
+      </div>
+        </>
+      )}
+
       {/* Aktivitätszeiträume */}
+      {activeTab === 'zeitraeume' && (
       <div style={{
         marginBottom: 24,
         border: '2px solid #28a745',
@@ -706,35 +827,14 @@ const EditPerson: React.FC = () => {
         backgroundColor: '#f8f9fa'
       }}>
         <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+          <div style={{ marginBottom: '8px' }}>
             <h3 style={{ margin: 0, color: '#28a745' }}>Aktivitätszeiträume</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '12px', color: '#666' }}>
-                {activePeriods.length} Periode(n)
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowActivePeriods(!showActivePeriods)}
-                style={{
-                  background: showActivePeriods ? '#dc3545' : '#28a745',
-                  color: 'white',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  padding: '4px 8px',
-                  borderRadius: '4px'
-                }}
-              >
-                {showActivePeriods ? '▼ Ausblenden' : '▶ Anzeigen'}
-              </button>
-            </div>
           </div>
           <p style={{ margin: 0, fontSize: '13px', color: '#666', fontStyle: 'italic' }}>
             Legen Sie fest, in welchen Zeiträumen der Mitarbeiter aktiv ist (z.B. Elternzeit, Sabbatical).
           </p>
         </div>
 
-        {showActivePeriods && (
           <div>
             <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '14px', color: '#666' }}>
@@ -762,28 +862,22 @@ const EditPerson: React.FC = () => {
                 Keine Aktivitätsperioden vorhanden (Mitarbeiter ist immer aktiv, wenn "Aktiv" gesetzt)
               </p>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+              <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '14px', border: '1px solid #d6e4ff', borderRadius: 10, overflow: 'hidden' }}>
                 <thead>
-                  <tr style={{ backgroundColor: '#f5f5f5' }}>
-                    <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd' }}>Von</th>
-                    <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd' }}>Bis</th>
-                    <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd' }}>Beschreibung</th>
-                    <th style={{ padding: '8px', textAlign: 'center', border: '1px solid #ddd' }}>Aktiv</th>
-                    <th style={{ padding: '8px', textAlign: 'center', border: '1px solid #ddd' }}>Aktionen</th>
+                  <tr style={{ backgroundColor: '#f8fbff' }}>
+                    <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #dbe7ff' }}>Von</th>
+                    <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #dbe7ff' }}>Bis</th>
+                    <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #dbe7ff' }}>Beschreibung</th>
+                    <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #dbe7ff' }}>Aktionen</th>
                   </tr>
                 </thead>
                 <tbody>
                   {activePeriods.map((period) => (
                     <tr key={period.id}>
-                      <td style={{ padding: '8px', border: '1px solid #ddd' }}>{period.startYM}</td>
-                      <td style={{ padding: '8px', border: '1px solid #ddd' }}>{period.endYM || 'Unbegrenzt'}</td>
-                      <td style={{ padding: '8px', border: '1px solid #ddd' }}>{period.description}</td>
-                      <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>
-                        <span style={{ color: period.active ? '#28a745' : '#dc3545' }}>
-                          {period.active ? '✓' : '✗'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>
+                      <td style={{ padding: '8px', borderBottom: '1px solid #e4edff' }}>{period.startYM}</td>
+                      <td style={{ padding: '8px', borderBottom: '1px solid #e4edff' }}>{period.endYM || 'Unbegrenzt'}</td>
+                      <td style={{ padding: '8px', borderBottom: '1px solid #e4edff' }}>{period.description}</td>
+                      <td style={{ padding: '8px', borderBottom: '1px solid #e4edff', textAlign: 'center' }}>
                         <button
                           type="button"
                           onClick={() => setEditingActivePeriod(period)}
@@ -841,10 +935,11 @@ const EditPerson: React.FC = () => {
               />
             )}
           </div>
-        )}
       </div>
+      )}
 
       {/* Qualifikationen & Zeiträume - Hauptfunktion */}
+      {activeTab === 'qualifikationen' && (
       <div style={{
         marginBottom: 24,
         border: '2px solid #007bff',
@@ -853,35 +948,14 @@ const EditPerson: React.FC = () => {
         backgroundColor: '#f8f9fa'
       }}>
         <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+          <div style={{ marginBottom: '8px' }}>
             <h3 style={{ margin: 0, color: '#007bff' }}>Qualifikationen & Zeiträume</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '12px', color: '#666' }}>
-                {qualificationPeriods.length} Periode(n)
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowQualifications(!showQualifications)}
-                style={{
-                  background: showQualifications ? '#dc3545' : '#28a745',
-                  color: 'white',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  padding: '4px 8px',
-                  borderRadius: '4px'
-                }}
-              >
-                {showQualifications ? '▼ Ausblenden' : '▶ Anzeigen'}
-              </button>
-            </div>
           </div>
           <p style={{ margin: 0, fontSize: '13px', color: '#666', fontStyle: 'italic' }}>
             Verwalten Sie Qualifikationen mit genauen Zeiträumen (Monat/Jahr). Ersetzt die alten Checkbox-Qualifikationen.
           </p>
         </div>
 
-        {showQualifications && (
           <div>
             <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '14px', color: '#666' }}>
@@ -909,28 +983,28 @@ const EditPerson: React.FC = () => {
                 Keine Qualifikationsperioden vorhanden
               </p>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+              <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '14px', border: '1px solid #d6e4ff', borderRadius: 10, overflow: 'hidden' }}>
                 <thead>
-                  <tr style={{ backgroundColor: '#f5f5f5' }}>
-                    <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd' }}>Qualifikation</th>
-                    <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd' }}>Von</th>
-                    <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd' }}>Bis</th>
-                    <th style={{ padding: '8px', textAlign: 'center', border: '1px solid #ddd' }}>Aktiv</th>
-                    <th style={{ padding: '8px', textAlign: 'center', border: '1px solid #ddd' }}>Aktionen</th>
+                  <tr style={{ backgroundColor: '#f8fbff' }}>
+                    <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #dbe7ff' }}>Qualifikation</th>
+                    <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #dbe7ff' }}>Von</th>
+                    <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #dbe7ff' }}>Bis</th>
+                    <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #dbe7ff' }}>Aktiv</th>
+                    <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #dbe7ff' }}>Aktionen</th>
                   </tr>
                 </thead>
                 <tbody>
                   {qualificationPeriods.map((period) => (
                     <tr key={period.id}>
-                      <td style={{ padding: '8px', border: '1px solid #ddd' }}>{period.qualType}</td>
-                      <td style={{ padding: '8px', border: '1px solid #ddd' }}>{period.startYM}</td>
-                      <td style={{ padding: '8px', border: '1px solid #ddd' }}>{period.endYM || 'Unbegrenzt'}</td>
-                      <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>
+                      <td style={{ padding: '8px', borderBottom: '1px solid #e4edff' }}>{period.qualType}</td>
+                      <td style={{ padding: '8px', borderBottom: '1px solid #e4edff' }}>{period.startYM}</td>
+                      <td style={{ padding: '8px', borderBottom: '1px solid #e4edff' }}>{period.endYM || 'Unbegrenzt'}</td>
+                      <td style={{ padding: '8px', borderBottom: '1px solid #e4edff', textAlign: 'center' }}>
                         <span style={{ color: period.active ? '#28a745' : '#dc3545' }}>
                           {period.active ? '✓' : '✗'}
                         </span>
                       </td>
-                      <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>
+                      <td style={{ padding: '8px', borderBottom: '1px solid #e4edff', textAlign: 'center' }}>
                         <button
                           type="button"
                           onClick={() => setEditingQualification(period)}
@@ -988,12 +1062,33 @@ const EditPerson: React.FC = () => {
               />
             )}
           </div>
-        )}
+      </div>
+      )}
+
       </div>
 
-      <button onClick={handleSave} style={{ backgroundColor: '#007bff', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Speichern</button>
-      <button onClick={handleDelete} style={{ marginLeft: 8, backgroundColor: '#dc3545', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Löschen</button>
-      <button onClick={() => window.close()} style={{ marginLeft: 8, padding: '8px 16px', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer' }}>Abbrechen</button>
+      <div
+        style={{
+          borderTop: '1px solid #eee',
+          paddingTop: 12,
+          paddingBottom: 12,
+          background: 'var(--bg)',
+          display: 'flex',
+          gap: 8,
+          justifyContent: 'flex-end',
+          flexShrink: 0
+        }}
+      >
+        <button onClick={handleSave} style={{ backgroundColor: '#007bff', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Speichern</button>
+        <button onClick={() => window.close()} style={{ padding: '8px 16px', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer' }}>Abbrechen</button>
+      </div>
+
+      {showShiftTransferManager && (
+        <ShiftTransferManager
+          onClose={() => setShowShiftTransferManager(false)}
+          fixedToPersonId={id}
+        />
+      )}
     </div>
   );
 };

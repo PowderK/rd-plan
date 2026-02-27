@@ -4,9 +4,10 @@ import { ShiftTransfer } from '../utils/calculation';
 
 interface ShiftTransferManagerProps {
     onClose: () => void;
+    fixedToPersonId?: number;
 }
 
-export const ShiftTransferManager: React.FC<ShiftTransferManagerProps> = ({ onClose }) => {
+export const ShiftTransferManager: React.FC<ShiftTransferManagerProps> = ({ onClose, fixedToPersonId }) => {
     const [transfers, setTransfers] = useState<ShiftTransfer[]>([]);
     const [personnel, setPersonnel] = useState<{ id: number; name: string; vorname: string }[]>([]);
     const [year, setYear] = useState<number>(new Date().getFullYear());
@@ -86,6 +87,10 @@ export const ShiftTransferManager: React.FC<ShiftTransferManagerProps> = ({ onCl
         return `${m}.${y}`;
     };
 
+    const visibleTransfers = fixedToPersonId
+        ? transfers.filter(t => Number(t.to_person_id) === Number(fixedToPersonId))
+        : transfers;
+
     return (
         <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -136,14 +141,14 @@ export const ShiftTransferManager: React.FC<ShiftTransferManagerProps> = ({ onCl
                             </tr>
                         </thead>
                         <tbody>
-                            {transfers.length === 0 ? (
+                            {visibleTransfers.length === 0 ? (
                                 <tr>
                                     <td colSpan={7} style={{ padding: '20px', textAlign: 'center', color: '#6c757d' }}>
                                         Keine Übernahmen in diesem Jahr gefunden.
                                     </td>
                                 </tr>
                             ) : (
-                                transfers.map(t => (
+                                visibleTransfers.map(t => (
                                     <tr key={t.id} style={{ borderBottom: '1px solid #dee2e6' }}>
                                         <td style={{ padding: '12px' }}>{getPersonName(t.from_person_id)}</td>
                                         <td style={{ padding: '12px' }}>{getPersonName(t.to_person_id)}</td>
@@ -180,6 +185,7 @@ export const ShiftTransferManager: React.FC<ShiftTransferManagerProps> = ({ onCl
                     <ShiftTransferDialog
                         transfer={editingTransfer}
                         personnel={personnel}
+                        fixedToPersonId={fixedToPersonId}
                         onSave={handleSave}
                         onCancel={() => setShowDialog(false)}
                     />

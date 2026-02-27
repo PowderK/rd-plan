@@ -1375,7 +1375,9 @@ ipcMain.handle('restore-backup', async (_event, backupDir: string) => {
 ipcMain.handle('get-current-version', async () => {
     try {
         const versionInfo = await getCurrentVersion();
-        return { success: true, versionInfo };
+        const updateMgr = getUpdateManager();
+        const appVersion = await updateMgr.getAppVersion();
+        return { success: true, versionInfo, appVersion };
     } catch (e: any) {
         return { success: false, message: e?.message || String(e) };
     }

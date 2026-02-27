@@ -4,6 +4,7 @@ import { ShiftTransfer } from '../utils/calculation';
 interface ShiftTransferDialogProps {
     transfer?: ShiftTransfer;
     personnel: Array<{ id: number; name: string; vorname: string }>;
+    fixedToPersonId?: number;
     onSave: (transfer: any) => Promise<void>;
     onCancel: () => void;
 }
@@ -11,15 +12,22 @@ interface ShiftTransferDialogProps {
 export const ShiftTransferDialog: React.FC<ShiftTransferDialogProps> = ({
     transfer,
     personnel,
+    fixedToPersonId,
     onSave,
     onCancel
 }) => {
     const [fromId, setFromId] = useState(transfer?.from_person_id || '');
-    const [toId, setToId] = useState(transfer?.to_person_id || '');
+    const [toId, setToId] = useState(transfer?.to_person_id || fixedToPersonId || '');
     const [shiftCount, setShiftCount] = useState(transfer?.shift_count?.toString() || '0');
     const [positionType, setPositionType] = useState(transfer?.position_type || 'RTW');
     const [month, setMonth] = useState(transfer?.month || '');
     const [reason, setReason] = useState(transfer?.reason || '');
+
+    useEffect(() => {
+        if (!transfer && fixedToPersonId) {
+            setToId(fixedToPersonId);
+        }
+    }, [fixedToPersonId, transfer]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -53,6 +61,7 @@ export const ShiftTransferDialog: React.FC<ShiftTransferDialogProps> = ({
     };
 
     const sortedPersonnel = [...personnel].sort((a, b) => a.name.localeCompare(b.name));
+    const fixedRecipient = fixedToPersonId ? sortedPersonnel.find(p => p.id === fixedToPersonId) : undefined;
 
     return (
         <div style={{
@@ -82,17 +91,26 @@ export const ShiftTransferDialog: React.FC<ShiftTransferDialogProps> = ({
 
                     <div style={{ marginBottom: '16px' }}>
                         <label style={{ display: 'block', fontWeight: 'bold' }}>An (Empfänger)</label>
-                        <select
-                            value={toId}
-                            onChange={e => setToId(Number(e.target.value))}
-                            style={{ width: '100%', padding: '8px' }}
-                            required
-                        >
-                            <option value="">Bitte wählen...</option>
-                            {sortedPersonnel.map(p => (
-                                <option key={p.id} value={p.id}>{p.name}, {p.vorname}</option>
-                            ))}
-                        </select>
+                        {fixedToPersonId ? (
+                            <input
+                                type="text"
+                                value={fixedRecipient ? `${fixedRecipient.name}, ${fixedRecipient.vorname}` : `ID: ${fixedToPersonId}`}
+                                readOnly
+                                style={{ width: '100%', padding: '8px', background: '#f8f9fa', border: '1px solid #ddd', borderRadius: '4px' }}
+                            />
+                        ) : (
+                            <select
+                                value={toId}
+                                onChange={e => setToId(Number(e.target.value))}
+                                style={{ width: '100%', padding: '8px' }}
+                                required
+                            >
+                                <option value="">Bitte wählen...</option>
+                                {sortedPersonnel.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}, {p.vorname}</option>
+                                ))}
+                            </select>
+                        )}
                     </div>
 
                     <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>

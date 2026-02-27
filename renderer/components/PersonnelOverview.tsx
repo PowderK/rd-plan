@@ -294,8 +294,13 @@ interface ActivePeriod {
   active: boolean;
 }
 
-const PersonnelOverview: React.FC = () => {
+interface PersonnelOverviewProps {
+  setFooterActions?: (actions: React.ReactNode) => void;
+}
+
+const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions }) => {
   const [activeTab, setActiveTab] = useState<'stammpersonal' | 'azubis' | 'ärzte'>('stammpersonal');
+  const [itwEnabled, setItwEnabled] = useState<boolean>(false);
   const [personnel, setPersonnel] = useState<Person[]>([]);
   const [azubis, setAzubis] = useState<Azubi[]>([]);
   const [azubiPeriods, setAzubiPeriods] = useState<Record<number, AzubiPeriod[]>>({});
@@ -326,6 +331,26 @@ const PersonnelOverview: React.FC = () => {
   const [roles, setRoles] = useState<{ id: number; name: string }[]>([]);
 
   // Modal States entfernt - nutzt direkt openEditPersonWindow für alle
+
+  const handleFooterAdd = useCallback(() => {
+    if (activeTab === 'azubis') {
+      (window as any).api.openAddAzubiWindow();
+      return;
+    }
+
+    if (activeTab === 'ärzte' && itwEnabled) {
+      (window as any).api.openAddItwWindow();
+      return;
+    }
+
+    (window as any).api.openAddPersonWindow();
+  }, [activeTab, itwEnabled]);
+
+  useEffect(() => {
+    if (!setFooterActions) return;
+    setFooterActions(<button onClick={handleFooterAdd}>Hinzufügen</button>);
+    return () => setFooterActions(null);
+  }, [setFooterActions, handleFooterAdd]);
 
   const loadPersonnel = useCallback(async () => {
     setLoading(true);
@@ -402,12 +427,24 @@ const PersonnelOverview: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const loadItwFeature = async () => {
+      try {
+        const val = await (window as any).api.getSetting('itw');
+        const enabled = val === 'true' || val === '1';
+        setItwEnabled(enabled);
+        if (!enabled) {
+          setActiveTab(prev => prev === 'ärzte' ? 'stammpersonal' : prev);
+        }
+      } catch {}
+    };
+
     loadPersonnel();
     loadAzubis();
     loadItws();
     loadQualificationPeriods();
     loadActivePeriods();
     loadRoles();
+    loadItwFeature();
     const handler = (_event: any) => {
       // console.log('[Renderer] personnel-updated Event empfangen');
       loadPersonnel();
@@ -429,6 +466,10 @@ const PersonnelOverview: React.FC = () => {
       loadItws();
     };
     (window as any).api.onItwUpdated?.(itwHandler);
+    const settingsHandler = async () => {
+      await loadItwFeature();
+    };
+    (window as any).api.onSettingsUpdated?.(settingsHandler);
     // postMessage-Listener für Popups
     const messageHandler = (event: MessageEvent) => {
       if (event.data === 'personnel-updated') {
@@ -447,6 +488,7 @@ const PersonnelOverview: React.FC = () => {
       (window as any).api.offPersonnelUpdated?.(handler);
       (window as any).api.offAzubisUpdated?.(azubiHandler);
       (window as any).api.offItwUpdated?.(itwHandler);
+      (window as any).api.offSettingsUpdated?.(settingsHandler);
       window.removeEventListener('message', messageHandler);
     };
   }, [loadPersonnel, loadAzubis]);
@@ -596,9 +638,7 @@ const PersonnelOverview: React.FC = () => {
 
           {/* Sticky Container für Header + Tabs */}
           <div className="sticky-header-container">
-            {/* Überschrift - ROT */}
             <h2 className="page-header">Personal</h2>
-
             {/* Tab Navigation - GRÜN */}
             <div className="tab-navigation">
               <button
@@ -629,20 +669,22 @@ const PersonnelOverview: React.FC = () => {
               >
                 Azubis
               </button>
-              <button
-                onClick={() => setActiveTab('ärzte')}
-                style={{
-                  padding: '8px 16px',
-                  border: 'none',
-                  borderBottom: activeTab === 'ärzte' ? '3px solid #0ea5e9' : '3px solid transparent',
-                  background: activeTab === 'ärzte' ? '#f8f9fa' : 'transparent',
-                  fontWeight: activeTab === 'ärzte' ? 600 : 400,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                Ärzte
-              </button>
+              {itwEnabled && (
+                <button
+                  onClick={() => setActiveTab('ärzte')}
+                  style={{
+                    padding: '8px 16px',
+                    border: 'none',
+                    borderBottom: activeTab === 'ärzte' ? '3px solid #0ea5e9' : '3px solid transparent',
+                    background: activeTab === 'ärzte' ? '#f8f9fa' : 'transparent',
+                    fontWeight: activeTab === 'ärzte' ? 600 : 400,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  Ärzte
+                </button>
+              )}
             </div>
           </div>
           {/* Ende Sticky Container */}
@@ -665,7 +707,7 @@ const PersonnelOverview: React.FC = () => {
                     <tr className={styles.thead}>
                       <th>Name</th>
                       <th>Vorname</th>
-                      <th className={styles.checkboxCell}>Aktiv</th>
+                      <th style={{ width: 160 }}>Nutzerrolle</th>
                       <th style={{ width: 120 }} className={styles.center}>Qualifikationen</th>
                       <th style={{ width: 100 }} className={styles.center}>Aktionen</th>
                     </tr>
@@ -696,13 +738,8 @@ const PersonnelOverview: React.FC = () => {
                             )}
                           </td>
                           <td>{person.vorname}</td>
-                          <td className={styles.checkboxCell}>
-                            <span style={{
-                              color: '#28a745',
-                              fontSize: '16px'
-                            }}>
-                              ✓
-                            </span>
+                          <td>
+                            {roles.find(r => r.id === person.roleId)?.name || '—'}
                           </td>
                           <td className={styles.center} style={{ fontSize: '11px', padding: '4px' }}>
                             {qualificationPeriods[person.id] && qualificationPeriods[person.id].length > 0 ? (
@@ -772,12 +809,12 @@ const PersonnelOverview: React.FC = () => {
                 {showInactive && inactivePersonnel.length > 0 && (
                   <div style={{ marginTop: '32px' }}>
                     <h4 style={{ color: '#666', marginBottom: '8px', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>Inaktives Personal</h4>
-                    <table className={styles.table} style={{ opacity: 0.7, backgroundColor: '#f9f9f9' }}>
+                    <table className={styles.table} style={{ opacity: 0.75 }}>
                       <thead>
-                        <tr className={styles.thead} style={{ background: '#eee', color: '#666' }}>
+                        <tr className={styles.thead} style={{ color: '#666' }}>
                           <th>Name</th>
                           <th>Vorname</th>
-                          <th className={styles.checkboxCell}>Aktiv</th>
+                          <th style={{ width: 160 }}>Nutzerrolle</th>
                           <th style={{ width: 120 }} className={styles.center}>Qualifikationen</th>
                           <th style={{ width: 100 }} className={styles.center}>Aktionen</th>
                         </tr>
@@ -802,13 +839,8 @@ const PersonnelOverview: React.FC = () => {
                                 )}
                               </td>
                               <td>{person.vorname}</td>
-                              <td className={styles.checkboxCell}>
-                                <span style={{
-                                  color: '#dc3545',
-                                  fontSize: '16px'
-                                }}>
-                                  ✗
-                                </span>
+                              <td>
+                                {roles.find(r => r.id === person.roleId)?.name || '—'}
                               </td>
                               <td className={styles.center} style={{ fontSize: '11px', padding: '4px' }}>
                                 {qualificationPeriods[person.id] && qualificationPeriods[person.id].length > 0 ? (
@@ -872,18 +904,19 @@ const PersonnelOverview: React.FC = () => {
                 )}
 
                 {/* Aktionen unter der Stammpersonal-Tabelle */}
-                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  <button onClick={() => (window as any).api.openAddPersonWindow()}>
-                    Hinzufügen
-                  </button>
-                </div>
+                {!setFooterActions && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button onClick={() => (window as any).api.openAddPersonWindow()}>
+                      Hinzufügen
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Azubis Tab */}
             {activeTab === 'azubis' && (
               <div>
-                <h3>Azubis</h3>
                 {/* Azubis: Buttons unter der Tabelle */}
                 <table className={styles.table}>
                   <thead>
@@ -951,9 +984,11 @@ const PersonnelOverview: React.FC = () => {
                   </tbody>
                 </table>
                 {!editingAzubis ? (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    <button onClick={() => (window as any).api.openAddAzubiWindow()}>Hinzufügen</button>
-                  </div>
+                  !setFooterActions ? (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                      <button onClick={() => (window as any).api.openAddAzubiWindow()}>Hinzufügen</button>
+                    </div>
+                  ) : null
                 ) : (
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                     <button onClick={saveEditingAzubis}>Speichern</button>
@@ -964,9 +999,8 @@ const PersonnelOverview: React.FC = () => {
             )}
 
             {/* Ärzte Tab */}
-            {activeTab === 'ärzte' && (
+            {itwEnabled && activeTab === 'ärzte' && (
               <div>
-                <h3>ITW Ärzte</h3>
                 {/* ITW Ärzte: Buttons unter der Tabelle */}
                 <table className={styles.table}>
                   <thead>
@@ -1000,7 +1034,7 @@ const PersonnelOverview: React.FC = () => {
                 </table>
                 {!editingItw ? (
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    <button onClick={() => (window as any).api.openAddItwWindow()}>Hinzufügen</button>
+                    {!setFooterActions && <button onClick={() => (window as any).api.openAddItwWindow()}>Hinzufügen</button>}
                     <button onClick={startEditingItw} disabled={itws.length === 0}>Ändern</button>
                     <button onClick={handleDeleteSelectedItw} disabled={selectedItwId == null}>Löschen</button>
                   </div>

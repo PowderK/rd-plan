@@ -1,0 +1,39 @@
+.settings-table-theme table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid #d6e4ff;
+  border-radius: 10px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.settings-table-theme th,
+.settings-table-theme td {
+  padding: 8px 10px;
+}
+
+.settings-table-theme thead th {
+  background: #f8fbff;
+  border-bottom: 1px solid #dbe7ff;
+}
+
+.settings-table-theme tbody td {
+  border-bottom: 1px solid #e4edff;
+}
+
+.settings-table-theme tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.settings-table-theme tbody tr:nth-child(odd) {
+  background: #ffffff;
+}
+
+.settings-table-theme tbody tr:nth-child(even) {
+  background: #f5f9ff;
+}
+
+.settings-table-theme tbody tr:hover {
+  background: #eef5ff;
+}

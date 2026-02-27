@@ -837,17 +837,17 @@ const ValuesPage: React.FC = () => {
   const fmtDec = (v: number) => new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(Number(v || 0));
 
   const styles = {
-    table: { borderCollapse: 'collapse', minWidth: 980 } as React.CSSProperties,
-    thSticky: { position: 'sticky' as const, top: 0, background: 'var(--bg)', zIndex: 2, border: '1px solid #ccc', padding: '6px 8px', boxShadow: '0 1px 0 0 var(--line)' },
-    thStickyName: { position: 'sticky' as const, top: 0, left: 0, background: 'var(--bg)', zIndex: 4, border: '1px solid #ccc', padding: '6px 8px', boxShadow: '0 1px 0 0 var(--line)' },
-    th: { border: '1px solid #ccc', padding: '6px 8px' },
-    nameSticky: { position: 'sticky' as const, left: 0, background: 'var(--bg)', zIndex: 3, border: '1px solid #ccc', padding: '6px 8px', minWidth: 240, textAlign: 'left' },
-    td: { border: '1px solid #ccc', padding: '6px 8px', textAlign: 'right' } as React.CSSProperties,
-    tdLeft: { border: '1px solid #ccc', padding: '6px 8px', textAlign: 'left' } as React.CSSProperties,
-    kpiRow: { background: '#f9fafb' } as React.CSSProperties,
+    table: { borderCollapse: 'separate', borderSpacing: 0, minWidth: 980 } as React.CSSProperties,
+    thSticky: { position: 'sticky' as const, top: 0, background: 'var(--bg)', zIndex: 2, borderBottom: '1px solid #dbe7ff', padding: '6px 8px', boxShadow: '0 1px 0 0 #d6e4ff' },
+    thStickyName: { position: 'sticky' as const, top: 0, left: 0, background: 'var(--bg)', zIndex: 4, borderBottom: '1px solid #dbe7ff', borderRight: '1px solid #d6e4ff', padding: '6px 8px', boxShadow: '0 1px 0 0 #d6e4ff' },
+    th: { borderBottom: '1px solid #dbe7ff', padding: '6px 8px' },
+    nameSticky: { position: 'sticky' as const, left: 0, background: 'var(--bg)', zIndex: 3, borderBottom: '1px solid #e4edff', borderRight: '1px solid #d6e4ff', padding: '6px 8px', minWidth: 240, textAlign: 'left' },
+    td: { borderBottom: '1px solid #e4edff', padding: '6px 8px', textAlign: 'right' } as React.CSSProperties,
+    tdLeft: { borderBottom: '1px solid #e4edff', padding: '6px 8px', textAlign: 'left' } as React.CSSProperties,
+    kpiRow: { background: '#f8fbff' } as React.CSSProperties,
     zebra1: { background: '#fff' } as React.CSSProperties,
-    zebra2: { background: '#f6f8fb' } as React.CSSProperties,
-    sectionSep: { height: 8, background: '#eaeef3' } as React.CSSProperties,
+    zebra2: { background: '#f5f9ff' } as React.CSSProperties,
+    sectionSep: { height: 8, background: '#dbe7ff' } as React.CSSProperties,
     popupOverlay: {
       position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0,
       background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center'
@@ -969,7 +969,7 @@ const ValuesPage: React.FC = () => {
       {/* Überschrift - ROT */}
       <h2 className="page-header">Werte – {year}</h2>
       {/* Content - GRAU */}
-      <div className="page-content" style={{ overflow: 'auto', maxHeight: '70vh', border: '2px solid #e0e0e0', borderRadius: 8, position: 'relative', paddingTop: 0 }}>
+      <div className="page-content" style={{ overflow: 'auto', maxHeight: '70vh', border: '1px solid #d6e4ff', borderRadius: 10, position: 'relative', paddingTop: 0 }}>
         <table style={styles.table}>
           <thead>
             <tr>

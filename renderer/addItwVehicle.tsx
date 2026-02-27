@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import './styles.css';
 
 const AddItwVehicle: React.FC = () => {
   const [name, setName] = useState('');
@@ -18,13 +19,29 @@ const AddItwVehicle: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: 24 }}>
-      <h2>ITW hinzufügen</h2>
-      <div style={{ marginBottom: 12 }}>
-        <label>Bezeichnung: <input value={name} onChange={e => setName(e.target.value)} autoFocus /></label>
+    <div style={{ padding: 24, height: '100vh', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+      <h2 style={{ marginTop: 0 }}>ITW hinzufügen</h2>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <div style={{ maxWidth: 420, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label>Bezeichnung</label>
+          <input value={name} onChange={e => setName(e.target.value)} autoFocus />
+        </div>
       </div>
-      <button onClick={handleSave}>Speichern</button>
-      <button onClick={() => window.close()} style={{ marginLeft: 8 }}>Abbrechen</button>
+      <div
+        style={{
+          borderTop: '1px solid #eee',
+          paddingTop: 12,
+          paddingBottom: 12,
+          background: 'var(--bg)',
+          display: 'flex',
+          gap: 8,
+          justifyContent: 'flex-end',
+          flexShrink: 0
+        }}
+      >
+        <button onClick={handleSave} style={{ backgroundColor: '#007bff', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Speichern</button>
+        <button onClick={() => window.close()} style={{ padding: '8px 16px', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer' }}>Abbrechen</button>
+      </div>
     </div>
   );
 };

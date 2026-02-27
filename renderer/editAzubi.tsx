@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
+import './styles.css';
 
 const params = new URLSearchParams(window.location.search);
 const azubiId = params.get('id');
@@ -18,6 +19,7 @@ interface AzubiPeriod {
 const EditAzubi: React.FC = () => {
   const [name, setName] = useState('');
   const [vorname, setVorname] = useState('');
+  const [activeTab, setActiveTab] = useState<'stammdaten' | 'zeitraeume'>('stammdaten');
   const [azubiPeriods, setAzubiPeriods] = useState<AzubiPeriod[]>([]);
   const [newPeriod, setNewPeriod] = useState({ start_date: '', end_date: '', description: '', lehrjahr: 1 });
   const [editingPeriod, setEditingPeriod] = useState<AzubiPeriod | null>(null);
@@ -249,18 +251,82 @@ const EditAzubi: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: 24 }}>
+    <div style={{ padding: 24, height: '100vh', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
       <h2>Azubi bearbeiten</h2>
-      <div style={{ marginBottom: 12 }}>
-        <label>Name: <input value={name} onChange={e => setName(e.target.value)} /></label>
+
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: 4 }}>
+        <div style={{
+          display: 'flex',
+          gap: 4,
+          borderBottom: '2px solid #dee2e6',
+          marginBottom: 16,
+          position: 'sticky',
+          top: 0,
+          background: 'var(--bg)',
+          zIndex: 20,
+          paddingTop: 4,
+          paddingBottom: 4
+        }}>
+          <button
+            type="button"
+            onClick={() => setActiveTab('stammdaten')}
+            style={{
+              padding: '8px 16px',
+              border: 'none',
+              borderBottom: activeTab === 'stammdaten' ? '3px solid #0d6efd' : '3px solid transparent',
+              background: activeTab === 'stammdaten' ? '#f8f9fa' : 'transparent',
+              fontWeight: activeTab === 'stammdaten' ? 600 : 400,
+              cursor: 'pointer'
+            }}
+          >
+            Stammdaten
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('zeitraeume')}
+            style={{
+              padding: '8px 16px',
+              border: 'none',
+              borderBottom: activeTab === 'zeitraeume' ? '3px solid #0d6efd' : '3px solid transparent',
+              background: activeTab === 'zeitraeume' ? '#f8f9fa' : 'transparent',
+              fontWeight: activeTab === 'zeitraeume' ? 600 : 400,
+              cursor: 'pointer'
+            }}
+          >
+            Zeiträume
+          </button>
+        </div>
+
+      {activeTab === 'stammdaten' && (
+        <>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(280px, 1fr) minmax(280px, 1fr)',
+        gap: 12,
+        marginBottom: 16
+      }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span>Name</span>
+          <input value={name} onChange={e => setName(e.target.value)} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span>Vorname</span>
+          <input value={vorname} onChange={e => setVorname(e.target.value)} />
+        </label>
       </div>
-      <div style={{ marginBottom: 12 }}>
-        <label>Vorname: <input value={vorname} onChange={e => setVorname(e.target.value)} /></label>
+
+      <div style={{ marginTop: 8 }}>
+        <button
+          onClick={handleDelete}
+          style={{ backgroundColor: '#dc3545', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+        >
+          Löschen
+        </button>
       </div>
+        </>
+      )}
 
-
-
-      {azubiId && (
+      {activeTab === 'zeitraeume' && azubiId && (
         <div style={{ marginTop: 24, border: '1px solid #28a745', padding: 16, borderRadius: 4 }}>
           <h3>Zeiträume auf der Wache</h3>
           <p style={{ margin: '0 0 16px 0', fontSize: '0.9em', color: '#666' }}>
@@ -399,7 +465,7 @@ const EditAzubi: React.FC = () => {
           {!editingPeriod && (
             <div style={{ border: '1px solid #ddd', padding: 12, borderRadius: 4, backgroundColor: '#fafafa' }}>
               <h4>Neuen Zeitraum hinzufügen</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto 2fr auto', gap: 8, alignItems: 'end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto 2fr', gap: 8, alignItems: 'end' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: 4, fontSize: '0.9em' }}>Von:</label>
                   <input 
@@ -440,6 +506,8 @@ const EditAzubi: React.FC = () => {
                     style={{ width: '100%' }}
                   />
                 </div>
+              </div>
+              <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
                 <button 
                   onClick={addAzubiPeriod}
                   style={{ 
@@ -448,8 +516,7 @@ const EditAzubi: React.FC = () => {
                     border: 'none', 
                     padding: '8px 16px', 
                     borderRadius: 4, 
-                    cursor: 'pointer',
-                    height: 'fit-content'
+                    cursor: 'pointer'
                   }}
                 >
                   Hinzufügen
@@ -459,11 +526,22 @@ const EditAzubi: React.FC = () => {
           )}
         </div>
       )}
+      </div>
 
-      <div style={{ marginTop: 24 }}>
+      <div
+        style={{
+          borderTop: '1px solid #eee',
+          paddingTop: 12,
+          paddingBottom: 12,
+          background: 'var(--bg)',
+          display: 'flex',
+          gap: 8,
+          justifyContent: 'flex-end',
+          flexShrink: 0
+        }}
+      >
         <button onClick={handleSave} style={{ backgroundColor: '#007acc', color: 'white', padding: '8px 16px', border: 'none', borderRadius: 4, cursor: 'pointer' }}>Speichern</button>
-        <button onClick={handleDelete} style={{ marginLeft: 8, backgroundColor: '#ff4444', color: 'white', padding: '8px 16px', border: 'none', borderRadius: 4, cursor: 'pointer' }}>Löschen</button>
-        <button onClick={() => window.close()} style={{ marginLeft: 8, padding: '8px 16px', border: '1px solid #ccc', borderRadius: 4, cursor: 'pointer' }}>Abbrechen</button>
+        <button onClick={() => window.close()} style={{ padding: '8px 16px', border: '1px solid #ccc', borderRadius: 4, cursor: 'pointer' }}>Abbrechen</button>
       </div>
     </div>
   );
