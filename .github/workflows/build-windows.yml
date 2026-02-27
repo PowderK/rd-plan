@@ -16,6 +16,7 @@ jobs:
       GYP_MSVS_VERSION: '2022'
       npm_config_msvs_version: '2022'
       DEBUG: 'electron-builder'
+      ELECTRON_BUILDER_DISABLE_MULTIPART_DOWNLOAD: 'true'
       npm_config_runtime: 'electron'
       npm_config_target: '28.3.3'
       npm_config_disturl: 'https://electronjs.org/headers'
@@ -134,8 +135,23 @@ jobs:
       - name: Copy assets
         run: npm run copy:assets
 
-      - name: Package Windows executable (portable)
-        run: npx electron-builder --win --x64 --publish never
+      - name: Package Windows executable (portable, with retry)
+        shell: bash
+        run: |
+          set -e
+          for i in {1..3}; do
+            echo "Packaging attempt $i/3..."
+            if npx electron-builder --win --x64 --publish never; then
+              echo "Packaging succeeded on attempt $i"
+              exit 0
+            fi
+            if [ "$i" -lt 3 ]; then
+              echo "Packaging failed on attempt $i, retrying in 15s..."
+              sleep 15
+            fi
+          done
+          echo "Packaging failed after 3 attempts"
+          exit 1
 
       - name: Upload artifacts (tags or manual dispatch)
         # Upload artifacts when run for a tag OR when triggered manually (workflow_dispatch)
