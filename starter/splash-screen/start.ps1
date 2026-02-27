@@ -2,7 +2,38 @@
 # Get the script root directory
 # Get the script root directory
 $root = $PSScriptRoot
-Write-Host "Script gestartet. Root-Verzeichnis: $root"
+
+# Logging setup (Console + File)
+$logDir = Join-Path $root "logs"
+if (-not (Test-Path $logDir)) {
+    New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+}
+$logFile = Join-Path $logDir ("splash-start-" + (Get-Date -Format "yyyyMMdd-HHmmss") + ".log")
+
+function Write-Log {
+    param(
+        [string]$Message,
+        [ValidateSet('INFO','WARN','ERROR','DEBUG')]
+        [string]$Level = 'INFO'
+    )
+
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+    $line = "[$timestamp] [$Level] $Message"
+
+    # Echo in console
+    switch ($Level) {
+        'ERROR' { Write-Host $line -ForegroundColor Red }
+        'WARN'  { Write-Host $line -ForegroundColor Yellow }
+        'DEBUG' { Write-Host $line -ForegroundColor DarkGray }
+        default { Write-Host $line }
+    }
+
+    # Persist in log file
+    Add-Content -Path $logFile -Value $line -Encoding UTF8
+}
+
+Write-Log "Script gestartet. Root-Verzeichnis: $root"
+Write-Log "Logdatei: $logFile"
 
  
 
@@ -23,10 +54,10 @@ try {
 }
 
 catch {
-    Write-Error "Failed to load required DLLs. Please ensure they exist in $dllDir"
+    Write-Log "Failed to load required DLLs. Please ensure they exist in $dllDir. Details: $($_.Exception.Message)" "ERROR"
     exit 1
 }
-Write-Host "DLLs erfolgreich geladen."
+Write-Log "DLLs erfolgreich geladen."
 
 # Image Paths (Relative to this script)
 $logoPath = Join-Path $root "media/RD-Plan Logo.gif"
@@ -139,14 +170,14 @@ try {
     $window = [System.Windows.Markup.XamlReader]::Load($reader)
 }
 catch {
-    Write-Error "Failed to parse XAML: $_"
+    Write-Log "Failed to parse XAML: $($_.Exception.Message)" "ERROR"
     exit 1
 }
-Write-Host "XAML erfolgreich geparst."
+Write-Log "XAML erfolgreich geparst."
 
 $window.Add_Loaded({
     # Logic to run after window opens
-    Write-Host "Splash-Screen Fenster geladen."
+    Write-Log "Splash-Screen Fenster geladen."
 
     # UI Elements setup
     $statusText = $window.FindName("StatusText")
@@ -161,7 +192,7 @@ $window.Add_Loaded({
             # Force UI update (simple method)
             [System.Windows.Threading.Dispatcher]::CurrentDispatcher.Invoke([Action]{}, [System.Windows.Threading.DispatcherPriority]::Render)
         }
-        Write-Host $msg
+        Write-Log $msg
     }
 
     Update-Status "Lade Animation..."
@@ -181,10 +212,10 @@ $window.Add_Loaded({
                 $appVersion = $json.Version
             }
         } catch {
-            Write-Warning "Could not read version.json"
+            Write-Log "Could not read version.json: $($_.Exception.Message)" "WARN"
         }
     }
-    Write-Host "Erkannte Version: $appVersion"
+    Write-Log "Erkannte Version: $appVersion"
     
     if ($versionText) {
         $versionText.Text = "v$appVersion"
@@ -213,14 +244,14 @@ $window.Add_Loaded({
         $username = $usernameRaw
     }
 
-    Write-Host "Username normalisiert: $username"
+    Write-Log "Username normalisiert: $username"
 
     # --- Database Check ---
     Update-Status "Prüfe Datenbank-Konfiguration..."
     $dbConfigFile = Join-Path $root "db-config.json"
     if (Test-Path $dbConfigFile) {
         try {
-            Write-Host "Lese $dbConfigFile..."
+            Write-Log "Lese $dbConfigFile..."
             $dbConfig = Get-Content $dbConfigFile -Raw | ConvertFrom-Json
             if ($dbConfig.dbDir) {
                 $dbPath = Join-Path $dbConfig.dbDir "rd-plan.db"
@@ -230,7 +261,7 @@ $window.Add_Loaded({
                 
                 if (-not (Test-Path $dbPath)) {
                     Update-Status "FEHLER: Datenbank nicht gefunden!"
-                    Write-Error "Datenbank nicht gefunden!"
+                    Write-Log "Datenbank nicht gefunden: $dbPath" "ERROR"
                     [System.Windows.MessageBox]::Show("Datenbank nicht gefunden:`n$dbPath`n`nBitte prüfen Sie die Konfiguration.", "Fehler", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error)
                     $window.Close()
                     return
@@ -238,12 +269,12 @@ $window.Add_Loaded({
                 Update-Status "Datenbank gefunden."
             }
         } catch {
-             Write-Warning "Konnte db-config.json nicht lesen: $_"
+             Write-Log "Konnte db-config.json nicht lesen: $($_.Exception.Message)" "WARN"
              Update-Status "Warnung: Config-Fehler"
         }
     } else {
         Update-Status "Keine Konfiguration gefunden (Standard)"
-        Write-Host "Keine db-config.json gefunden. Überspringe Datenbank-Check."
+        Write-Log "Keine db-config.json gefunden. Überspringe Datenbank-Check." "WARN"
     }
     # ----------------------
     
@@ -252,7 +283,7 @@ $window.Add_Loaded({
     
     if (Test-Path $appPath) {
         Update-Status "Starte Anwendung..."
-        Write-Host "Starte Anwendung: $appPath"
+        Write-Log "Starte Anwendung: $appPath"
         Start-Process -FilePath $appPath -ArgumentList "-h$username"
     }
     elseif (Test-Path "npm") {
@@ -261,19 +292,19 @@ $window.Add_Loaded({
         $packageJson = Join-Path $root "../../package.json"
         if (Test-Path $packageJson) {
              Update-Status "Starte via NPM..."
-             Write-Host "Starte via NPM (Dev Mode)..."
+               Write-Log "Starte via NPM (Dev Mode)..."
              Start-Process -FilePath "npm" -ArgumentList "start", "--", "-h$username" -WorkingDirectory (Split-Path $packageJson)
         } else {
-             Write-Host "Executable not found at $appPath and npm not ready."
+               Write-Log "Executable not found at $appPath and npm not ready." "ERROR"
         }
     }
     else {
-        Write-Host "Executable not found at $appPath"
+           Write-Log "Executable not found at $appPath" "ERROR"
     }
 
     # Start a timer to check for process start
     Update-Status "Warte auf Prozess..."
-    Write-Host "Warte auf Prozessstart..."
+    Write-Log "Warte auf Prozessstart..."
     $timer = New-Object System.Windows.Threading.DispatcherTimer
     $timer.Interval = [TimeSpan]::FromMilliseconds(500)
     $timer.Add_Tick({
@@ -283,7 +314,7 @@ $window.Add_Loaded({
         $procElectron = Get-Process -Name "electron" -ErrorAction SilentlyContinue
         
         if ($proc -or $procElectron) {
-            Write-Host "Prozess erkannt. Schließe Splash-Screen..."
+            Write-Log "Prozess erkannt. Schließe Splash-Screen..."
             $sender.Stop()
             Start-Sleep -Seconds 3
             $window.Close()
