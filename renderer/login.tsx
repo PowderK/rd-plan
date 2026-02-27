@@ -81,7 +81,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onLogin }) => {
               type="text"
               value={personnelNumber}
               onChange={(e) => setPersonnelNumber(e.target.value)}
-              placeholder="z.B. admin"
+              placeholder="Personalnummer eingeben"
               disabled={loading}
               autoFocus
               style={{
@@ -136,20 +136,6 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onLogin }) => {
           </button>
         </form>
 
-        <div style={{
-          marginTop: '32px',
-          paddingTop: '24px',
-          borderTop: '1px solid #e0e0e0',
-          textAlign: 'center'
-        }}>
-          <p style={{
-            fontSize: '12px',
-            color: '#999',
-            margin: 0
-          }}>
-            Standard Admin-Zugang: <strong>admin</strong>
-          </p>
-        </div>
       </div>
     </div>
   );

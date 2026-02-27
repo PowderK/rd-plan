@@ -712,7 +712,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
 
   const setRolePermission = (
     roleId: number,
-    areaKey: 'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge' | 'einstellungen',
+    areaKey: 'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge' | 'einstellungen' | 'kommentar_global' | 'kommentar_individuell',
     permission: 'read' | 'read_all' | 'write',
     checked: boolean
   ) => {
@@ -2124,18 +2124,30 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
             <table className={styles.table}>
               <thead>
                 <tr className={styles.thead}>
-                  <th>Rollenname</th>
-                  <th>Beschreibung</th>
-                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Einteilung Lesen</th>
-                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Einteilung Schreiben</th>
-                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Dienstplan Lesen</th>
-                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Dienstplan Alle</th>
-                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Dienstplan Schreiben</th>
-                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Werte Lesen</th>
-                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Personal Schreiben</th>
-                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Fahrzeuge Schreiben</th>
-                  <th className={styles.center} style={{ width: 40, height: 180, writingMode: 'vertical-rl', textOrientation: 'mixed', whiteSpace: 'nowrap' }}>Einstellungen Schreiben</th>
-                  <th className={styles.center} style={{ width: 90 }}>Aktion</th>
+                  <th rowSpan={2}>Rollenname</th>
+                  <th rowSpan={2}>Beschreibung</th>
+                  <th className={styles.center} colSpan={2}>Einteilung</th>
+                  <th className={styles.center} colSpan={3}>Dienstplan</th>
+                  <th className={styles.center} colSpan={1}>Werte</th>
+                  <th className={styles.center} colSpan={1}>Personal</th>
+                  <th className={styles.center} colSpan={1}>Fahrzeuge</th>
+                  <th className={styles.center} colSpan={1}>Einstellungen</th>
+                  <th className={styles.center} colSpan={1}>Globale Kommentare</th>
+                  <th className={styles.center} colSpan={1}>Individuelle Kommentare</th>
+                  <th className={styles.center} rowSpan={2} style={{ width: 90 }}>Aktion</th>
+                </tr>
+                <tr className={styles.thead}>
+                  <th className={styles.center}>Lesen</th>
+                  <th className={styles.center}>Schreiben</th>
+                  <th className={styles.center}>Lesen</th>
+                  <th className={styles.center}>Alle</th>
+                  <th className={styles.center}>Schreiben</th>
+                  <th className={styles.center}>Lesen</th>
+                  <th className={styles.center}>Schreiben</th>
+                  <th className={styles.center}>Schreiben</th>
+                  <th className={styles.center}>Schreiben</th>
+                  <th className={styles.center}>Schreiben</th>
+                  <th className={styles.center}>Schreiben</th>
                 </tr>
               </thead>
               <tbody className={styles.tbody}>
@@ -2222,6 +2234,20 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                       />
                     </td>
                     <td className={styles.center}>
+                      <input
+                        type="checkbox"
+                        checked={(role.permissions?.kommentar_global || 'none') === 'write'}
+                        onChange={e => setRolePermission(role.id, 'kommentar_global', 'write', e.target.checked)}
+                      />
+                    </td>
+                    <td className={styles.center}>
+                      <input
+                        type="checkbox"
+                        checked={(role.permissions?.kommentar_individuell || 'none') === 'write'}
+                        onChange={e => setRolePermission(role.id, 'kommentar_individuell', 'write', e.target.checked)}
+                      />
+                    </td>
+                    <td className={styles.center}>
                       <button
                         onClick={() => {
                           if (confirm(`Rolle "${role.name}" löschen?`)) {
@@ -2248,7 +2274,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                   werte: 'none',
                   personal: 'none',
                   fahrzeuge: 'none',
-                  einstellungen: 'none'
+                  einstellungen: 'none',
+                  kommentar_global: 'none',
+                  kommentar_individuell: 'none'
                 };
                 setRoles(prev => [...prev, {
                   id: newId,

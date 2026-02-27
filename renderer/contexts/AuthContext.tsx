@@ -61,7 +61,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
             werte: 'write',
             personal: 'write',
             fahrzeuge: 'write',
-            einstellungen: 'write'
+            einstellungen: 'write',
+            kommentar_global: 'write',
+            kommentar_individuell: 'write'
           }
         });
         setIsAuthenticated(true);

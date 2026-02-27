@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 type NavKey = 'dienstplan' | 'einteilung' | 'werte' | 'personal' | 'fahrzeuge' | 'einstellungen';
@@ -23,6 +23,38 @@ function emitNavigate(view: NavKey) {
 const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 	const [collapsed, setCollapsed] = useState(false);
 	const { hasPermission, logout, isDevMode, currentUser } = useAuth();
+	const [isAdminRole, setIsAdminRole] = useState(false);
+
+	useEffect(() => {
+		let cancelled = false;
+		const resolveAdminRole = async () => {
+			try {
+				if (!currentUser?.roleId) {
+					if (!cancelled) setIsAdminRole(false);
+					return;
+				}
+
+				const rolesRaw = await (window as any).api?.getSetting?.('roles');
+				if (!rolesRaw) {
+					if (!cancelled) setIsAdminRole(false);
+					return;
+				}
+
+				const roles = JSON.parse(String(rolesRaw));
+				const role = Array.isArray(roles)
+					? roles.find((r: any) => Number(r?.id) === Number(currentUser.roleId))
+					: null;
+
+				const isAdmin = String(role?.name || '').trim().toLowerCase() === 'administrator';
+				if (!cancelled) setIsAdminRole(isAdmin);
+			} catch {
+				if (!cancelled) setIsAdminRole(false);
+			}
+		};
+
+		resolveAdminRole();
+		return () => { cancelled = true; };
+	}, [currentUser?.roleId]);
 	
 	// Emit collapse state changes
 	const toggleCollapse = () => {
@@ -151,8 +183,8 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 					</div>
 				)}
 				
-				{/* Logout Button (nur wenn nicht im Dev-Mode) */}
-				{!isDevMode && (
+				{/* Logout Button (nur für Admin) */}
+				{isAdminRole && (
 					<button onClick={() => logout()} style={{ ...itemStyle, color: '#dc2626', width: '100%' }} title={collapsed ? 'Abmelden' : undefined}>
 						<Icon path={icons.logout} />
 						{!collapsed && <span>Abmelden</span>}

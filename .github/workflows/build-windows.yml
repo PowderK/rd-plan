@@ -30,8 +30,14 @@ jobs:
         shell: bash
         run: |
           VERSION=$(cat version.json | jq -r '.version')
+          VERSION_FILE_SAFE=$(echo "$VERSION" | sed 's/ /_/g' | sed 's/[^a-zA-Z0-9._-]/_/g')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version_file_safe=$VERSION_FILE_SAFE" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
+          echo "Version (file-safe): $VERSION_FILE_SAFE"
+
+      - name: Sync package version from version.json
+        run: node scripts/sync-version.js
 
       - name: Install Visual Studio Build Tools with Windows SDK
         run: choco install visualstudio2022buildtools --package-parameters="--add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.Windows10SDK.19041 --includeRecommended --includeOptional" --yes --no-progress
@@ -152,6 +158,21 @@ jobs:
           done
           echo "Packaging failed after 3 attempts"
           exit 1
+
+      - name: Rename output exe to RD-Plan_(version).exe
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist -Filter *.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $exe) {
+            throw "No .exe found in dist/ after packaging"
+          }
+
+          $targetName = "RD-Plan_${{ steps.version.outputs.version_file_safe }}.exe"
+          Write-Host "Renaming '$($exe.Name)' -> '$targetName'"
+
+          if ($exe.Name -ne $targetName) {
+            Rename-Item -Path $exe.FullName -NewName $targetName -Force
+          }
 
       - name: Upload artifacts (tags or manual dispatch)
         # Upload artifacts when run for a tag OR when triggered manually (workflow_dispatch)
