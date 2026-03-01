@@ -63,20 +63,20 @@ const ImportTable: React.FC<ImportTableProps> = ({ month, year, personnel, onCan
   }, [days.length, personnel.length, selectedCell]);
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #ccc', borderRadius: 8, padding: 24, minWidth: 800 }}>
+    <div style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--line)', borderRadius: 8, padding: 24, minWidth: 800 }}>
       <h3>Dienstplan-Import für {new Date(year, month).toLocaleString('de-DE', { month: 'long', year: 'numeric' })}</h3>
       <table ref={tableRef} style={{ borderCollapse: 'collapse', minWidth: 800 }}>
         <thead>
           <tr>
-            <th style={{ position: 'sticky', left: 0, background: '#fff', zIndex: 2, border: '1px solid #ccc' }}>Name</th>
+            <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 2, border: '1px solid var(--line)' }}>Name</th>
             {days.map((d, i) => (
-              <th key={i} style={{ border: '1px solid #ccc' }}>{d.date}</th>
+              <th key={i} style={{ border: '1px solid var(--line)' }}>{d.date}</th>
             ))}
           </tr>
           <tr>
-            <th style={{ position: 'sticky', left: 0, background: '#fff', zIndex: 2, border: '1px solid #ccc' }}> </th>
+            <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 2, border: '1px solid var(--line)' }}> </th>
             {days.map((d, i) => (
-              <th key={i} style={{ border: '1px solid #ccc' }}>{d.weekday}</th>
+              <th key={i} style={{ border: '1px solid var(--line)' }}>{d.weekday}</th>
             ))}
           </tr>
         </thead>
@@ -86,22 +86,22 @@ const ImportTable: React.FC<ImportTableProps> = ({ month, year, personnel, onCan
             return [
               isFirstAzubi ? (
                 <tr key="azubi-separator">
-                  <td colSpan={days.length + 1} style={{ background: '#e3f2fd', fontWeight: 'bold', color: '#1976d2', borderTop: '2px solid #1976d2', borderBottom: '2px solid #1976d2', textAlign: 'left' }}>
+                  <td colSpan={days.length + 1} style={{ background: 'var(--hover)', fontWeight: 'bold', color: 'var(--text)', borderTop: '1px solid var(--line)', borderBottom: '1px solid var(--line)', textAlign: 'left' }}>
                     Azubis
                   </td>
                 </tr>
               ) : null,
-              <tr key={person.id} style={{ background: rowIdx % 2 === 1 ? '#f5f7fa' : undefined }}>
-                <td style={{ position: 'sticky', left: 0, background: '#fff', zIndex: 1, border: '1px solid #ccc', fontStyle: person.isAzubi ? 'italic' : undefined }}>
+              <tr key={person.id} style={{ background: rowIdx % 2 === 1 ? 'var(--hover)' : undefined }}>
+                <td style={{ position: 'sticky', left: 0, background: rowIdx % 2 === 1 ? 'var(--hover)' : 'var(--bg)', zIndex: 1, border: '1px solid var(--line)', fontStyle: person.isAzubi ? 'italic' : undefined }}>
                   {person.name}
                   {person.isAzubi && person.lehrjahr ? (
-                    <span style={{ color: '#888', fontSize: 12 }}> (Azubi, {person.lehrjahr}. Lj.)</span>
+                    <span style={{ color: 'var(--muted)', fontSize: 12 }}> (Azubi, {person.lehrjahr}. Lj.)</span>
                   ) : null}
                 </td>
                 {days.map((_, dayIdx) => (
                   <td
                     key={dayIdx}
-                    style={{ minWidth: 90, border: '1px solid #ccc', cursor: 'pointer', background: selectedCell && selectedCell.row === rowIdx && selectedCell.col === dayIdx ? '#e3f2fd' : undefined }}
+                    style={{ minWidth: 90, border: '1px solid var(--line)', cursor: 'pointer', background: selectedCell && selectedCell.row === rowIdx && selectedCell.col === dayIdx ? 'var(--hover)' : undefined }}
                     onClick={() => setSelectedCell({ row: rowIdx, col: dayIdx })}
                   >
                     <div
@@ -131,7 +131,7 @@ const ImportTable: React.FC<ImportTableProps> = ({ month, year, personnel, onCan
         <button onClick={() => onImport(table)} style={{ marginRight: 12 }}>Importieren</button>
         <button onClick={onCancel}>Abbrechen</button>
       </div>
-      <div style={{ marginTop: 12, color: '#555', fontSize: 14 }}>
+      <div style={{ marginTop: 12, color: 'var(--muted)', fontSize: 14 }}>
         <b>Tipp:</b> Kopiere die gewünschten Zellen aus Excel und füge sie direkt in diese Tabelle ein (Strg+V/Cmd+V).
       </div>
     </div>

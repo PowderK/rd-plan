@@ -8,6 +8,7 @@ Dieses Video erklärt den Kontrollkasten in RD-Plan vollständig aus Anwendersic
 ## Intro (0:00–0:30)
 Hallo zusammen, in diesem Video schauen wir uns den Kontrollkasten im Detail an.
 Der Kontrollkasten ist eure schnelle Übersicht für Soll/Ist, NEF, Gesamtentwicklung und Restkapazität – direkt neben der Einteilung.
+Wichtig für die Einordnung: Die zugrunde liegenden Berechnungen beziehen sich auf Schichten und Positionen, nicht auf Stunden.
 Am Ende wisst ihr genau, wie ihr die Werte interpretiert und für bessere Planung nutzt.
 
 ---
@@ -45,6 +46,7 @@ Damit könnt ihr sehr schnell erkennen, wo eine Person bereits eingeplant ist un
 ## 3) Soll | Ist + Mini-Waage (2:20–3:30)
 In der Spalte Soll | Ist steht links das Soll und rechts das tatsächlich erreichte Ist.
 Darunter seht ihr eine kleine Waage als Trendanzeige.
+Auch hier gilt: Soll und Ist werden als Schichten/Positionen geführt, nicht als Stundenwerte.
 
 Interpretation:
 
@@ -152,9 +154,29 @@ Im nächsten Video können wir auf Wunsch einen kompletten Monatsdurchlauf mache
 
 ---
 
-## Vorschläge für Bildschirmaufnahmen (optional)
-- Startansicht mit markiertem Kontrollkasten
-- Klick auf Name und sichtbare Hervorhebung in der Einteilung
-- Beispielzeile mit Soll/Ist, NEF, Ges. und T/N
-- Vergleich Grün/Gelb/Rot beim Restbalken
-- Beispiel für Ü50/LPAL/HLF-B Kennzeichnung
+## Benötigte Screenshots
+- **S1 – Gesamtansicht**: Kontrollkasten vollständig mit sichtbaren Spaltenüberschriften.
+- **S2 – Namensklick**: Vorher/Nachher mit hervorgehobener Person in der Einteilung.
+- **S3 – Soll/Ist-Detail**: Zoom auf Soll/Ist-Wert inkl. Mini-Waage.
+- **S4 – Spaltenvergleich**: NEF, ITW, WE und Alt in einer Zeile (inkl. aktiver WE-Färbung).
+- **S5 – Ges.-Ampel**: Drei Beispielzeilen mit Rot/Gelb/Grün in der Ges.-Spalte.
+- **S6 – Sonderfall**: Zeile mit Strich in Ges. bei Ü50 oder LPAL.
+- **S7 – T/N-Waage**: Ausschnitt mit klarer Nacht/Tag-Verteilung.
+- **S8 – Restkapazität**: Vergleichsbilder für grünen, gelben und roten Restbalken.
+- **S9 – Typkennzeichnung**: Namen in den Farben für Ü50, LPAL und HLF-B.
+
+## Benötigte Animationen (einfach umsetzbar)
+- **A1 – Fokusfahrt auf den Kontrollkasten (2–3 s)**: Langsamer Zoom-in zu Beginn von Kapitel 1.
+- **A2 – Klickfeedback Name (1–2 s)**: Cursor klickt auf den Namen, danach kurzer Pulse auf markierter Zeile.
+- **A3 – Soll/Ist-Erklärung (3–4 s)**: Einblendung „Soll links | Ist rechts“, anschließend Pfeil zur Mini-Waage.
+- **A4 – Spalten-Einblendung (3 s)**: NEF → ITW → WE → Alt nacheinander mit kurzer Hervorhebung.
+- **A5 – Ampel-Legende Ges. (3 s)**: Überblendung Rot → Gelb → Grün mit Text „kritisch / mittel / Puffer".
+- **A6 – T/N-Balance (3 s)**: Waage leicht nach links und rechts animieren, danach Verteilung fix einblenden.
+- **A7 – Restbalken-Progress (3 s)**: Balken fährt von 0 auf Zielwert; Farbe je nach Beispiel.
+- **A8 – Abschluss-Checkliste (4 s)**: Die 5 Alltagsschritte nacheinander einblenden (Häkchen-Animation).
+
+## Produktionshinweise
+- Alle Screenshots in derselben Fenstergröße aufnehmen (16:9, gleiche Zoomstufe).
+- Für Vergleiche immer identische Kalenderwoche verwenden, damit Unterschiede klar erkennbar bleiben.
+- Animationen bewusst minimal halten: nur Zoom, Highlight, Fade und einfache Pfeile.
+- Kapitelwechsel jeweils mit kurzem 0,5-s Fade, ohne zusätzliche Effekte.

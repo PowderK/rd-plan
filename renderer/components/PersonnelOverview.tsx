@@ -707,6 +707,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
                     <tr className={styles.thead}>
                       <th>Name</th>
                       <th>Vorname</th>
+                      <th style={{ width: 130 }}>Personalnummer</th>
                       <th style={{ width: 160 }}>Nutzerrolle</th>
                       <th style={{ width: 120 }} className={styles.center}>Qualifikationen</th>
                       <th style={{ width: 100 }} className={styles.center}>Aktionen</th>
@@ -738,6 +739,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
                             )}
                           </td>
                           <td>{person.vorname}</td>
+                          <td>{person.personnelNumber || '—'}</td>
                           <td>
                             {roles.find(r => r.id === person.roleId)?.name || '—'}
                           </td>
@@ -814,6 +816,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
                         <tr className={styles.thead} style={{ color: '#666' }}>
                           <th>Name</th>
                           <th>Vorname</th>
+                          <th style={{ width: 130 }}>Personalnummer</th>
                           <th style={{ width: 160 }}>Nutzerrolle</th>
                           <th style={{ width: 120 }} className={styles.center}>Qualifikationen</th>
                           <th style={{ width: 100 }} className={styles.center}>Aktionen</th>
@@ -839,6 +842,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
                                 )}
                               </td>
                               <td>{person.vorname}</td>
+                              <td>{person.personnelNumber || '—'}</td>
                               <td>
                                 {roles.find(r => r.id === person.roleId)?.name || '—'}
                               </td>

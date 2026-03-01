@@ -1148,7 +1148,7 @@ export class DatabaseManager {
               perms.fahrzeuge === 'write' ? 1 : 0,
               perms.einstellungen === 'write' ? 1 : 0,
               perms.einteilung === 'write' || perms.dienstplan === 'write' ? 1 : 0,
-              perms.werte === 'read' || perms.werte === 'write' ? 1 : 0,
+              perms.werte === 'read' || perms.werte === 'read_all' || perms.werte === 'write' ? 1 : 0,
               perms.werte === 'write' || perms.personal === 'write' || perms.fahrzeuge === 'write' ? 1 : 0,
               perms.personal === 'write' || perms.einstellungen === 'write' ? 1 : 0,
               role.id

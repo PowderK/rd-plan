@@ -2,13 +2,24 @@
 
 ## Intro (0:00–0:20)
 In diesem Video zeige ich, wie die SOLL-Schichten berechnet werden: normale Berechnung, Einfluss von Azubis/Ü50/LPAL und gezielte Schichtübernahme.
+Wichtig vorab: Die Berechnung erfolgt über Schichten und Positionen, nicht über Stunden.
 
-## 1) Normale Erzeugung der SOLL-Schichten (0:20–2:00)
+## 0) Orientierung in der Wertetabelle (0:20–0:55)
+Bevor wir in die Berechnung gehen, ein kurzer Blick auf die Wertetabelle:
+
+- Im oberen Bereich seht ihr die Gesamtzahlen der aktuellen Ansicht.
+- Wenn ihr auf einen Namen klickt, werden die persönlichen Zahlen dieser Person angezeigt.
+
+So könnt ihr jederzeit zwischen Gesamtbild und individueller Auswertung wechseln.
+
+## 1) Normale Erzeugung der SOLL-Schichten (0:55–2:20)
 Zuerst wird der Monatsbedarf an Positionen berechnet:
 
 Abteilungstage × (RTW-Positionen + NEF-Positionen)
 
 Beispiel: 10 Abteilungstage, 2 RTW, 1 NEF (24h) → 100 Positionen.
+
+Entscheidend: In der gesamten Logik werden Schichten und Positionen gezählt; Stunden sind keine Berechnungsgrundlage.
 
 Wichtig:
 Für die faire Verteilung werden nur die 24h-Anwesenheiten (V-Schichten) als relevante Präsenz berücksichtigt.
@@ -17,7 +28,7 @@ reduziert sich dadurch seine verfügbare RTW-Präsenz automatisch – und damit 
 
 Diese 100 werden dann fair auf die Kolleg:innen verteilt – über gewichtete Präsenz und Hamilton-Rundung.
 
-## 1.1) Sonderfall HLF-B FzF (75%) (2:00–3:00)
+## 1.1) Sonderfall HLF-B FzF (75%) (2:20–3:20)
 HLF-B-Fahrzeugführer müssen nur 75% RTW fahren.
 Deshalb wird ihr Anteil bereits vor der finalen Verteilung reduziert.
 
@@ -39,12 +50,12 @@ dadurch erhält der Kollege automatisch weniger SOLL-Schichten.
 Wann die Reduktion gilt:
 Monatsscharf genau in den Monaten, in denen die HLF-B-Qualifikation aktiv ist.
 
-## Beispiel Verteilung (3:00–4:00)
+## Beispiel Verteilung (3:20–4:20)
 Gewichte: A=12, B=8, C=5 (Summe 25).
 Exakte Anteile: A 48, B 32, C 20 bei 100 Positionen.
 Mit Hamilton wird sauber auf ganze Schichten gerundet, sodass die Gesamtsumme exakt bleibt.
 
-## 1.2) Warum Hamilton und nicht normale Rundung? (4:00–4:45)
+## 1.2) Warum Hamilton und nicht normale Rundung? (4:20–5:05)
 Hier ein wichtiger Punkt:
 Wir können keine halben Schichten verteilen, aber die Gesamtsumme muss trotzdem exakt stimmen.
 
@@ -62,7 +73,7 @@ Deshalb nutzen wir das Hamilton-Verfahren:
 Vorteil:
 Die Zielsumme bleibt exakt erhalten und die Verteilung bleibt fair und nachvollziehbar.
 
-## 2) Einfluss von Azubis, Ü50 und LPAL (4:45–6:15)
+## 2) Einfluss von Azubis, Ü50 und LPAL (5:05–6:35)
 Vor der Verteilung werden Entlastungen abgezogen.
 
 Beispiel: 100 Positionen gesamt,
@@ -72,7 +83,7 @@ verbleiben 84 SOLL-Schichten für den regulären Pool.
 
 Das heißt: Azubi, Ü50 und LPAL senken das zu verteilende SOLL der übrigen Kolleg:innen.
 
-## 3) Gezielte Schichtübernahme (6:15–7:45)
+## 3) Gezielte Schichtübernahme (6:35–8:05)
 Jetzt zur Übernahme: Eine Person erhält gezielt zusätzliche SOLL-Schichten in einem Monat.
 
 Praxisbeispiel:
@@ -89,7 +100,7 @@ weil sich sein SOLL durch die Einteilung in die Kantine bereits automatisch redu
 
 Danach erfolgt wieder die Hamilton-Rundung, damit die Monatssumme exakt gleich bleibt (im Beispiel weiterhin 84).
 
-## Abschluss (7:45–8:15)
+## Abschluss (8:05–8:35)
 Kurz zusammengefasst:
 1) Monatsbedarf berechnen,
 2) HLF-B (75%) bereits in der Präsenz-Gewichtung reduzieren,
@@ -98,3 +109,31 @@ Kurz zusammengefasst:
 5) Übernahmen gezielt einrechnen.
 
 So bleibt die Planung transparent und nachvollziehbar.
+
+---
+
+## Benötigte Screenshots
+- **S1 – Ausgangslage Monat**: Ansicht mit Wertetabelle und sichtbaren Gesamtzahlen im oberen Bereich.
+- **S2 – Rechenbeispiel Bedarf**: Sichtbarer Wert „10 Tage, 2 RTW, 1 NEF → 100 Positionen“.
+- **S3 – Präsenzbezug**: Nach Klick auf einen Namen sichtbare persönliche Zahlen plus V-Schichten/Abwesenheiten.
+- **S4 – HLF-B-Fall**: Vorher/Nachher mit Präsenz 20 und reduziertem Gewicht 15.
+- **S5 – Hamilton-Verteilung**: Tabelle mit Gewichten A/B/C, exakten Anteilen und finalen Ganzzahlen.
+- **S6 – Entlastungen**: Beispiel mit Abzug Azubi sowie Ü50/LPAL und verbleibendem Pool.
+- **S7 – Schichtübernahme**: Maske/Ansicht mit +4 SOLL für übernehmende Person.
+- **S8 – Endergebnis**: Abschließende Monatssumme als Kontrollansicht.
+
+## Benötigte Animationen (einfach umsetzbar)
+- **A0 – Wechsel Gesamt/Person (3 s)**: Cursor-Klick auf Namen, Fokus wechselt von Gesamtzahlen oben zu persönlichen Zahlen.
+- **A1 – Formel-Einblendung (3 s)**: „Abteilungstage × (RTW + NEF)“ als Overlay über der Monatsansicht.
+- **A2 – Rechenweg Schritt-für-Schritt (4 s)**: 10 × (2+1) → 30 Positionseinheiten → 100 Positionen visuell aufbauen.
+- **A3 – HLF-B-Reduktion (3 s)**: 20 → ×0,75 → 15 mit sanfter Zahlen-Transition.
+- **A4 – Hamilton-Rundung (4 s)**: Erst Abrundung aller Werte, dann Restschichten nacheinander verteilen.
+- **A5 – Entlastungsabzug (3 s)**: Gesamtbedarf schrumpft von 100 auf 84 mit Count-down-Effekt.
+- **A6 – Übernahmeeffekt (4 s)**: +4 bei Person B und proportionale Gegenreduktion im Restpool hervorheben.
+- **A7 – Abschluss-Recap (4 s)**: Die 5 Schritte als nummerierte Liste nacheinander einblenden.
+
+## Produktionshinweise
+- Für alle Rechenanimationen dieselben Farben pro Bedeutung nutzen (Gesamt, Abzug, Rest).
+- Zahlen immer groß und mittig einblenden, damit sie auf mobilen Displays lesbar sind.
+- Pro Kapitel maximal eine Hauptanimation verwenden, um das Lerntempo ruhig zu halten.
+- Alle Screenshots in identischer Zoomstufe und derselben Testdaten-Konstellation aufnehmen.

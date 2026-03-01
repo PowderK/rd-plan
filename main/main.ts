@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, session, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, session, nativeImage, Menu, MenuItemConstructorOptions } from 'electron';
 import path from 'path';
 import url from 'url';
 import fs from 'fs';
@@ -38,6 +38,150 @@ let itwWindow: BrowserWindow | null = null;
 let vehiclesWindow: BrowserWindow | null = null;
 let addRtwWindow: BrowserWindow | null = null;
 let addNefWindow: BrowserWindow | null = null;
+
+function buildAdminMenuTemplate(): MenuItemConstructorOptions[] {
+    const template: MenuItemConstructorOptions[] = [];
+
+    if (process.platform === 'darwin') {
+        template.push({
+            label: app.name,
+            submenu: [
+                { role: 'about' },
+                { type: 'separator' },
+                { role: 'services' },
+                { type: 'separator' },
+                { role: 'hide' },
+                { role: 'hideOthers' },
+                { role: 'unhide' },
+                { type: 'separator' },
+                { role: 'quit' }
+            ]
+        });
+    }
+
+    template.push(
+        {
+            label: 'Datei',
+            submenu: [process.platform === 'darwin' ? { role: 'close' } : { role: 'quit' }]
+        },
+        {
+            label: 'Bearbeiten',
+            submenu: [
+                { role: 'undo' },
+                { role: 'redo' },
+                { type: 'separator' },
+                { role: 'cut' },
+                { role: 'copy' },
+                { role: 'paste' },
+                { role: 'delete' },
+                { role: 'selectAll' }
+            ]
+        },
+        {
+            label: 'Ansicht',
+            submenu: [
+                { role: 'reload' },
+                { role: 'forceReload' },
+                { role: 'toggleDevTools' },
+                { type: 'separator' },
+                { role: 'resetZoom' },
+                { role: 'zoomIn' },
+                { role: 'zoomOut' },
+                { type: 'separator' },
+                { role: 'togglefullscreen' }
+            ]
+        },
+        {
+            label: 'Fenster',
+            submenu: process.platform === 'darwin'
+                ? [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }]
+                : [{ role: 'minimize' }, { role: 'close' }]
+        }
+    );
+
+    return template;
+}
+
+function buildReducedMacMenuTemplate(): MenuItemConstructorOptions[] {
+    return [
+        {
+            label: app.name,
+            submenu: [
+                { role: 'about' },
+                { type: 'separator' },
+                { role: 'hide' },
+                { role: 'hideOthers' },
+                { role: 'unhide' },
+                { type: 'separator' },
+                { role: 'quit' }
+            ]
+        },
+        {
+            label: 'Fenster',
+            submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }]
+        }
+    ];
+}
+
+async function isCurrentUserAdmin(): Promise<boolean> {
+    if (isDevMode) return true;
+
+    try {
+        const authService = getAuthService();
+        const currentUser = authService.getCurrentUser();
+        if (!currentUser || currentUser.roleId == null) return false;
+
+        const adapter = await ensureDatabaseAdapter();
+        const rolesData = await adapter.getSetting('roles');
+        if (!rolesData) return false;
+
+        const roles = JSON.parse(rolesData);
+        const role = Array.isArray(roles) ? roles.find((r: any) => Number(r?.id) === Number(currentUser.roleId)) : null;
+        return String(role?.name || '').trim().toLowerCase() === 'administrator';
+    } catch {
+        return false;
+    }
+}
+
+async function applyRoleBasedMenuVisibility() {
+    const admin = await isCurrentUserAdmin();
+    const windows = BrowserWindow.getAllWindows();
+
+    if (process.platform === 'darwin') {
+        const template = admin ? buildAdminMenuTemplate() : buildReducedMacMenuTemplate();
+        const menu = Menu.buildFromTemplate(template);
+        Menu.setApplicationMenu(menu);
+
+        windows.forEach(w => {
+            try {
+                w.setMenuBarVisibility(true);
+                w.setAutoHideMenuBar(false);
+            } catch { }
+        });
+        return;
+    }
+
+    if (admin) {
+        const menu = Menu.buildFromTemplate(buildAdminMenuTemplate());
+        Menu.setApplicationMenu(menu);
+        windows.forEach(w => {
+            try {
+                w.setMenu(menu);
+                w.setAutoHideMenuBar(false);
+                w.setMenuBarVisibility(true);
+            } catch { }
+        });
+    } else {
+        Menu.setApplicationMenu(null);
+        windows.forEach(w => {
+            try {
+                w.setMenu(null);
+                w.setAutoHideMenuBar(true);
+                w.setMenuBarVisibility(false);
+            } catch { }
+        });
+    }
+}
 
 // Debouncing für duty-roster-Updates (verhindert zu viele Broadcasts bei schnellen Änderungen)
 let dutyRosterUpdateTimeout: NodeJS.Timeout | null = null;
@@ -285,6 +429,8 @@ async function createWindow(showImmediately: boolean = false) {
         }
     });
 
+    await applyRoleBasedMenuVisibility();
+
     if (isDevMode) {
         mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
         mainWindow.webContents.openDevTools();
@@ -385,6 +531,9 @@ ipcMain.handle('auth-login', async (_event, personnelNumber: string) => {
     try {
         const authService = getAuthService();
         const result = await authService.login(personnelNumber);
+        if (result?.success) {
+            await applyRoleBasedMenuVisibility();
+        }
         return result;
     } catch (error: any) {
         return { success: false, error: error.message || 'Login fehlgeschlagen' };
@@ -395,6 +544,7 @@ ipcMain.handle('auth-logout', async () => {
     try {
         const authService = getAuthService();
         authService.logout();
+        await applyRoleBasedMenuVisibility();
         return { success: true };
     } catch (error: any) {
         return { success: false, error: error.message };
