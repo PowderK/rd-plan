@@ -17,14 +17,10 @@ STILRAHMEN (VERBINDLICH):
 
 DESIGNVORGABEN (VERBINDLICH):
 1) Intro:
-   - Nutze für den Einstieg ausschließlich die Datei RD-Plan.gif.
-   - RD-Plan.gif dient als Intro-Logo/Opener.
-2) Header:
-   - Nutze in jeder inhaltlichen Szene die Datei Header.png als festen Kopfbereich.
-   - Der Header bleibt im Look konsistent über alle Szenen.
-   - Ergänze im Header den jeweiligen Abschnittstitel passend zum Kapitel.
-3) Screenshots/Animationen:
-   - Asset-Dateien aus dem Skript (z. B. S1.png, A1.png) weiterhin exakt verwenden.
+   - Nutze für den Einstieg ausschließlich die Datei RD-Plan.png
+   - RD-Plan.png dient als Intro-Logo/Opener.
+2) Screenshots/Animationen:
+   - Asset-Dateien aus dem Skript (z. B. S1.png) weiterhin exakt verwenden.
    - Keine neuen Dateinamen erfinden.
 
 QUELLENREGELN:
@@ -45,7 +41,7 @@ Spalten:
 2) Zeit (Start–Ende)
 3) Abschnittstitel
 4) Sprechertext (Kurzfassung)
-5) Intro/Header-Asset (RD-Plan.gif oder Header.png)
+5) Intro (RD-Plan.png)
 6) Content-Visual (Screenshot/Animation)
 7) Asset-Datei (z. B. S3.png)
 8) Animation/Bewegung (Zoom, Highlight, Fade, Cursor-Klick)
@@ -55,9 +51,7 @@ BLOCK 3 – QUALITÄTSPRÜFUNG
 Checkliste mit genau diesen Punkten:
 - Sprache klar und ohne Floskeln
 - Ton persönlich-seriös
-- Intro mit RD-Plan.gif verwendet
-- Header.png in allen Inhaltsszenen verwendet
-- Abschnittstitel im Header korrekt
+- Intro mit RD-Plan.png verwendet
 - Asset-Namen exakt gemäß Skript
 - Keine erfundenen Inhalte
 
