@@ -11,6 +11,39 @@ export interface AuthSession {
 
 export class AuthService {
   private currentSession: AuthSession | null = null;
+  private getDefaultPermissions(): Record<string, 'none' | 'read' | 'read_all' | 'write'> {
+    return {
+      einteilung: 'none',
+      dienstplan: 'none',
+      werte: 'none',
+      personal: 'none',
+      fahrzeuge: 'none',
+      einstellungen: 'none',
+      kommentar_global: 'none',
+      kommentar_individuell: 'none'
+    };
+  }
+
+  private async resolvePermissions(roleId: number | null | undefined): Promise<Record<string, 'none' | 'read' | 'read_all' | 'write'>> {
+    const permissions = this.getDefaultPermissions();
+    if (!roleId) return permissions;
+
+    const rolesData = await this.dbAdapter.getSetting('roles');
+    if (!rolesData) return permissions;
+
+    try {
+      const roles = JSON.parse(rolesData);
+      const role = roles.find((r: any) => r.id === roleId);
+      if (role && role.permissions) {
+        return { ...permissions, ...role.permissions };
+      }
+    } catch (e) {
+      console.error('[AuthService] Error parsing roles:', e);
+    }
+
+    return permissions;
+  }
+
   private normalizePersonnelNumber(value: unknown): string {
     if (value === null || value === undefined) return '';
     return String(value).toLowerCase().trim();
@@ -32,32 +65,7 @@ export class AuthService {
         return { success: false, error: 'Personalnummer nicht gefunden' };
       }
 
-      // Lade Rollen-Permissions
-      let permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'> = {
-        einteilung: 'none',
-        dienstplan: 'none',
-        werte: 'none',
-        personal: 'none',
-        fahrzeuge: 'none',
-        einstellungen: 'none',
-        kommentar_global: 'none',
-        kommentar_individuell: 'none'
-      };
-
-      if (person.roleId) {
-        const rolesData = await this.dbAdapter.getSetting('roles');
-        if (rolesData) {
-          try {
-            const roles = JSON.parse(rolesData);
-            const role = roles.find((r: any) => r.id === person.roleId);
-            if (role && role.permissions) {
-              permissions = { ...permissions, ...role.permissions };
-            }
-          } catch (e) {
-            console.error('[AuthService] Error parsing roles:', e);
-          }
-        }
-      }
+      const permissions = await this.resolvePermissions(person.roleId || null);
 
       this.currentSession = {
         userId: person.id,
@@ -80,6 +88,35 @@ export class AuthService {
 
   getCurrentUser(): AuthSession | null {
     return this.currentSession;
+  }
+
+  async refreshCurrentSession(): Promise<AuthSession | null> {
+    if (!this.currentSession) return null;
+
+    try {
+      const allPersonnel = await this.dbAdapter.getPersonnel(true);
+      const person = (allPersonnel || []).find((p: any) => Number(p?.id) === Number(this.currentSession?.userId));
+
+      if (!person) {
+        this.currentSession = null;
+        return null;
+      }
+
+      const permissions = await this.resolvePermissions(person.roleId || null);
+      this.currentSession = {
+        userId: person.id,
+        personnelNumber: person.personnelNumber || '',
+        name: person.name,
+        vorname: person.vorname,
+        roleId: person.roleId || null,
+        permissions
+      };
+
+      return this.currentSession;
+    } catch (error) {
+      console.error('[AuthService] refreshCurrentSession failed:', error);
+      return this.currentSession;
+    }
   }
 
   checkPermission(area: string, requiredLevel: 'read' | 'write'): boolean {

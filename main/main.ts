@@ -593,6 +593,13 @@ ipcMain.handle('set-setting', async (_event, key: string, value: string) => {
 
         const adapter = await ensureDatabaseAdapter();
         await adapter.setSetting(key, value);
+
+        if (key === 'roles') {
+            await auth.refreshCurrentSession();
+            await applyRoleBasedMenuVisibility();
+            BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch { } });
+        }
+
         return true;
     } catch (e: any) {
         console.warn(`[Main] Warning: Could not set setting ${key}:`, e.message);
@@ -625,6 +632,8 @@ ipcMain.handle('update-personnel', async (_event, person: any) => {
     auth.requirePermission('personal', 'write');
     const adapter = await ensureDatabaseAdapter();
     await adapter.updatePersonnel(person);
+    await auth.refreshCurrentSession();
+    await applyRoleBasedMenuVisibility();
     BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     return true;
 });
@@ -666,6 +675,11 @@ ipcMain.handle('add-person', async (_event, person: any) => {
 ipcMain.handle('update-person', async (_event, person: any) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.updatePersonnel(person);
+    try {
+        const auth = getAuthService();
+        await auth.refreshCurrentSession();
+        await applyRoleBasedMenuVisibility();
+    } catch { }
     BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('personnel-updated'); } catch { } });
     return true;
 });

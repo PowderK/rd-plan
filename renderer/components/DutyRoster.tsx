@@ -1396,7 +1396,7 @@ const DutyRoster: React.FC = () => {
             overflowY: 'hidden',
             height: '20px',
             background: 'var(--bg)',
-            borderBottom: '1px solid var(--line)',
+            borderBottom: '1px solid #d6e4ff',
             marginBottom: '4px'
           }}
           onScroll={(e) => {
@@ -1418,9 +1418,9 @@ const DutyRoster: React.FC = () => {
           flex: 1,
           minHeight: 0,
           position: 'relative',
-          border: '1px solid var(--line)',
+          border: '1px solid #d6e4ff',
           borderRadius: 10,
-          background: 'var(--bg)',
+          background: '#ffffff',
           boxSizing: 'border-box'
         }}
         onScroll={(e) => {
@@ -1447,12 +1447,12 @@ const DutyRoster: React.FC = () => {
             <div style={{ fontSize: '14px' }}>Der Dienstplan für diesen Monat ist derzeit nur für Administratoren sichtbar.</div>
           </div>
         ) : (
-          <table style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: Math.max(800, days.length * 40) }}>
-            <thead style={{ position: 'sticky', top: 0, zIndex: 5, background: 'var(--bg)', boxShadow: '0 1px 0 0 var(--line)' }}>
+          <table style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: Math.max(800, days.length * 40), background: '#ffffff' }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 5, background: '#f8fbff', boxShadow: '0 1px 0 0 #dbe7ff' }}>
               <tr>
-                <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, borderBottom: '1px solid var(--line)', borderRight: '1px solid var(--line)', minWidth: nameColWidth }}>{'Name'}</th>
-                <th style={{ borderBottom: '1px solid var(--line)', minWidth: 40, whiteSpace: 'nowrap', background: 'var(--bg)' }}>24h</th>
-                <th style={{ borderBottom: '1px solid var(--line)', minWidth: 40, whiteSpace: 'nowrap', background: 'var(--bg)' }}>IW</th>
+                <th style={{ position: 'sticky', left: 0, background: '#f8fbff', zIndex: 6, borderBottom: '1px solid #dbe7ff', borderRight: '1px solid #dbe7ff', minWidth: nameColWidth }}>{'Name'}</th>
+                <th style={{ borderBottom: '1px solid #dbe7ff', minWidth: 40, whiteSpace: 'nowrap', background: '#f8fbff' }}>24h</th>
+                <th style={{ borderBottom: '1px solid #dbe7ff', minWidth: 40, whiteSpace: 'nowrap', background: '#f8fbff' }}>IW</th>
                 {days.map((d, i) => {
                   const gComment = globalComments.get(d.iso);
                   return (
@@ -1460,7 +1460,7 @@ const DutyRoster: React.FC = () => {
                       key={i}
                       onContextMenu={(e) => openGlobalCommentMenu(e, d.iso)}
                       title={gComment?.comment || ''}
-                      style={{ borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap', background: 'var(--bg)', position: 'relative', cursor: canWriteGlobalComments ? 'context-menu' : 'default' }}
+                      style={{ borderBottom: '1px solid #dbe7ff', whiteSpace: 'nowrap', background: '#f8fbff', position: 'relative', cursor: canWriteGlobalComments ? 'context-menu' : 'default' }}
                     >
                       {d.date}
                       {gComment && (
@@ -1481,19 +1481,19 @@ const DutyRoster: React.FC = () => {
                 })}
               </tr>
               <tr>
-                <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, borderBottom: '1px solid var(--line)', borderRight: '1px solid var(--line)', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--text)', fontSize: 13 }}>
+                <th style={{ position: 'sticky', left: 0, background: '#f8fbff', zIndex: 6, borderBottom: '1px solid #dbe7ff', borderRight: '1px solid #dbe7ff', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--text)', fontSize: 13 }}>
                   Abteilung: {department}
                 </th>
-                <th style={{ borderBottom: '1px solid var(--line)', background: 'var(--bg)' }}> </th>
-                <th style={{ borderBottom: '1px solid var(--line)', background: 'var(--bg)' }}> </th>
+                <th style={{ borderBottom: '1px solid #dbe7ff', background: '#f8fbff' }}> </th>
+                <th style={{ borderBottom: '1px solid #dbe7ff', background: '#f8fbff' }}> </th>
                 {days.map((d, i) => (
-                  <th key={i} style={{ borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap', background: 'var(--bg)' }}>{d.weekday}</th>
+                  <th key={i} style={{ borderBottom: '1px solid #dbe7ff', whiteSpace: 'nowrap', background: '#f8fbff' }}>{d.weekday}</th>
                 ))}
               </tr>
               <tr>
-                <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, borderBottom: '1px solid var(--line)', borderRight: '1px solid var(--line)', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>Schichtfolge</th>
-                <th style={{ borderBottom: '1px solid var(--line)', background: 'var(--bg)' }} />
-                <th style={{ borderBottom: '1px solid var(--line)', background: 'var(--bg)' }} />
+                <th style={{ position: 'sticky', left: 0, background: '#f8fbff', zIndex: 6, borderBottom: '1px solid #dbe7ff', borderRight: '1px solid #dbe7ff', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>Schichtfolge</th>
+                <th style={{ borderBottom: '1px solid #dbe7ff', background: '#f8fbff' }} />
+                <th style={{ borderBottom: '1px solid #dbe7ff', background: '#f8fbff' }} />
                 {days.map((d, i) => {
                   // Dept day via deptPatternSeqs gültig-ab + 21er Modulo
                   const iso = d.iso;
@@ -1513,7 +1513,7 @@ const DutyRoster: React.FC = () => {
                         ? { background: '#f0fdf4', color: '#15803d' }
                         : {};
                   return (
-                    <th key={i} style={{ borderBottom: '1px solid var(--line)', fontWeight: 'normal', color: depDay ? (depDayStyle as any).color : 'var(--muted)', fontSize: 13, background: depDay ? (depDayStyle as any).background : 'var(--bg)' }}>
+                    <th key={i} style={{ borderBottom: '1px solid #dbe7ff', fontWeight: 'normal', color: depDay ? (depDayStyle as any).color : 'var(--muted)', fontSize: 13, background: depDay ? (depDayStyle as any).background : '#f8fbff' }}>
                       {depDay}
                     </th>
                   );
@@ -1522,13 +1522,13 @@ const DutyRoster: React.FC = () => {
               {itwEnabled && (
                 <>
                   <tr>
-                    <th style={{ position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 6, borderBottom: '1px solid var(--line)', borderRight: '1px solid var(--line)', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>ITW</th>
-                    <th style={{ borderBottom: '1px solid var(--line)', background: 'var(--bg)' }} />
-                    <th style={{ borderBottom: '1px solid var(--line)', background: 'var(--bg)' }} />
+                    <th style={{ position: 'sticky', left: 0, background: '#f8fbff', zIndex: 6, borderBottom: '1px solid #dbe7ff', borderRight: '1px solid #dbe7ff', minWidth: nameColWidth, fontWeight: 'normal', color: 'var(--muted)', fontSize: 13 }}>ITW</th>
+                    <th style={{ borderBottom: '1px solid #dbe7ff', background: '#f8fbff' }} />
+                    <th style={{ borderBottom: '1px solid #dbe7ff', background: '#f8fbff' }} />
                     {days.map((_, i) => {
                       const showIW = isIwDay(i);
                       return (
-                        <th key={`itw_${i}`} style={{ borderBottom: '1px solid var(--line)', fontWeight: 'normal', color: 'var(--muted)', fontSize: 13, background: 'var(--bg)' }}>
+                        <th key={`itw_${i}`} style={{ borderBottom: '1px solid #dbe7ff', fontWeight: 'normal', color: 'var(--muted)', fontSize: 13, background: '#f8fbff' }}>
                           {showIW ? 'IW' : ''}
                         </th>
                       );
@@ -1544,17 +1544,17 @@ const DutyRoster: React.FC = () => {
                 return [
                   isFirstAzubi ? (
                     <tr key="azubi-separator">
-                      <td colSpan={days.length + 3} style={{ background: 'var(--hover)', fontWeight: 'bold', textAlign: 'left', borderBottom: '1px solid var(--line)' }}>
+                      <td colSpan={days.length + 3} style={{ background: '#eef5ff', fontWeight: 'bold', textAlign: 'left', borderBottom: '1px solid #dbe7ff' }}>
                         Azubis
                       </td>
                     </tr>
                   ) : null,
                   (
-                    <tr key={person.id} style={{ background: rowIdx % 2 === 1 ? 'var(--hover)' : undefined }}>
-                      <td style={{ position: 'sticky', left: 0, background: rowIdx % 2 === 1 ? 'var(--hover)' : 'var(--bg)', zIndex: 1, borderBottom: '1px solid var(--line)', borderRight: '1px solid var(--line)', fontStyle: person.isAzubi ? 'italic' : undefined, color: (!person.isAzubi && !!(personnel.find(p => p.id === person.origId)?.fahrzeugfuehrerHLFB)) ? '#1565c0' : undefined }}>
+                    <tr key={person.id} style={{ background: rowIdx % 2 === 1 ? '#f5f9ff' : '#ffffff' }}>
+                      <td style={{ position: 'sticky', left: 0, background: rowIdx % 2 === 1 ? '#f5f9ff' : '#ffffff', zIndex: 1, borderBottom: '1px solid #e4edff', borderRight: '1px solid #dbe7ff', fontStyle: person.isAzubi ? 'italic' : undefined, color: (!person.isAzubi && !!(personnel.find(p => p.id === person.origId)?.fahrzeugfuehrerHLFB)) ? '#1565c0' : undefined }}>
                         {person.name}{person.isAzubi && person.lehrjahr !== undefined ? ` (Azubi, ${person.lehrjahr}. Lj.)` : ''}
                       </td>
-                      <td style={{ borderBottom: '1px solid var(--line)', textAlign: 'center', minWidth: 30 }}>
+                      <td style={{ borderBottom: '1px solid #e4edff', textAlign: 'center', minWidth: 30 }}>
                         {!person.isAzubi ? (
                           (() => {
                             const key = getStateKey(person);
@@ -1569,7 +1569,7 @@ const DutyRoster: React.FC = () => {
                           })()
                         ) : ''}
                       </td>
-                      <td style={{ borderBottom: '1px solid var(--line)', textAlign: 'center', minWidth: 40 }}>
+                      <td style={{ borderBottom: '1px solid #e4edff', textAlign: 'center', minWidth: 40 }}>
                         {!person.isAzubi ? (
                           (() => {
                             const key = getStateKey(person);
@@ -1600,7 +1600,7 @@ const DutyRoster: React.FC = () => {
                         const cellStyle = {
                           minWidth: 40,
                           cursor: canWrite ? 'pointer' : 'default',
-                          borderBottom: '1px solid var(--line)',
+                          borderBottom: '1px solid #e4edff',
                           whiteSpace: 'nowrap',
                           position: 'relative' as const,
                           background: bgTint,

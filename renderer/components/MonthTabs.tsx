@@ -1466,15 +1466,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 if (!enabled) return null;
                                 return (
                                     <div key={`rtw_header_${rIdx}`} style={{
-                                        marginRight: 0,
+                                        marginRight: 8,
                                         marginBottom: 8,
-                                        minWidth: 339,
+                                        minWidth: 338,
                                         paddingTop: 8,
                                         paddingLeft: 0,
                                         background: 'var(--bg)'
                                     }}>
                                         <div style={{ paddingBottom: 4, borderBottom: '2px solid #ef4444' }}>
-                                            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 4 }}>{v.name || rtwNames[rIdx] || ''}</div>
+                                            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 4, paddingLeft: 66 }}>{v.name || rtwNames[rIdx] || ''}</div>
                                             <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr 1fr', gap: '6px' }}>
                                                 <div></div>
                                                 <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>Tag</div>
@@ -1490,15 +1490,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 const nefLabel = v.occupancy_mode === '24h' ? '24h' : 'Tag';
                                 return (
                                     <div key={`nef_header_${nIdx}`} style={{
-                                        marginLeft: 0,
+                                        marginRight: 8,
                                         marginBottom: 8,
-                                        minWidth: 239,
+                                        minWidth: 238,
                                         paddingTop: 8,
                                         paddingLeft: 0,
                                         background: 'var(--bg)'
                                     }}>
                                         <div style={{ paddingBottom: 4, borderBottom: '2px solid #ef4444' }}>
-                                            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 4 }}>{v.name || nefName || ''}</div>
+                                            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 4, paddingLeft: 66 }}>{v.name || nefName || ''}</div>
                                             <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr', gap: '6px' }}>
                                                 <div></div>
                                                 <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>{nefLabel}</div>
