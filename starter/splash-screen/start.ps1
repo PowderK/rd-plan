@@ -11,14 +11,25 @@ function Resolve-SplashAssetRoot {
         (Join-Path (Split-Path -Parent $ScriptRoot) "starter/splash-screen")
     )
 
+    $fallback = $null
+
     foreach ($candidate in $candidates) {
         $mahAppsCandidate = Join-Path $candidate "assemblies/MahApps.Metro.dll"
-        if (Test-Path $mahAppsCandidate) {
+        $loadingCandidate = Join-Path $candidate "assemblies/LoadingIndicators.WPF.dll"
+        $interactivityCandidate = Join-Path $candidate "assemblies/System.Windows.Interactivity.dll"
+        $iconsCandidate = Join-Path $candidate "resources/Icons.xaml"
+        $logoCandidate = Join-Path $candidate "media/RD-Plan Logo.gif"
+
+        if ((Test-Path $mahAppsCandidate) -and (Test-Path $loadingCandidate) -and (Test-Path $interactivityCandidate) -and (Test-Path $iconsCandidate) -and (Test-Path $logoCandidate)) {
             return $candidate
+        }
+
+        if ((-not $fallback) -and (Test-Path $mahAppsCandidate)) {
+            $fallback = $candidate
         }
     }
 
-    return $null
+    return $fallback
 }
 
 $assetRoot = Resolve-SplashAssetRoot -ScriptRoot $root
@@ -56,6 +67,8 @@ Write-Log "Script gestartet. Root-Verzeichnis: $root"
 Write-Log "Logdatei: $logFile"
 if ($assetRoot) {
     Write-Log "Asset-Verzeichnis erkannt: $assetRoot"
+} else {
+    Write-Log "Kein vollständiges Asset-Verzeichnis gefunden. Verwende Root-Fallback: $root" "WARN"
 }
 
  
@@ -193,7 +206,7 @@ try {
     $window = [System.Windows.Markup.XamlReader]::Load($reader)
 }
 catch {
-    Write-Log "Failed to parse XAML: $($_.Exception.Message)" "ERROR"
+    Write-Log "Failed to parse XAML: $($_.Exception.Message) | iconsXaml=$iconsXaml (exists=$(Test-Path $iconsXaml)) | logoPath=$logoPath (exists=$(Test-Path $logoPath))" "ERROR"
     exit 1
 }
 Write-Log "XAML erfolgreich geparst."
