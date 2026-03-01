@@ -31,58 +31,53 @@ Designregeln (verbindlich):
   - 3) Gezielte Schichtübernahme
   - Abschluss
 
-Assetregeln (verbindlich):
-- Nutze ausschließlich die folgenden PNG-Dateien.
-- Dateinamen müssen exakt so verwendet werden:
-  - S1.png, S2.png, S3.png, S4.png, S5.png, S6.png, S7.png, S8.png
-  - A1.png, A2.png, A3.png, A4.png, A5.png, A6.png, A7.png
-- Keine neuen Dateinamen erfinden.
-- Wenn ein Asset fehlt, markiere nur: [BENÖTIGT: Dateiname].
+Visualregeln (verbindlich):
+- Das Video kommt vollständig ohne Screenshots aus.
+- Es werden keine S-Assets und keine Screenshot-Dateien verwendet.
+- Alle Inhalte als klare Zahlenvisualisierung darstellen:
+   - Zahlenkarten
+   - Formelkarten
+   - einfache Tabellen
+   - Counter/Number-Flip
+   - Balken oder Vergleichsmatrix für Verteilung
+- Wenn eine Darstellung fehlt, markiere nur: [BENÖTIGT: Visual-Beschreibung].
 
 Inhaltsquelle (verbindlich):
 - Nutze ausschließlich die bereitgestellte RD-Plan-Quelle zur SOLL-Schichten-Berechnung (ohne ITW).
 - Keine Funktionen oder Aussagen ergänzen, die nicht in der Quelle enthalten sind.
 
-Vorgegebene Szenen- und Asset-Struktur (verbindlich übernehmen):
+Vorgegebene Szenen- und Visual-Struktur (verbindlich übernehmen):
 1) Intro (0:00–0:20)
-   - Visual: Monatsübersicht als Einstieg
-   - Assets: S1.png
-   - Animation: kurzer Fade-in auf relevanten Bereich
+   - Visual: Monatsübersicht als Zahlenkarte (Gesamtwert + Kontextzeile)
+   - Animation: kurzer Fade-in
 
 2) 1) Normale Erzeugung der SOLL-Schichten (0:20–2:00)
-   - Visual: Bedarfsermittlung und Grundformel
-   - Assets: S1.png, S2.png, A1.png, A2.png
+   - Visual: Bedarfsermittlung als Formel-Board
    - Animation: Formel und Rechenweg schrittweise einblenden
    - Pflichtinhalt: Klar sagen, dass mit Schichten/Positionen gerechnet wird, nicht mit Stunden
 
 3) 1.1) Sonderfall HLF-B FzF (75%) (2:00–3:00)
-   - Visual: Vorher/Nachher Gewichtung
-   - Assets: S4.png, A3.png
+   - Visual: Vorher/Nachher Gewichtung als Zahlenkarten
    - Animation: 20 → ×0,75 → 15 als Zahlen-Transition
 
 4) Beispiel Verteilung (3:00–4:00)
-   - Visual: Verteilungstabelle A/B/C
-   - Assets: S5.png
+   - Visual: Verteilungstabelle A/B/C mit exakten und finalen Werten
    - Animation: schrittweise Hervorhebung der Endwerte
 
 5) 1.2) Warum Hamilton und nicht normale Rundung? (4:00–4:45)
    - Visual: Rundungsproblem und Restvergabe
-   - Assets: S5.png, A4.png
    - Animation: erst Abrundung, dann Restschichten nacheinander vergeben
 
 6) 2) Einfluss von Azubis, Ü50 und LPAL (4:45–6:15)
    - Visual: Abzug vom Gesamtpool
-   - Assets: S6.png, A5.png
    - Animation: Count-down von Gesamtbedarf auf Restpool
 
 7) 3) Gezielte Schichtübernahme (6:15–7:45)
    - Visual: Übernahme + Gegenreduktion
-   - Assets: S7.png, A6.png
    - Animation: +4 bei übernehmender Person, proportionale Anpassung im Restpool
 
 8) Abschluss (7:45–8:15)
    - Visual: Endkontrolle und Zusammenfassung
-   - Assets: S8.png, A7.png
    - Animation: 5-Schritte-Recap nacheinander einblenden
 
 Ausgabeformat (genau so liefern):
@@ -100,8 +95,8 @@ Spalten:
 3) Abschnittstitel
 4) Sprechertext (Kurzfassung)
 5) Header-Text (App-Header + Abschnitt)
-6) Visual (Screenshot/Animation)
-7) Asset-Datei
+6) Visual (Zahlenkarte/Formel/Tabelle/Animation)
+7) Zahlenfokus (welche Werte klar sichtbar sein müssen)
 8) Animation/Bewegung
 9) On-Screen-Text (kurz, optional)
 
@@ -110,7 +105,8 @@ Checkliste mit genau diesen Punkten:
 - Sprache klar und ohne Floskeln
 - Ton persönlich-seriös
 - Jeder Abschnitt hat korrekten Header
-- Asset-Namen exakt gemäß Vorgabe
+- Keine Screenshots verwendet
+- Zahlen in jeder Szene deutlich lesbar visualisiert
 - Aussage „Schichten/Positionen statt Stunden“ enthalten
 - Keine erfundenen Inhalte
 

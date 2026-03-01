@@ -112,28 +112,28 @@ So bleibt die Planung transparent und nachvollziehbar.
 
 ---
 
-## Benötigte Screenshots
-- **S1 – Ausgangslage Monat**: Ansicht mit Wertetabelle und sichtbaren Gesamtzahlen im oberen Bereich.
-- **S2 – Rechenbeispiel Bedarf**: Sichtbarer Wert „10 Tage, 2 RTW, 1 NEF → 100 Positionen“.
-- **S3 – Präsenzbezug**: Nach Klick auf einen Namen sichtbare persönliche Zahlen plus V-Schichten/Abwesenheiten.
-- **S4 – HLF-B-Fall**: Vorher/Nachher mit Präsenz 20 und reduziertem Gewicht 15.
-- **S5 – Hamilton-Verteilung**: Tabelle mit Gewichten A/B/C, exakten Anteilen und finalen Ganzzahlen.
-- **S6 – Entlastungen**: Beispiel mit Abzug Azubi sowie Ü50/LPAL und verbleibendem Pool.
-- **S7 – Schichtübernahme**: Maske/Ansicht mit +4 SOLL für übernehmende Person.
-- **S8 – Endergebnis**: Abschließende Monatssumme als Kontrollansicht.
+## Benötigte Visualisierungen (ohne Screenshots)
+- **V1 – Monatsübersicht als Zahlenkarte**: Gesamtwert oben groß, darunter kurze Kontextzeile.
+- **V2 – Bedarfsermittlung als Formel-Board**: „Abteilungstage × (RTW + NEF)“ mit Live-Einsetzen der Werte.
+- **V3 – Persönliche Kennzahlen-Karte**: Präsenz, Gewichtung, Soll in einer kompakten 3-Spalten-Ansicht.
+- **V4 – HLF-B-Transform**: Deutliche Zahlen-Transition von 20 auf 15 mit Formelhinweis.
+- **V5 – Hamilton-Tabelle**: Gewichte, exakte Anteile, Abrundung, Restvergabe und Finalwert je Person.
+- **V6 – Entlastungsbilanz**: Startwert 100, danach visuelle Abzüge und Restwert 84.
+- **V7 – Übernahme-Matrix**: +4 bei übernehmender Person, proportionale Reduktion im Restpool.
+- **V8 – Abschluss-Dashboard**: Monatssumme und 5-Schritte-Check in einer finalen Übersicht.
 
 ## Benötigte Animationen (einfach umsetzbar)
-- **A0 – Wechsel Gesamt/Person (3 s)**: Cursor-Klick auf Namen, Fokus wechselt von Gesamtzahlen oben zu persönlichen Zahlen.
-- **A1 – Formel-Einblendung (3 s)**: „Abteilungstage × (RTW + NEF)“ als Overlay über der Monatsansicht.
-- **A2 – Rechenweg Schritt-für-Schritt (4 s)**: 10 × (2+1) → 30 Positionseinheiten → 100 Positionen visuell aufbauen.
-- **A3 – HLF-B-Reduktion (3 s)**: 20 → ×0,75 → 15 mit sanfter Zahlen-Transition.
-- **A4 – Hamilton-Rundung (4 s)**: Erst Abrundung aller Werte, dann Restschichten nacheinander verteilen.
-- **A5 – Entlastungsabzug (3 s)**: Gesamtbedarf schrumpft von 100 auf 84 mit Count-down-Effekt.
-- **A6 – Übernahmeeffekt (4 s)**: +4 bei Person B und proportionale Gegenreduktion im Restpool hervorheben.
-- **A7 – Abschluss-Recap (4 s)**: Die 5 Schritte als nummerierte Liste nacheinander einblenden.
+- **A0 – Fokus Gesamt/Person (3 s)**: Übergang von Gesamtwerten zu persönlicher Kennzahlen-Karte.
+- **A1 – Formel-Einblendung (3 s)**: „Abteilungstage × (RTW + NEF)“ als zentrales Overlay.
+- **A2 – Rechenweg Schritt-für-Schritt (4 s)**: 10 × (2+1) → 30 Positionseinheiten → 100 Positionen.
+- **A3 – HLF-B-Reduktion (3 s)**: 20 → ×0,75 → 15 als klarer Number-Flip.
+- **A4 – Hamilton-Rundung (4 s)**: Abrundung, Restpunkte, finale Ganzzahlen nacheinander sichtbar.
+- **A5 – Entlastungsabzug (3 s)**: 100 → 94 → 84 als animierter Zahlenpfad.
+- **A6 – Übernahmeeffekt (4 s)**: +4 bei Person B, gleichzeitige proportionale Gegenreduktion.
+- **A7 – Abschluss-Recap (4 s)**: 5 Rechenschritte als nummerierte Zahlenkacheln.
 
 ## Produktionshinweise
 - Für alle Rechenanimationen dieselben Farben pro Bedeutung nutzen (Gesamt, Abzug, Rest).
 - Zahlen immer groß und mittig einblenden, damit sie auf mobilen Displays lesbar sind.
 - Pro Kapitel maximal eine Hauptanimation verwenden, um das Lerntempo ruhig zu halten.
-- Alle Screenshots in identischer Zoomstufe und derselben Testdaten-Konstellation aufnehmen.
+- Keine App-Screenshots verwenden; stattdessen ausschließlich reduzierte Zahlen-Visuals, Tabellen und Formelkarten.
