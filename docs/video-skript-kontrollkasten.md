@@ -47,7 +47,7 @@ Damit könnt ihr sehr schnell erkennen, wo eine Person bereits eingeplant ist un
 In der Spalte Soll | Ist steht links das Soll und rechts das tatsächlich erreichte Ist.
 Darunter seht ihr eine kleine Waage als Trendanzeige.
 Auch hier gilt: Soll und Ist werden als Schichten/Positionen geführt, nicht als Stundenwerte.
-
+Die Berechnung der Soll Schichten wird in einem anderen Video erklärt
 Interpretation:
 
 - Richtung und Farbe zeigen, ob die Person kumuliert eher unter oder über dem Soll liegt.
@@ -91,7 +91,7 @@ Farblogik:
 Dabei wird fair normalisiert, damit unterschiedliche Teilzeitgrade vergleichbar bleiben.
 
 Wichtig:
-Bei Ü50 und LPAL wird in dieser Spalte bewusst ein Strich angezeigt statt eines Restwertes.
+Bei Ü50 und Leitender Praxisanleiter wird in dieser Spalte bewusst ein Strich angezeigt statt eines Restwertes.
 
 ---
 
@@ -156,7 +156,8 @@ Im nächsten Video können wir auf Wunsch einen kompletten Monatsdurchlauf mache
 
 ## Benötigte Screenshots
 - **S1 – Gesamtansicht**: Kontrollkasten vollständig mit sichtbaren Spaltenüberschriften.
-- **S2 – Namensklick**: Vorher/Nachher mit hervorgehobener Person in der Einteilung.
+- **S2.1 – Namensklick**: Vorher ohne hervorgehobene Person in der Einteilung.
+- **S2.2 – Namensklick**: Vorher mit hervorgehobener Person in der Einteilung.
 - **S3 – Soll/Ist-Detail**: Zoom auf Soll/Ist-Wert inkl. Mini-Waage.
 - **S4 – Spaltenvergleich**: NEF, ITW, WE und Alt in einer Zeile (inkl. aktiver WE-Färbung).
 - **S5 – Ges.-Ampel**: Drei Beispielzeilen mit Rot/Gelb/Grün in der Ges.-Spalte.
