@@ -838,26 +838,26 @@ const ValuesPage: React.FC = () => {
 
   const styles = {
     table: { borderCollapse: 'separate', borderSpacing: 0, minWidth: 980 } as React.CSSProperties,
-    thSticky: { position: 'sticky' as const, top: 0, background: 'var(--bg)', zIndex: 2, borderBottom: '1px solid #dbe7ff', padding: '6px 8px', boxShadow: '0 1px 0 0 #d6e4ff' },
-    thStickyName: { position: 'sticky' as const, top: 0, left: 0, background: 'var(--bg)', zIndex: 4, borderBottom: '1px solid #dbe7ff', borderRight: '1px solid #d6e4ff', padding: '6px 8px', boxShadow: '0 1px 0 0 #d6e4ff' },
-    th: { borderBottom: '1px solid #dbe7ff', padding: '6px 8px' },
-    nameSticky: { position: 'sticky' as const, left: 0, background: 'var(--bg)', zIndex: 3, borderBottom: '1px solid #e4edff', borderRight: '1px solid #d6e4ff', padding: '6px 8px', minWidth: 240, textAlign: 'left' },
-    td: { borderBottom: '1px solid #e4edff', padding: '6px 8px', textAlign: 'right' } as React.CSSProperties,
-    tdLeft: { borderBottom: '1px solid #e4edff', padding: '6px 8px', textAlign: 'left' } as React.CSSProperties,
-    kpiRow: { background: '#f8fbff' } as React.CSSProperties,
-    zebra1: { background: '#fff' } as React.CSSProperties,
-    zebra2: { background: '#f5f9ff' } as React.CSSProperties,
-    sectionSep: { height: 8, background: '#dbe7ff' } as React.CSSProperties,
+    thSticky: { position: 'sticky' as const, top: 0, background: 'var(--bg)', zIndex: 2, borderBottom: '1px solid var(--line)', padding: '6px 8px', boxShadow: '0 1px 0 0 var(--line)' },
+    thStickyName: { position: 'sticky' as const, top: 0, left: 0, background: 'var(--bg)', zIndex: 4, borderBottom: '1px solid var(--line)', borderRight: '1px solid var(--line)', padding: '6px 8px', boxShadow: '0 1px 0 0 var(--line)' },
+    th: { borderBottom: '1px solid var(--line)', padding: '6px 8px' },
+    nameSticky: { position: 'sticky' as const, left: 0, background: 'var(--bg)', zIndex: 3, borderBottom: '1px solid var(--line)', borderRight: '1px solid var(--line)', padding: '6px 8px', minWidth: 240, textAlign: 'left' },
+    td: { borderBottom: '1px solid var(--line)', padding: '6px 8px', textAlign: 'right' } as React.CSSProperties,
+    tdLeft: { borderBottom: '1px solid var(--line)', padding: '6px 8px', textAlign: 'left' } as React.CSSProperties,
+    kpiRow: { background: 'var(--hover)' } as React.CSSProperties,
+    zebra1: { background: 'var(--bg)' } as React.CSSProperties,
+    zebra2: { background: 'var(--hover)' } as React.CSSProperties,
+    sectionSep: { height: 8, background: 'var(--line)' } as React.CSSProperties,
     popupOverlay: {
       position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0,
       background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center'
     },
     popupContent: {
-      background: '#fff', padding: 20, borderRadius: 8, maxWidth: '90vw', maxHeight: '90vh', overflow: 'auto',
+      background: 'var(--bg)', color: 'var(--text)', padding: 20, borderRadius: 8, maxWidth: '90vw', maxHeight: '90vh', overflow: 'auto',
       boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
     },
     closeBtn: {
-      float: 'right' as const, cursor: 'pointer', fontSize: 20, fontWeight: 'bold', color: '#666'
+      float: 'right' as const, cursor: 'pointer', fontSize: 20, fontWeight: 'bold', color: 'var(--muted)'
     }
   };
 
@@ -908,7 +908,7 @@ const ValuesPage: React.FC = () => {
           )}
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
             <thead>
-              <tr style={{ background: '#f3f4f6' }}>
+              <tr style={{ background: 'var(--hover)' }}>
                 <th style={styles.th}>Monat</th>
                 <th style={styles.th}>Pos. (Netto)</th>
                 <th style={styles.th}>Gesamt-Gewicht</th>
@@ -928,7 +928,7 @@ const ValuesPage: React.FC = () => {
                   return ty === year && tm === (d.month + 1);
                 });
                 return (
-                  <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                  <tr key={i} style={{ borderBottom: '1px solid var(--line)' }}>
                     <td style={styles.tdLeft}>{monthNames[d.month]}</td>
                     <td style={styles.td}>{fmt(d.required)}</td>
                     <td style={styles.td}>{fmt(d.totalWeight)}</td>
@@ -969,7 +969,7 @@ const ValuesPage: React.FC = () => {
       {/* Überschrift - ROT */}
       <h2 className="page-header">Werte – {year}</h2>
       {/* Content - GRAU */}
-      <div className="page-content" style={{ overflow: 'auto', maxHeight: '70vh', border: '1px solid #d6e4ff', borderRadius: 10, position: 'relative', paddingTop: 0 }}>
+      <div className="page-content" style={{ overflow: 'auto', maxHeight: '70vh', border: '1px solid var(--line)', borderRadius: 10, position: 'relative', paddingTop: 0 }}>
         <table style={styles.table}>
           <thead>
             <tr>

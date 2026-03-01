@@ -955,7 +955,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
             {/* System-Informationen */}
             <div style={{ marginBottom: 16, padding: 12, background: '#f8f9fa', borderRadius: 8 }}>
               <h3 style={{ marginTop: 0 }}>System-Informationen</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8, fontSize: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 8, fontSize: 14 }}>
                 <div style={{ fontWeight: 600 }}>Benutzername:</div>
                 <div><code>{systemUsername}</code></div>
                 <div style={{ fontWeight: 600 }}>Betriebssystem:</div>
@@ -963,7 +963,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
               </div>
             </div>
 
-            <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+            <div style={{ marginTop: 8, display: 'flex', gap: 10 }}>
               <button onClick={async () => {
                 try {
                   const diag = await (window as any).api.getDiagnostics?.();
@@ -988,11 +988,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
             {/* DB-Speicherort Konfiguration */}
             <div style={{ marginTop: 16, borderTop: '1px solid #eee', paddingTop: 12 }}>
               <h3>Datenbank-Speicherort</h3>
-              <div style={{ color: '#666', marginBottom: 8 }}>
-                Aktuell: <code>{dbConfig?.currentPath || 'unbekannt'}</code>
+              <div style={{ color: '#666', marginBottom: 10, display: 'grid', gridTemplateColumns: '200px 1fr', gap: 8 }}>
+                <div>Aktuell:</div>
+                <div><code>{dbConfig?.currentPath || 'unbekannt'}</code></div>
               </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <input type="text" value={dbDirInput} onChange={e => setDbDirInput(e.target.value)} placeholder={dbConfig?.defaults?.appDir || ''} style={{ flex: 1, minWidth: 320 }} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(360px, 1fr) auto auto', gap: 10, alignItems: 'center' }}>
+                <input type="text" value={dbDirInput} onChange={e => setDbDirInput(e.target.value)} placeholder={dbConfig?.defaults?.appDir || ''} style={{ minWidth: 320 }} />
                 <button onClick={async () => {
                   const result = await (window as any).api.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
                   if (!result?.canceled && Array.isArray(result?.filePaths) && result.filePaths.length > 0) {
@@ -1007,18 +1008,19 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                   if (!res?.success) alert('Fehler: ' + (res?.message || 'Unbekannt'));
                 }} style={{ backgroundColor: '#0d6efd', color: 'white' }}>Übernehmen und neu starten</button>
               </div>
-              <div style={{ marginTop: 6, color: '#777' }}>
-                Standard: <code>{dbConfig?.defaults?.appDir || '-'}</code> · Alternative: <code>{dbConfig?.defaults?.userDataDir || '-'}</code>
+              <div style={{ marginTop: 8, color: '#777', display: 'grid', gridTemplateColumns: '200px 1fr', gap: 8 }}>
+                <div>Standard/Alternative:</div>
+                <div><code>{dbConfig?.defaults?.appDir || '-'}</code> · <code>{dbConfig?.defaults?.userDataDir || '-'}</code></div>
               </div>
             </div>
 
             {/* Rettungswache und Abteilung */}
             <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
               <h3>Rettungswache und Abteilung</h3>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                <label>
-                  Feuer- und Rettungswache:
-                  <select value={rescueStation} onChange={e => setRescueStation(e.target.value)} style={{ marginLeft: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(280px, 1fr)', gap: 12, maxWidth: 760 }}>
+                <label style={{ display: 'grid', gridTemplateColumns: '170px 1fr', alignItems: 'center', gap: 8 }}>
+                  <span>Feuer- und Rettungswache:</span>
+                  <select value={rescueStation} onChange={e => setRescueStation(e.target.value)}>
                     <option value="1">1</option>
                     <option value="2">2</option>
                     <option value="3">3</option>
@@ -1026,9 +1028,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                     <option value="5">5</option>
                   </select>
                 </label>
-                <label>
-                  Abteilung:
-                  <select value={department} onChange={e => setDepartment(Number(e.target.value))} style={{ marginLeft: 8 }}>
+                <label style={{ display: 'grid', gridTemplateColumns: '170px 1fr', alignItems: 'center', gap: 8 }}>
+                  <span>Abteilung:</span>
+                  <select value={department} onChange={e => setDepartment(Number(e.target.value))}>
                     <option value={1}>1</option>
                     <option value={2}>2</option>
                     <option value={3}>3</option>
@@ -1602,27 +1604,31 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
         {/* KATEGORIE: FEATURES */}
         {activeCategory === 'features' && (
           <div>
-            <div style={{ marginBottom: 24 }}>
-              <h3>Darstellung</h3>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input type="checkbox" checked={showWeekendShifts} onChange={e => setShowWeekendShifts(e.target.checked)} />
-                  Wochenend-Schichten (Sa/So) im Kontrollkasten zählen und farblich (Ampel) anzeigen
-                </label>
+            <div style={{ display: 'grid', gap: 14, maxWidth: 980 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr', columnGap: 12, alignItems: 'start' }}>
+                <input
+                  type="checkbox"
+                  checked={showWeekendShifts}
+                  onChange={e => setShowWeekendShifts(e.target.checked)}
+                  style={{ marginTop: 2 }}
+                />
+                <div>
+                  <strong>Wochenend-Schichten anzeigen</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                    Wochenend-Schichten (Sa/So) im Kontrollkasten zählen und farblich (Ampel) anzeigen.
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div style={{ marginBottom: 24, padding: 12, background: '#f8f9fa', borderRadius: 8 }}>
-              <h3 style={{ marginTop: 0 }}>Funktionen</h3>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr', columnGap: 12, alignItems: 'start' }}>
                 <input
                   type="checkbox"
                   id="featureOldRtwShifts"
                   checked={featureOldRtwShifts}
                   onChange={(e) => setFeatureOldRtwShifts(e.target.checked)}
-                  style={{ marginRight: 8 }}
+                  style={{ marginTop: 2 }}
                 />
-                <label htmlFor="featureOldRtwShifts" style={{ cursor: 'pointer' }}>
+                <label htmlFor="featureOldRtwShifts" style={{ cursor: 'pointer', margin: 0 }}>
                   <strong>Alte RTW-Schichten Tracking aktivieren</strong>
                   <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
                     Ermöglicht die Erfassung von Schichten aus einem Altsystem in den Personaleinstellungen und zeigt diese im Dienstplan an.
@@ -1630,44 +1636,40 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                 </label>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr', columnGap: 12, alignItems: 'start' }}>
                 <input
                   type="checkbox"
                   id="featureItw"
                   checked={itwFeatureEnabled}
                   onChange={(e) => setItwFeatureEnabled(e.target.checked)}
-                  style={{ marginRight: 8 }}
+                  style={{ marginTop: 2 }}
                 />
-                <label htmlFor="featureItw" style={{ cursor: 'pointer' }}>
+                <label htmlFor="featureItw" style={{ cursor: 'pointer', margin: 0 }}>
                   <strong>ITW aktivieren</strong>
                   <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
                     Blendet alle ITW-Bereiche in Dienstplan, Fahrzeuge und Personal ein oder aus.
                   </div>
                 </label>
               </div>
-            </div>
 
-            <div style={{ marginBottom: 24, padding: 12, background: '#f8f9fa', borderRadius: 8, border: '1px solid #dee2e6' }}>
-              <h3 style={{ marginTop: 0 }}>Schichtübernahmen</h3>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr', columnGap: 12, alignItems: 'start' }}>
                 <input
                   type="checkbox"
                   id="featureShiftTransfers"
                   checked={featureShiftTransfers}
                   onChange={(e) => setFeatureShiftTransfers(e.target.checked)}
-                  style={{ marginRight: 8 }}
+                  style={{ marginTop: 2 }}
                 />
-                <label htmlFor="featureShiftTransfers" style={{ cursor: 'pointer' }}>
+                <label htmlFor="featureShiftTransfers" style={{ cursor: 'pointer', margin: 0 }}>
                   <strong>Gezielte Schichtübernahme aktivieren</strong>
                   <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
                     Erlaubt die Übertragung von SOLL-Schichten zwischen Mitarbeitern.
                   </div>
+                  <div style={{ marginTop: 6, color: '#666', fontSize: '0.9em' }}>
+                    Die Verwaltung erfolgt in den Personeneinstellungen der jeweiligen Empfänger-Person.
+                  </div>
                 </label>
               </div>
-
-              <p style={{ margin: 0, color: '#666', fontSize: '0.9em' }}>
-                Die Verwaltung erfolgt in den Personeneinstellungen der jeweiligen Empfänger-Person.
-              </p>
             </div>
           </div>
         )}
@@ -1740,7 +1742,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
 
             {/* Feiertage (ITW-relevant) */}
             <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', alignItems: 'center', gap: 12, marginBottom: 12, maxWidth: 760 }}>
                 <h3 style={{ margin: 0 }}>Feiertage</h3>
                 <select
                   value={holidaysYear}
@@ -2118,7 +2120,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
           <div>
             <h3>Rollen und Rechteverwaltung</h3>
             <p style={{ color: '#666', fontSize: 14, marginBottom: 16 }}>
-              Erstellen Sie Rollen und legen Sie fest, welche Rechte (keine, lesen, schreiben) für jeden Bereich gelten.
+              Erstellen Sie Rollen und legen Sie fest, welche Rechte (keine, lesen, lesen alle, schreiben) für jeden Bereich gelten.
             </p>
 
             <table className={styles.table}>
@@ -2126,28 +2128,29 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                 <tr className={styles.thead}>
                   <th rowSpan={2}>Rollenname</th>
                   <th rowSpan={2}>Beschreibung</th>
-                  <th className={styles.center} colSpan={2}>Einteilung</th>
-                  <th className={styles.center} colSpan={3}>Dienstplan</th>
-                  <th className={styles.center} colSpan={1}>Werte</th>
-                  <th className={styles.center} colSpan={1}>Personal</th>
-                  <th className={styles.center} colSpan={1}>Fahrzeuge</th>
-                  <th className={styles.center} colSpan={1}>Einstellungen</th>
-                  <th className={styles.center} colSpan={1}>Globale Kommentare</th>
-                  <th className={styles.center} colSpan={1}>Individuelle Kommentare</th>
+                  <th className={styles.center} colSpan={2} style={{ background: '#e8f3ff' }}>Einteilung</th>
+                  <th className={styles.center} colSpan={3} style={{ background: '#eef7e8' }}>Dienstplan</th>
+                  <th className={styles.center} colSpan={2} style={{ background: '#fff7e6' }}>Werte</th>
+                  <th className={styles.center} colSpan={1} style={{ background: '#f3ecff' }}>Personal</th>
+                  <th className={styles.center} colSpan={1} style={{ background: '#e8fbf8' }}>Fahrzeuge</th>
+                  <th className={styles.center} colSpan={1} style={{ background: '#ffecef' }}>Einstellungen</th>
+                  <th className={styles.center} colSpan={1} style={{ background: '#f1f5f9' }}>Globale Kommentare</th>
+                  <th className={styles.center} colSpan={1} style={{ background: '#fef2f2' }}>Individuelle Kommentare</th>
                   <th className={styles.center} rowSpan={2} style={{ width: 90 }}>Aktion</th>
                 </tr>
                 <tr className={styles.thead}>
-                  <th className={styles.center}>Lesen</th>
-                  <th className={styles.center}>Schreiben</th>
-                  <th className={styles.center}>Lesen</th>
-                  <th className={styles.center}>Alle</th>
-                  <th className={styles.center}>Schreiben</th>
-                  <th className={styles.center}>Lesen</th>
-                  <th className={styles.center}>Schreiben</th>
-                  <th className={styles.center}>Schreiben</th>
-                  <th className={styles.center}>Schreiben</th>
-                  <th className={styles.center}>Schreiben</th>
-                  <th className={styles.center}>Schreiben</th>
+                  <th className={styles.center} style={{ background: '#e8f3ff' }}>Lesen</th>
+                  <th className={styles.center} style={{ background: '#e8f3ff' }}>Schreiben</th>
+                  <th className={styles.center} style={{ background: '#eef7e8' }}>Lesen</th>
+                  <th className={styles.center} style={{ background: '#eef7e8' }}>Alle</th>
+                  <th className={styles.center} style={{ background: '#eef7e8' }}>Schreiben</th>
+                  <th className={styles.center} style={{ background: '#fff7e6' }}>Lesen</th>
+                  <th className={styles.center} style={{ background: '#fff7e6' }}>Alle</th>
+                  <th className={styles.center} style={{ background: '#f3ecff' }}>Schreiben</th>
+                  <th className={styles.center} style={{ background: '#e8fbf8' }}>Schreiben</th>
+                  <th className={styles.center} style={{ background: '#ffecef' }}>Schreiben</th>
+                  <th className={styles.center} style={{ background: '#f1f5f9' }}>Schreiben</th>
+                  <th className={styles.center} style={{ background: '#fef2f2' }}>Schreiben</th>
                 </tr>
               </thead>
               <tbody className={styles.tbody}>
@@ -2170,77 +2173,84 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                         onChange={e => setRoles(prev => prev.map(r => r.id === role.id ? { ...r, description: e.target.value } : r))}
                       />
                     </td>
-                    <td className={styles.center}>
+                    <td className={styles.center} style={{ background: '#f6fbff' }}>
                       <input
                         type="checkbox"
                         checked={(role.permissions?.einteilung || 'none') === 'read'}
                         onChange={e => setRolePermission(role.id, 'einteilung', 'read', e.target.checked)}
                       />
                     </td>
-                    <td className={styles.center}>
+                    <td className={styles.center} style={{ background: '#f6fbff' }}>
                       <input
                         type="checkbox"
                         checked={(role.permissions?.einteilung || 'none') === 'write'}
                         onChange={e => setRolePermission(role.id, 'einteilung', 'write', e.target.checked)}
                       />
                     </td>
-                    <td className={styles.center}>
+                    <td className={styles.center} style={{ background: '#f6fcf3' }}>
                       <input
                         type="checkbox"
                         checked={(role.permissions?.dienstplan || 'none') === 'read'}
                         onChange={e => setRolePermission(role.id, 'dienstplan', 'read', e.target.checked)}
                       />
                     </td>
-                    <td className={styles.center}>
+                    <td className={styles.center} style={{ background: '#f6fcf3' }}>
                       <input
                         type="checkbox"
                         checked={(role.permissions?.dienstplan || 'none') === 'read_all'}
                         onChange={e => setRolePermission(role.id, 'dienstplan', 'read_all', e.target.checked)}
                       />
                     </td>
-                    <td className={styles.center}>
+                    <td className={styles.center} style={{ background: '#f6fcf3' }}>
                       <input
                         type="checkbox"
                         checked={(role.permissions?.dienstplan || 'none') === 'write'}
                         onChange={e => setRolePermission(role.id, 'dienstplan', 'write', e.target.checked)}
                       />
                     </td>
-                    <td className={styles.center}>
+                    <td className={styles.center} style={{ background: '#fffdf6' }}>
                       <input
                         type="checkbox"
                         checked={(role.permissions?.werte || 'none') === 'read'}
                         onChange={e => setRolePermission(role.id, 'werte', 'read', e.target.checked)}
                       />
                     </td>
-                    <td className={styles.center}>
+                    <td className={styles.center} style={{ background: '#fffdf6' }}>
+                      <input
+                        type="checkbox"
+                        checked={(role.permissions?.werte || 'none') === 'read_all'}
+                        onChange={e => setRolePermission(role.id, 'werte', 'read_all', e.target.checked)}
+                      />
+                    </td>
+                    <td className={styles.center} style={{ background: '#fbf8ff' }}>
                       <input
                         type="checkbox"
                         checked={(role.permissions?.personal || 'none') === 'write'}
                         onChange={e => setRolePermission(role.id, 'personal', 'write', e.target.checked)}
                       />
                     </td>
-                    <td className={styles.center}>
+                    <td className={styles.center} style={{ background: '#f3fdfa' }}>
                       <input
                         type="checkbox"
                         checked={(role.permissions?.fahrzeuge || 'none') === 'write'}
                         onChange={e => setRolePermission(role.id, 'fahrzeuge', 'write', e.target.checked)}
                       />
                     </td>
-                    <td className={styles.center}>
+                    <td className={styles.center} style={{ background: '#fff6f8' }}>
                       <input
                         type="checkbox"
                         checked={(role.permissions?.einstellungen || 'none') === 'write'}
                         onChange={e => setRolePermission(role.id, 'einstellungen', 'write', e.target.checked)}
                       />
                     </td>
-                    <td className={styles.center}>
+                    <td className={styles.center} style={{ background: '#f8fafc' }}>
                       <input
                         type="checkbox"
                         checked={(role.permissions?.kommentar_global || 'none') === 'write'}
                         onChange={e => setRolePermission(role.id, 'kommentar_global', 'write', e.target.checked)}
                       />
                     </td>
-                    <td className={styles.center}>
+                    <td className={styles.center} style={{ background: '#fff7f7' }}>
                       <input
                         type="checkbox"
                         checked={(role.permissions?.kommentar_individuell || 'none') === 'write'}

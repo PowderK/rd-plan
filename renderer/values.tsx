@@ -264,11 +264,35 @@ const ValuesPage: React.FC = () => {
   const roster = useRoster(year);
   const personnel = usePersonnel();
   const azubis = useAzubis();
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const auswertungByType = useAuswertungByType();
   const { rtw, nef } = useVehicles();
   const { rtwActs, nefActs } = useActivations(year);
   const department = useDepartment();
   const deptPatternSeqs = useDeptPatterns();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const user = await (window as any).api.authGetCurrentUser?.();
+        setCurrentUser(user || null);
+      } catch {
+        setCurrentUser(null);
+      }
+    })();
+  }, []);
+
+  const wertePermission: 'none' | 'read' | 'read_all' | 'write' =
+    (currentUser?.permissions?.werte as any) || 'none';
+  const canSeeAllWerteNames = wertePermission === 'read_all' || wertePermission === 'write';
+  const visiblePersonnel = useMemo(() => {
+    if (canSeeAllWerteNames) return personnel;
+    if (wertePermission === 'read' && currentUser?.userId != null) {
+      return personnel.filter(p => Number(p.id) === Number(currentUser.userId));
+    }
+    return [];
+  }, [personnel, canSeeAllWerteNames, wertePermission, currentUser?.userId]);
+  const visibleAzubis = useMemo(() => (canSeeAllWerteNames ? azubis : []), [azubis, canSeeAllWerteNames]);
   
   // Reagiere auf Jahr-Änderungen von DutyRoster
   useEffect(() => {
@@ -307,7 +331,7 @@ const ValuesPage: React.FC = () => {
     () => computePositionsPerMonth(year, { rtw, nef }, { rtwActs, nefActs }, deptShifts, rowItw),
     [year, rtw, nef, rtwActs, nefActs, deptShifts, rowItw]
   );
-  const row2 = useMemo(() => computeActivePersonnelPerMonth(year, roster, auswertungByType, personnel), [year, roster, auswertungByType, personnel]);
+  const row2 = useMemo(() => computeActivePersonnelPerMonth(year, roster, auswertungByType, visiblePersonnel), [year, roster, auswertungByType, visiblePersonnel]);
   // row3 wird weiter unten nach Abzug der Azubis von den Positionen berechnet
 
   // Per-Person 24h-Counts pro Monat (gemäß Auswertungseinstellungen)
@@ -327,13 +351,13 @@ const ValuesPage: React.FC = () => {
       } catch {}
     }
     // Baue Ausgabezeilen in Personen-Reihenfolge (alle Stammpersonen, auch ohne 24h als 0)
-    const rows = (personnel || []).map(p => ({
+    const rows = (visiblePersonnel || []).map(p => ({
       id: p.id,
       name: `${p.vorname ? p.vorname + ' ' : ''}${p.name}`.trim(),
       counts: countsByPerson[p.id] || Array(12).fill(0)
     }));
     return rows;
-  }, [roster, personnel, auswertungByType]);
+  }, [roster, visiblePersonnel, auswertungByType]);
 
   // Per-Person ITW-Counts pro Monat (Slot itw_* oder Auswertung=itw)
   const perPersonITW = useMemo(() => {
@@ -351,13 +375,13 @@ const ValuesPage: React.FC = () => {
         }
       } catch {}
     }
-    const rows = (personnel || []).map(p => ({
+    const rows = (visiblePersonnel || []).map(p => ({
       id: p.id,
       name: `${p.vorname ? p.vorname + ' ' : ''}${p.name}`.trim(),
       counts: countsByPerson[p.id] || Array(12).fill(0)
     }));
     return rows;
-  }, [roster, personnel, auswertungByType]);
+  }, [roster, visiblePersonnel, auswertungByType]);
 
   // Präsenz je Person: Tage mit Auswertung ≠ 'off' (tag|nacht|24h|itw)
   const perPersonPresence = useMemo(() => {
@@ -374,14 +398,14 @@ const ValuesPage: React.FC = () => {
         ensure(Number(row.personId))[month] += 1;
       } catch {}
     }
-    const rows = (personnel || []).map(p => ({
+    const rows = (visiblePersonnel || []).map(p => ({
       id: p.id,
       name: `${p.vorname ? p.vorname + ' ' : ''}${p.name}`.trim(),
       hlfb: !!(p as any)?.fahrzeugfuehrerHLFB,
       counts: countsByPerson[p.id] || Array(12).fill(0)
     }));
     return rows;
-  }, [roster, personnel, auswertungByType]);
+  }, [roster, visiblePersonnel, auswertungByType]);
 
   // Per-Azubi Maschinist-Counts pro Monat (RTW tag_2/nacht_2 Slots)
   const perAzubiMaschinist = useMemo(() => {
@@ -399,13 +423,13 @@ const ValuesPage: React.FC = () => {
         ensure(Number(row.personId))[month] += 1;
       } catch {}
     }
-    const rows = (azubis || []).map(a => ({
+    const rows = (visibleAzubis || []).map(a => ({
       id: a.id,
       name: `${a.vorname ? a.vorname + ' ' : ''}${a.name} (Azubi)`.trim(),
       counts: countsByAzubi[a.id] || Array(12).fill(0)
     }));
     return rows;
-  }, [roster, azubis]);
+  }, [roster, visibleAzubis]);
 
   // KPI: Summe der Azubi-Schichten (Maschinist) pro Monat
   const rowAzubis = useMemo(() => {
@@ -464,21 +488,21 @@ const ValuesPage: React.FC = () => {
   const fmt = (v: number) => new Intl.NumberFormat('de-DE').format(Number(v || 0));
   const styles = {
     table: { borderCollapse: 'collapse', minWidth: 980 } as React.CSSProperties,
-    thSticky: { position: 'sticky' as const, top: 0, background: '#fff', zIndex: 2, border: '1px solid #ccc', padding: '6px 8px' },
-    thStickyName: { position: 'sticky' as const, top: 0, left: 0, background: '#fff', zIndex: 4, border: '1px solid #ccc', padding: '6px 8px' },
-    th: { border: '1px solid #ccc', padding: '6px 8px' },
-    nameSticky: { position: 'sticky' as const, left: 0, background: '#fff', zIndex: 3, border: '1px solid #ccc', padding: '6px 8px', minWidth: 240, textAlign: 'left' },
-    td: { border: '1px solid #ccc', padding: '6px 8px', textAlign: 'right' } as React.CSSProperties,
-    tdLeft: { border: '1px solid #ccc', padding: '6px 8px', textAlign: 'left' } as React.CSSProperties,
-    kpiRow: { background: '#f9fafb' } as React.CSSProperties,
-    zebra1: { background: '#fff' } as React.CSSProperties,
-    zebra2: { background: '#f6f8fb' } as React.CSSProperties,
-    sectionSep: { height: 8, background: '#eaeef3' } as React.CSSProperties,
+    thSticky: { position: 'sticky' as const, top: 0, background: 'var(--bg)', zIndex: 2, border: '1px solid var(--line)', padding: '6px 8px' },
+    thStickyName: { position: 'sticky' as const, top: 0, left: 0, background: 'var(--bg)', zIndex: 4, border: '1px solid var(--line)', padding: '6px 8px' },
+    th: { border: '1px solid var(--line)', padding: '6px 8px' },
+    nameSticky: { position: 'sticky' as const, left: 0, background: 'var(--bg)', zIndex: 3, border: '1px solid var(--line)', padding: '6px 8px', minWidth: 240, textAlign: 'left' },
+    td: { border: '1px solid var(--line)', padding: '6px 8px', textAlign: 'right' } as React.CSSProperties,
+    tdLeft: { border: '1px solid var(--line)', padding: '6px 8px', textAlign: 'left' } as React.CSSProperties,
+    kpiRow: { background: 'var(--hover)' } as React.CSSProperties,
+    zebra1: { background: 'var(--bg)' } as React.CSSProperties,
+    zebra2: { background: 'var(--hover)' } as React.CSSProperties,
+    sectionSep: { height: 8, background: 'var(--line)' } as React.CSSProperties,
   };
   return (
     <div style={{ padding: 16 }}>
       <h2>Werte – {year}</h2>
-      <div style={{ overflow: 'auto', maxHeight: '70vh', border: '1px solid #e0e0e0', borderRadius: 8 }}>
+      <div style={{ overflow: 'auto', maxHeight: '70vh', border: '1px solid var(--line)', borderRadius: 8 }}>
         <table style={styles.table}>
           <thead>
             <tr>
@@ -575,22 +599,26 @@ const ValuesPage: React.FC = () => {
                 </tr>
               );
             })}
-            {/* Separator vor Azubis */}
-            <tr>
-              <td colSpan={monthNames.length + 2} style={{ ...styles.tdLeft, background: '#eef2f7', fontWeight: 600 }}>Azubis</td>
-            </tr>
-            {perAzubiMaschinist.map(row => {
-              const sum = row.counts.reduce((a, b) => a + b, 0);
-              return (
-                <tr key={`az_${row.id}`} style={Number(row.id) % 2 === 0 ? styles.zebra1 : styles.zebra2}>
-                  <td style={styles.nameSticky as any}>{row.name}</td>
-                  {row.counts.map((v, i) => (
-                    <td key={i} style={styles.td}>{v ? fmt(v) : ''}</td>
-                  ))}
-                  <td style={styles.td}>{sum ? fmt(sum) : ''}</td>
+            {canSeeAllWerteNames && (
+              <>
+                {/* Separator vor Azubis */}
+                <tr>
+                  <td colSpan={monthNames.length + 2} style={{ ...styles.tdLeft, background: '#eef2f7', fontWeight: 600 }}>Azubis</td>
                 </tr>
-              );
-            })}
+                {perAzubiMaschinist.map(row => {
+                  const sum = row.counts.reduce((a, b) => a + b, 0);
+                  return (
+                    <tr key={`az_${row.id}`} style={Number(row.id) % 2 === 0 ? styles.zebra1 : styles.zebra2}>
+                      <td style={styles.nameSticky as any}>{row.name}</td>
+                      {row.counts.map((v, i) => (
+                        <td key={i} style={styles.td}>{v ? fmt(v) : ''}</td>
+                      ))}
+                      <td style={styles.td}>{sum ? fmt(sum) : ''}</td>
+                    </tr>
+                  );
+                })}
+              </>
+            )}
           </tbody>
         </table>
       </div>

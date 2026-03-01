@@ -61,21 +61,21 @@ const ImportYearTable: React.FC<ImportYearTableProps> = ({ year, personnel, onCa
   }, [selectedCell]);
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #ccc', borderRadius: 8, padding: 24, maxWidth: '95vw', maxHeight: '90vh', overflow: 'auto' }}>
+    <div style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--line)', borderRadius: 8, padding: 24, maxWidth: '95vw', maxHeight: '90vh', overflow: 'auto' }}>
       <h3>Jahres-Dienstplan-Import {year}</h3>
-      <p style={{ marginTop: 0, color: '#555', fontSize: 14 }}>Füge (Copy & Paste) aus Excel ein. Jede Zeile = Person/Azubi, jede Spalte = Tag (MM.TT). Scrollbar für viele Tage.</p>
+      <p style={{ marginTop: 0, color: 'var(--muted)', fontSize: 14 }}>Füge (Copy & Paste) aus Excel ein. Jede Zeile = Person/Azubi, jede Spalte = Tag (MM.TT). Scrollbar für viele Tage.</p>
       <table ref={tableRef} style={{ borderCollapse: 'collapse' }}>
         <thead>
           <tr>
-            <th style={{ position: 'sticky', left: 0, top: 0, background: '#fff', zIndex: 3, border: '1px solid #ccc' }}>Name</th>
+            <th style={{ position: 'sticky', left: 0, top: 0, background: 'var(--bg)', zIndex: 3, border: '1px solid var(--line)' }}>Name</th>
             {days.map((d, i) => (
-              <th key={i} style={{ border: '1px solid #ccc', fontSize: 11 }}>{d.date}</th>
+              <th key={i} style={{ border: '1px solid var(--line)', fontSize: 11 }}>{d.date}</th>
             ))}
           </tr>
           <tr>
-            <th style={{ position: 'sticky', left: 0, top: 24, background: '#fff', zIndex: 3, border: '1px solid #ccc' }}> </th>
+            <th style={{ position: 'sticky', left: 0, top: 24, background: 'var(--bg)', zIndex: 3, border: '1px solid var(--line)' }}> </th>
             {days.map((d, i) => (
-              <th key={i} style={{ border: '1px solid #ccc', fontSize: 11 }}>{d.weekday}</th>
+              <th key={i} style={{ border: '1px solid var(--line)', fontSize: 11 }}>{d.weekday}</th>
             ))}
           </tr>
         </thead>
@@ -85,17 +85,17 @@ const ImportYearTable: React.FC<ImportYearTableProps> = ({ year, personnel, onCa
             return [
               isFirstAzubi ? (
                 <tr key={`sep_${p.id}`}>
-                  <td colSpan={days.length + 1} style={{ background: '#e3f2fd', fontWeight: 'bold', color: '#1976d2', borderTop: '2px solid #1976d2', borderBottom: '2px solid #1976d2', textAlign: 'left' }}>Azubis</td>
+                  <td colSpan={days.length + 1} style={{ background: 'var(--hover)', fontWeight: 'bold', color: 'var(--text)', borderTop: '1px solid var(--line)', borderBottom: '1px solid var(--line)', textAlign: 'left' }}>Azubis</td>
                 </tr>
               ) : null,
-              <tr key={p.id} style={{ background: rowIdx % 2 === 1 ? '#f8f9fb' : undefined }}>
-                <td style={{ position: 'sticky', left: 0, background: '#fff', zIndex: 2, border: '1px solid #ccc', fontStyle: p.isAzubi ? 'italic' : undefined }}>
+              <tr key={p.id} style={{ background: rowIdx % 2 === 1 ? 'var(--hover)' : undefined }}>
+                <td style={{ position: 'sticky', left: 0, background: rowIdx % 2 === 1 ? 'var(--hover)' : 'var(--bg)', zIndex: 2, border: '1px solid var(--line)', fontStyle: p.isAzubi ? 'italic' : undefined }}>
                   {p.name}{p.isAzubi && p.lehrjahr ? ` (Azubi, ${p.lehrjahr}. Lj.)` : ''}
                 </td>
                 {days.map((_, colIdx) => (
                   <td
                     key={colIdx}
-                    style={{ minWidth: 70, border: '1px solid #ccc', cursor: 'pointer', background: selectedCell && selectedCell.row === rowIdx && selectedCell.col === colIdx ? '#e3f2fd' : undefined }}
+                    style={{ minWidth: 70, border: '1px solid var(--line)', cursor: 'pointer', background: selectedCell && selectedCell.row === rowIdx && selectedCell.col === colIdx ? 'var(--hover)' : undefined }}
                     onClick={() => setSelectedCell({ row: rowIdx, col: colIdx })}
                   >
                     <div
@@ -123,7 +123,7 @@ const ImportYearTable: React.FC<ImportYearTableProps> = ({ year, personnel, onCa
         <button onClick={() => onImport(table)} style={{ marginRight: 12 }}>Importieren</button>
         <button onClick={onCancel}>Abbrechen</button>
       </div>
-      <div style={{ marginTop: 12, color: '#555', fontSize: 14 }}>
+      <div style={{ marginTop: 12, color: 'var(--muted)', fontSize: 14 }}>
         <b>Tipp:</b> Kompletten Jahresplan aus Excel markieren (ohne Überschriften) und hier einfügen (Cmd+V / Strg+V).
       </div>
     </div>
