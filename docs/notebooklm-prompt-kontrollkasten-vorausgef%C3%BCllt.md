@@ -57,7 +57,7 @@ Vorgegebene Szenen- und Asset-Struktur (verbindlich übernehmen):
 
 3) 2) Name und Hervorhebung in der Einteilung (1:30–2:20)
    - Visual: Namensklick + Hervorhebung
-   - Assets: S2.png
+   - Assets: S2.1.png S2.2.png
    - Animation: Cursor-Klick + kurzer Pulse auf markierter Zeile
 
 4) 3) Soll | Ist + Mini-Waage (2:20–3:30)
