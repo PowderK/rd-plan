@@ -31,12 +31,12 @@ Designregeln (verbindlich):
   - 7) Besondere Kennzeichnungen von Personentypen
   - 8) So nutzt ihr den Kontrollkasten im Alltag
   - Abschluss
+- Die Animationen erstelle selber
 
 Assetregeln (verbindlich):
 - Nutze ausschließlich die folgenden PNG-Dateien.
 - Dateinamen müssen exakt so verwendet werden:
   - S1.png, S2.png, S3.png, S4.png, S5.png, S6.png, S7.png, S8.png, S9.png
-  - A1.png, A2.png, A3.png, A4.png, A5.png, A6.png, A7.png, A8.png
 - Keine neuen Dateinamen erfinden.
 - Wenn ein Asset fehlt, markiere nur: [BENÖTIGT: Dateiname].
 
@@ -57,27 +57,27 @@ Vorgegebene Szenen- und Asset-Struktur (verbindlich übernehmen):
 
 3) 2) Name und Hervorhebung in der Einteilung (1:30–2:20)
    - Visual: Namensklick + Hervorhebung
-   - Assets: S2.png, A2.png
+   - Assets: S2.png
    - Animation: Cursor-Klick + kurzer Pulse auf markierter Zeile
 
 4) 3) Soll | Ist + Mini-Waage (2:20–3:30)
    - Visual: Soll/Ist-Detail
-   - Assets: S3.png, A3.png
+   - Assets: S3.png
    - Animation: Einblendung „Soll links | Ist rechts“ + Pfeil zur Waage
 
 5) 4) NEF, ITW, WE und Alt (3:30–4:40)
    - Visual: Spaltenvergleich
-   - Assets: S4.png, A4.png
+   - Assets: S4.png
    - Animation: nacheinander NEF → ITW → WE → Alt hervorheben
 
 6) 5) Ges.-Spalte (Jahresrest) mit Ampellogik (4:40–5:40)
    - Visual: Ampelvergleich + Sonderfall
-   - Assets: S5.png, S6.png, A5.png
+   - Assets: S5.png, S6.png
    - Animation: Rot/Gelb/Grün-Überblendung mit kurzer Legende
 
 7) 6) T/N-Waage und Restbalken (5:40–7:00)
    - Visual: T/N-Verteilung + Restkapazität
-   - Assets: S7.png, S8.png, A6.png, A7.png
+   - Assets: S7.png, S8.png
    - Animation: Waage links/rechts, Restbalken fährt auf Zielwert
 
 8) 7) Besondere Kennzeichnungen von Personentypen (7:00–7:40)
@@ -87,7 +87,6 @@ Vorgegebene Szenen- und Asset-Struktur (verbindlich übernehmen):
 
 9) 8) So nutzt ihr den Kontrollkasten im Alltag (7:40–8:40)
    - Visual: Schrittfolge im Arbeitsablauf
-   - Assets: A8.png
    - Animation: Checkliste mit fünf Schritten nacheinander einblenden
 
 10) Abschluss (8:40–9:00)
