@@ -95,12 +95,18 @@ catch {
 }
 Write-Log "DLLs erfolgreich geladen."
 
+# Resolve a single base path for splash assets (PS5-compatible syntax)
+$assetBase = $root
+if ($assetRoot) {
+    $assetBase = $assetRoot
+}
+
 # Image Paths
-$logoPath = Join-Path (if ($assetRoot) { $assetRoot } else { $root }) "media/RD-Plan Logo.gif"
-$iconPath = Join-Path (if ($assetRoot) { $assetRoot } else { $root }) "media/Icon.ico"
+$logoPath = Join-Path $assetBase "media/RD-Plan Logo.gif"
+$iconPath = Join-Path $assetBase "media/Icon.ico"
 
 # Resource Path for Icons.xaml
-$resourcesDir = Join-Path (if ($assetRoot) { $assetRoot } else { $root }) "resources"
+$resourcesDir = Join-Path $assetBase "resources"
 $iconsXaml = Join-Path $resourcesDir "Icons.xaml"
 
 # Define XAML
@@ -206,7 +212,15 @@ try {
     $window = [System.Windows.Markup.XamlReader]::Load($reader)
 }
 catch {
-    Write-Log "Failed to parse XAML: $($_.Exception.Message) | iconsXaml=$iconsXaml (exists=$(Test-Path $iconsXaml)) | logoPath=$logoPath (exists=$(Test-Path $logoPath))" "ERROR"
+    $iconsExists = $false
+    if ($iconsXaml) {
+        $iconsExists = Test-Path $iconsXaml
+    }
+    $logoExists = $false
+    if ($logoPath) {
+        $logoExists = Test-Path $logoPath
+    }
+    Write-Log "Failed to parse XAML: $($_.Exception.Message) | iconsXaml=$iconsXaml (exists=$iconsExists) | logoPath=$logoPath (exists=$logoExists)" "ERROR"
     exit 1
 }
 Write-Log "XAML erfolgreich geparst."
