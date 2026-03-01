@@ -21,3 +21,10 @@
 [2026-03-01 15:26:14.626] [INFO] Warte auf Prozess...
 [2026-03-01 15:26:14.658] [INFO] Warte auf Prozessstart...
 [2026-03-01 15:26:47.426] [INFO] Prozess erkannt. SchlieÃŸe Splash-Screen...
+
+
+[2026-03-01 19:28:36.807] [INFO] Script gestartet. Root-Verzeichnis: G:\o_37_Projekte\o_37_Personalplanungstool\o_37_Personalplanungstool_Wachen\o_37_FRW4\1_Abt\RD-Plan
+[2026-03-01 19:28:36.839] [INFO] Logdatei: G:\o_37_Projekte\o_37_Personalplanungstool\o_37_Personalplanungstool_Wachen\o_37_FRW4\1_Abt\RD-Plan\logs\splash-start-20260301-192836.log
+[2026-03-01 19:28:36.855] [INFO] Asset-Verzeichnis erkannt: G:\o_37_Projekte\o_37_Personalplanungstool\o_37_Personalplanungstool_Wachen\o_37_FRW4\1_Abt\RD-Plan
+[2026-03-01 19:28:37.076] [INFO] DLLs erfolgreich geladen.
+[2026-03-01 19:28:37.820] [ERROR] Failed to parse XAML: Ausnahme beim Aufrufen von "Load" mit 1 Argument(en):  "Zeilennummer "30" und Zeilenposition "37" von "Beim Festlegen der Eigenschaft "System.Windows.ResourceDictionary.Source" wurde eine Ausnahme ausgelöst."."
