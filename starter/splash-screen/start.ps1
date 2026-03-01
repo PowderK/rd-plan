@@ -1,7 +1,27 @@
 
 # Get the script root directory
-# Get the script root directory
 $root = $PSScriptRoot
+
+function Resolve-SplashAssetRoot {
+    param([string]$ScriptRoot)
+
+    $candidates = @(
+        $ScriptRoot,
+        (Join-Path $ScriptRoot "starter/splash-screen"),
+        (Join-Path (Split-Path -Parent $ScriptRoot) "starter/splash-screen")
+    )
+
+    foreach ($candidate in $candidates) {
+        $mahAppsCandidate = Join-Path $candidate "assemblies/MahApps.Metro.dll"
+        if (Test-Path $mahAppsCandidate) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+$assetRoot = Resolve-SplashAssetRoot -ScriptRoot $root
 
 # Logging setup (Console + File)
 $logDir = Join-Path $root "logs"
@@ -34,11 +54,14 @@ function Write-Log {
 
 Write-Log "Script gestartet. Root-Verzeichnis: $root"
 Write-Log "Logdatei: $logFile"
+if ($assetRoot) {
+    Write-Log "Asset-Verzeichnis erkannt: $assetRoot"
+}
 
  
 
-# Paths to DLLs (Relative to this script)
-$dllDir = Join-Path $root "assemblies"
+# Paths to DLLs
+$dllDir = if ($assetRoot) { Join-Path $assetRoot "assemblies" } else { Join-Path $root "assemblies" }
 $mahAppsDll = Join-Path $dllDir "MahApps.Metro.dll"
 $loadingDll = Join-Path $dllDir "LoadingIndicators.WPF.dll"
 $interactivityDll = Join-Path $dllDir "System.Windows.Interactivity.dll"
@@ -54,17 +77,17 @@ try {
 }
 
 catch {
-    Write-Log "Failed to load required DLLs. Please ensure they exist in $dllDir. Details: $($_.Exception.Message)" "ERROR"
+    Write-Log "Failed to load required DLLs. Searched base path: $root ; asset path: $assetRoot ; expected DLL dir: $dllDir. Details: $($_.Exception.Message)" "ERROR"
     exit 1
 }
 Write-Log "DLLs erfolgreich geladen."
 
-# Image Paths (Relative to this script)
-$logoPath = Join-Path $root "media/RD-Plan Logo.gif"
-$iconPath = Join-Path $root "media/Icon.ico"
+# Image Paths
+$logoPath = Join-Path (if ($assetRoot) { $assetRoot } else { $root }) "media/RD-Plan Logo.gif"
+$iconPath = Join-Path (if ($assetRoot) { $assetRoot } else { $root }) "media/Icon.ico"
 
-# Resource Path for Icons.xaml (Relative to this script)
-$resourcesDir = Join-Path $root "resources"
+# Resource Path for Icons.xaml
+$resourcesDir = Join-Path (if ($assetRoot) { $assetRoot } else { $root }) "resources"
 $iconsXaml = Join-Path $resourcesDir "Icons.xaml"
 
 # Define XAML
