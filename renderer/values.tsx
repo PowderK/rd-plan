@@ -272,14 +272,25 @@ const ValuesPage: React.FC = () => {
   const deptPatternSeqs = useDeptPatterns();
 
   useEffect(() => {
-    (async () => {
+    const loadCurrentUser = async () => {
       try {
         const user = await (window as any).api.authGetCurrentUser?.();
         setCurrentUser(user || null);
       } catch {
         setCurrentUser(null);
       }
-    })();
+    };
+
+    loadCurrentUser();
+
+    const api = (window as any).api;
+    api?.onSettingsUpdated?.(loadCurrentUser);
+    api?.onPersonnelUpdated?.(loadCurrentUser);
+
+    return () => {
+      api?.offSettingsUpdated?.(loadCurrentUser);
+      api?.offPersonnelUpdated?.(loadCurrentUser);
+    };
   }, []);
 
   const wertePermission: 'none' | 'read' | 'read_all' | 'write' =
@@ -487,22 +498,22 @@ const ValuesPage: React.FC = () => {
 
   const fmt = (v: number) => new Intl.NumberFormat('de-DE').format(Number(v || 0));
   const styles = {
-    table: { borderCollapse: 'collapse', minWidth: 980 } as React.CSSProperties,
-    thSticky: { position: 'sticky' as const, top: 0, background: 'var(--bg)', zIndex: 2, border: '1px solid var(--line)', padding: '6px 8px' },
-    thStickyName: { position: 'sticky' as const, top: 0, left: 0, background: 'var(--bg)', zIndex: 4, border: '1px solid var(--line)', padding: '6px 8px' },
-    th: { border: '1px solid var(--line)', padding: '6px 8px' },
-    nameSticky: { position: 'sticky' as const, left: 0, background: 'var(--bg)', zIndex: 3, border: '1px solid var(--line)', padding: '6px 8px', minWidth: 240, textAlign: 'left' },
-    td: { border: '1px solid var(--line)', padding: '6px 8px', textAlign: 'right' } as React.CSSProperties,
-    tdLeft: { border: '1px solid var(--line)', padding: '6px 8px', textAlign: 'left' } as React.CSSProperties,
-    kpiRow: { background: 'var(--hover)' } as React.CSSProperties,
-    zebra1: { background: 'var(--bg)' } as React.CSSProperties,
-    zebra2: { background: 'var(--hover)' } as React.CSSProperties,
-    sectionSep: { height: 8, background: 'var(--line)' } as React.CSSProperties,
+    table: { borderCollapse: 'separate', borderSpacing: 0, minWidth: 980, background: '#ffffff' } as React.CSSProperties,
+    thSticky: { position: 'sticky' as const, top: 0, background: '#f8fbff', zIndex: 2, borderBottom: '1px solid #dbe7ff', padding: '6px 8px', boxShadow: '0 1px 0 0 #dbe7ff' },
+    thStickyName: { position: 'sticky' as const, top: 0, left: 0, background: '#f8fbff', zIndex: 4, borderBottom: '1px solid #dbe7ff', borderRight: '1px solid #dbe7ff', padding: '6px 8px', boxShadow: '0 1px 0 0 #dbe7ff' },
+    th: { borderBottom: '1px solid #dbe7ff', padding: '6px 8px' },
+    nameSticky: { position: 'sticky' as const, left: 0, background: '#ffffff', zIndex: 3, borderBottom: '1px solid #e4edff', borderRight: '1px solid #dbe7ff', padding: '6px 8px', minWidth: 240, textAlign: 'left' },
+    td: { borderBottom: '1px solid #e4edff', padding: '6px 8px', textAlign: 'right' } as React.CSSProperties,
+    tdLeft: { borderBottom: '1px solid #e4edff', padding: '6px 8px', textAlign: 'left' } as React.CSSProperties,
+    kpiRow: { background: '#f5f9ff' } as React.CSSProperties,
+    zebra1: { background: '#ffffff' } as React.CSSProperties,
+    zebra2: { background: '#f5f9ff' } as React.CSSProperties,
+    sectionSep: { height: 8, background: '#e4edff' } as React.CSSProperties,
   };
   return (
     <div style={{ padding: 16 }}>
       <h2>Werte – {year}</h2>
-      <div style={{ overflow: 'auto', maxHeight: '70vh', border: '1px solid var(--line)', borderRadius: 8 }}>
+      <div style={{ overflow: 'auto', maxHeight: '70vh', border: '1px solid #d6e4ff', borderRadius: 10 }}>
         <table style={styles.table}>
           <thead>
             <tr>
@@ -517,7 +528,7 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600 }}>Positionen gesamt (netto)</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Abteilungsschichten × (RTW×4 + NEF×2) + ITW − Azubis (Maschinist)</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Abteilungsschichten × (RTW×4 + NEF×2) + ITW − Azubis (Maschinist)</div>
               </td>
               {row1Adj.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }}>{fmt(sumPositionsYear)}</td>
@@ -525,7 +536,7 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600 }}>Anzahl Personal (gewichtet)</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Stammpersonal mit mind. einer Schicht (Auswertung ≠ off) im Monat; FzF HLF‑B zählt mit 0,75</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Stammpersonal mit mind. einer Schicht (Auswertung ≠ off) im Monat; FzF HLF‑B zählt mit 0,75</div>
               </td>
               {row2.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
@@ -533,7 +544,7 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600 }}>Anzahl Azubis (Maschinist)</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Summe der Azubi‑Maschinist‑Einsätze je Monat</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Summe der Azubi‑Maschinist‑Einsätze je Monat</div>
               </td>
               {rowAzubis.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
@@ -541,7 +552,7 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600 }}>ITW‑Schichten</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Summe aller ITW‑Einsätze (Slot oder Auswertung = ITW)</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Summe aller ITW‑Einsätze (Slot oder Auswertung = ITW)</div>
               </td>
               {rowItw.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
@@ -549,7 +560,7 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600 }}>Mittelwert (24h + ITW)</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Durchschnitt pro Monat über Personen mit &gt; 0 (gerundet)</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Durchschnitt pro Monat über Personen mit &gt; 0 (gerundet)</div>
               </td>
               {rowAvgCombined.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
@@ -557,7 +568,7 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600 }}>Schichten je Person</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Positionen gesamt ÷ Anzahl Personal</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Positionen gesamt ÷ Anzahl Personal</div>
               </td>
               {row3.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
@@ -573,17 +584,17 @@ const ValuesPage: React.FC = () => {
               const sumTargets = targets.reduce((a, b) => a + b, 0);
               return (
                 <tr key={row.id} style={Number(row.id) % 2 === 0 ? styles.zebra1 : styles.zebra2}>
-                  <td style={{ ...(styles.nameSticky as any), color: row.hlfb ? '#1565c0' : undefined }}>{row.name}</td>
+                  <td style={{ ...(styles.nameSticky as any), color: row.hlfb ? 'var(--accent)' : undefined }}>{row.name}</td>
                   {row.counts.map((v, i) => (
                     <td key={i} style={styles.td}>
                       {v ? (
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                           <span>{fmt(v)}</span>
-                          <span style={{ color: '#374151' }}>|</span>
-                          <span style={{ color: '#0f766e' }}>{targets[i] ? fmt(targets[i]) : ''}</span>
+                          <span style={{ color: 'var(--muted)' }}>|</span>
+                          <span style={{ color: 'var(--accent)' }}>{targets[i] ? fmt(targets[i]) : ''}</span>
                         </div>
                       ) : (targets[i] ? (
-                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}><span style={{ color: '#0f766e' }}>{fmt(targets[i])}</span></div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}><span style={{ color: 'var(--accent)' }}>{fmt(targets[i])}</span></div>
                       ) : '')}
                     </td>
                   ))}
@@ -591,8 +602,8 @@ const ValuesPage: React.FC = () => {
                     {(sumPresence || sumTargets) ? (
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                         <span>{sumPresence ? fmt(sumPresence) : ''}</span>
-                        <span style={{ color: '#374151' }}>|</span>
-                        <span style={{ color: '#0f766e' }}>{sumTargets ? fmt(sumTargets) : ''}</span>
+                        <span style={{ color: 'var(--muted)' }}>|</span>
+                        <span style={{ color: 'var(--accent)' }}>{sumTargets ? fmt(sumTargets) : ''}</span>
                       </div>
                     ) : ''}
                   </td>
@@ -603,7 +614,7 @@ const ValuesPage: React.FC = () => {
               <>
                 {/* Separator vor Azubis */}
                 <tr>
-                  <td colSpan={monthNames.length + 2} style={{ ...styles.tdLeft, background: '#eef2f7', fontWeight: 600 }}>Azubis</td>
+                  <td colSpan={monthNames.length + 2} style={{ ...styles.tdLeft, background: '#eef5ff', fontWeight: 600 }}>Azubis</td>
                 </tr>
                 {perAzubiMaschinist.map(row => {
                   const sum = row.counts.reduce((a, b) => a + b, 0);

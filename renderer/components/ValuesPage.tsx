@@ -429,6 +429,7 @@ const ValuesPage: React.FC = () => {
   const roster = useRoster(year);
   const personnel = usePersonnel(year);
   const azubis = useAzubis();
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const ue50Ids = useUe50PersonnelIds(year);
   const auswertungByType = useAuswertungByType();
   const { rtw, nef } = useVehicles();
@@ -445,6 +446,28 @@ const ValuesPage: React.FC = () => {
       } catch { setShiftTransfers([]); }
     })();
   }, [year]);
+
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      try {
+        const user = await (window as any).api.authGetCurrentUser?.();
+        setCurrentUser(user || null);
+      } catch {
+        setCurrentUser(null);
+      }
+    };
+
+    loadCurrentUser();
+
+    const api = (window as any).api;
+    api?.onSettingsUpdated?.(loadCurrentUser);
+    api?.onPersonnelUpdated?.(loadCurrentUser);
+
+    return () => {
+      api?.offSettingsUpdated?.(loadCurrentUser);
+      api?.offPersonnelUpdated?.(loadCurrentUser);
+    };
+  }, []);
 
   // Reagiere auf Jahr-Änderungen von DutyRoster
   useEffect(() => {
@@ -833,21 +856,32 @@ const ValuesPage: React.FC = () => {
 
   const [selectedPersonId, setSelectedPersonId] = useState<number | null>(null);
 
+  const wertePermission: 'none' | 'read' | 'read_all' | 'write' = (currentUser?.permissions?.werte as any) || 'none';
+  const canReadAllWerte = wertePermission === 'read_all' || wertePermission === 'write';
+  const visiblePresenceRows = useMemo(() => {
+    if (canReadAllWerte) return perPersonPresenceWeighted;
+    if (wertePermission === 'read' && currentUser?.userId != null) {
+      const currentUserId = Number(currentUser.userId);
+      return perPersonPresenceWeighted.filter(r => Number(r.id) === currentUserId);
+    }
+    return [];
+  }, [perPersonPresenceWeighted, canReadAllWerte, wertePermission, currentUser?.userId]);
+
   const fmt = (v: number) => new Intl.NumberFormat('de-DE').format(Number(v || 0));
   const fmtDec = (v: number) => new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(Number(v || 0));
 
   const styles = {
-    table: { borderCollapse: 'separate', borderSpacing: 0, minWidth: 980 } as React.CSSProperties,
-    thSticky: { position: 'sticky' as const, top: 0, background: 'var(--bg)', zIndex: 2, borderBottom: '1px solid var(--line)', padding: '6px 8px', boxShadow: '0 1px 0 0 var(--line)' },
-    thStickyName: { position: 'sticky' as const, top: 0, left: 0, background: 'var(--bg)', zIndex: 4, borderBottom: '1px solid var(--line)', borderRight: '1px solid var(--line)', padding: '6px 8px', boxShadow: '0 1px 0 0 var(--line)' },
-    th: { borderBottom: '1px solid var(--line)', padding: '6px 8px' },
-    nameSticky: { position: 'sticky' as const, left: 0, background: 'var(--bg)', zIndex: 3, borderBottom: '1px solid var(--line)', borderRight: '1px solid var(--line)', padding: '6px 8px', minWidth: 240, textAlign: 'left' },
-    td: { borderBottom: '1px solid var(--line)', padding: '6px 8px', textAlign: 'right' } as React.CSSProperties,
-    tdLeft: { borderBottom: '1px solid var(--line)', padding: '6px 8px', textAlign: 'left' } as React.CSSProperties,
-    kpiRow: { background: 'var(--hover)' } as React.CSSProperties,
-    zebra1: { background: 'var(--bg)' } as React.CSSProperties,
-    zebra2: { background: 'var(--hover)' } as React.CSSProperties,
-    sectionSep: { height: 8, background: 'var(--line)' } as React.CSSProperties,
+    table: { borderCollapse: 'separate', borderSpacing: 0, minWidth: 980, background: '#ffffff' } as React.CSSProperties,
+    thSticky: { position: 'sticky' as const, top: 0, background: '#f8fbff', zIndex: 2, borderBottom: '1px solid #dbe7ff', padding: '6px 8px', boxShadow: '0 1px 0 0 #dbe7ff' },
+    thStickyName: { position: 'sticky' as const, top: 0, left: 0, background: '#f8fbff', zIndex: 4, borderBottom: '1px solid #dbe7ff', borderRight: '1px solid #dbe7ff', padding: '6px 8px', boxShadow: '0 1px 0 0 #dbe7ff' },
+    th: { borderBottom: '1px solid #dbe7ff', padding: '6px 8px' },
+    nameSticky: { position: 'sticky' as const, left: 0, background: '#ffffff', zIndex: 3, borderBottom: '1px solid #e4edff', borderRight: '1px solid #dbe7ff', padding: '6px 8px', minWidth: 240, textAlign: 'left' },
+    td: { borderBottom: '1px solid #e4edff', padding: '6px 8px', textAlign: 'right' } as React.CSSProperties,
+    tdLeft: { borderBottom: '1px solid #e4edff', padding: '6px 8px', textAlign: 'left' } as React.CSSProperties,
+    kpiRow: { background: '#f5f9ff' } as React.CSSProperties,
+    zebra1: { background: '#ffffff' } as React.CSSProperties,
+    zebra2: { background: '#f5f9ff' } as React.CSSProperties,
+    sectionSep: { height: 8, background: '#e4edff' } as React.CSSProperties,
     popupOverlay: {
       position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0,
       background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center'
@@ -876,9 +910,9 @@ const ValuesPage: React.FC = () => {
             <div style={{
               marginBottom: 15,
               padding: '10px',
-              backgroundColor: '#f8d7da',
-              color: '#721c24',
-              border: '1px solid #f5c6cb',
+              backgroundColor: 'var(--hover)',
+              color: 'var(--text)',
+              border: '1px solid var(--line)',
               borderRadius: 6,
               fontWeight: 600,
               display: 'flex',
@@ -893,9 +927,9 @@ const ValuesPage: React.FC = () => {
             <div style={{
               marginBottom: 15,
               padding: '10px',
-              backgroundColor: '#e3f2fd',
-              color: '#1565c0',
-              border: '1px solid #bbdefb',
+              backgroundColor: 'var(--hover)',
+              color: 'var(--text)',
+              border: '1px solid var(--line)',
               borderRadius: 6,
               fontWeight: 600,
               display: 'flex',
@@ -932,18 +966,18 @@ const ValuesPage: React.FC = () => {
                     <td style={styles.tdLeft}>{monthNames[d.month]}</td>
                     <td style={styles.td}>{fmt(d.required)}</td>
                     <td style={styles.td}>{fmt(d.totalWeight)}</td>
-                    <td style={{ ...styles.td, color: isHlfbMonth ? '#1565c0' : 'inherit', fontWeight: isHlfbMonth ? 'bold' : 'normal', background: isHlfbMonth ? '#f0f7ff' : 'transparent' }}>{fmt(d.personWeight)}</td>
-                    <td style={{ ...styles.td, color: hasTransfer ? '#3b82f6' : 'inherit', fontWeight: hasTransfer ? 'bold' : 'normal' }}>{fmtDec(d.exact)}</td>
+                    <td style={{ ...styles.td, color: isHlfbMonth ? 'var(--accent)' : 'inherit', fontWeight: isHlfbMonth ? 'bold' : 'normal', background: isHlfbMonth ? 'var(--hover)' : 'transparent' }}>{fmt(d.personWeight)}</td>
+                    <td style={{ ...styles.td, color: hasTransfer ? 'var(--accent)' : 'inherit', fontWeight: hasTransfer ? 'bold' : 'normal' }}>{fmtDec(d.exact)}</td>
                     <td style={styles.td}>{d.floor}</td>
                     <td style={styles.td}>{d.bonus > 0 ? '+1' : '-'}</td>
-                    <td style={{ ...styles.td, fontWeight: 'bold', color: hasTransfer ? '#3b82f6' : '#0f766e' }}>{d.final}</td>
+                    <td style={{ ...styles.td, fontWeight: 'bold', color: hasTransfer ? 'var(--accent)' : 'var(--text)' }}>{d.final}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
 
-          <div style={{ marginTop: 20, padding: 12, background: '#f9fafb', borderRadius: 6, fontSize: 13, lineHeight: 1.5, color: '#374151' }}>
+          <div style={{ marginTop: 20, padding: 12, background: 'var(--hover)', border: '1px solid var(--line)', borderRadius: 6, fontSize: 13, lineHeight: 1.5, color: 'var(--text)' }}>
             <h4 style={{ marginTop: 0, marginBottom: 8 }}>Erklärung der Berechnung</h4>
             <ul style={{ paddingLeft: 20, margin: 0 }}>
               <li><strong>Pos. (Netto):</strong> Gesamtzahl der zu besetzenden Schichten im Monat. <br />
@@ -969,7 +1003,7 @@ const ValuesPage: React.FC = () => {
       {/* Überschrift - ROT */}
       <h2 className="page-header">Werte – {year}</h2>
       {/* Content - GRAU */}
-      <div className="page-content" style={{ overflow: 'auto', maxHeight: '70vh', border: '1px solid var(--line)', borderRadius: 10, position: 'relative', paddingTop: 0 }}>
+      <div className="page-content" style={{ overflow: 'auto', maxHeight: '70vh', border: '1px solid #d6e4ff', borderRadius: 10, position: 'relative', paddingTop: 0 }}>
         <table style={styles.table}>
           <thead>
             <tr>
@@ -984,7 +1018,7 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600 }}>Positionen gesamt (netto)</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Abteilungsschichten × (RTW×4 + NEF×2) + ITW − Azubis (Maschinist) − Ü50</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Abteilungsschichten × (RTW×4 + NEF×2) + ITW − Azubis (Maschinist) − Ü50</div>
               </td>
               {row1Adj.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }}>{fmt(sumPositionsYear)}</td>
@@ -992,7 +1026,7 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600 }}>Anzahl Personal (gewichtet)</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Stammpersonal mit mind. einer Schicht (Auswertung ≠ off); HLF‑B ungewichtet gezählt</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Stammpersonal mit mind. einer Schicht (Auswertung ≠ off); HLF‑B ungewichtet gezählt</div>
               </td>
               {row2.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
@@ -1000,7 +1034,7 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600 }}>Anzahl Azubis (Maschinist)</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Summe der Azubi‑Maschinist‑Einsätze je Monat</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Summe der Azubi‑Maschinist‑Einsätze je Monat</div>
               </td>
               {rowAzubis.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
@@ -1008,7 +1042,7 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600 }}>Anzahl Ü50-Schichten</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Summe aller Ü50-Personen-Einsätze je Monat (alle Positionen)</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Summe aller Ü50-Personen-Einsätze je Monat (alle Positionen)</div>
               </td>
               {rowUe50.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
@@ -1016,7 +1050,7 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600 }}>ITW‑Schichten</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Summe aller ITW‑Einsätze (Slot oder Auswertung = ITW)</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Summe aller ITW‑Einsätze (Slot oder Auswertung = ITW)</div>
               </td>
               {rowItw.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
@@ -1024,7 +1058,7 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600 }}>Mittelwert (24h + ITW)</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Durchschnitt pro Monat über Personen mit {'>'} 0 (gerundet)</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Durchschnitt pro Monat über Personen mit {'>'} 0 (gerundet)</div>
               </td>
               {rowAvgCombined.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
@@ -1032,7 +1066,7 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600 }}>Schichten je Person</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Positionen gesamt ÷ Anzahl Personal</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Positionen gesamt ÷ Anzahl Personal</div>
               </td>
               {row3.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
@@ -1041,33 +1075,33 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600 }}>Kontrolle: Positionen vs. Soll</div>
-                <div style={{ fontSize: 12, color: '#666' }}>Grün = gleich, Rot = abweichend</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Markiert = Vergleich Positionen zu Soll</div>
               </td>
               {row1Adj.map((pos, i) => {
                 const soll = totalTargetsPerMonth[i] || 0;
                 const ok = Number(pos || 0) === Number(soll || 0);
-                const bg = ok ? '#e7f6ec' : '#fdeaea';
-                const border = ok ? '1px solid #b7ebc6' : '1px solid #f5c2c7';
+                const bg = ok ? 'var(--hover)' : 'var(--bg)';
+                const border = '1px solid var(--line)';
                 return (
                   <td key={i} style={{ ...styles.td, ...styles.kpiRow, background: bg, border }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                       <span>{fmt(pos)}</span>
-                      <span style={{ color: '#374151' }}>|</span>
-                      <span>{fmt(soll)}</span>
+                      <span style={{ color: 'var(--muted)' }}>|</span>
+                      <span style={{ color: ok ? 'var(--accent)' : 'var(--text)', fontWeight: ok ? 600 : 400 }}>{fmt(soll)}</span>
                     </div>
                   </td>
                 );
               })}
               {(() => {
                 const ok = Number(sumPositionsYear || 0) === Number(sumTargetsYear || 0);
-                const bg = ok ? '#e7f6ec' : '#fdeaea';
-                const border = ok ? '1px solid #b7ebc6' : '1px solid #f5c2c7';
+                const bg = ok ? 'var(--hover)' : 'var(--bg)';
+                const border = '1px solid var(--line)';
                 return (
                   <td style={{ ...styles.td, ...styles.kpiRow, background: bg, border }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                       <span>{fmt(sumPositionsYear)}</span>
-                      <span style={{ color: '#374151' }}>|</span>
-                      <span>{fmt(sumTargetsYear)}</span>
+                      <span style={{ color: 'var(--muted)' }}>|</span>
+                      <span style={{ color: ok ? 'var(--accent)' : 'var(--text)', fontWeight: ok ? 600 : 400 }}>{fmt(sumTargetsYear)}</span>
                     </div>
                   </td>
                 );
@@ -1076,19 +1110,20 @@ const ValuesPage: React.FC = () => {
             <tr>
               <td style={{ ...styles.sectionSep }} colSpan={monthNames.length + 2} />
             </tr>
-            {perPersonPresenceWeighted.map(row => {
+            {visiblePresenceRows.map(row => {
               const sumPresence = row.counts.reduce((a, b) => a + b, 0);
               const targRow = perPersonTargets.find(t => t.id === row.id);
               const targets = targRow?.targets || Array(12).fill(0);
               const sumTargets = targets.reduce((a, b) => a + b, 0);
               // Priorität: Ü50 (rot) > HLF-B (blau)
-              const nameColor = row.ue50 ? '#dc3545' : (row.hlfb ? '#1565c0' : undefined);
+              const nameColor = row.hlfb ? 'var(--accent)' : undefined;
               return (
                 <tr key={row.id} style={Number(row.id) % 2 === 0 ? styles.zebra1 : styles.zebra2}>
                   <td
                     style={{
                       ...(styles.nameSticky as any),
                       color: nameColor,
+                      fontWeight: row.ue50 ? 600 : undefined,
                       cursor: 'pointer',
                       textDecoration: 'underline'
                     }}
@@ -1103,7 +1138,7 @@ const ValuesPage: React.FC = () => {
                       const [ty, tm] = (t.month || '').split('-').map(Number);
                       return ty === year && tm === (i + 1);
                     });
-                    const targetColor = hasTransfer ? '#3b82f6' : '#0f766e';
+                    const targetColor = hasTransfer ? 'var(--accent)' : 'var(--text)';
                     const targetWeight = hasTransfer ? 'bold' : 'normal';
 
                     return (
@@ -1111,7 +1146,7 @@ const ValuesPage: React.FC = () => {
                         {v ? (
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                             <span>{fmt(v)}</span>
-                            <span style={{ color: '#374151' }}>|</span>
+                            <span style={{ color: 'var(--muted)' }}>|</span>
                             <span style={{ color: targetColor, fontWeight: targetWeight }}>{targets[i] ? fmt(targets[i]) : ''}</span>
                           </div>
                         ) : (targets[i] ? (
@@ -1126,29 +1161,33 @@ const ValuesPage: React.FC = () => {
                     {(sumPresence || sumTargets) ? (
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                         <span>{sumPresence ? fmt(sumPresence) : ''}</span>
-                        <span style={{ color: '#374151' }}>|</span>
-                        <span style={{ color: '#0f766e' }}>{sumTargets ? fmt(sumTargets) : ''}</span>
+                        <span style={{ color: 'var(--muted)' }}>|</span>
+                        <span style={{ color: 'var(--accent)' }}>{sumTargets ? fmt(sumTargets) : ''}</span>
                       </div>
                     ) : ''}
                   </td>
                 </tr>
               );
             })}
-            <tr>
-              <td colSpan={monthNames.length + 2} style={{ ...styles.tdLeft, background: '#eef2f7', fontWeight: 600 }}>Azubis</td>
-            </tr>
-            {perAzubiMaschinist.map(row => {
-              const sum = row.counts.reduce((a, b) => a + b, 0);
-              return (
-                <tr key={`az_${row.id}`} style={Number(row.id) % 2 === 0 ? styles.zebra1 : styles.zebra2}>
-                  <td style={styles.nameSticky as any}>{row.name}</td>
-                  {row.counts.map((v, i) => (
-                    <td key={i} style={styles.td}>{v ? fmt(v) : ''}</td>
-                  ))}
-                  <td style={styles.td}>{sum ? fmt(sum) : ''}</td>
+            {canReadAllWerte && (
+              <>
+                <tr>
+                  <td colSpan={monthNames.length + 2} style={{ ...styles.tdLeft, background: '#eef5ff', fontWeight: 600 }}>Azubis</td>
                 </tr>
-              );
-            })}
+                {perAzubiMaschinist.map(row => {
+                  const sum = row.counts.reduce((a, b) => a + b, 0);
+                  return (
+                    <tr key={`az_${row.id}`} style={Number(row.id) % 2 === 0 ? styles.zebra1 : styles.zebra2}>
+                      <td style={styles.nameSticky as any}>{row.name}</td>
+                      {row.counts.map((v, i) => (
+                        <td key={i} style={styles.td}>{v ? fmt(v) : ''}</td>
+                      ))}
+                      <td style={styles.td}>{sum ? fmt(sum) : ''}</td>
+                    </tr>
+                  );
+                })}
+              </>
+            )}
           </tbody>
         </table>
       </div>
