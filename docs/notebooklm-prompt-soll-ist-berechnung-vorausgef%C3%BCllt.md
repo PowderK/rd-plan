@@ -7,6 +7,7 @@ Deine Aufgabe ist die Erstellung eines vollständigen Video-Skripts auf Basis de
 
 Ziel:
 Erzeuge ein verständliches, fachlich präzises Video mit persönlichem, seriösem Ton.
+Verwende in den Beispielen 10 Arbeitstage pro Monat und weise ausdrücklich darauf hin, dass nur 24‑Stunden‑Dienste ("V") als RTW‑Verfügbarkeit gelten; Fortbildungen, Kantine oder LFZ werden nicht gezählt.
 
 Sprach- und Stilregeln (verbindlich):
 - Klar, präzise, didaktisch sauber.
