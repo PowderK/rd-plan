@@ -24,6 +24,14 @@ const months = [
     'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'
 ];
 
+type AssignmentUndoEntry = {
+    date: string;
+    slotId: string;
+    previousValue: string;
+    nextValue: string;
+    ts: number;
+};
+
 const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYearChange, personnel, azubis, roster, year, shiftPattern, deptPatternSeqs = [], onRosterChanged, onEntryAssigned }) => {
     const { hasPermission, currentUser } = useAuth();
     const canWrite = hasPermission('einteilung', 'write');
@@ -59,6 +67,17 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [hlfbPeriodsByPerson, setHlfbPeriodsByPerson] = useState<Record<number, Array<{ startYM: string; endYM?: string }>>>({});
     // Performance: Debouncing für Roster-Updates
     const [updateTimeout, setUpdateTimeout] = useState<NodeJS.Timeout | null>(null);
+    const undoStackStorageKey = '__rdPlanAssignmentUndoStack';
+    const redoStackStorageKey = '__rdPlanAssignmentRedoStack';
+    const isApplyingUndoRef = React.useRef(false);
+    const [undoStack, setUndoStack] = useState<AssignmentUndoEntry[]>(() => {
+        const existing = (window as any)[undoStackStorageKey];
+        return Array.isArray(existing) ? existing : [];
+    });
+    const [redoStack, setRedoStack] = useState<AssignmentUndoEntry[]>(() => {
+        const existing = (window as any)[redoStackStorageKey];
+        return Array.isArray(existing) ? existing : [];
+    });
 
     const [showWeekendShifts, setShowWeekendShifts] = useState<boolean>(false);
     // Freigabe-Status pro Monat
@@ -70,6 +89,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     // Schichtübernahmen
     const [shiftTransfers, setShiftTransfers] = useState<any[]>([]);
     const [availableYears, setAvailableYears] = useState<number[]>([]);
+
+    useEffect(() => {
+        (window as any)[undoStackStorageKey] = undoStack;
+    }, [undoStack]);
+
+    useEffect(() => {
+        (window as any)[redoStackStorageKey] = redoStack;
+    }, [redoStack]);
 
     useEffect(() => {
         const loadYearOptions = async () => {
@@ -783,8 +810,31 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         return val;
     };
 
+    const pushUndoEntry = useCallback((entry: AssignmentUndoEntry) => {
+        if (!entry.slotId || entry.previousValue === entry.nextValue) return;
+        setUndoStack(prev => {
+            const next = [...prev, entry];
+            return next.length > 2000 ? next.slice(next.length - 2000) : next;
+        });
+        setRedoStack([]);
+    }, []);
+
     const handleAssign = useCallback(async (date: string, dayIdx: number, value: string, slotId?: string) => {
+        if (!canWrite) return;
         if (!value) return;
+        if (slotId) {
+            const currentValue = getAssignedValueFor(date, slotId);
+            if (currentValue === value) return;
+            if (!isApplyingUndoRef.current) {
+                pushUndoEntry({
+                    date,
+                    slotId,
+                    previousValue: currentValue,
+                    nextValue: value,
+                    ts: Date.now()
+                });
+            }
+        }
         const [t, idStr] = value.split(':');
         const pid = Number(idStr);
         const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : 'person');
@@ -838,11 +888,21 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         } catch (e) {
             setIsUpdating(false);
         }
-    }, [localRoster, updateTimeout, onRosterChanged, onEntryAssigned]);
+    }, [canWrite, localRoster, updateTimeout, onRosterChanged, onEntryAssigned, getAssignedValueFor, pushUndoEntry]);
     const clearAssignedForDate = async (slotId: string, date: string) => {
+        if (!canWrite) return;
         const currentVal = getAssignedValueFor(date, slotId);
         if (!currentVal) return;
         try {
+            if (!isApplyingUndoRef.current) {
+                pushUndoEntry({
+                    date,
+                    slotId,
+                    previousValue: currentVal,
+                    nextValue: '',
+                    ts: Date.now()
+                });
+            }
             const [t, idStr] = currentVal.split(':');
             const pid = Number(idStr);
             const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : 'person');
@@ -862,6 +922,166 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             // Silently ignore errors
         }
     };
+
+    const undoLastAssignmentChange = useCallback(async () => {
+        if (!canWrite) return;
+        if (undoStack.length === 0) return;
+
+        const lastEntry = undoStack[undoStack.length - 1];
+        setUndoStack(prev => prev.slice(0, -1));
+        if (!lastEntry) return;
+
+        try {
+            isApplyingUndoRef.current = true;
+            const currentVal = getAssignedValueFor(lastEntry.date, lastEntry.slotId);
+            if (currentVal === lastEntry.previousValue) return;
+
+            const parseAssignment = (val: string) => {
+                if (!val) return null;
+                const [t, idStr] = val.split(':');
+                const pid = Number(idStr);
+                if (!Number.isFinite(pid)) return null;
+                const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : 'person');
+                const key = ptype === 'person' ? `p_${pid}` : (ptype === 'azubi' ? `a_${pid}` : `d_${pid}`);
+                return { pid, ptype, key };
+            };
+
+            const currentTarget = parseAssignment(currentVal);
+            const previousTarget = parseAssignment(lastEntry.previousValue);
+
+            setLocalRoster(prev => {
+                const newState = { ...prev } as Record<string, Record<string, { value: string; type: string }>>;
+
+                Object.keys(newState).forEach(personKey => {
+                    const dayEntry = newState[personKey]?.[lastEntry.date];
+                    if (!dayEntry || dayEntry.type !== lastEntry.slotId) return;
+                    newState[personKey] = {
+                        ...newState[personKey],
+                        [lastEntry.date]: { ...(dayEntry as any), type: '' }
+                    };
+                });
+
+                if (previousTarget) {
+                    const currentPersonState = newState[previousTarget.key] || {};
+                    const dayEntry = { ...(currentPersonState[lastEntry.date] || {}), type: lastEntry.slotId };
+                    newState[previousTarget.key] = { ...currentPersonState, [lastEntry.date]: dayEntry };
+                }
+
+                return newState;
+            });
+            setForceUpdateCounter(prev => prev + 1);
+
+            if (currentTarget) {
+                await (window as any).api.assignSlot({
+                    personId: currentTarget.pid,
+                    personType: currentTarget.ptype,
+                    date: lastEntry.date,
+                    slotType: ''
+                });
+            }
+
+            if (previousTarget) {
+                await (window as any).api.assignSlot({
+                    personId: previousTarget.pid,
+                    personType: previousTarget.ptype,
+                    date: lastEntry.date,
+                    slotType: lastEntry.slotId
+                });
+            }
+
+            if (onRosterChanged) onRosterChanged();
+            setRedoStack(prev => {
+                const next = [...prev, lastEntry];
+                return next.length > 2000 ? next.slice(next.length - 2000) : next;
+            });
+        } catch {
+            setUndoStack(prev => [...prev, lastEntry as AssignmentUndoEntry]);
+        } finally {
+            setTimeout(() => {
+                isApplyingUndoRef.current = false;
+            }, 0);
+        }
+    }, [canWrite, undoStack, getAssignedValueFor, onRosterChanged]);
+
+    const redoLastAssignmentChange = useCallback(async () => {
+        if (!canWrite) return;
+        if (redoStack.length === 0) return;
+
+        const lastEntry = redoStack[redoStack.length - 1];
+        setRedoStack(prev => prev.slice(0, -1));
+        if (!lastEntry) return;
+
+        try {
+            isApplyingUndoRef.current = true;
+            const currentVal = getAssignedValueFor(lastEntry.date, lastEntry.slotId);
+            if (currentVal === lastEntry.nextValue) return;
+
+            const parseAssignment = (val: string) => {
+                if (!val) return null;
+                const [t, idStr] = val.split(':');
+                const pid = Number(idStr);
+                if (!Number.isFinite(pid)) return null;
+                const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : 'person');
+                const key = ptype === 'person' ? `p_${pid}` : (ptype === 'azubi' ? `a_${pid}` : `d_${pid}`);
+                return { pid, ptype, key };
+            };
+
+            const currentTarget = parseAssignment(currentVal);
+            const nextTarget = parseAssignment(lastEntry.nextValue);
+
+            setLocalRoster(prev => {
+                const newState = { ...prev } as Record<string, Record<string, { value: string; type: string }>>;
+
+                Object.keys(newState).forEach(personKey => {
+                    const dayEntry = newState[personKey]?.[lastEntry.date];
+                    if (!dayEntry || dayEntry.type !== lastEntry.slotId) return;
+                    newState[personKey] = {
+                        ...newState[personKey],
+                        [lastEntry.date]: { ...(dayEntry as any), type: '' }
+                    };
+                });
+
+                if (nextTarget) {
+                    const currentPersonState = newState[nextTarget.key] || {};
+                    const dayEntry = { ...(currentPersonState[lastEntry.date] || {}), type: lastEntry.slotId };
+                    newState[nextTarget.key] = { ...currentPersonState, [lastEntry.date]: dayEntry };
+                }
+
+                return newState;
+            });
+            setForceUpdateCounter(prev => prev + 1);
+
+            if (currentTarget) {
+                await (window as any).api.assignSlot({
+                    personId: currentTarget.pid,
+                    personType: currentTarget.ptype,
+                    date: lastEntry.date,
+                    slotType: ''
+                });
+            }
+
+            if (nextTarget) {
+                await (window as any).api.assignSlot({
+                    personId: nextTarget.pid,
+                    personType: nextTarget.ptype,
+                    date: lastEntry.date,
+                    slotType: lastEntry.slotId
+                });
+            }
+
+            if (onRosterChanged) onRosterChanged();
+            setUndoStack(prev => {
+                const next = [...prev, lastEntry];
+                return next.length > 2000 ? next.slice(next.length - 2000) : next;
+            });
+        } catch {
+            setRedoStack(prev => [...prev, lastEntry as AssignmentUndoEntry]);
+        } finally {
+            setTimeout(() => {
+                isApplyingUndoRef.current = false;
+            }, 0);
+        }
+    }, [canWrite, redoStack, getAssignedValueFor, onRosterChanged]);
 
     const vehicleHeaderRef = React.useRef<HTMLDivElement>(null);
     const contentRef = React.useRef<HTMLDivElement>(null);
@@ -1283,6 +1503,54 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                             {releasedMonths[currentMonth] ? 'Freigegeben' : 'In Bearbeitung'}
                         </span>
                     </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button
+                            type="button"
+                            onClick={undoLastAssignmentChange}
+                            disabled={!canWrite || undoStack.length === 0}
+                            title={undoStack.length > 0 ? `Zurück (${undoStack.length})` : 'Keine Änderung zum Rückgängigmachen'}
+                            aria-label="Zurück"
+                            style={{
+                                width: 30,
+                                height: 30,
+                                borderRadius: 6,
+                                border: '1px solid #d1d5db',
+                                background: (!canWrite || undoStack.length === 0) ? '#f9fafb' : '#fff',
+                                color: (!canWrite || undoStack.length === 0) ? '#9ca3af' : '#4b5563',
+                                cursor: (!canWrite || undoStack.length === 0) ? 'not-allowed' : 'pointer',
+                                fontSize: 16,
+                                lineHeight: 1,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}
+                        >
+                            ↶
+                        </button>
+                        <button
+                            type="button"
+                            onClick={redoLastAssignmentChange}
+                            disabled={!canWrite || redoStack.length === 0}
+                            title={redoStack.length > 0 ? `Wiederherstellen (${redoStack.length})` : 'Keine Änderung zum Wiederherstellen'}
+                            aria-label="Wiederherstellen"
+                            style={{
+                                width: 30,
+                                height: 30,
+                                borderRadius: 6,
+                                border: '1px solid #d1d5db',
+                                background: (!canWrite || redoStack.length === 0) ? '#f9fafb' : '#fff',
+                                color: (!canWrite || redoStack.length === 0) ? '#9ca3af' : '#4b5563',
+                                cursor: (!canWrite || redoStack.length === 0) ? 'not-allowed' : 'pointer',
+                                fontSize: 16,
+                                lineHeight: 1,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}
+                        >
+                            ↷
+                        </button>
+                    </div>
                     </div>
                 </div>
                 {/* Monats-Tabs */}
@@ -1468,9 +1736,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                     <div key={`rtw_header_${rIdx}`} style={{
                                         marginRight: 8,
                                         marginBottom: 8,
-                                        minWidth: 338,
-                                        paddingTop: 8,
-                                        paddingLeft: 0,
+                                        width: 'var(--vehicle-card-width)',
+                                        minWidth: 'var(--vehicle-card-width)',
+                                        maxWidth: 'var(--vehicle-card-width)',
+                                        padding: 8,
+                                        boxSizing: 'border-box',
                                         background: 'var(--bg)'
                                     }}>
                                         <div style={{ paddingBottom: 4, borderBottom: '2px solid #ef4444' }}>
@@ -1492,9 +1762,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                     <div key={`nef_header_${nIdx}`} style={{
                                         marginRight: 8,
                                         marginBottom: 8,
-                                        minWidth: 238,
-                                        paddingTop: 8,
-                                        paddingLeft: 0,
+                                        width: 'var(--vehicle-card-width)',
+                                        minWidth: 'var(--vehicle-card-width)',
+                                        maxWidth: 'var(--vehicle-card-width)',
+                                        padding: 8,
+                                        boxSizing: 'border-box',
                                         background: 'var(--bg)'
                                     }}>
                                         <div style={{ paddingBottom: 4, borderBottom: '2px solid #ef4444' }}>
@@ -1906,6 +2178,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsA] : optionsA;
                                                                     return (
                                                                         <select className={styles.select} value={value}
+                                                                            disabled={!canWrite}
                                                                             onChange={e => handleAssign(d.date, d.dayOfYear, e.target.value, slotId)}
                                                                             onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_azubi'); } }}>
                                                                             <option value=""></option>
@@ -2218,6 +2491,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                             return (
                                                 <select className={styles.select} value={value}
                                                     style={highlightStyle}
+                                                    disabled={!canWrite}
                                                     onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } else { handleAssign(date, 0, v, slotId); } }}
                                                     onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } }}>
                                                     <option value=""></option>

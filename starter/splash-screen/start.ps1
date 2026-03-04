@@ -65,6 +65,7 @@ function Write-Log {
 
 Write-Log "Script gestartet. Root-Verzeichnis: $root"
 Write-Log "Logdatei: $logFile"
+Write-Log "Benutzerkontext: $env:USERDOMAIN\$env:USERNAME | PS $($PSVersionTable.PSVersion)"
 if ($assetRoot) {
     Write-Log "Asset-Verzeichnis erkannt: $assetRoot"
 } else {
@@ -78,6 +79,28 @@ $dllDir = if ($assetRoot) { Join-Path $assetRoot "assemblies" } else { Join-Path
 $mahAppsDll = Join-Path $dllDir "MahApps.Metro.dll"
 $loadingDll = Join-Path $dllDir "LoadingIndicators.WPF.dll"
 $interactivityDll = Join-Path $dllDir "System.Windows.Interactivity.dll"
+
+function Test-RequiredFile {
+    param(
+        [string]$Path,
+        [string]$Label
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        Write-Log "$Label fehlt: $Path" "ERROR"
+        return $false
+    }
+
+    try {
+        $null = Get-Item -LiteralPath $Path -ErrorAction Stop
+        Write-Log "$Label OK: $Path" "DEBUG"
+        return $true
+    }
+    catch {
+        Write-Log "$Label nicht lesbar: $Path | $($_.Exception.Message)" "ERROR"
+        return $false
+    }
+}
 
 # Load Assemblies
 try {
@@ -108,6 +131,18 @@ $iconPath = Join-Path $assetBase "media/Icon.ico"
 # Resource Path for Icons.xaml
 $resourcesDir = Join-Path $assetBase "resources"
 $iconsXaml = Join-Path $resourcesDir "Icons.xaml"
+
+$filesOk = $true
+$filesOk = (Test-RequiredFile -Path $mahAppsDll -Label "MahApps DLL") -and $filesOk
+$filesOk = (Test-RequiredFile -Path $loadingDll -Label "LoadingIndicators DLL") -and $filesOk
+$filesOk = (Test-RequiredFile -Path $interactivityDll -Label "Interactivity DLL") -and $filesOk
+$filesOk = (Test-RequiredFile -Path $iconsXaml -Label "Icons.xaml") -and $filesOk
+$filesOk = (Test-RequiredFile -Path $logoPath -Label "Logo") -and $filesOk
+
+if (-not $filesOk) {
+    Write-Log "Abbruch: Mindestens eine benötigte Datei fehlt oder ist nicht lesbar." "ERROR"
+    exit 1
+}
 
 # Define XAML
 $xaml = @"
