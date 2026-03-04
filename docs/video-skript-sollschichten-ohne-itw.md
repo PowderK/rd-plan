@@ -20,25 +20,32 @@ Die zentralen Werte im Ablauf sind:
 6) Anteil plus Bonus ergibt Finalwert.
 
 ## 1) Positionen im Monat: RTW 4, NEF 2, ITW 1 (1:20–2:20)
-Für jeden Abteilungstag zählen wir die besetzten Positionen:
+Für jeden Abteilungstag zählen wir die besetzten Positionen. Dabei leiten sich die Zahlen direkt aus der Fahrzeugzahl und den Besetzungsvorschriften ab – **nur 24‑Stunden‑Dienste (V) zählen als verfügbare Präsenz für RTW**. Fortbildungen, Kantine, LFZ‑Einsätze oder andere Abwesenheiten werden nicht berücksichtigt; solche Tage reduzieren das Gewicht automatisch, weil sie nicht mehr als "V" markiert sind.
 
-RTW 4 + NEF 2 + ITW 1 = 7 Positionen pro Tag.
+- Ein RTW wird immer mit zwei Personen besetzt. Jede Schicht – Tag und Nacht – benötigt je eine Besetzung. Das ergibt für einen einzelnen RTW 2 × 2 = 4 Positionen pro Tag.
+- Ein NEF erfordert eine Ein-Mann-Besetzung, auch hier gelten Tag + Nacht, daher 2 Positionen pro NEF.
+- Ein ITW wird nur tagsüber gefahren und hat eine Position.
 
-Beispiel mit 30 Abteilungstagen:
-30 × 7 = 210 Positionen gesamt.
+In einer Standardkonfiguration mit 4 RTW, 2 NEF und 1 ITW summieren sich die täglichen Positionen auf:
 
-Diese 210 sind der Rohbedarf, bevor Entlastungen abgezogen werden.
+RTW 4 × (2 Mann × 2 Schichten) + NEF 2 × (1 Mann × 2 Schichten) + ITW 1 = 16 + 4 + 1 = 21 Positionen pro Tag.
+
+Für die Beispielrechnung nehmen wir nun **10 Arbeitstage pro Monat** und vereinfachen die Fahrzeuganzahl auf 4 RTW, 2 NEF, 1 ITW = 7 Positionen pro Tag:
+
+10 × 7 = 70 Positionen gesamt.
+
+Diese 70 sind der Rohbedarf, bevor Entlastungen abgezogen werden; in der realen Planung ergibt sich der Wert direkt aus der tatsächlich verfügbaren Anzahl von an Diensttagen liegenden Fahrzeugen.
 
 ## 2) Entlastungen durch Azubis, Ü50 und LPAL (2:20–3:10)
 Jetzt werden die Entlastungen vom Rohbedarf abgezogen.
 
-Beispiel:
-- Rohbedarf: 210
-- Azubi-Entlastung: 12
-- Ü50 + LPAL-Entlastung: 18
+Beispiel mit den kleineren Zahlen:
+- Rohbedarf: 70
+- Azubi-Entlastung: 4
+- Ü50 + LPAL-Entlastung: 6
 
 Zu verteilen bleiben:
-210 − 12 − 18 = 180 SOLL-Positionen.
+70 − 4 − 6 = 60 SOLL-Positionen.
 
 ## 3) Anzahl Personen für diesen Monat (3:10–3:45)
 Als Nächstes zählt das System, wie viele Personen in diesem Monat im regulären Verteilpool aktiv sind.
@@ -58,7 +65,7 @@ Beispiel:
 - Persönliche Gewichtung von Person A: 18
 
 Dann gilt:
-Anteil von Person A = 18 von 240 der zu verteilenden 180 Positionen.
+Anteil von Person A = 18 von 240 der zu verteilenden 60 Positionen.
 
 ## 5) Anteil exakt (mit Beispielrechnung) (5:00–6:00)
 Exakter Anteil wird vor Rundung berechnet:
@@ -66,10 +73,22 @@ Exakter Anteil wird vor Rundung berechnet:
 Exakter Anteil = (persönliche Gewichtung / Gesamtgewichtung) × zu verteilende Positionen
 
 Für Person A:
-(18 / 240) × 180 = 13,5
+(18 / 240) × 60 = 4,5
 
 Das ist der exakte rechnerische Monatsanteil vor Ganzzahlverteilung.
-Die finale Ganzzahlverteilung bleibt summengenau über das bekannte Rundungsverfahren.
+
+### Hamilton-Verfahren zur finalen Berechnung
+Für die Umwandlung in ganze Schichten verwenden wir das Hamilton-Verfahren, weil es die Gesamtsumme exakt erhält:
+
+1. Jede Person erhält zunächst den ganzzahligen Teil ihres exakten Anteils (Abrunden).
+2. Die verbleibenden Schichten – also die Differenz zwischen der Zielgesamtsumme und der Summe der abgerundeten Werte – werden nacheinander an diejenigen Personen vergeben, deren Nachkommabetrag am größten ist.
+
+Beispielfortsetzung:
+- Exakte Werte: A 13,5; B 10,2; C 6,3 → Abrundung: A 13; B 10; C 6 = 29 Schichten vergeben.
+- Ziel: 31 Schichten (Rest 2) → Nachkommabeträge: A 0,5; B 0,2; C 0,3 → Restschichten an A und C vergeben.
+- Finalwerte: A 14; B 10; C 7 = 31.
+
+Dieses Verfahren stellt sicher, dass keine Schichten verloren gehen und die Verteilung fair bleibt.
 
 ## 6) Anteil + Bonus = Final (6:00–6:55)
 Nach dem exakten Anteil wird ein Monats-Bonus oder -Malus addiert.
