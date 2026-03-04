@@ -1,139 +1,124 @@
-# Videoskript: SOLL-Schichten berechnen (ohne ITW)
+# Videoskript: SOLL-IST-Berechnung verständlich erklärt
 
-## Intro (0:00–0:20)
-In diesem Video zeige ich, wie die SOLL-Schichten berechnet werden: normale Berechnung, Einfluss von Azubis/Ü50/LPAL und gezielte Schichtübernahme.
-Wichtig vorab: Die Berechnung erfolgt über Schichten und Positionen, nicht über Stunden.
+## Intro mit Erläuterungen (0:00–0:35)
+In diesem Video zeige ich die komplette SOLL-IST-Berechnung Schritt für Schritt.
+Wir schauen uns an, wie alle Werte entstehen, wie sie zusammenhängen und wie am Ende der finale Monatswert pro Person berechnet wird.
+Wichtig: Wir rechnen über Schichten und Positionen, nicht über Stunden.
 
-## 0) Orientierung in der Wertetabelle (0:20–0:55)
-Bevor wir in die Berechnung gehen, ein kurzer Blick auf die Wertetabelle:
+## 0) Überblick über alle Werte (0:35–1:20)
+Wir unterscheiden zwei Ebenen:
 
-- Im oberen Bereich seht ihr die Gesamtzahlen der aktuellen Ansicht.
-- Wenn ihr auf einen Namen klickt, werden die persönlichen Zahlen dieser Person angezeigt.
+- **Gesamtwerte**: gelten für den ganzen Monat und den gesamten Pool.
+- **Persönliche Werte**: gelten für genau eine ausgewählte Person.
 
-So könnt ihr jederzeit zwischen Gesamtbild und individueller Auswertung wechseln.
+Die zentralen Werte im Ablauf sind:
+1) Positionsbedarf des Monats,
+2) Entlastungen (Azubi, Ü50, LPAL),
+3) Anzahl der aktiv berücksichtigten Personen,
+4) Gewichtung gesamt und persönlich,
+5) exakter Anteil,
+6) Anteil plus Bonus ergibt Finalwert.
 
-## 1) Normale Erzeugung der SOLL-Schichten (0:55–2:20)
-Zuerst wird der Monatsbedarf an Positionen berechnet:
+## 1) Positionen im Monat: RTW 4, NEF 2, ITW 1 (1:20–2:20)
+Für jeden Abteilungstag zählen wir die besetzten Positionen:
 
-Abteilungstage × (RTW-Positionen + NEF-Positionen)
+RTW 4 + NEF 2 + ITW 1 = 7 Positionen pro Tag.
 
-Beispiel: 10 Abteilungstage, 2 RTW, 1 NEF (24h) → 100 Positionen.
+Beispiel mit 30 Abteilungstagen:
+30 × 7 = 210 Positionen gesamt.
 
-Entscheidend: In der gesamten Logik werden Schichten und Positionen gezählt; Stunden sind keine Berechnungsgrundlage.
+Diese 210 sind der Rohbedarf, bevor Entlastungen abgezogen werden.
 
-Wichtig:
-Für die faire Verteilung werden nur die 24h-Anwesenheiten (V-Schichten) als relevante Präsenz berücksichtigt.
-Wenn ein Kollege z. B. in die LFZ geht, krank ist oder auf Lehrgang ist,
-reduziert sich dadurch seine verfügbare RTW-Präsenz automatisch – und damit auch sein Anteil an den SOLL-Schichten.
-
-Diese 100 werden dann fair auf die Kolleg:innen verteilt – über gewichtete Präsenz und Hamilton-Rundung.
-
-## 1.1) Sonderfall HLF-B FzF (75%) (2:20–3:20)
-HLF-B-Fahrzeugführer müssen nur 75% RTW fahren.
-Deshalb wird ihr Anteil bereits vor der finalen Verteilung reduziert.
-
-Wichtig ist das „wo“ in der Logik:
-Die Reduktion passiert nicht erst am fertigen SOLL,
-sondern schon in der Stufe der gewichteten Präsenz.
-
-Formel pro Monat:
-Gewichtete Präsenz = round(Präsenz × 0,75)
+## 2) Entlastungen durch Azubis, Ü50 und LPAL (2:20–3:10)
+Jetzt werden die Entlastungen vom Rohbedarf abgezogen.
 
 Beispiel:
-Ein Kollege hat 20 relevante Präsenzschichten im Monat.
-Ohne HLF-B wäre sein Gewicht 20.
-Mit HLF-B wird daraus round(20 × 0,75) = 15.
+- Rohbedarf: 210
+- Azubi-Entlastung: 12
+- Ü50 + LPAL-Entlastung: 18
 
-Dieses reduzierte Gewicht geht anschließend in die Hamilton-Verteilung ein,
-dadurch erhält der Kollege automatisch weniger SOLL-Schichten.
+Zu verteilen bleiben:
+210 − 12 − 18 = 180 SOLL-Positionen.
 
-Wann die Reduktion gilt:
-Monatsscharf genau in den Monaten, in denen die HLF-B-Qualifikation aktiv ist.
-
-## Beispiel Verteilung (3:20–4:20)
-Gewichte: A=12, B=8, C=5 (Summe 25).
-Exakte Anteile: A 48, B 32, C 20 bei 100 Positionen.
-Mit Hamilton wird sauber auf ganze Schichten gerundet, sodass die Gesamtsumme exakt bleibt.
-
-## 1.2) Warum Hamilton und nicht normale Rundung? (4:20–5:05)
-Hier ein wichtiger Punkt:
-Wir können keine halben Schichten verteilen, aber die Gesamtsumme muss trotzdem exakt stimmen.
-
-Bei normaler mathematischer Rundung kann die Summe falsch werden.
+## 3) Anzahl Personen für diesen Monat (3:10–3:45)
+Als Nächstes zählt das System, wie viele Personen in diesem Monat im regulären Verteilpool aktiv sind.
 
 Beispiel:
-Exakte Anteile: 10,4 / 10,4 / 10,4
-Normale Rundung ergibt: 10 / 10 / 10 = 30
-Benötigt wären aber 31,2 beziehungsweise in der Praxis eine feste Zielsumme von 31.
+Es sind 15 Personen aktiv.
 
-Deshalb nutzen wir das Hamilton-Verfahren:
-1) Zuerst bekommt jede Person den ganzzahligen Anteil (Abrunden).
-2) Die verbleibenden Restschichten werden nacheinander an die größten Nachkommarestwerte vergeben.
+Die Anzahl allein verteilt noch nichts gleichmäßig, sie definiert nur den aktuellen Pool.
+Die faire Verteilung passiert über die Gewichtung.
 
-Vorteil:
-Die Zielsumme bleibt exakt erhalten und die Verteilung bleibt fair und nachvollziehbar.
+## 4) Gewichtung: gesamt und persönlich (3:45–5:00)
+Jede Person erhält eine **persönliche Gewichtung** aus ihrer relevanten Monatspräsenz.
+Die **Gesamtgewichtung** ist die Summe aller persönlichen Gewichtungen.
 
-## 2) Einfluss von Azubis, Ü50 und LPAL (5:05–6:35)
-Vor der Verteilung werden Entlastungen abgezogen.
+Beispiel:
+- Gesamtgewichtung aller 15 Personen: 240
+- Persönliche Gewichtung von Person A: 18
 
-Beispiel: 100 Positionen gesamt,
-Azubi-Maschinist-Einsätze: 6,
-Ü50/LPAL-Einsätze: 10,
-verbleiben 84 SOLL-Schichten für den regulären Pool.
+Dann gilt:
+Anteil von Person A = 18 von 240 der zu verteilenden 180 Positionen.
 
-Das heißt: Azubi, Ü50 und LPAL senken das zu verteilende SOLL der übrigen Kolleg:innen.
+## 5) Anteil exakt (mit Beispielrechnung) (5:00–6:00)
+Exakter Anteil wird vor Rundung berechnet:
 
-## 3) Gezielte Schichtübernahme (6:35–8:05)
-Jetzt zur Übernahme: Eine Person erhält gezielt zusätzliche SOLL-Schichten in einem Monat.
+Exakter Anteil = (persönliche Gewichtung / Gesamtgewichtung) × zu verteilende Positionen
 
-Praxisbeispiel:
-Kollege A übernimmt eine Kantinenphase
-Dafür übernimmt Kollege B im Gegenzug 4 RTW-Schichten. (Dies kann individuell festgelegt werden)
+Für Person A:
+(18 / 240) × 180 = 13,5
 
-Rechnerisch bedeutet das:
-Die 4 Schichten werden Kollege B direkt auf sein SOLL angerechnet.
-Anschließend wird die Gegenreduktion proportional auf den restlichen Pool verteilt.
+Das ist der exakte rechnerische Monatsanteil vor Ganzzahlverteilung.
+Die finale Ganzzahlverteilung bleibt summengenau über das bekannte Rundungsverfahren.
 
-Wichtig:
-Der Kollege, der die Schichten abgibt (hier Kollege A), wird bei dieser Neuverteilung nicht mehr berücksichtigt,
-weil sich sein SOLL durch die Einteilung in die Kantine bereits automatisch reduziert.
+## 6) Anteil + Bonus = Final (6:00–6:55)
+Nach dem exakten Anteil wird ein Monats-Bonus oder -Malus addiert.
 
-Danach erfolgt wieder die Hamilton-Rundung, damit die Monatssumme exakt gleich bleibt (im Beispiel weiterhin 84).
+Formel:
+Final = Anteil + Bonus
+
+Beispiel für Person A:
+- Exakter Anteil: 13,5
+- Bonus aus Monatsregel: +2
+- Finalwert vor Endrundung: 15,5
+
+So wird transparent, dass der Finalwert immer aus einem fairen Basisanteil plus klar dokumentierter Korrektur besteht.
+
+## 7) Sonderfall: 75%-Regelung (6:55–8:05)
+Bei der 75%-Regelung wird nicht erst am Ende gekürzt,
+sondern bereits die persönliche Gewichtung reduziert.
+
+Formel im Sonderfall:
+Gewichtung 75% = round(relevante Präsenz × 0,75)
+
+Beispiel:
+- Relevante Präsenz: 20
+- Normale Gewichtung: 20
+- 75%-Gewichtung: round(20 × 0,75) = 15
+
+Mit dieser reduzierten Gewichtung geht die Person in die normale Anteil-Berechnung.
+Dadurch sinkt ihr exakter Anteil automatisch und nachvollziehbar.
 
 ## Abschluss (8:05–8:35)
 Kurz zusammengefasst:
-1) Monatsbedarf berechnen,
-2) HLF-B (75%) bereits in der Präsenz-Gewichtung reduzieren,
-3) fair per Hamilton verteilen,
-4) Azubi/Ü50/LPAL abziehen,
-5) Übernahmen gezielt einrechnen.
+1) Positionen bestimmen (RTW 4, NEF 2, ITW 1),
+2) Entlastungen durch Azubi/Ü50/LPAL abziehen,
+3) aktive Personen im Monat zählen,
+4) gesamt/persönlich gewichten,
+5) exakten Anteil berechnen,
+6) Anteil plus Bonus zum Finalwert führen,
+7) Sonderfall 75% direkt in der Gewichtung abbilden.
 
-So bleibt die Planung transparent und nachvollziehbar.
+So ist jeder Monatswert rechnerisch klar herleitbar.
 
 ---
 
-## Benötigte Visualisierungen (ohne Screenshots)
-- **V1 – Monatsübersicht als Zahlenkarte**: Gesamtwert oben groß, darunter kurze Kontextzeile.
-- **V2 – Bedarfsermittlung als Formel-Board**: „Abteilungstage × (RTW + NEF)“ mit Live-Einsetzen der Werte.
-- **V3 – Persönliche Kennzahlen-Karte**: Präsenz, Gewichtung, Soll in einer kompakten 3-Spalten-Ansicht.
-- **V4 – HLF-B-Transform**: Deutliche Zahlen-Transition von 20 auf 15 mit Formelhinweis.
-- **V5 – Hamilton-Tabelle**: Gewichte, exakte Anteile, Abrundung, Restvergabe und Finalwert je Person.
-- **V6 – Entlastungsbilanz**: Startwert 100, danach visuelle Abzüge und Restwert 84.
-- **V7 – Übernahme-Matrix**: +4 bei übernehmender Person, proportionale Reduktion im Restpool.
-- **V8 – Abschluss-Dashboard**: Monatssumme und 5-Schritte-Check in einer finalen Übersicht.
-
-## Benötigte Animationen (einfach umsetzbar)
-- **A0 – Fokus Gesamt/Person (3 s)**: Übergang von Gesamtwerten zu persönlicher Kennzahlen-Karte.
-- **A1 – Formel-Einblendung (3 s)**: „Abteilungstage × (RTW + NEF)“ als zentrales Overlay.
-- **A2 – Rechenweg Schritt-für-Schritt (4 s)**: 10 × (2+1) → 30 Positionseinheiten → 100 Positionen.
-- **A3 – HLF-B-Reduktion (3 s)**: 20 → ×0,75 → 15 als klarer Number-Flip.
-- **A4 – Hamilton-Rundung (4 s)**: Abrundung, Restpunkte, finale Ganzzahlen nacheinander sichtbar.
-- **A5 – Entlastungsabzug (3 s)**: 100 → 94 → 84 als animierter Zahlenpfad.
-- **A6 – Übernahmeeffekt (4 s)**: +4 bei Person B, gleichzeitige proportionale Gegenreduktion.
-- **A7 – Abschluss-Recap (4 s)**: 5 Rechenschritte als nummerierte Zahlenkacheln.
+## Benötigte Screenshots (genau 2)
+- **Screenshot 1 – Wertetabelle (Gesamtansicht)**: Monatswerte und Gesamtzahlen als Hauptreferenz für Positionen, Entlastungen, Personenanzahl und Gesamtgewichtung.
+- **Screenshot 2 – Detailansicht eines Kollegen**: Persönliche Werte für Gewichtung, Anteil exakt, Bonus und Finalwert inklusive Verweis auf den 75%-Sonderfall.
 
 ## Produktionshinweise
-- Für alle Rechenanimationen dieselben Farben pro Bedeutung nutzen (Gesamt, Abzug, Rest).
-- Zahlen immer groß und mittig einblenden, damit sie auf mobilen Displays lesbar sind.
-- Pro Kapitel maximal eine Hauptanimation verwenden, um das Lerntempo ruhig zu halten.
-- Keine App-Screenshots verwenden; stattdessen ausschließlich reduzierte Zahlen-Visuals, Tabellen und Formelkarten.
+- Es werden ausschließlich diese zwei Screenshots verwendet; keine weiteren Ansichten ergänzen.
+- Fokus nur über statische Ausschnitte und Hervorhebungen innerhalb der zwei Screenshots.
+- Zahlen und Formeln als kurze On-Screen-Texte ergänzen, damit die Rechnung klar nachvollziehbar bleibt.
+- Alle Kapitel bauen auf Screenshot 1 und Screenshot 2 auf, ohne zusätzliche Visual-Assets.

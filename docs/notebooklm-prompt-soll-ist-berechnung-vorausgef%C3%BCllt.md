@@ -22,63 +22,61 @@ Designregeln (verbindlich):
   1) fester App-Header wie in RD-Plan
   2) Abschnittstitel der aktuellen Erklärung
 - Abschnittstitel müssen exakt den folgenden Kapiteln entsprechen:
-  - Intro
-  - 1) Normale Erzeugung der SOLL-Schichten
-  - 1.1) Sonderfall HLF-B FzF (75%)
-  - Beispiel Verteilung
-  - 1.2) Warum Hamilton und nicht normale Rundung?
-  - 2) Einfluss von Azubis, Ü50 und LPAL
-  - 3) Gezielte Schichtübernahme
+   - Intro mit Erläuterungen
+   - 0) Überblick über alle Werte
+   - 1) Positionen im Monat: RTW 4, NEF 2, ITW 1
+   - 2) Entlastungen durch Azubis, Ü50 und LPAL
+   - 3) Anzahl Personen für diesen Monat
+   - 4) Gewichtung: gesamt und persönlich
+   - 5) Anteil exakt (mit Beispielrechnung)
+   - 6) Anteil + Bonus = Final
+   - 7) Sonderfall: 75%-Regelung
   - Abschluss
 
 Visualregeln (verbindlich):
-- Das Video kommt vollständig ohne Screenshots aus.
-- Es werden keine S-Assets und keine Screenshot-Dateien verwendet.
-- Alle Inhalte als klare Zahlenvisualisierung darstellen:
-   - Zahlenkarten
-   - Formelkarten
-   - einfache Tabellen
-   - Counter/Number-Flip
-   - Balken oder Vergleichsmatrix für Verteilung
-- Wenn eine Darstellung fehlt, markiere nur: [BENÖTIGT: Visual-Beschreibung].
+- Es werden exakt zwei Screenshots verwendet, keine weiteren.
+- Erlaubte Screenshots:
+    1) Wertetabelle (Gesamtansicht)
+    2) Detailansicht eines Kollegen
+- Animationen sind in NotebookLM nicht möglich und werden vollständig weggelassen.
+- Alle Erklärungen müssen mit diesen beiden Screenshots und kurzen On-Screen-Texten umsetzbar sein.
+- Wenn eine Darstellung fehlt, markiere nur: [BENÖTIGT: im Screenshot markieren].
 
 Inhaltsquelle (verbindlich):
-- Nutze ausschließlich die bereitgestellte RD-Plan-Quelle zur SOLL-Schichten-Berechnung (ohne ITW).
+- Nutze ausschließlich die bereitgestellte RD-Plan-Quelle zur SOLL-IST-Berechnung.
 - Keine Funktionen oder Aussagen ergänzen, die nicht in der Quelle enthalten sind.
 
 Vorgegebene Szenen- und Visual-Struktur (verbindlich übernehmen):
-1) Intro (0:00–0:20)
-   - Visual: Monatsübersicht als Zahlenkarte (Gesamtwert + Kontextzeile)
-   - Animation: kurzer Fade-in
+1) Intro mit Erläuterungen (0:00–0:35)
+   - Visual: Screenshot 1 (Wertetabelle) als Einstieg
 
-2) 1) Normale Erzeugung der SOLL-Schichten (0:20–2:00)
-   - Visual: Bedarfsermittlung als Formel-Board
-   - Animation: Formel und Rechenweg schrittweise einblenden
+2) 0) Überblick über alle Werte (0:35–1:20)
+   - Visual: Screenshot 1 mit Markierung der relevanten Gesamtwerte
+
+3) 1) Positionen im Monat: RTW 4, NEF 2, ITW 1 (1:20–2:20)
+   - Visual: Screenshot 1
    - Pflichtinhalt: Klar sagen, dass mit Schichten/Positionen gerechnet wird, nicht mit Stunden
 
-3) 1.1) Sonderfall HLF-B FzF (75%) (2:00–3:00)
-   - Visual: Vorher/Nachher Gewichtung als Zahlenkarten
-   - Animation: 20 → ×0,75 → 15 als Zahlen-Transition
+4) 2) Entlastungen durch Azubis, Ü50 und LPAL (2:20–3:10)
+   - Visual: Screenshot 1 mit Fokus auf Entlastungswerte
 
-4) Beispiel Verteilung (3:00–4:00)
-   - Visual: Verteilungstabelle A/B/C mit exakten und finalen Werten
-   - Animation: schrittweise Hervorhebung der Endwerte
+5) 3) Anzahl Personen für diesen Monat (3:10–3:45)
+   - Visual: Screenshot 1 mit Fokus auf Personenanzahl
 
-5) 1.2) Warum Hamilton und nicht normale Rundung? (4:00–4:45)
-   - Visual: Rundungsproblem und Restvergabe
-   - Animation: erst Abrundung, dann Restschichten nacheinander vergeben
+6) 4) Gewichtung: gesamt und persönlich (3:45–5:00)
+   - Visual: Wechsel von Screenshot 1 (Gesamtgewichtung) zu Screenshot 2 (persönliche Gewichtung)
 
-6) 2) Einfluss von Azubis, Ü50 und LPAL (4:45–6:15)
-   - Visual: Abzug vom Gesamtpool
-   - Animation: Count-down von Gesamtbedarf auf Restpool
+7) 5) Anteil exakt (mit Beispielrechnung) (5:00–6:00)
+   - Visual: Screenshot 2 mit eingeblendeter Beispielrechnung
 
-7) 3) Gezielte Schichtübernahme (6:15–7:45)
-   - Visual: Übernahme + Gegenreduktion
-   - Animation: +4 bei übernehmender Person, proportionale Anpassung im Restpool
+8) 6) Anteil + Bonus = Final (6:00–6:55)
+   - Visual: Screenshot 2 mit Fokus auf Anteil, Bonus und Finalwert
 
-8) Abschluss (7:45–8:15)
-   - Visual: Endkontrolle und Zusammenfassung
-   - Animation: 5-Schritte-Recap nacheinander einblenden
+9) 7) Sonderfall: 75%-Regelung (6:55–8:05)
+   - Visual: Screenshot 2 mit Markierung der reduzierten Gewichtung
+
+10) Abschluss (8:05–8:35)
+   - Visual: Screenshot 1 + Screenshot 2 als kurze Endkontrolle
 
 Ausgabeformat (genau so liefern):
 
@@ -95,23 +93,24 @@ Spalten:
 3) Abschnittstitel
 4) Sprechertext (Kurzfassung)
 5) Header-Text (App-Header + Abschnitt)
-6) Visual (Zahlenkarte/Formel/Tabelle/Animation)
+6) Visual (Screenshot 1 oder Screenshot 2 + Markierung)
 7) Zahlenfokus (welche Werte klar sichtbar sein müssen)
-8) Animation/Bewegung
-9) On-Screen-Text (kurz, optional)
+8) On-Screen-Text (kurz, optional)
 
 BLOCK 3 – QUALITÄTSPRÜFUNG
 Checkliste mit genau diesen Punkten:
 - Sprache klar und ohne Floskeln
 - Ton persönlich-seriös
 - Jeder Abschnitt hat korrekten Header
-- Keine Screenshots verwendet
-- Zahlen in jeder Szene deutlich lesbar visualisiert
+- Genau zwei Screenshots verwendet (Wertetabelle + Detailansicht Kollege)
+- Keine Animationen verwendet
+- Zahlen in jeder Szene deutlich lesbar markiert
 - Aussage „Schichten/Positionen statt Stunden“ enthalten
 - Keine erfundenen Inhalte
 
 Zusatzregeln:
-- Verwende nur einfache Animationen: Zoom, Highlight, Fade, Cursor-Klick.
+- Keine Animationen beschreiben oder voraussetzen.
+- Erlaubt sind nur statische Hervorhebungen innerhalb der zwei Screenshots.
 - Kein visuelles Overdesign.
 - Keine Emojis.
 - Deutsche Sprache, professionelle Rechtschreibung.
