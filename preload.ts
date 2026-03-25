@@ -204,7 +204,7 @@ contextBridge.exposeInMainWorld('api', {
     checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
     performManualUpdate: () => ipcRenderer.invoke('perform-manual-update'),
     // Roster Import
-    importDutyRoster: (filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number> }) => ipcRenderer.invoke('import-duty-roster', filePath, year, month, options),
+    importDutyRoster: (filePath: string, year: number, month?: number | { start: number, end: number }, options?: { mappings?: Record<string, number> }) => ipcRenderer.invoke('import-duty-roster', filePath, year, month, options),
     previewDutyRoster: (filePath: string, year: number, month?: number) => ipcRenderer.invoke('preview-duty-roster-import', filePath, year, month),
     // Year Plannings
     getYearPlannings: () => ipcRenderer.invoke('get-year-plannings'),

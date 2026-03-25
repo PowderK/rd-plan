@@ -230,7 +230,7 @@ export class RosterImporter {
     private async checkAzubiPeriods(
         entriesToImport: RosterEntry[],
         year: number,
-        month?: number
+        month?: number | { start: number, end: number }
     ): Promise<Array<{ azubiId: number; azubiName: string; importDateRange: { start: string; end: string } }>> {
         const azubisWithoutPeriod: Array<{ azubiId: number; azubiName: string; importDateRange: { start: string; end: string } }> = [];
         
@@ -326,7 +326,7 @@ export class RosterImporter {
         worksheet: XLSX.WorkSheet, 
         fixed: any, 
         year: number, 
-        month: number | undefined,
+        month: number | { start: number, end: number } | undefined,
         fullNameMap: Map<string, {id: number, type: 'person' | 'azubi'}>,
         lastNameMap: Map<string, {id: number, type: 'person' | 'azubi'} | 'conflict'>,
         mapByLastName: Record<string, number>,
@@ -342,7 +342,13 @@ export class RosterImporter {
             const dateValue = parseHeaderDate(dateCell.v, year);
             if (!dateValue || dateValue.getFullYear() !== year) continue;
             // Only filter by month if month is specified
-            if (month !== undefined && dateValue.getMonth() !== month) continue;
+            if (month !== undefined) {
+                if (typeof month === 'number') {
+                    if (dateValue.getMonth() !== month) continue;
+                } else {
+                    if (dateValue.getMonth() < month.start || dateValue.getMonth() > month.end) continue;
+                }
+            }
             
             for (let row = fixed.azubiStart; row <= fixed.azubiEnd; row++) {
                 const nameAddr = XLSX.utils.encode_cell({ r: row, c: fixed.nameCol });
@@ -385,7 +391,7 @@ export class RosterImporter {
     }
 
     // Parse-only preview: returns unmatched names and simple stats without writing to DB
-    public async previewDutyRoster(filePath: string, year: number, month?: number): Promise<{ success: boolean; total: number; matched: number; unmatchedNames: string[]; overwrites: number; message?: string; }> {
+    public async previewDutyRoster(filePath: string, year: number, month?: number | { start: number, end: number }): Promise<{ success: boolean; total: number; matched: number; unmatchedNames: string[]; overwrites: number; message?: string; }> {
         try {
             const workbook = XLSX.readFile(filePath);
             const sheetNames = workbook.SheetNames;
@@ -431,7 +437,7 @@ export class RosterImporter {
                         if (!dateValue && baseDate) { const dt = new Date(baseDate); dt.setDate(dt.getDate() + (col - fixed.firstDateCol)); dateValue = dt; }
                         if (!dateValue) continue;
                         if (dateValue.getFullYear() !== year) continue;
-                        if (month !== undefined && dateValue.getMonth() !== month) continue;
+                        if (month !== undefined) { if (typeof month === "number") { if (dateValue.getMonth() !== month) continue; } else { if (dateValue.getMonth() < month.start || dateValue.getMonth() > month.end) continue; } }
                         const dateStr = toISODateString(dateValue);
                         for (let row = startRow; row <= endRow; row++) {
                             const nameAddr = XLSX.utils.encode_cell({ r: row, c: fixed.nameCol });
@@ -475,7 +481,7 @@ export class RosterImporter {
     public async importDutyRoster(
         filePath: string, 
         year: number, 
-        month?: number, 
+        month?: number | { start: number, end: number }, 
         options?: { 
             mappings?: Record<string, number>; 
             newAzubis?: Array<{name: string, vorname: string, lehrjahr: number}>; 
@@ -582,7 +588,7 @@ export class RosterImporter {
                         }
                         if (!dateValue) continue;
                         if (dateValue.getFullYear() !== year) continue;
-                        if (month !== undefined && dateValue.getMonth() !== month) continue;
+                        if (month !== undefined) { if (typeof month === "number") { if (dateValue.getMonth() !== month) continue; } else { if (dateValue.getMonth() < month.start || dateValue.getMonth() > month.end) continue; } }
 
                         const dateStr = toISODateString(dateValue);
 

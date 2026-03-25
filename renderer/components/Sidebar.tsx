@@ -123,7 +123,8 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 				background: 'var(--bg)',
 				boxSizing: 'border-box',
 				padding: 8,
-				position: 'relative'
+				position: 'relative',
+				height: '100%'
 			}}>
 				{/* Dev-Mode Badge */}
 				{isDevMode && !collapsed && (

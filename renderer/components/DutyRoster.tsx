@@ -155,7 +155,7 @@ const DutyRoster: React.FC = () => {
   const [showAzubiPeriodDialog, setShowAzubiPeriodDialog] = useState(false);
   const [azubisWithoutPeriod, setAzubisWithoutPeriod] = useState<Array<{ azubiId: number, azubiName: string, importDateRange: { start: string, end: string } }>>([]);
   const [pendingImportYear, setPendingImportYear] = useState<number>(0);
-  const [pendingImportMonth, setPendingImportMonth] = useState<number | undefined>(undefined);
+  const [pendingImportMonth, setPendingImportMonth] = useState<number | { start: number, end: number } | undefined>(undefined);
   // Fahrzeuge und Aktivierungen für Positions-Berechnungen
   const [rtwVehicles, setRtwVehicles] = useState<{ id: number; name: string }[]>([]);
   const [nefVehicles, setNefVehicles] = useState<{ id: number; name: string }[]>([]);
@@ -910,6 +910,107 @@ const DutyRoster: React.FC = () => {
     }
   };
 
+  const handleSyncPastAndFuture = async () => {
+    // Versuche jahresspezifische Vorplanungsdatei zu laden
+    let rosterImportPath = null;
+    try {
+      const yearPlanning = await (window as any).api.getYearPlanningForYear?.(year);
+      if (yearPlanning?.filePath) {
+        rosterImportPath = yearPlanning.filePath;
+      }
+    } catch (e) {
+      // console.warn('Fehler beim Laden der jahresspezifischen Vorplanung:', e);
+    }
+
+    // Fallback: alte rosterImportPath Einstellung
+    if (!rosterImportPath) {
+      rosterImportPath = await (window as any).api.getSetting('rosterImportPath');
+    }
+
+    if (!rosterImportPath) {
+      alert('Bitte hinterlegen Sie zuerst eine Vorplanungsdatei für das Jahr ' + year + ' in den Einstellungen.');
+      return;
+    }
+    
+    const startMonthIndex = currentMonth > 0 ? currentMonth - 1 : 0;
+    const endMonthIndex = 11;
+    
+    const rangeLabel = startMonthIndex === endMonthIndex 
+      ? months[startMonthIndex] 
+      : `${months[startMonthIndex]} bis ${months[endMonthIndex]}`;
+      
+    const ok = window.confirm(`Möchten Sie den Dienstplan für den Zeitraum ${rangeLabel} ${year} synchronisieren?\n\nDies führt einen Abgleich (Sync) durch, bei dem leere Zellen in Excel bestehende Einträge im Programm löschen. Manuelle Änderungen werden im Synchronisations-Modus NICHT überschrieben.`);
+    if (!ok) return;
+
+    const monthRange = { start: startMonthIndex, end: endMonthIndex };
+
+    try {
+      const result = await (window as any).api.importDutyRoster(rosterImportPath, year, monthRange);
+      if (result.success) {
+        // Check if unknown shift types were found
+        if (result.unknownShiftTypes && result.unknownShiftTypes.length > 0) {
+          const createNewShiftTypes = window.confirm(
+            `Folgende unbekannte Dienstarten wurden gefunden:\n${result.unknownShiftTypes.join('\n')}\n\nMöchten Sie diese als neue Dienstarten anlegen?`
+          );
+
+          if (createNewShiftTypes) {
+            setPendingImportPath(rosterImportPath);
+            setPendingImportYear(year);
+            setPendingImportMonth(monthRange);
+            setUnknownShiftTypes(result.unknownShiftTypes);
+            setShowNewShiftTypeDialog(true);
+            return;
+          }
+        }
+
+        // Check for unknown azubis
+        if (result.unknownAzubis && result.unknownAzubis.length > 0) {
+          const createNewAzubis = window.confirm(
+            `Folgende unbekannte Azubi-Namen wurden gefunden:\n${result.unknownAzubis.join('\n')}\n\nMöchten Sie diese als neue Azubis anlegen?`
+          );
+
+          if (createNewAzubis) {
+            setPendingImportPath(rosterImportPath);
+            setPendingImportYear(year);
+            setPendingImportMonth(monthRange);
+            setShowNewAzubiDialog(true);
+            setUnknownAzubiNames(result.unknownAzubis);
+            return;
+          }
+        }
+
+        // Check for azubis without period
+        if (result.azubisWithoutPeriod && result.azubisWithoutPeriod.length > 0) {
+          setAzubisWithoutPeriod(result.azubisWithoutPeriod);
+          setPendingImportPath(rosterImportPath);
+          setPendingImportYear(year);
+          setPendingImportMonth(monthRange);
+          setShowAzubiPeriodDialog(true);
+          return;
+        }
+
+        let message = `Synchronisation erfolgreich: ${result.importedCount} Einträge wurden verarbeitet.`;
+        
+        // Check for availability conflicts
+        if (result.availabilityConflicts && result.availabilityConflicts.length > 0) {
+          const conflictList = result.availabilityConflicts.map((c: any) => 
+            `${c.personName} am ${c.date}: Schichtart "${c.dutyRosterValue}" (nicht verfügbar), aber eingeteilt auf "${c.einteilungValue}"`
+          ).join('\n');
+          
+          message += `\n\n⚠️ WARNUNG: ${result.availabilityConflicts.length} Verfügbarkeitskonflikt(e) gefunden:\n\n${conflictList}\n\nBitte prüfen Sie die Einteilungen!`;
+        }
+        
+        alert(message);
+        await reloadRoster();
+      } else {
+        alert(`Synchronisation fehlgeschlagen: ${result.message}`);
+      }
+    } catch (error) {
+      // console.error('Fehler bei der Synchronisation:', error);
+      alert('Fehler bei der Synchronisation.');
+    }
+  };
+
   const handleImportTableCancel = () => {
     setShowImportTable(false);
     setImportTableMonth(null);
@@ -1313,19 +1414,34 @@ const DutyRoster: React.FC = () => {
         {/* Überschrift - ROT */}
         <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <h2 style={{ margin: 0, marginRight: 'auto' }}>Dienstplan</h2>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            Jahr:
+        </div>
+        {/* Monats-Tabs - GRÜN */}
+        <div style={{ 
+          display: 'flex', 
+          gap: 24, 
+          alignItems: 'center', 
+          marginTop: 8,
+          marginBottom: 0, 
+          paddingTop: 4,
+          paddingBottom: 4,
+          flexWrap: 'wrap',
+          borderBottom: '1px solid var(--line)'
+        }}>
+          {/* Jahresumschalter direkt bei den Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 500 }}>Jahr:</span>
             <select
               value={year}
               disabled={!canWrite}
               onChange={e => setYear(Number(e.target.value))}
               style={{
-                padding: '6px 10px',
-                fontSize: 14,
+                padding: '4px 8px',
+                fontSize: 13,
                 borderRadius: 6,
-                border: '1px solid #bbb',
+                border: '1px solid #ddd',
                 background: '#fff',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                color: 'var(--text)'
               }}
             >
               {yearPlannings.length > 0 ? (
@@ -1336,8 +1452,88 @@ const DutyRoster: React.FC = () => {
                 <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>
               )}
             </select>
-          </label>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+            <button 
+              onClick={handleImport} 
+              disabled={!canWrite}
+              title="Importiert den aktuellen Monat aus der Excel-Vorplanung"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 16px',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: '3px solid transparent',
+                fontSize: '14px',
+                fontWeight: 500,
+                color: '#6b7280',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                if (!canWrite) return;
+                e.currentTarget.style.color = 'var(--text)';
+                e.currentTarget.style.borderBottomColor = 'var(--accent)';
+                e.currentTarget.style.background = '#f8f9fa';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#6b7280';
+                e.currentTarget.style.borderBottomColor = 'transparent';
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <svg aria-hidden width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Import Monat
+            </button>
+            
+            <button 
+              onClick={handleSyncPastAndFuture} 
+              disabled={!canWrite}
+              title="Abgleich des Vormonats und des restlichen Jahres (Sync-Modus)"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 16px',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: '3px solid transparent',
+                fontSize: '14px',
+                fontWeight: 500,
+                color: '#6b7280',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                if (!canWrite) return;
+                e.currentTarget.style.color = 'var(--text)';
+                e.currentTarget.style.borderBottomColor = 'var(--accent)';
+                e.currentTarget.style.background = '#f8f9fa';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#6b7280';
+                e.currentTarget.style.borderBottomColor = 'transparent';
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <svg aria-hidden width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M21 2v6h-6" />
+                <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+                <path d="M3 22v-6h6" />
+                <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+              </svg>
+              Sync (Monat zurück + Rest-Jahr)
+            </button>
+          </div>
         </div>
+
         {/* Monats-Tabs - GRÜN */}
         <div className="tab-navigation tab-navigation-with-header" style={{
           background: 'var(--bg)',
@@ -1346,7 +1542,7 @@ const DutyRoster: React.FC = () => {
           display: 'flex',
           gap: '4px',
           borderBottom: '1px solid var(--line)',
-          marginBottom: '16px',
+          marginBottom: '8px',
           flexWrap: 'wrap'
         }}>
           {months.map((m, i) => (
@@ -1382,32 +1578,6 @@ const DutyRoster: React.FC = () => {
             </button>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-          <button onClick={handleImport} disabled={!canWrite}>
-            Import Monat (Excel)
-          </button>
-          <span style={{ fontSize: 12, color: 'var(--muted)' }}>Importiert den aktuellen Monat aus der in den Einstellungen hinterlegten Excel-Datei.</span>
-        </div>
-        {/* Horizontaler Scrollbalken oben */}
-        <div
-          id="top-scroller"
-          style={{
-            overflowX: 'auto',
-            overflowY: 'hidden',
-            height: '20px',
-            background: 'var(--bg)',
-            borderBottom: '1px solid #d6e4ff',
-            marginBottom: '4px'
-          }}
-          onScroll={(e) => {
-            const bottomScroller = document.getElementById('table-wrapper');
-            if (bottomScroller) {
-              bottomScroller.scrollLeft = e.currentTarget.scrollLeft;
-            }
-          }}
-        >
-          <div style={{ width: Math.max(800, days.length * 40), height: '1px' }}></div>
-        </div>
       </div>
       {/* Table Wrapper für Scroll-Synchronisation */}
       <div
@@ -1424,12 +1594,20 @@ const DutyRoster: React.FC = () => {
           boxSizing: 'border-box'
         }}
         onScroll={(e) => {
-          const topScroller = document.getElementById('top-scroller');
-          if (topScroller) {
-            topScroller.scrollLeft = e.currentTarget.scrollLeft;
+          const bottomScroller = document.getElementById('bottom-scroller');
+          if (bottomScroller) {
+            bottomScroller.scrollLeft = e.currentTarget.scrollLeft;
           }
         }}
       >
+        <style>{`
+          #table-wrapper::-webkit-scrollbar {
+            height: 0px;
+          }
+          #table-wrapper::-webkit-scrollbar-thumb {
+            background: transparent;
+          }
+        `}</style>
         {/* Alle Monate sichtbar lassen, damit Kommentare auch in nicht freigegebenen Monaten möglich sind */}
         {false ? (
           <div style={{
@@ -1822,6 +2000,48 @@ const DutyRoster: React.FC = () => {
           onClose={() => setCommentEditor(null)}
         />
       )}
+
+      {/* Fixierter horizontaler Scrollbalken unten */}
+      <div
+        id="footer-scroller-container"
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 'var(--sidebar-offset, 200px)',
+          right: 0,
+          height: '40px',
+          background: 'var(--bg)',
+          zIndex: 1000,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          paddingLeft: 24,
+          paddingRight: 24,
+          boxSizing: 'border-box'
+        }}
+      >
+        {/* Horizontaler Trenner über dem Scrollbalken */}
+        <div style={{ width: '100%', borderTop: '1px solid var(--line)' }}></div>
+        
+        <div
+          id="bottom-scroller"
+          style={{
+            width: '100%',
+            height: '24px',
+            overflowX: 'auto',
+            overflowY: 'hidden',
+            marginTop: '2px'
+          }}
+          onScroll={(e) => {
+            const tableWrapper = document.getElementById('table-wrapper');
+            if (tableWrapper) {
+              tableWrapper.scrollLeft = e.currentTarget.scrollLeft;
+            }
+          }}
+        >
+          <div style={{ width: Math.max(800, (days.length + 3) * 40 + nameColWidth), height: '1px' }}></div>
+        </div>
+      </div>
     </div>
   );
 };
@@ -2200,6 +2420,7 @@ const AzubiPeriodDialog: React.FC<AzubiPeriodDialogProps> = ({ azubisWithoutPeri
           </>
         )}
       </div>
+
     </div>
   );
 };

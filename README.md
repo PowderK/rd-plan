@@ -7,7 +7,7 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v1.0.8 RC** - Stabilisierte Kommentar-Workflows, vereinfachter Jahresimport und erweiterte Import/Export-Integrität
+**v1.2.0** - Modernisierte Benutzeroberfläche mit optimierter horizontaler Navigation und stabilisierten Layout-Trennlinien
 
 ## Funktionen
 
@@ -130,9 +130,9 @@ Hinweis für Administratoren: Wenn du die Anwendung paketieren oder für andere 
 
 ## Entwicklungsstatus
 
-**Version 1.0.8 RC** - Aktive Entwicklung (Release Candidate)
+**Version 1.2.0** - Aktive Entwicklung (Stable Release Candidate)
 
-Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangreichen Feature-Set. Die aktuelle Version 1.0.8 RC erweitert die bestehenden Kernfunktionen um stabilere Kommentar-Dialoge im Dienstplan, eine vereinfachte Jahresimport-UX in den Einstellungen und einen verlustfreien Personal-Import/Export-Roundtrip (inkl. Zeiträumen und Qualifikationen).
+Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangreichen Feature-Set. Die aktuelle Version 1.2.0 modernisiert die Benutzeroberfläche durch eine ergonomisch optimierte horizontale Navigation im Dienstplan und in der Einteilung sowie durch eine präzisere Ausrichtung aller strukturellen Trennlinien.
 
 **Produktionstauglichkeit**: Die Anwendung wird bereits in mehreren Rettungswachen erfolgreich eingesetzt. Für kritische Umgebungen wird empfohlen, die Funktionen vorab zu testen und regelmäßige Datensicherungen durchzuführen.
 
@@ -302,7 +302,15 @@ Die Schichtübernahme ermöglicht es, SOLL-Schichten gezielt zwischen Mitarbeite
 - ✅ **Sichere IPC**: Erweiterte Electron preload APIs für Auth-Kommunikation
 - ✅ **UI-Verbesserungen**: Login-Seite, Benutzer-Anzeige in Header, Logout-Funktion
 
-### Version 1.0.8 RC (Februar 2026) - Aktuell
+### Version 1.2.0 (März 2026) - Aktuell
+- ✅ **Optimierte horizontale Navigation**: Migration der horizontalen Scrollbalken in ein fixiertes Footer-System (Dienstplan & Einteilung)
+- ✅ **Zwei-Schichten-Footer-Architektur**: Ergonomische Platzierung der Scrollleiste mit Abstand zum Bildschirmrand für bessere Bedienbarkeit
+- ✅ **Globale Layout-Synchronisation**: Dynamische Ausrichtung aller fixierten UI-Elemente an der Sidebar via CSS-Variablen
+- ✅ **Strukturelle Trennlinien-Refinement**: Vereinheitlichung und präzise Ausrichtung aller horizontalen und vertikalen Teiler (Menu, Kontrollkasten, Fahrzeuge)
+- ✅ **Layout-Stabilisierung**: Behebung von Sichtbarkeitslücken beim Scrollen und Fixierung des Seitenmenüs über die volle Fensterhöhe
+- ✅ **Bereinigung Header/Footer**: Entfernung redundanter Trennlinien im Kontrollkasten und dynamisches Ausblenden des globalen Footers
+
+### Version 1.0.8 RC (Februar 2026)
 - ✅ **Kommentar-Dialog statt Browser-Prompt**: Stabiler Workflow für globale und individuelle Kommentare im Dienstplan
 - ✅ **Kommentaranzeige in Einteilung**: Roter Badge mit Kommentaranzahl pro Tag (iOS-ähnlich)
 - ✅ **Jahresimport vereinfacht**: In den Einstellungen nur noch Jahrsauswahl + Import, Backup wird immer erstellt
