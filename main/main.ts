@@ -1633,7 +1633,7 @@ ipcMain.handle('create-settings-template', async (_event, filePath: string) => {
 });
 
 // Roster Import handler
-ipcMain.handle('import-duty-roster', async (_event, filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number> }) => {
+ipcMain.handle('import-duty-roster', async (_event, filePath: string, year: number, month?: number | { start: number, end: number }, options?: { mappings?: Record<string, number> }) => {
     try {
         const adapter = await ensureDatabaseAdapter();
         const result = await adapter.importDutyRoster(filePath, year, month, options);

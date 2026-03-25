@@ -143,11 +143,18 @@ const AppContent: React.FC = () => {
         }
 
         return (
-            <div style={{ display: 'grid', gridTemplateColumns: `${sidebarCollapsed ? '56px' : '200px'} 1fr`, gridTemplateRows: 'auto 1fr auto', height: '100vh', transition: 'grid-template-columns 0.15s' }}>
+            <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: `${sidebarCollapsed ? '56px' : '200px'} 1fr`, 
+                gridTemplateRows: 'auto 1fr auto', 
+                height: '100vh', 
+                transition: 'grid-template-columns 0.15s',
+                ['--sidebar-offset' as any]: sidebarCollapsed ? '56px' : '200px'
+            }}>
                 <div style={{ gridRow: 1, gridColumn: '1 / span 2' }}>
                     <Header rescueStation={rescueStation} department={department} year={year} />
                 </div>
-                <div style={{ gridRow: 2, gridColumn: 1 }}>
+                <div style={{ gridRow: '2 / span 2', gridColumn: 1 }}>
                     <Sidebar active={activeView} />
                 </div>
                 <main style={{ gridRow: 2, gridColumn: 2, overflow: 'auto' }}>

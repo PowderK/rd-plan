@@ -138,7 +138,7 @@ export interface DatabaseAdapter {
   deleteShiftType(id: number): Promise<void>;
 
   // Roster Import
-  importDutyRoster(filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number> }): Promise<{ success: boolean, message: string, importedCount: number }>;
+  importDutyRoster(filePath: string, year: number, month?: number | { start: number, end: number }, options?: { mappings?: Record<string, number> }): Promise<{ success: boolean, message: string, importedCount: number }>;
 
   // Excel Import/Export für Personal
   importPersonnelFromExcel(filePath: string, replaceExisting: boolean): Promise<any>;
@@ -741,7 +741,7 @@ class SQLiteAdapter implements DatabaseAdapter {
     ExcelPersonnelImporter.createTemplate(filePath);
   }
 
-  async importDutyRoster(filePath: string, year: number, month?: number, options?: { mappings?: Record<string, number> }): Promise<{ success: boolean, message: string, importedCount: number }> {
+  async importDutyRoster(filePath: string, year: number, month?: number | { start: number, end: number }, options?: { mappings?: Record<string, number> }): Promise<{ success: boolean, message: string, importedCount: number }> {
     const { RosterImporter } = await import('./roster-importer');
     const importer = new RosterImporter(this);
     return importer.importDutyRoster(filePath, year, month, options);
