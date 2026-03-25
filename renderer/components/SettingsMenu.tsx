@@ -102,6 +102,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
 
   const [showYearImportAzubiDialog, setShowYearImportAzubiDialog] = useState(false);
   const [yearImportUnknownAzubiNames, setYearImportUnknownAzubiNames] = useState<string[]>([]);
+  const [showYearImportAzubiPeriodDialog, setShowYearImportAzubiPeriodDialog] = useState(false);
+  const [yearImportAzubisWithoutPeriod, setYearImportAzubisWithoutPeriod] = useState<Array<{ azubiId: number; azubiName: string; importDateRange: { start: string; end: string } }>>([]);
   // Feature toggles
   const [featureOldRtwShifts, setFeatureOldRtwShifts] = useState(false);
   const [featureShiftTransfers, setFeatureShiftTransfers] = useState(false);
@@ -264,7 +266,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
       } catch { }
       // Feiertage laden
       try {
-        const list = await (window as any).api.getHolidaysForYear?.(Number(y || new Date().getFullYear()));
+        const list = await (window as any).api.getHolidaysForYear?.(new Date().getFullYear());
         setHolidays((list || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
       } catch { }
 
@@ -777,6 +779,15 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
           return;
         }
 
+        // Check if azubis without valid periods were found
+        if (retryResult.azubisWithoutPeriod && retryResult.azubisWithoutPeriod.length > 0) {
+          setShowYearImportAzubiPeriodDialog(true);
+          setYearImportAzubisWithoutPeriod(retryResult.azubisWithoutPeriod);
+          // Keep yearImportPendingYear as it is
+          setShiftTypes(await (window as any).api.getShiftTypes());
+          return;
+        }
+
         alert(`Dienstplan für ${yearImportPendingYear} erfolgreich importiert. Einträge: ${retryResult.importedCount ?? 'n/v'}`);
         setCurrentImportPath(null); // Reset nach erfolgreichem Import
         try { (window as any).api.onDutyRosterUpdated?.(() => { }); } catch { }
@@ -821,6 +832,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
         return;
       }
 
+      // Check if azubis without valid periods were found (happens for newly created azubis)
+      if (retryResult.azubisWithoutPeriod && retryResult.azubisWithoutPeriod.length > 0) {
+        setShowYearImportAzubiPeriodDialog(true);
+        setYearImportAzubisWithoutPeriod(retryResult.azubisWithoutPeriod);
+        // Keep yearImportPendingYear as it is
+        return;
+      }
+
       alert(`Dienstplan für ${yearImportPendingYear} erfolgreich importiert. Einträge: ${retryResult.importedCount ?? 'n/v'}`);
       setCurrentImportPath(null); // Reset nach erfolgreichem Import
       try { (window as any).api.onDutyRosterUpdated?.(() => { }); } catch { }
@@ -838,6 +857,41 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
     setYearImportUnknownAzubiNames([]);
     setYearImportPendingYear(0);
     setCurrentImportPath(null); // Reset bei Abbruch
+  };
+
+  const handleYearImportAzubiPeriodConfirm = async (adjustments: Array<{ azubiId: number, startDate: string, endDate: string, description: string, lehrjahr: number }>) => {
+    setShowYearImportAzubiPeriodDialog(false);
+
+    try {
+      const retryResult = await (window as any).api.importDutyRoster(
+        currentImportPath || rosterImportPath,
+        yearImportPendingYear,
+        undefined,
+        { azubiPeriodAdjustments: adjustments }
+      );
+
+      if (retryResult && retryResult.success) {
+        alert(`Dienstplan für ${yearImportPendingYear} erfolgreich importiert. Einträge: ${retryResult.importedCount ?? 'n/v'}`);
+        setCurrentImportPath(null);
+        try { (window as any).api.onDutyRosterUpdated?.(() => { }); } catch { }
+      } else {
+        alert(`Import fehlgeschlagen: ${retryResult?.message || 'Unbekannter Fehler'}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Ein unbekannter Fehler ist aufgetreten.';
+      alert(`Fehler beim Import: ${message}`);
+    }
+
+    setYearImportAzubisWithoutPeriod([]);
+    setYearImportPendingYear(0);
+    setCurrentImportPath(null);
+  };
+
+  const handleYearImportAzubiPeriodCancel = () => {
+    setShowYearImportAzubiPeriodDialog(false);
+    setYearImportAzubisWithoutPeriod([]);
+    setYearImportPendingYear(0);
+    setCurrentImportPath(null);
   };
 
   if (loading) return <div style={{ padding: 24 }}><p>Lade Einstellungen ...</p></div>;
@@ -1408,7 +1462,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                         return;
                       }
 
-                      // Check if unknown azubis were found  
+                      // Check if azubis were found  
                       if (res.unknownAzubis && res.unknownAzubis.length > 0) {
                         const createNewAzubis = window.confirm(
                           `Folgende unbekannte Azubi-Namen wurden gefunden:\n${res.unknownAzubis.join('\n')}\n\nMöchten Sie diese als neue Azubis anlegen?`
@@ -1419,6 +1473,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                           setYearImportUnknownAzubiNames(res.unknownAzubis);
                           setYearImportPendingYear(yearImportSelectedYear);
                         }
+                        return;
+                      }
+
+                      // Check if azubis without valid periods were found
+                      if (res.azubisWithoutPeriod && res.azubisWithoutPeriod.length > 0) {
+                        setShowYearImportAzubiPeriodDialog(true);
+                        setYearImportAzubisWithoutPeriod(res.azubisWithoutPeriod);
+                        setYearImportPendingYear(yearImportSelectedYear);
                         return;
                       }
 
@@ -2622,6 +2684,15 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
             onCancel={handleYearImportAzubiCancel}
           />
         )}
+
+        {/* Year Import Azubi Period Dialog */}
+        {showYearImportAzubiPeriodDialog && (
+          <YearImportAzubiPeriodDialog
+            azubisWithoutPeriod={yearImportAzubisWithoutPeriod}
+            onConfirm={handleYearImportAzubiPeriodConfirm}
+            onCancel={handleYearImportAzubiPeriodCancel}
+          />
+        )}
     </div>
   );
 };
@@ -2823,6 +2894,119 @@ const NewAzubiDialog: React.FC<NewAzubiDialogProps> = ({ unknownNames, onConfirm
             Azubis anlegen und Import fortsetzen
           </button>
         </div>
+      </div>
+    </div>
+  );
+};
+
+// Azubi Period Dialog for Year Import (mirrors AzubiPeriodDialog in DutyRoster)
+interface YearImportAzubiPeriodDialogProps {
+  azubisWithoutPeriod: Array<{ azubiId: number; azubiName: string; importDateRange: { start: string; end: string } }>;
+  onConfirm: (adjustments: Array<{ azubiId: number; startDate: string; endDate: string; description: string; lehrjahr: number }>) => void;
+  onCancel: () => void;
+}
+
+const YearImportAzubiPeriodDialog: React.FC<YearImportAzubiPeriodDialogProps> = ({ azubisWithoutPeriod, onConfirm, onCancel }) => {
+  const [adjustments, setAdjustments] = useState<Array<{ azubiId: number; startDate: string; endDate: string; description: string; lehrjahr: number }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadAzubiPeriods = async () => {
+      const initialAdjustments = [];
+      for (const azubi of azubisWithoutPeriod) {
+        let minLehrjahr = 1;
+        try {
+          const periods = await (window as any).api.getAzubiPeriods(azubi.azubiId);
+          if (periods && periods.length > 0) {
+            const sorted = [...periods].sort((a: any, b: any) => new Date(b.end_date).getTime() - new Date(a.end_date).getTime());
+            minLehrjahr = sorted[0].lehrjahr || 1;
+          }
+        } catch { }
+        initialAdjustments.push({
+          azubiId: azubi.azubiId,
+          startDate: azubi.importDateRange.start,
+          endDate: azubi.importDateRange.end,
+          description: 'Automatisch durch Import erstellt',
+          lehrjahr: minLehrjahr
+        });
+      }
+      setAdjustments(initialAdjustments);
+      setLoading(false);
+    };
+    loadAzubiPeriods();
+  }, [azubisWithoutPeriod]);
+
+  const update = (index: number, field: string, value: any) => {
+    const next = [...adjustments];
+    (next[index] as any)[field] = value;
+    setAdjustments(next);
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+      background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }}>
+      <div style={{
+        background: 'white', padding: '20px', borderRadius: '8px', minWidth: '600px', maxWidth: '800px', maxHeight: '80vh', overflow: 'auto'
+      }}>
+        <h3>Azubi-Zeiträume korrigieren</h3>
+        {loading ? (
+          <p>Lade Azubi-Daten...</p>
+        ) : (
+          <>
+            <p>Folgende Azubis haben keinen aktiven Zeitraum für den Importzeitraum. Bitte korrigieren Sie die Zeiträume:</p>
+            {azubisWithoutPeriod.map((azubi, index) => (
+              <div key={index} style={{ marginBottom: '20px', border: '1px solid #ddd', padding: '15px', borderRadius: '4px' }}>
+                <div><strong>Azubi:</strong> {azubi.azubiName}</div>
+                <div><strong>Import-Zeitraum:</strong> {azubi.importDateRange.start} bis {azubi.importDateRange.end}</div>
+                <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div>
+                    <label style={{ display: 'inline-block', width: '120px' }}>Startdatum: </label>
+                    <input type="date" value={adjustments[index]?.startDate || ''}
+                      onChange={e => update(index, 'startDate', e.target.value)}
+                      style={{ padding: '4px', width: '150px' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'inline-block', width: '120px' }}>Enddatum: </label>
+                    <input type="date" value={adjustments[index]?.endDate || ''}
+                      onChange={e => update(index, 'endDate', e.target.value)}
+                      style={{ padding: '4px', width: '150px' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'inline-block', width: '120px' }}>Lehrjahr: </label>
+                    <select value={adjustments[index]?.lehrjahr || 1}
+                      onChange={e => update(index, 'lehrjahr', parseInt(e.target.value) || 1)}
+                      style={{ padding: '4px' }}>
+                      <option value={1}>1</option>
+                      <option value={2}>2</option>
+                      <option value={3}>3</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'inline-block', width: '120px' }}>Beschreibung: </label>
+                    <input type="text" value={adjustments[index]?.description || ''}
+                      onChange={e => update(index, 'description', e.target.value)}
+                      style={{ padding: '4px', width: '300px' }}
+                      placeholder="z.B. Ausbildungsabschnitt 1" />
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div style={{ marginTop: '20px', textAlign: 'right' }}>
+              <button onClick={onCancel} style={{ marginRight: '10px', padding: '8px 16px' }} disabled={loading}>
+                Abbrechen
+              </button>
+              <button
+                onClick={() => onConfirm(adjustments)}
+                style={{ padding: '8px 16px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px' }}
+                disabled={loading}
+              >
+                Zeiträume anlegen und Import fortsetzen
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

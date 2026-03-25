@@ -563,7 +563,7 @@ export class RosterImporter {
                     console.log(`[RosterImporter][Header] ${addr} t=${cell?.t} v=${cell?.v} f=${cell?.f} w=${cell?.w} -> ${parsed ? parsed.toDateString() : 'n/a'}`);
                 }
 
-                const processBlock = (startRow: number, endRow: number, blockLabel: string) => {
+                const processBlock = (startRow: number, endRow: number, blockLabel: string, skipEmpty = false) => {
                     console.log(`[RosterImporter] Verarbeite Block ${blockLabel}: Zeilen ${startRow + 1}-${endRow + 1} (1-based)`);
                     for (let col = fixed.firstDateCol; col < fixed.firstDateCol + 2000; col++) {
                         const dateAddr = XLSX.utils.encode_cell({ r: fixed.headerRow, c: col });
@@ -619,9 +619,10 @@ export class RosterImporter {
                             const dutyCell = worksheet[dutyAddr];
                             const dutyValue = dutyCell && dutyCell.v != null ? String(dutyCell.v).trim() : '';
                             
-                            // Wenn Jahresimport (month nicht gesetzt): Leere Zellen ignorieren (bestehende Einträge behalten)
-                            // Wenn Monatsimport (month gesetzt): Leere Zellen als Löschung interpretieren
-                            if (!dutyValue && month == null) continue;
+                            // Leere Zellen überspringen wenn:
+                            //  - Jahresimport (month === null/undefined): immer überspringen
+                            //  - skipEmpty=true (Azubi-Block): immer überspringen (keine Sync-Löschung für Azubis)
+                            if (!dutyValue && (month == null || skipEmpty)) continue;
 
                             entriesToImport.push({
                                 personId: personInfo.id,
@@ -715,7 +716,9 @@ export class RosterImporter {
                 }
                 
                 // Now process the azubi block (for both month and year imports)
-                processBlock(fixed.azubiStart, fixed.azubiEnd, 'Azubis');
+                // skipEmpty=true: Azubis werden nur bei tatsächlichen Einträgen importiert.
+                // Leere Zellen werden auch beim Monatsimport nicht als Löschung interpretiert.
+                processBlock(fixed.azubiStart, fixed.azubiEnd, 'Azubis', true);
             }
 
             if (entriesToImport.length > 0) {
