@@ -1088,7 +1088,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const fixedHeaderContainerRef = React.useRef<HTMLDivElement>(null);
     const [headerHeight, setHeaderHeight] = React.useState(280);
 
-    const [sidebarWidth, setSidebarWidth] = React.useState(476); // 440 (Kontrollkasten) + 24 (right) + 12 (gap)
+    const [sidebarWidth, setSidebarWidth] = React.useState(512);
 
     // Messe die Höhe des Fixed Header Containers
     React.useEffect(() => {
@@ -1125,10 +1125,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const handleContentScroll = (e: React.UIEvent<HTMLDivElement>) => {
         if (vehicleHeaderRef.current) {
             vehicleHeaderRef.current.scrollLeft = e.currentTarget.scrollLeft;
-        }
-        const bottomScroller = document.getElementById('einteilung-bottom-scroller');
-        if (bottomScroller) {
-            bottomScroller.scrollLeft = e.currentTarget.scrollLeft;
         }
     };
 
@@ -1415,7 +1411,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     position: 'fixed',
                     top: 'clamp(56px, 6.5vw, 90px)',
                     left: sidebarCollapsed ? 56 : 200,
-                    right: sidebarWidth,
+                    right: sidebarWidth + 16,
                     zIndex: 100,
                     background: 'var(--bg)',
                     paddingLeft: 24,
@@ -1438,7 +1434,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     <div style={{
                         position: 'absolute',
                         top: 8,
-                        right: `-${Math.max(0, sidebarWidth - 24)}px`,
+                        right: `-${Math.max(0, sidebarWidth - 28)}px`,
                         display: 'flex',
                         flexDirection: 'row',
                         alignItems: 'center',
@@ -1561,7 +1557,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 <div style={{
                     display: 'flex',
                     gap: '4px',
-                    borderBottom: '1px solid var(--line)',
+                    borderBottom: '1px solid #e5e7eb',
                     flexWrap: 'wrap',
                     paddingTop: 4,
                     paddingBottom: 20
@@ -1724,12 +1720,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 {viewMode === 'rtwnef' && (
                     <div
                         ref={vehicleHeaderRef}
-                        style={{ 
-                            overflowX: 'hidden', 
-                            overflowY: 'hidden', 
-                            background: 'var(--bg)',
-                            borderBottom: '2px solid #ef4444' // Restored red color
-                        }}
+                        style={{ overflowX: 'auto', overflowY: 'hidden', background: 'var(--bg)' }}
                         onScroll={(e) => {
                             // Synchronisiere zurück zum Content wenn Header gescrollt wird
                             if (contentRef.current) {
@@ -1743,6 +1734,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 if (!enabled) return null;
                                 return (
                                     <div key={`rtw_header_${rIdx}`} style={{
+                                        marginRight: 8,
+                                        marginBottom: 8,
                                         width: 'var(--vehicle-card-width)',
                                         minWidth: 'var(--vehicle-card-width)',
                                         maxWidth: 'var(--vehicle-card-width)',
@@ -1750,18 +1743,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         boxSizing: 'border-box',
                                         background: 'var(--bg)'
                                     }}>
-                                        <div style={{ 
-                                            paddingBottom: 4, 
-                                            display: 'grid', 
-                                            gridTemplateColumns: '60px 1fr 1fr', 
-                                            gap: '6px',
-                                            alignItems: 'baseline'
-                                        }}>
-                                            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                {v.name || rtwNames[rIdx] || ''}
+                                        <div style={{ paddingBottom: 4, borderBottom: '2px solid #ef4444' }}>
+                                            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 4, paddingLeft: 66 }}>{v.name || rtwNames[rIdx] || ''}</div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr 1fr', gap: '6px' }}>
+                                                <div></div>
+                                                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>Tag</div>
+                                                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>Nacht</div>
                                             </div>
-                                            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>Tag</div>
-                                            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>Nacht</div>
                                         </div>
                                     </div>
                                 );
@@ -1772,6 +1760,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 const nefLabel = v.occupancy_mode === '24h' ? '24h' : 'Tag';
                                 return (
                                     <div key={`nef_header_${nIdx}`} style={{
+                                        marginRight: 8,
+                                        marginBottom: 8,
                                         width: 'var(--vehicle-card-width)',
                                         minWidth: 'var(--vehicle-card-width)',
                                         maxWidth: 'var(--vehicle-card-width)',
@@ -1779,17 +1769,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         boxSizing: 'border-box',
                                         background: 'var(--bg)'
                                     }}>
-                                        <div style={{ 
-                                            paddingBottom: 4, 
-                                            display: 'grid', 
-                                            gridTemplateColumns: '60px 1fr', 
-                                            gap: '6px',
-                                            alignItems: 'baseline'
-                                        }}>
-                                            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                {v.name || nefName || ''}
+                                        <div style={{ paddingBottom: 4, borderBottom: '2px solid #ef4444' }}>
+                                            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 4, paddingLeft: 66 }}>{v.name || nefName || ''}</div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr', gap: '6px' }}>
+                                                <div></div>
+                                                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>{nefLabel}</div>
                                             </div>
-                                            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>{nefLabel}</div>
                                         </div>
                                     </div>
                                 );
@@ -1800,7 +1785,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                 {/* Fahrzeug-Header (ITW) im Fixed Container */}
                 {viewMode === 'itw' && itwEnabled && (
-                    <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--line)' }}>
+                    <div style={{ padding: '8px 12px', borderBottom: '2px solid #f59e0b' }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', textAlign: 'left' }}>ITW</div>
                     </div>
                 )}
@@ -1813,7 +1798,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 ref={contentRef}
                 style={{
                     paddingTop: headerHeight,
-                    paddingBottom: 24, // Mehr Platz für den Balken
+                    paddingBottom: 12,
                     paddingLeft: 24,
                     paddingRight: 24,
                     overflowX: 'auto',
@@ -1821,17 +1806,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     transition: 'padding-left 0.15s',
                     boxSizing: 'border-box'
                 }}
-                id="roster-content"
                 onScroll={handleContentScroll}
             >
-                <style>{`
-                    #roster-content::-webkit-scrollbar {
-                        height: 0px;
-                    }
-                    #roster-content::-webkit-scrollbar-thumb {
-                        background: transparent;
-                    }
-                `}</style>
 
                 {/* View Protection: Hide content if read-only and not released */}
                 {!canWrite && !releasedMonths[currentMonth] ? (
@@ -1920,7 +1896,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                     }
 
                                     return (
-                                        <div key={d.date} style={{ marginBottom: 12, width: 'max-content', minWidth: '100%' }}>
+                                        <div key={d.date} style={{ marginBottom: 12 }}>
                                             {(() => {
                                                 const dt = new Date(d.date + 'T00:00:00');
                                                 const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }); // DD.MM
@@ -1976,11 +1952,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                     </div>
                                                 );
                                             })()}
-                                            {viewMode === 'rtwnef' && (
-                                                <div style={{ width: 'max-content', minWidth: '100%' }}>
-                                                    <div className={styles.dayDivider} />
-                                                </div>
-                                            )}
+                                            {viewMode === 'rtwnef' && <div className={styles.dayDivider} />}
                                             <div>
                                                 <div className={styles.container}>
                                                     {(rtwVehicles || []).map((v, rIdx) => {
@@ -2818,55 +2790,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 cursor: 'pointer'
                             }}>Schließen</button>
                         </div>
-                    </div>
-                </div>
-            )}
-            {/* Fixierter horizontaler Scrollbalken unten */}
-            {viewMode === 'rtwnef' && (
-                <div
-                    id="einteilung-footer-container"
-                    style={{
-                        position: 'fixed',
-                        bottom: 0,
-                        left: sidebarCollapsed ? 56 : 200,
-                        right: sidebarWidth,
-                        height: '40px',
-                        background: 'var(--bg)',
-                        zIndex: 1000,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'center',
-                        transition: 'left 0.15s',
-                        paddingLeft: 24,
-                        paddingRight: 24,
-                        boxSizing: 'border-box'
-                    }}
-                >
-                    {/* Horizontaler Trenner über dem Scrollbalken */}
-                    <div style={{ width: '100%', borderTop: '1px solid var(--line)' }}></div>
-
-                    <div
-                        id="einteilung-bottom-scroller"
-                        style={{
-                            width: '100%',
-                            height: '24px',
-                            overflowX: 'auto',
-                            overflowY: 'hidden',
-                            marginTop: '2px'
-                        }}
-                        onScroll={(e) => {
-                            if (contentRef.current) {
-                                contentRef.current.scrollLeft = e.currentTarget.scrollLeft;
-                            }
-                        }}
-                    >
-                        {(() => {
-                            const enabledRtwCount = (rtwVehicles || []).filter(v => (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false).length;
-                            const enabledNefCount = (nefVehicles || []).filter(v => (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false).length;
-                            const totalV = enabledRtwCount + enabledNefCount;
-                            const width = totalV > 0 ? totalV * 320 + (totalV - 1) * 12 + 48 : 0;
-                            return <div style={{ width, height: '1px' }}></div>;
-                        })()}
                     </div>
                 </div>
             )}

@@ -1,14 +1,9 @@
 .container {
-  --vehicle-card-width: 320px;
+  --vehicle-card-width: 338px;
   display: flex;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: nowrap;
   align-items: flex-start;
-  box-sizing: border-box;
-}
-
-.container * {
-  box-sizing: border-box;
 }
 
 .rtw {
@@ -97,7 +92,7 @@
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  margin-right: 0px;
+  margin-right: 8px;
   margin-bottom: 8px;
   width: var(--vehicle-card-width);
   min-width: var(--vehicle-card-width);
@@ -114,7 +109,7 @@
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  margin-right: 0px;
+  margin-right: 8px;
   margin-bottom: 8px;
   width: var(--vehicle-card-width);
   min-width: var(--vehicle-card-width);
