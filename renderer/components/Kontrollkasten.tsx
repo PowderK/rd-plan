@@ -49,6 +49,7 @@ interface KontrollkastenProps {
   showOldRtwShifts?: boolean;
   showWeekendShifts?: boolean;
   showItw?: boolean;
+  availablePersonKeys?: Set<string>;
 }
 
 export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
@@ -64,6 +65,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
   showOldRtwShifts = false,
   showWeekendShifts = false,
   showItw = true,
+  availablePersonKeys,
 }) => {
   // Dynamisches Grid-Layout
   const wCol = showWeekendShifts ? '22px ' : '';
@@ -141,6 +143,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                     color: it.lpal ? '#fd7e14' : it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : undefined,
                     cursor: 'pointer',
                     fontWeight: highlightedPersonKey === it.key ? 700 : undefined,
+                    backgroundColor: availablePersonKeys?.has(it.key) ? '#e8f5e9' : undefined,
                     textDecoration: highlightedPersonKey === it.key ? 'underline' : undefined,
                     whiteSpace: 'nowrap',
                     textAlign: 'right',

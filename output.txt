@@ -1,0 +1,320 @@
+Datum: Januar 22.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Getvan / Nallraven / Dietrich / Pardey
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Gšrtler / Nei§ / Nelker / NunderNelt
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Bškelmann
+
+Datum: Januar 27.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Buchholz 2 / Homann / Plšger
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Pissin / Schmidt-Grundmann / Engelke / Glomb
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Bškelmann
+
+Datum: Januar 30.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Gšrtler / Brockmann / Ahrberg / Plšger
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: NunderNelt / Gustke / Stršmann / Spier
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Bškelmann
+
+Datum: Februar 01.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Pardey / Schrader 4 / Dietrich / Nallraven
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: NunderNelt / Engelke / Pissin / Nei§
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Nelker
+
+Datum: Februar 04.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Kšhler / Schneider 5 / Skeretsch / Plšger
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Dietrich / Gustke / Gšrtler / Spier
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Nelker
+
+Datum: Februar 07.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Homann / Plšger / Pelz / Buchholz 2
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Pissin / Spier / NunderNelt / Nei§
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Nelker
+
+Datum: Februar 09.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Stršmann / Plšger / Nallraven / Brockmann
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Gebauer / Spier / Pissin / Schneider 5
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Dietrich
+
+Datum: Februar 12.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Ahrberg / Brockmann / Buchholz 2 / Plšger
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Pardey / Pelz / Engelke / Spier
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Dietrich
+
+Datum: Februar 17.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Hettenbach / Schneider 5 / Plšger
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Kšhler / Pardey / Gebauer / Spier
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Nallraven
+
+Datum: Februar 20.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Homann / Brockmann / Buchholz 2 / Engelke
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Doellert / Nelker / Gšrtler / Spier
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Nallraven
+
+Datum: Februar 22.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Pelz / NunderNelt / Gšrtler / Nei§
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Bškelmann / Kšhler / Getvan / Buchholz 2
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Doellert
+
+Datum: Februar 25.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Stršmann / Brockmann / Pardey / NunderNelt
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Getvan / Buchholz 2 / Pelz / Plšger
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Ahrberg
+
+Datum: Februar 28.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Pardey / NunderNelt / Nallraven / Engelke
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Pelz / Plšger / Dietrich / Buchholz 2
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Ahrberg
+
+Datum: MŠrz 02.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Homann / Engelke / Schneider 5 / NunderNelt
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Pescht / Nallraven / Doellert / Getvan
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Stršmann
+
+Datum: MŠrz 05.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Buchholz 2 / Brockmann / Gšrtler / Homann
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Engelke / Nei§ / Pissin / Schneider 5
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Gebauer
+
+Datum: MŠrz 10.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Gebauer / Schrader 4 / Gšrtler / Pissin
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Getvan / Nelker / Dietrich / Pardey
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Hettenbach
+
+Datum: MŠrz 13.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Kšhler / Pissin / Ahrberg / Bškelmann
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Doellert / Schneider 5 / Gebauer / Nelker
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Hettenbach
+
+Datum: MŠrz 15.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Bškelmann / Gšrtler / Pardey / NunderNelt
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Getvan / Schneider 5 / Buchholz 2 / Engelke
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Hettenbach
+
+Datum: MŠrz 18.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Kšhler / Buchholz 2 / Ahrberg / NunderNelt
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Pissin / Schrader 4 / Gšrtler / Nei§
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Nelker
+
+Datum: MŠrz 21.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Gebauer / Engelke / Getvan / Pissin
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Schneider 5 / Nei§ / Hettenbach / Pelz
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Nelker
+
+Datum: MŠrz 23.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Doellert / Gebauer / Gustke
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Buchholz 2 / Schneider 5 / Nei§
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Nelker
+
+Datum: MŠrz 26.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Getvan / NunderNelt / Bškelmann
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Gšrtler / Schneider 5 / Pardey
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Stršmann
+
+Datum: MŠrz 31.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Ahrberg / Buchholz 2 / Pardey / Nallraven
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: NunderNelt / Doellert / Nei§
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Stršmann
+
+Datum: April 03.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Gebauer / Schrader 4 / Skeretsch
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Ahrberg / Nelker / Gšrtler / Schneider 5
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Stršmann
+
+Datum: April 05.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Stršmann / Nei§ / Hettenbach / Nallraven
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Kšhler / Pelz / Bškelmann / Nelker
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Gebauer
+
+Datum: April 08.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Gšrtler / Gustke / Ahrberg
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Engelke / Nei§ / Pelz
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Doellert
+
+Datum: April 11.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Dietrich / NunderNelt / Nei§
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Hettenbach / Buchholz 2 / Kšhler / Engelke
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Doellert
+
+Datum: April 13.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Dietrich / Nelker / Gustke
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Buchholz 2 / Glomb / Schneider 5
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Doellert
+
+Datum: April 16.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Schrader 4 / Gustke / Pissin
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Ahrberg / Nei§ / Engelke / Glomb
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Doellert
+
+Datum: April 21.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Getvan / Plšger / Stršmann / Spier
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Homann / Gšrtler / Glomb
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Doellert
+
+Datum: April 29.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht:  / Pelz
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht:  / 
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Nallraven
+
+Datum: Mai 20.
+RTW 4
+Fahrzeugführer Tag / Fahrzeugführer Nacht: Pelz / 
+Maschinist Tag / Maschinist Nacht:  / 
+RTW 7
+Fahrzeugführer Tag / Fahrzeugführer Nacht:  / 
+Maschinist Tag / Maschinist Nacht:  / 
+NEF
+Fahrzeugführer: Ahrberg
+
