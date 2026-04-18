@@ -76,9 +76,8 @@ const EinteilungPage: React.FC = () => {
 
       console.log('[EinteilungPage] Personnel before filter:', rawList.length, '| after filter:', list.length);
 
-      // Aktueller Monat im Format YYYY-MM
-      const now = new Date();
-      const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      // Aktueller ausgewählter Monat im Format YYYY-MM
+      const yearMonth = `${year}-${String(currentMonth + 1).padStart(2, '0')}`;
 
       // Lade HLFB Qualifikationstyp aus Settings
       let hlfbQualName = 'FzF HLF B'; // Fallback

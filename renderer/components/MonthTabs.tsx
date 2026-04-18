@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { calculateTargets } from '../utils/calculation';
 import styles from './MonthTabs.module.css';
 import { Kontrollkasten } from './Kontrollkasten';
+import CustomSelect from './CustomSelect';
 import { AzubiAutoAssignDialog, ShiftSummary, ProposedAssignment, ConflictAzubi } from './AzubiAutoAssignDialog';
 
 interface MonthTabsProps {
@@ -792,6 +793,22 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         }
         return '';
     }, [localRoster, roster]);
+
+    const getOptionStyle = useCallback((val: string) => {
+        if (!val) return {};
+        const [type, idStr] = val.split(':');
+        const id = Number(idStr);
+        if (type === 'a') return { backgroundColor: '#e8f5e9', color: '#2e7d32' }; 
+        if (type === 'p') {
+            const p = personnel.find(x => x.id === id);
+            if (!p) return {};
+            if (lpalIds.has(p.id)) return { backgroundColor: '#fff3cd', color: '#856404' };
+            if ((p as any).ue50 === 1) return { backgroundColor: '#f8d7da', color: '#721c24' };
+            if ((p as any).fahrzeugfuehrerHLFB === 1) return { backgroundColor: '#cce5ff', color: '#004085' };
+        }
+        return {};
+    }, [personnel, lpalIds]);
+
     const findPersonLabelByValue = (val: string) => {
         if (!val) return '';
         try {
@@ -2193,16 +2210,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
 
                                                                     return (
-                                                                        <select
-                                                                            className={styles.select}
+                                                                        <CustomSelect
+                                                                            options={renderOptions}
                                                                             value={value}
                                                                             disabled={!canWrite}
-                                                                            style={highlightStyle}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
+                                                                            highlightStyle={highlightStyle}
+                                                                            getOptionStyle={getOptionStyle}
+                                                                            onChange={v => { if (v === '') { clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                        />
                                                                     );
                                                                 })()}
                                                                 {(() => {
@@ -2219,16 +2234,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
 
                                                                     return (
-                                                                        <select
-                                                                            className={styles.select}
+                                                                        <CustomSelect
+                                                                            options={renderOptions}
                                                                             value={value}
                                                                             disabled={!canWrite}
-                                                                            style={highlightStyle}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
+                                                                            highlightStyle={highlightStyle}
+                                                                            getOptionStyle={getOptionStyle}
+                                                                            onChange={v => { if (v === '') { clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                        />
                                                                     );
                                                                 })()}
                                                                 <div className={styles.rowLabel}>Ma</div>
@@ -2249,14 +2262,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
 
                                                                     return (
-                                                                        <select className={styles.select} value={value}
+                                                                        <CustomSelect
+                                                                            options={renderOptions}
+                                                                            value={value}
                                                                             disabled={!canWrite}
-                                                                            style={highlightStyle}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
+                                                                            highlightStyle={highlightStyle}
+                                                                            getOptionStyle={getOptionStyle}
+                                                                            onChange={v => { if (v === '') { clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                        />
                                                                     );
                                                                 })()}
                                                                 {(() => {
@@ -2276,14 +2289,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
 
                                                                     return (
-                                                                        <select className={styles.select} value={value}
+                                                                        <CustomSelect
+                                                                            options={renderOptions}
+                                                                            value={value}
                                                                             disabled={!canWrite}
-                                                                            style={highlightStyle}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
+                                                                            highlightStyle={highlightStyle}
+                                                                            getOptionStyle={getOptionStyle}
+                                                                            onChange={v => { if (v === '') { clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                        />
                                                                     );
                                                                 })()}
                                                                 <div className={styles.rowLabel}>Azubi</div>
@@ -2296,13 +2309,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const renderOptions = value && !optionsA.some(o => o.value === value)
                                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsA] : optionsA;
                                                                     return (
-                                                                        <select className={styles.select} value={value}
+                                                                        <CustomSelect
+                                                                            options={renderOptions}
+                                                                            value={value}
                                                                             disabled={!canWrite}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
+                                                                            getOptionStyle={getOptionStyle}
+                                                                            onChange={v => { if (v === '') { clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                        />
                                                                     );
                                                                 })()}
                                                                 {(() => {
@@ -2314,13 +2327,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const renderOptions = value && !optionsA.some(o => o.value === value)
                                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsA] : optionsA;
                                                                     return (
-                                                                        <select className={styles.select} value={value}
+                                                                        <CustomSelect
+                                                                            options={renderOptions}
+                                                                            value={value}
                                                                             disabled={!canWrite}
-                                                                            onChange={e => handleAssign(d.date, d.dayOfYear, e.target.value, slotId)}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
+                                                                            getOptionStyle={getOptionStyle}
+                                                                            onChange={v => { if (v === '') { clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                        />
                                                                     );
                                                                 })()}
                                                             </div>
@@ -2358,14 +2371,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
 
                                                                     return (
-                                                                        <select className={styles.select} value={value}
+                                                                        <CustomSelect
+                                                                            options={renderOptions}
+                                                                            value={value}
                                                                             disabled={!canWrite}
-                                                                            style={highlightStyle}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
+                                                                            highlightStyle={highlightStyle}
+                                                                            getOptionStyle={getOptionStyle}
+                                                                            onChange={v => { if (v === '') { clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                        />
                                                                     );
                                                                 })()}
                                                                 <div className={styles.rowLabel}>Azubi</div>
@@ -2389,13 +2402,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const renderOptions = value && !optionsA.some(o => o.value === value)
                                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsA] : optionsA;
                                                                     return (
-                                                                        <select className={styles.select} value={value}
+                                                                        <CustomSelect
+                                                                            options={renderOptions}
+                                                                            value={value}
                                                                             disabled={!canWrite}
-                                                                            onChange={e => handleAssign(d.date, d.dayOfYear, e.target.value, slotId)}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_azubi'); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
+                                                                            getOptionStyle={getOptionStyle}
+                                                                            onChange={v => { if (v === '') { clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_azubi'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                        />
                                                                     );
                                                                 })()}
                                                             </div>
@@ -2703,14 +2716,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                             const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
 
                                             return (
-                                                <select className={styles.select} value={value}
-                                                    style={highlightStyle}
+                                                <CustomSelect
+                                                    options={options}
+                                                    value={value}
                                                     disabled={!canWrite}
-                                                    onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } else { handleAssign(date, 0, v, slotId); } }}
-                                                    onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } }}>
-                                                    <option value=""></option>
-                                                    {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                </select>
+                                                    highlightStyle={highlightStyle}
+                                                    getOptionStyle={getOptionStyle}
+                                                    onChange={v => { if (v === '') { clearAssignedForDate(slotId, date); } else { handleAssign(date, 0, v, slotId); } }}
+                                                />
                                             );
                                         };
                                         const racks: typeof days[] = [] as any;
