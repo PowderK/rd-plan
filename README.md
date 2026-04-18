@@ -7,9 +7,15 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v1.2.0** - Modernisierte Benutzeroberfläche mit optimierter horizontaler Navigation und stabilisierten Layout-Trennlinien
+**v1.3.0** - Neue Automatik zur Azubi-Einteilung inkl. interaktiver Konfliktlösung und erweiterter Kontrollkasten-Ansicht.
 
 ## Funktionen
+
+### Automatische Azubi-Einteilung (v1.3.0+)
+- **One-Click Verteilung**: Weist auf Knopfdruck alle ungeplanten Azubis des Monats auf freie Slots (RTW 2 für Maschinisten, RTW 3 für normale Azubis) zu.
+- **Smarte Abteilungserkennung**: Berücksichtigt automatisch nur die Tage, an denen die aktivierte Abteilung tatsächlich Dienst hat.
+- **Interaktiver Konfliktdialog**: Gibt es in einer Schicht mehr Azubis als reguläre RTW-Plätze, öffnet sich ein Lösungsdialog, der smarte Fallbacks (wie NEF oder alternative RTW-Plätze) anbietet.
+- **Performance**: Führt komplexe Einteilungen als synchronisierten Batch-Update durch, um die Benutzeroberfläche flüssig zu halten und Ruckler zu vermeiden.
 
 ### Kernfunktionen
 - **Authentifizierung & Rechteverwaltung** mit rollenbasierter Zugriffskontrolle
@@ -65,6 +71,7 @@ RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die 
 - **Person-Highlighting**: Klick auf Namen im Kontrollkasten hebt Person in der Einteilung hervor
 	- Dezente Farbcodierung: Rot für Tag-Schichten, Blau für Nacht-Schichten
 	- Toggle-Funktion: Erneuter Klick entfernt Hervorhebung
+- **Verfügbarkeits-Highlighting**: Durch einen einfachen Klick auf eine Datumskopfzeile (z.B. den 5.) im Hauptdienstplan markiert der Kontrollkasten sofort alle Kollegen in Grün, die an diesem Tag zwar Dienst haben, aber noch auf keinen konkreten Wagen zugewiesen sind.
 - **Cross-Tab-Hervorhebung**: Tabs zeigen automatisch an, wenn hervorgehobene Person Einteilungen im anderen Bereich hat
 	- RTW/NEF-Tab: Dezente rote Hinterlegung bei ITW-Einteilungen
 	- ITW-Tab: Dezente gelbe Hinterlegung bei RTW/NEF-Einteilungen
@@ -130,11 +137,16 @@ Hinweis für Administratoren: Wenn du die Anwendung paketieren oder für andere 
 
 ## Entwicklungsstatus
 
-**Version 1.2.0** - Aktive Entwicklung (Stable Release Candidate)
+**Version 1.3.0** - Aktive Entwicklung (Stable Release Candidate)
 
-Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangreichen Feature-Set. Die aktuelle Version 1.2.0 modernisiert die Benutzeroberfläche durch eine ergonomisch optimierte horizontale Navigation im Dienstplan und in der Einteilung sowie durch eine präzisere Ausrichtung aller strukturellen Trennlinien.
+Die Anwendung befindet sich in fortgeschrittener Entwicklung mit einem umfangreichen Feature-Set. Die aktuelle Version **1.3.0** führt die völlig automatisierte Azubi-Planung und weitere Erleichterungen für Disponenten ein.
 
 **Produktionstauglichkeit**: Die Anwendung wird bereits in mehreren Rettungswachen erfolgreich eingesetzt. Für kritische Umgebungen wird empfohlen, die Funktionen vorab zu testen und regelmäßige Datensicherungen durchzuführen.
+
+**Neue Features in v1.3.0**:
+- ✅ **Automatische Azubi-Einteilung**: Bulk-Zuweisung nach Lehrjahren (Platz 2 / 3) inkl. Ausweichplätzen auf einem Knopfdruck.
+- ✅ **Interaktiver Ausweich-Dialog**: Manuelle Konfliktbehebung, wenn ein Diensttag staufällig wird.
+- ✅ **Datumsklick-Verfügbarkeit**: Klicken einer Spalte zeigt im Kontrollkasten direkt verfügbare und noch unverplante Ressourcen in Hellgrün an.
 
 **Neue Features in v1.0.8 RC**:
 - ✅ **Kommentar-Dialoge im Dienstplan**: Hinzufügen/Bearbeiten/Löschen ohne Browser-`prompt()`, robust in Electron-Umgebungen
