@@ -1600,14 +1600,7 @@ const DutyRoster: React.FC = () => {
           }
         }}
       >
-        <style>{`
-          #table-wrapper::-webkit-scrollbar {
-            height: 0px;
-          }
-          #table-wrapper::-webkit-scrollbar-thumb {
-            background: transparent;
-          }
-        `}</style>
+
         {/* Alle Monate sichtbar lassen, damit Kommentare auch in nicht freigegebenen Monaten möglich sind */}
         {false ? (
           <div style={{
@@ -2000,48 +1993,6 @@ const DutyRoster: React.FC = () => {
           onClose={() => setCommentEditor(null)}
         />
       )}
-
-      {/* Fixierter horizontaler Scrollbalken unten */}
-      <div
-        id="footer-scroller-container"
-        style={{
-          position: 'fixed',
-          bottom: 0,
-          left: 'var(--sidebar-offset, 200px)',
-          right: 0,
-          height: '40px',
-          background: 'var(--bg)',
-          zIndex: 1000,
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          paddingLeft: 24,
-          paddingRight: 24,
-          boxSizing: 'border-box'
-        }}
-      >
-        {/* Horizontaler Trenner über dem Scrollbalken */}
-        <div style={{ width: '100%', borderTop: '1px solid var(--line)' }}></div>
-        
-        <div
-          id="bottom-scroller"
-          style={{
-            width: '100%',
-            height: '24px',
-            overflowX: 'auto',
-            overflowY: 'hidden',
-            marginTop: '2px'
-          }}
-          onScroll={(e) => {
-            const tableWrapper = document.getElementById('table-wrapper');
-            if (tableWrapper) {
-              tableWrapper.scrollLeft = e.currentTarget.scrollLeft;
-            }
-          }}
-        >
-          <div style={{ width: Math.max(800, (days.length + 3) * 40 + nameColWidth), height: '1px' }}></div>
-        </div>
-      </div>
     </div>
   );
 };

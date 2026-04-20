@@ -722,9 +722,8 @@ export class RosterImporter {
                 }
                 
                 // Now process the azubi block (for both month and year imports)
-                // skipEmpty=true: Azubis werden nur bei tatsächlichen Einträgen importiert.
-                // Leere Zellen werden auch beim Monatsimport nicht als Löschung interpretiert.
-                processBlock(fixed.azubiStart, fixed.azubiEnd, 'Azubis', true);
+                // skipEmpty=false: leere Zellen werden beim Monatsimport als Löschung (Sync) interpretiert, genau wie beim Personal.
+                processBlock(fixed.azubiStart, fixed.azubiEnd, 'Azubis', false);
             }
 
             if (entriesToImport.length > 0) {
