@@ -153,8 +153,8 @@ export interface DatabaseAdapter {
 
   clearDutyRosterForYear(year: number): Promise<void>;
   clearDutyRosterForMonth(year: number, month: number): Promise<void>;
-  clearSlotAssignments(): Promise<void>;
-  assignSlot(entry: { personId: number, personType: string, date: string, slotType: string }): Promise<void>;
+  assignSlot(entry: { personId: number, personType: string, date: string, slotType: string }, auditUser?: any): Promise<void>;
+  clearSlotAssignments(auditUser?: any): Promise<void>;
 
   getItwPatterns(): Promise<any[]>;
   setItwPatterns(patterns: any[]): Promise<void>;
@@ -185,6 +185,10 @@ export interface DatabaseAdapter {
   addGlobalComment(date: string, comment: string, createdBy: string): Promise<void>;
   deleteGlobalComment(date: string): Promise<void>;
   getGlobalCommentsForMonth(year: number, month: number): Promise<any[]>;
+
+  // Audit Logs
+  getAuditLogs(filters?: { year?: number; month?: number }): Promise<any[]>;
+  cleanupAuditLogs(): Promise<void>;
 
   close(): Promise<void>;
 }
@@ -693,14 +697,14 @@ class SQLiteAdapter implements DatabaseAdapter {
     return clearDutyRosterForMonth(this.db, year, month);
   }
 
-  async clearSlotAssignments() {
-    const { clearSlotAssignments } = await import('./database');
-    return clearSlotAssignments(this.db);
+  async assignSlot(entry: { personId: number, personType: string, date: string, slotType: string }, auditUser?: any) {
+    const { assignSlot } = await import('./database');
+    return assignSlot(this.db, entry, auditUser);
   }
 
-  async assignSlot(entry: { personId: number, personType: string, date: string, slotType: string }) {
-    const { assignSlot } = await import('./database');
-    return assignSlot(this.db, entry);
+  async clearSlotAssignments(auditUser?: any) {
+    const { clearSlotAssignments } = await import('./database');
+    return clearSlotAssignments(this.db, auditUser);
   }
 
   async getItwPatterns() {
@@ -845,6 +849,17 @@ class SQLiteAdapter implements DatabaseAdapter {
   async getGlobalCommentsForMonth(year: number, month: number) {
     const { getGlobalCommentsForMonth } = await import('./database');
     return getGlobalCommentsForMonth(this.db, year, month);
+  }
+
+  // Audit Logs
+  async getAuditLogs(filters?: { year?: number; month?: number }) {
+    const { getAuditLogs } = await import('./database');
+    return getAuditLogs(this.db, filters);
+  }
+
+  async cleanupAuditLogs() {
+    const { cleanupAuditLogs } = await import('./database');
+    return cleanupAuditLogs(this.db);
   }
 
 }
@@ -1467,6 +1482,20 @@ export class DatabaseManager {
             UNIQUE(date)
         );
         CREATE INDEX IF NOT EXISTS idx_roster_comments_global_date ON roster_comments_global(date);
+
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            user_id INTEGER,
+            user_name TEXT,
+            action_type TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_ref TEXT NOT NULL,
+            old_value TEXT,
+            new_value TEXT,
+            details TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp);
     `);
 
     // Initialize default qualification types if empty

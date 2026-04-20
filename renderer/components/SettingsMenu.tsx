@@ -4,6 +4,7 @@ import ImportYearTable from './ImportYearTable';
 import SettingsImportExport from './SettingsImportExport';
 import { BUILD_INFO } from '../buildInfo';
 import appVersionInfo from '../../version.json';
+import { AuditLogViewer } from './AuditLogViewer';
 import './SettingsMenuTables.css';
 import styles from './PersonnelOverview.module.css';
 
@@ -108,7 +109,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
   const [featureOldRtwShifts, setFeatureOldRtwShifts] = useState(false);
   const [featureShiftTransfers, setFeatureShiftTransfers] = useState(false);
   const [itwFeatureEnabled, setItwFeatureEnabled] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<'general' | 'roster' | 'features' | 'itw' | 'qualifications' | 'roles'>('general');
+  const [activeCategory, setActiveCategory] = useState<'general' | 'roster' | 'features' | 'itw' | 'qualifications' | 'roles' | 'audit'>('general');
   // System Info
   const [systemUsername, setSystemUsername] = useState<string>('Lädt...');
   const [initialSaveSnapshot, setInitialSaveSnapshot] = useState<string>('');
@@ -995,6 +996,20 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
             }}
           >
             Rollen & Rechte
+          </button>
+          <button
+            onClick={() => setActiveCategory('audit')}
+            style={{
+              padding: '8px 16px',
+              border: 'none',
+              borderBottom: activeCategory === 'audit' ? '3px solid #0d6efd' : '3px solid transparent',
+              background: activeCategory === 'audit' ? '#f8f9fa' : 'transparent',
+              fontWeight: activeCategory === 'audit' ? 600 : 400,
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            Verlauf
           </button>
         </div>
       </div>
@@ -2369,6 +2384,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                 </button>
               )}
             </div>
+          </div>
+        )}
+
+        {/* KATEGORIE: AUDIT / VERLAUF */}
+        {activeCategory === 'audit' && (
+          <div style={{ marginTop: 24 }}>
+            <AuditLogViewer />
           </div>
         )}
 
