@@ -240,6 +240,8 @@ contextBridge.exposeInMainWorld('api', {
     // DB config
     getDbConfig: () => ipcRenderer.invoke('get-db-config'),
     setDbDir: (dir: string) => ipcRenderer.invoke('set-db-dir', dir),
+    // Audit logs
+    getAuditLogs: (filters?: { year?: number; month?: number }) => ipcRenderer.invoke('get-audit-logs', filters),
     // Setup wizard
     getSetupDefaults: () => ipcRenderer.invoke('get-setup-defaults'),
     testDirWritable: (dir: string) => ipcRenderer.invoke('test-dir-writable', dir),

@@ -735,6 +735,10 @@ ipcMain.handle('get-duty-roster', async (_event, year: number) => {
 ipcMain.handle('set-duty-roster-entry', async (_event, entry: any) => {
     const auth = getAuthService();
     auth.requirePermission('dienstplan', 'write');
+    const currentUser = auth.getCurrentUser();
+    if (currentUser) {
+        entry.auditUser = { id: currentUser.userId, name: `${currentUser.vorname} ${currentUser.name}`.trim() };
+    }
     const adapter = await ensureDatabaseAdapter();
     const result = await adapter.setDutyRosterEntry(entry);
     notifyDutyRosterUpdate();
@@ -744,6 +748,11 @@ ipcMain.handle('set-duty-roster-entry', async (_event, entry: any) => {
 ipcMain.handle('bulk-set-duty-roster-entries', async (_event, entries: any[]) => {
     const auth = getAuthService();
     auth.requirePermission('dienstplan', 'write');
+    const currentUser = auth.getCurrentUser();
+    if (currentUser) {
+        const auditUser = { id: currentUser.userId, name: `${currentUser.vorname} ${currentUser.name}`.trim() };
+        entries.forEach(e => e.auditUser = auditUser);
+    }
     const adapter = await ensureDatabaseAdapter();
     const result = await adapter.bulkSetDutyRosterEntries(entries);
     notifyDutyRosterUpdate();
@@ -754,17 +763,37 @@ ipcMain.handle('bulk-set-duty-roster-entries', async (_event, entries: any[]) =>
 ipcMain.handle('bulk-set-duty-roster', async (_event, entries: any[]) => {
     const auth = getAuthService();
     auth.requirePermission('dienstplan', 'write');
+    const currentUser = auth.getCurrentUser();
+    if (currentUser) {
+        const auditUser = { id: currentUser.userId, name: `${currentUser.vorname} ${currentUser.name}`.trim() };
+        entries.forEach(e => e.auditUser = auditUser);
+    }
     const adapter = await ensureDatabaseAdapter();
     const result = await adapter.bulkSetDutyRosterEntries(entries);
     notifyDutyRosterUpdate();
     return result;
 });
 
+// Audit Logs
+ipcMain.handle('get-audit-logs', async (_event, filters?: { year?: number; month?: number }) => {
+    const auth = getAuthService();
+    auth.requirePermission('einstellungen', 'read'); 
+    const adapter = await ensureDatabaseAdapter();
+    
+    // Automatisch aufräumen
+    try {
+        await adapter.cleanupAuditLogs();
+    } catch {}
+
+    return await adapter.getAuditLogs(filters);
+});
+
 ipcMain.handle('clear-slot-assignments', async () => {
     const auth = getAuthService();
     auth.requirePermission('einteilung', 'write');
     const adapter = await ensureDatabaseAdapter();
-    await adapter.clearSlotAssignments();
+    const auditUser = auth.getCurrentUser();
+    await adapter.clearSlotAssignments(auditUser);
     notifyDutyRosterUpdate();
     return true;
 });
@@ -773,7 +802,8 @@ ipcMain.handle('assign-slot', async (_event, entry: { personId: number, personTy
     const auth = getAuthService();
     auth.requirePermission('einteilung', 'write');
     const adapter = await ensureDatabaseAdapter();
-    await adapter.assignSlot(entry);
+    const auditUser = auth.getCurrentUser();
+    await adapter.assignSlot(entry, auditUser);
     notifyDutyRosterUpdate();
     return true;
 });

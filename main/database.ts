@@ -1106,19 +1106,54 @@ export const deleteHoliday = async (db: AsyncDB, date: string) => {
     await db.run('DELETE FROM holidays WHERE date = ?', [date]);
 };
 
-export const setDutyRosterEntry = async (db: AsyncDB, entry: { personId: number, personType: string, date: string, value: string, type: string }): Promise<{ success: boolean; warning?: string; vehicleAssignment?: string }> => {
+export const getAuditLogs = async (db: AsyncDB, filters?: { year?: number; month?: number }) => {
+    let query = 'SELECT * FROM audit_logs ORDER BY timestamp DESC';
+    const params: any[] = [];
+    if (filters && filters.year) {
+        query = 'SELECT * FROM audit_logs WHERE substr(timestamp, 1, 4) = ? ORDER BY timestamp DESC LIMIT 5000';
+        params.push(String(filters.year));
+    } else {
+        query += ' LIMIT 5000';
+    }
+    return await db.all(query, params);
+};
+
+export const cleanupAuditLogs = async (db: AsyncDB) => {
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    await db.run('DELETE FROM audit_logs WHERE timestamp < ?', [oneYearAgo.toISOString()]);
+};
+
+export const getPersonName = async (db: AsyncDB, pid: number, ptype: string) => {
+    const row = await db.get(
+        (ptype === 'person' || !ptype) ? 'SELECT name, vorname FROM personnel WHERE id = ?' : 'SELECT name, vorname FROM azubis WHERE id = ?',
+        [pid]
+    );
+    return row ? `${row.vorname} ${row.name}` : `ID: ${pid}`;
+};
+
+export const addAuditLog = async (db: AsyncDB, log: { user_id: number, user_name: string, action_type: string, entity_type: string, entity_ref: string, old_value: string, new_value: string, details?: string }) => {
+    await db.run(
+        `INSERT INTO audit_logs (timestamp, user_id, user_name, action_type, entity_type, entity_ref, old_value, new_value, details) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [new Date().toISOString(), log.user_id, log.user_name, log.action_type, log.entity_type, log.entity_ref, log.old_value, log.new_value, log.details || null]
+    );
+};
+
+export const setDutyRosterEntry = async (db: AsyncDB, entry: { personId: number, personType: string, date: string, value: string, type: string, auditUser?: { id: number, name: string } }): Promise<{ success: boolean; warning?: string; vehicleAssignment?: string }> => {
     if (!entry.personId || !entry.date) {
         return { success: false };
     }
 
-    // Prüfe, ob die Person bereits eine Fahrzeugzuweisung hat
+    // Prüfe, ob die Person bereits eine Fahrzeugzuweisung oder einen Eintrag hat
     const existingEntry = await db.get(
-        'SELECT type FROM duty_roster WHERE personId = ? AND personType = ? AND date = ?',
+        'SELECT type, value FROM duty_roster WHERE personId = ? AND personType = ? AND date = ?',
         [entry.personId, entry.personType || 'person', entry.date]
     );
 
     let warning: string | undefined;
     let vehicleAssignment: string | undefined;
+    const oldValue = existingEntry?.value || '';
 
     // Wenn neue Schichtart gesetzt wird UND Person hat Fahrzeugzuweisung
     if (entry.value && entry.value.trim() !== '' && existingEntry && existingEntry.type &&
@@ -1145,14 +1180,29 @@ export const setDutyRosterEntry = async (db: AsyncDB, entry: { personId: number,
         ON CONFLICT(personId, personType, date) DO UPDATE SET value = excluded.value, manual_edit = 1
     `, [entry.personId, entry.personType || 'person', entry.date, entry.value ?? '', existingEntry?.type || entry.type || 'text']);
 
+    if (entry.auditUser && oldValue !== (entry.value || '')) {
+        const pName = await getPersonName(db, entry.personId, entry.personType);
+        await addAuditLog(db, {
+            user_id: entry.auditUser.id,
+            user_name: entry.auditUser.name,
+            action_type: 'update',
+            entity_type: 'duty_roster',
+            entity_ref: `${pName} (${entry.date})`,
+            old_value: oldValue,
+            new_value: entry.value || '',
+            details: `Schicht geändert von "${oldValue}" zu "${entry.value || ''}"`
+        });
+    }
+
     return { success: true, warning, vehicleAssignment };
 };
 
 // Bulk Import für viele Einträge in einer Transaktion (ein Broadcast später im Main)
-export const bulkSetDutyRosterEntries = async (db: AsyncDB, entries: { personId: number, personType: string, date: string, value: string, type: string }[]) => {
+export const bulkSetDutyRosterEntries = async (db: AsyncDB, entries: { personId: number, personType: string, date: string, value: string, type: string, auditUser?: { id: number, name: string } }[]) => {
     if (!Array.isArray(entries) || entries.length === 0) return 0;
     await db.run('BEGIN');
     let ok = 0;
+    let audited = 0;
     try {
         const stmt = await db.prepare(`
             INSERT INTO duty_roster (personId, personType, date, value, type) VALUES (?, ?, ?, ?, ?)
@@ -1167,6 +1217,22 @@ export const bulkSetDutyRosterEntries = async (db: AsyncDB, entries: { personId:
             }
         }
         await stmt.finalize();
+
+        // Let's attach a single audit log for bulk operations if we have an auditUser
+        const sampleAudit = entries.find(x => x.auditUser);
+        if (sampleAudit && sampleAudit.auditUser) {
+            await addAuditLog(db, {
+                user_id: sampleAudit.auditUser.id,
+                user_name: sampleAudit.auditUser.name,
+                action_type: 'BULK_UPDATE_ROSTER',
+                entity_type: 'duty_roster',
+                entity_ref: 'Bulk',
+                old_value: '',
+                new_value: `${ok} entries updated`,
+                details: 'Massenaktualisierung angewendet'
+            });
+        }
+
         await db.run('COMMIT');
         return ok;
     } catch (e) {
@@ -1867,7 +1933,7 @@ export const getActiveNefVehiclesInMonth = async (db: AsyncDB, yearMonth: string
 };
 
 // --- Utility: Clear previous slot assignments while keeping duty codes ---
-export const clearSlotAssignments = async (db: AsyncDB) => {
+export const clearSlotAssignments = async (db: AsyncDB, auditUser?: any) => {
     // 1) Entferne Slot-Zuweisungen (type) für alle bekannten Slot-Präfixe
     await db.run("UPDATE duty_roster SET type = '' WHERE type LIKE 'rtw%' OR type LIKE 'nef%' OR type LIKE 'itw%'");
     // 2) 'V' nur dann leeren, wenn 'V' NICHT als gültiger Shift-Type existiert
@@ -1879,15 +1945,52 @@ export const clearSlotAssignments = async (db: AsyncDB) => {
     } catch (e) {
         // Falls Abfrage fehlschlägt, vorsichtig sein: lieber 'V' nicht löschen
     }
+
+    if (auditUser) {
+        await addAuditLog(db, {
+            user_id: auditUser.id || 0,
+            user_name: auditUser.name || 'System',
+            action_type: 'delete',
+            entity_type: 'duty_roster_assignment',
+            entity_ref: 'ALL',
+            old_value: 'all',
+            new_value: '',
+            details: 'Alle Slot-Zuweisungen gelöscht'
+        });
+    }
 };
 
 // --- Assign only the slot (type) without overwriting the duty code (value) ---
-export const assignSlot = async (db: AsyncDB, entry: { personId: number, personType: string, date: string, slotType: string }) => {
+export const assignSlot = async (db: AsyncDB, entry: { personId: number, personType: string, date: string, slotType: string }, auditUser?: any) => {
+
+    const pName = await getPersonName(db, entry.personId, entry.personType);
 
     // Wenn slotType leer ist, leere nur das type-Feld (NICHT den ganzen Eintrag löschen - value bleibt erhalten!)
     if (!entry.slotType || entry.slotType === '') {
+        if (auditUser) {
+            const row = await db.get('SELECT id, type FROM duty_roster WHERE personId = ? AND personType = ? AND date = ?', [entry.personId, entry.personType, entry.date]);
+            if (row && row.type !== '') {
+                await addAuditLog(db, {
+                    user_id: auditUser.id || 0,
+                    user_name: auditUser.name || 'System',
+                    action_type: 'update',
+                    entity_type: 'duty_roster_assignment',
+                    entity_ref: `${row.type} (${entry.date})`,
+                    old_value: pName,
+                    new_value: ''
+                });
+            }
+        }
         await db.run('UPDATE duty_roster SET type = \'\'WHERE personId = ? AND personType = ? AND date = ?', [entry.personId, entry.personType, entry.date]);
         return;
+    }
+
+    // Wenn ein neuer Slot zugewiesen wird:
+    // 1. War jemand anderes vorher in diesem Slot?
+    let otherName = '';
+    const others = await db.all(`SELECT id, type, personId, personType FROM duty_roster WHERE date = ? AND type = ? AND (personId != ? OR personType != ?)`, [entry.date, entry.slotType, entry.personId, entry.personType]);
+    if (others.length > 0) {
+        otherName = await getPersonName(db, others[0].personId, others[0].personType);
     }
 
     // WICHTIG: Erst alle anderen Personen aus diesem Slot entfernen (verhindert Doppelbelegung)
@@ -1899,18 +2002,52 @@ export const assignSlot = async (db: AsyncDB, entry: { personId: number, personT
         [entry.slotType, entry.personId, entry.personType, entry.date, entry.slotType]
     );
 
-    // Prüfe, ob die Person bereits an diesem Tag irgendwo eingeteilt ist
-    const existingRow = await db.get('SELECT type FROM duty_roster WHERE personId = ? AND personType = ? AND date = ?', [entry.personId, entry.personType, entry.date]);
+    // 2. War diese Person vorher in einem anderen Slot?
+    const existingRow = await db.get('SELECT id, type FROM duty_roster WHERE personId = ? AND personType = ? AND date = ?', [entry.personId, entry.personType, entry.date]);
 
     if (existingRow) {
-        // Update existing entry, aber setze manual_edit NICHT auf 1 (damit keine blaue Markierung im Dienstplan erscheint)
-        // Die Zuweisung soll unabhängig vom Dienstplan-Wert sein.
+        if (auditUser && existingRow.type !== entry.slotType) {
+            // Log that they left their old slot
+            if (existingRow.type !== '') {
+                await addAuditLog(db, {
+                    user_id: auditUser.id || 0,
+                    user_name: auditUser.name || 'System',
+                    action_type: 'update',
+                    entity_type: 'duty_roster_assignment',
+                    entity_ref: `${existingRow.type} (${entry.date})`,
+                    old_value: pName,
+                    new_value: ''
+                });
+            }
+            // Log that they took the new slot
+            await addAuditLog(db, {
+                user_id: auditUser.id || 0,
+                user_name: auditUser.name || 'System',
+                action_type: 'update',
+                entity_type: 'duty_roster_assignment',
+                entity_ref: `${entry.slotType} (${entry.date})`,
+                old_value: otherName,
+                new_value: pName
+            });
+        }
+        // Update existing entry
         await db.run('UPDATE duty_roster SET type = ? WHERE personId = ? AND personType = ? AND date = ?', [entry.slotType, entry.personId, entry.personType, entry.date]);
     } else {
+        if (auditUser) {
+            // Log that they took the new slot
+            await addAuditLog(db, {
+                user_id: auditUser.id || 0,
+                user_name: auditUser.name || 'System',
+                action_type: 'create',
+                entity_type: 'duty_roster_assignment',
+                entity_ref: `${entry.slotType} (${entry.date})`,
+                old_value: otherName,
+                new_value: pName
+            });
+        }
         // Insert new entry mit manual_edit = 0
         await db.run('INSERT INTO duty_roster (personId, personType, date, value, type, manual_edit) VALUES (?, ?, ?, ?, ?, 0)', [entry.personId, entry.personType, entry.date, '', entry.slotType]);
     }
-
 };
 
 // --- Clear duty_roster by period ---
