@@ -1307,6 +1307,56 @@ export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { person
     }
 };
 
+/**
+ * Löscht Einträge für Personen, die nicht im aktuellen Import enthalten sind (Sync-Modus)
+ */
+export const deleteOrphanedDutyRosterEntries = async (db: AsyncDB, year: number, monthRange: { start: number; end: number } | number | undefined, seenPersonIds: string[]) => {
+    if (!seenPersonIds || seenPersonIds.length === 0) return 0;
+
+    let dateCondition = "";
+    let params: any[] = [];
+
+    if (monthRange === undefined) {
+        // Ganzes Jahr
+        dateCondition = "date LIKE ?";
+        params.push(`${year}-%`);
+    } else if (typeof monthRange === 'number') {
+        // Einzelner Monat
+        const mon = String(monthRange + 1).padStart(2, '0');
+        dateCondition = "date LIKE ?";
+        params.push(`${year}-${mon}-%`);
+    } else {
+        // Monat-Bereich
+        const startMon = String(monthRange.start + 1).padStart(2, '0');
+        const endMonthNum = monthRange.end + 1;
+        const endMon = String(endMonthNum).padStart(2, '0');
+        const lastDay = new Date(year, endMonthNum, 0).getDate();
+        dateCondition = "date >= ? AND date <= ?";
+        params.push(`${year}-${startMon}-01`, `${year}-${endMon}-${lastDay}`);
+    }
+
+    // Platzhalter für die IN-Klausel erstellen
+    const placeholders = seenPersonIds.map(() => "?").join(",");
+    
+    // SQLite Abgleich über PersonId und PersonType kombiniert
+    const sql = `
+        DELETE FROM duty_roster 
+        WHERE ${dateCondition}
+        AND manual_edit = 0
+        AND (personType = 'person' OR personType = 'azubi')
+        AND (personId || ':' || personType) NOT IN (${placeholders})
+    `;
+
+    try {
+        const result = await db.run(sql, [...params, ...seenPersonIds]);
+        console.log(`[Database] Orphaned entries cleanup: ${result?.changes || 0} entries deleted.`);
+        return result?.changes || 0;
+    } catch (e) {
+        console.error('[Database] Error in deleteOrphanedDutyRosterEntries:', e);
+        return 0;
+    }
+};
+
 export const getAzubiList = async (db: AsyncDB) => {
     const azubis = await db.all('SELECT * FROM azubis ORDER BY sort ASC, id ASC');
     const currentDate = new Date();

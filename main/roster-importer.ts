@@ -502,6 +502,7 @@ export class RosterImporter {
             const sheetNames = workbook.SheetNames;
             console.log('[RosterImporter] Excel-Datei geladen. Sheets:', sheetNames);
             const entriesToImport: RosterEntry[] = [];
+            const seenPersons = new Set<string>(); // "personId:personType"
 
             // Build name maps once
             const personnel = await this.dbAdapter.getPersonnel();
@@ -620,6 +621,7 @@ export class RosterImporter {
                             }
                             
                             if (!personInfo) continue;
+                            seenPersons.add(`${personInfo.id}:${personInfo.type}`);
 
                             const dutyAddr = XLSX.utils.encode_cell({ r: row, c: col });
                             const dutyCell = worksheet[dutyAddr];
@@ -798,6 +800,16 @@ export class RosterImporter {
                 
                 const result = await this.dbAdapter.bulkImportDutyRosterEntries(entriesToImport, respectManualEdits, deleteEmpty);
                 console.log(`[RosterImporter] Import: ${result.imported} importiert, ${result.skipped} übersprungen (manuell bearbeitet oder existierend)`);
+                
+                // WICHTIG: Wenn deleteEmpty=true (Sync-Modus), lösche alle Einträge für Personen, 
+                // die im Import-Block NICHT vorkommen, aber in der DB existieren (Orphaned Entries).
+                if (deleteEmpty && seenPersons.size > 0) {
+                    const seenList = Array.from(seenPersons);
+                    const deletedOrphans = await this.dbAdapter.deleteOrphanedDutyRosterEntries(year, month, seenList);
+                    if (deletedOrphans > 0) {
+                        console.log(`[RosterImporter] Sync-Cleanup: ${deletedOrphans} verwaiste Einträge von nicht mehr im Excel gelisteten Personen wurden entfernt.`);
+                    }
+                }
                 
                 // Rückgabe mit Konflikten
                 return { 
