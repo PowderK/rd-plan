@@ -110,6 +110,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
   const [featureShiftTransfers, setFeatureShiftTransfers] = useState(false);
   const [itwFeatureEnabled, setItwFeatureEnabled] = useState(false);
   const [activeCategory, setActiveCategory] = useState<'general' | 'roster' | 'features' | 'itw' | 'qualifications' | 'roles' | 'audit'>('general');
+  // ITW Vorplanungen
+  const [itwPlanningYear, setItwPlanningYear] = useState<number>(new Date().getFullYear());
   // System Info
   const [systemUsername, setSystemUsername] = useState<string>('Lädt...');
   const [initialSaveSnapshot, setInitialSaveSnapshot] = useState<string>('');
@@ -248,7 +250,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
       // Sequenzen laden
       try {
         const seqs = await (window as any).api.getItwPatterns?.();
-        const norm = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(len).fill('')).slice(0, len).map(v => (v === 'IW' ? 'IW' : ''));
+        const norm = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(len).fill('')).slice(0, len).map(v => (v === '1' || v === '2' || v === '3' || v === 'IW') ? v : '');
         if (Array.isArray(seqs) && seqs.length > 0) {
           const parsed = seqs.map((s: any) => ({ startDate: String(s.startDate), pattern: norm(String(s.pattern).split(',').map((x: string) => x.trim()), 21) }));
           parsed.sort((a, b) => a.startDate.localeCompare(b.startDate));
@@ -423,7 +425,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
       }
       // Sequenzen speichern
       try {
-        const payload = (itwPatternSeqs || []).map(s => ({ startDate: s.startDate, pattern: (s.pattern || []).map(v => (v === 'IW' ? 'IW' : '')).join(',') }));
+        const payload = (itwPatternSeqs || []).map(s => ({ startDate: s.startDate, pattern: (s.pattern || []).map(v => (['1', '2', '3', 'IW'].includes(v) ? v : '')).join(',') }));
         await (window as any).api.setItwPatterns?.(payload);
       } catch { }
       // Dept Sequenzen speichern
@@ -1793,6 +1795,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                                   }));
                                 }}>
                                 <option value=""></option>
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
                                 <option value="IW">IW</option>
                               </select>
                             ))}
@@ -1810,7 +1815,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                   </div>
                 ) : (
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    <button onClick={async () => { try { const payload = (itwPatternSeqs || []).map(s => ({ startDate: s.startDate, pattern: (s.pattern || []).map(v => (v === 'IW' ? 'IW' : '')).join(',') })); await (window as any).api.setItwPatterns?.(payload); } catch { } finally { setEditingItwPatterns(false); setOriginalItwPatterns(null); } }}>Speichern</button>
+                    <button onClick={async () => { try { const payload = (itwPatternSeqs || []).map(s => ({ startDate: s.startDate, pattern: (s.pattern || []).map(v => (['1', '2', '3', 'IW'].includes(v) ? v : '')).join(',') })); await (window as any).api.setItwPatterns?.(payload); } catch { } finally { setEditingItwPatterns(false); setOriginalItwPatterns(null); } }}>Speichern</button>
                     <button onClick={() => { if (originalItwPatterns) setItwPatternSeqs(originalItwPatterns); setOriginalItwPatterns(null); setEditingItwPatterns(false); setSelectedItwPatternIndex(null); }}>Abbrechen</button>
                   </div>
                 )}
@@ -1893,6 +1898,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                 </div>
               )}
             </div>
+
           </div>
         )}
 

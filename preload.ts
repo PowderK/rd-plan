@@ -40,7 +40,7 @@ contextBridge.exposeInMainWorld('api', {
     authCheckPermission: (area: string, level: 'read' | 'write') => ipcRenderer.invoke('auth-check-permission', area, level),
     // Data
     getShifts: () => ipcRenderer.invoke('get-shifts'),
-    getPersonnel: (includeInactive?: boolean) => ipcRenderer.invoke('get-personnel', includeInactive === true),
+    getPersonnel: (includeInactive?: boolean, department?: string) => ipcRenderer.invoke('get-personnel', includeInactive === true, department),
     updateShift: (shift: any) => ipcRenderer.invoke('update-shift', shift),
     getSetting: (key: string) => ipcRenderer.invoke('get-setting', key),
     setSetting: (key: string, value: string) => ipcRenderer.invoke('set-setting', key, value),
@@ -51,7 +51,7 @@ contextBridge.exposeInMainWorld('api', {
     openAddPersonWindow: () => ipcRenderer.send('open-add-person-window'),
     openEditPersonWindow: (id: number) => ipcRenderer.send('open-edit-person-window', id),
     openConfirmDeleteWindow: (id: number, type: string = 'person') => ipcRenderer.send('open-confirm-delete-window', id, type),
-    getPersonnelList: (includeInactive?: boolean, date?: string) => ipcRenderer.invoke('get-personnel-list', includeInactive === true, date),
+    getPersonnelList: (includeInactive?: boolean, date?: string, department?: string) => ipcRenderer.invoke('get-personnel-list', includeInactive === true, date, department),
     addPerson: (person: any) => ipcRenderer.invoke('add-person', person),
     updatePerson: (person: any) => ipcRenderer.invoke('update-person', person),
     deletePerson: (id: number) => ipcRenderer.invoke('delete-person', id),
@@ -66,7 +66,7 @@ contextBridge.exposeInMainWorld('api', {
     addShiftType: (type: { code: string, description: string }) => ipcRenderer.invoke('add-shift-type', type),
     updateShiftType: (type: { id: number, code: string, description: string }) => ipcRenderer.invoke('update-shift-type', type),
     deleteShiftType: (id: number) => ipcRenderer.invoke('delete-shift-type', id),
-    getDutyRoster: (year: number) => ipcRenderer.invoke('get-duty-roster', year),
+    getDutyRoster: (year: number, department?: string) => ipcRenderer.invoke('get-duty-roster', year, department),
     setDutyRosterEntry: (entry: { personId: number, personType: string, date: string, value: string, type: string }) => ipcRenderer.invoke('set-duty-roster-entry', entry),
     bulkSetDutyRoster: (entries: any[]) => ipcRenderer.invoke('bulk-set-duty-roster', entries),
     clearDutyRosterYear: (year: number) => ipcRenderer.invoke('clear-duty-roster-year', year),
@@ -107,6 +107,13 @@ contextBridge.exposeInMainWorld('api', {
     updatePersonnelActivePeriod: (id: number, period: any) => ipcRenderer.invoke('update-personnel-active-period', id, period),
     deletePersonnelActivePeriod: (id: number) => ipcRenderer.invoke('delete-personnel-active-period', id),
     isPersonnelActiveInMonth: (personId: number, yearMonth: string) => ipcRenderer.invoke('is-personnel-active-in-month', personId, yearMonth),
+    // Personnel Department Periods
+    getPersonnelDepartmentPeriods: (personId: number) => ipcRenderer.invoke('get-personnel-department-periods', personId),
+    getAllPersonnelDepartmentPeriods: () => ipcRenderer.invoke('get-all-personnel-department-periods'),
+    getUniqueDepartments: () => ipcRenderer.invoke('get-unique-departments'),
+    addPersonnelDepartmentPeriod: (period: any) => ipcRenderer.invoke('add-personnel-department-period', period),
+    updatePersonnelDepartmentPeriod: (period: any) => ipcRenderer.invoke('update-personnel-department-period', period),
+    deletePersonnelDepartmentPeriod: (id: number) => ipcRenderer.invoke('delete-personnel-department-period', id),
 
     // Qualification Types Management  
     getQualificationTypes: (activeOnly?: boolean) => ipcRenderer.invoke('get-qualification-types', activeOnly),
@@ -139,12 +146,12 @@ contextBridge.exposeInMainWorld('api', {
     deleteItwVehiclePeriod: (id: number) => ipcRenderer.invoke('delete-itw-vehicle-period', id),
     openAddItwVehicleWindow: () => ipcRenderer.send('open-add-itw-vehicle-window'),
     // RTW/NEF vehicles
-    getRtwVehicles: () => ipcRenderer.invoke('get-rtw-vehicles'),
+    getRtwVehicles: (year?: number) => ipcRenderer.invoke('get-rtw-vehicles', year),
     addRtwVehicle: (v: any) => ipcRenderer.invoke('add-rtw-vehicle', v),
     updateRtwVehicle: (v: any) => ipcRenderer.invoke('update-rtw-vehicle', v),
     deleteRtwVehicle: (id: number) => ipcRenderer.invoke('delete-rtw-vehicle', id),
     updateRtwVehicleOrder: (order: number[]) => ipcRenderer.invoke('update-rtw-vehicle-order', order),
-    getNefVehicles: () => ipcRenderer.invoke('get-nef-vehicles'),
+    getNefVehicles: (year?: number) => ipcRenderer.invoke('get-nef-vehicles', year),
     addNefVehicle: (v: any) => ipcRenderer.invoke('add-nef-vehicle', v),
     updateNefVehicle: (v: any) => ipcRenderer.invoke('update-nef-vehicle', v),
     deleteNefVehicle: (id: number) => ipcRenderer.invoke('delete-nef-vehicle', id),
@@ -186,6 +193,7 @@ contextBridge.exposeInMainWorld('api', {
     // ITW Patterns
     getItwPatterns: () => ipcRenderer.invoke('get-itw-patterns'),
     setItwPatterns: (patterns: { startDate: string, pattern: string }[]) => ipcRenderer.invoke('set-itw-patterns', patterns),
+    generateItwPlanningsForYear: (year: number) => ipcRenderer.invoke('generate-itw-plannings-for-year', year),
     // Department Patterns
     getDeptPatterns: () => ipcRenderer.invoke('get-dept-patterns'),
     setDeptPatterns: (patterns: { startDate: string, pattern: string }[]) => ipcRenderer.invoke('set-dept-patterns', patterns),
@@ -234,12 +242,19 @@ contextBridge.exposeInMainWorld('api', {
     // Utils
     clearSlotAssignments: () => ipcRenderer.invoke('clear-slot-assignments'),
     assignSlot: (entry: { personId: number, personType: string, date: string, slotType: string }) => ipcRenderer.invoke('assign-slot', entry),
+    // ITW Feature
+    getItwPhaseAssignments: (startDate?: string) => ipcRenderer.invoke('get-itw-phase-assignments', startDate),
+    addItwPhaseAssignment: (startDate: string, personId: number, role: string) => ipcRenderer.invoke('add-itw-phase-assignment', startDate, personId, role),
+    removeItwPhaseAssignment: (startDate: string, personId: number) => ipcRenderer.invoke('remove-itw-phase-assignment', startDate, personId),
+    getItwDutyRoster: (year: number) => ipcRenderer.invoke('get-itw-duty-roster', year),
+    setItwDutyRosterEntry: (entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number }) => ipcRenderer.invoke('set-itw-duty-roster-entry', entry),
     // Diagnostics
     getDiagnostics: () => ipcRenderer.invoke('get-diagnostics'),
     testQualificationPeriods: () => ipcRenderer.invoke('test-qualification-periods'),
     // DB config
     getDbConfig: () => ipcRenderer.invoke('get-db-config'),
     setDbDir: (dir: string) => ipcRenderer.invoke('set-db-dir', dir),
+    setItwDatabaseConnection: (connectionString: string) => ipcRenderer.invoke('set-itw-database-connection', connectionString),
     // Audit logs
     getAuditLogs: (filters?: { year?: number; month?: number }) => ipcRenderer.invoke('get-audit-logs', filters),
     // Setup wizard

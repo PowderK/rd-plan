@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { AsyncDB, initializeDatabase as initSQLiteDatabase, QualificationType } from './database';
-import { initializePostgreSQLDatabase, PostgresConfig } from './database-postgres';
+import { initializePostgreSQLDatabase, initializeItwPlanningDatabase, PostgresConfig } from './database-postgres';
 
 export type DatabaseMode = 'sqlite' | 'central-sqlite' | 'postgresql';
 
@@ -12,22 +12,25 @@ export interface DatabaseConfig {
   multiUser?: boolean;
   centralPath?: string;
   postgresConfig?: PostgresConfig;
+  itwDatabasePath?: string; // Separate SQLite DB for ITW planning
 }
 
 export interface DatabaseAdapter {
-  getPersonnel(includeInactive?: boolean, date?: string): Promise<any[]>;
-  setPersonnelActive(id: number, active: boolean): Promise<void>;
+  // Personnel
+  getPersonnel(includeInactive?: boolean, date?: string, department?: string): Promise<any[]>;
   getPersonById(id: number): Promise<any | null>;
   addPersonnel(person: any): Promise<any>;
   updatePersonnel(person: any): Promise<void>;
   deletePersonnel(id: number): Promise<void>;
+  setPersonnelActive(id: number, active: boolean): Promise<void>;
   updatePersonnelOrder(order: number[]): Promise<void>;
 
-  getDutyRoster(year: number): Promise<any[]>;
-  setDutyRosterEntry(entry: any): Promise<{ success: boolean; warning?: string; vehicleAssignment?: string }>;
+  // Duty Roster
+  getDutyRoster(year: number, department?: string): Promise<any[]>;
+  setDutyRosterEntry(entry: any): Promise<{ success: boolean; warning?: string; vehicleAssignment?: string; }>;
   bulkSetDutyRosterEntries(entries: any[]): Promise<number>;
-  bulkImportDutyRosterEntries(entries: any[], respectManualEdits?: boolean, deleteEmpty?: boolean): Promise<{ imported: number, skipped: number }>;
-  deleteOrphanedDutyRosterEntries(year: number, monthRange: { start: number; end: number } | number | undefined, seenPersonIds: string[]): Promise<number>;
+  bulkImportDutyRosterEntries(entries: any[], respectManualEdits?: boolean, deleteEmpty?: boolean): Promise<{ imported: number; skipped: number; }>;
+  deleteOrphanedDutyRosterEntries(year: number, monthRange: { start: number; end: number } | number | undefined, seenPersonIds: string[]): Promise<any>;
 
   getAzubiList(): Promise<any[]>;
   getAzubi(id: number): Promise<any | null>;
@@ -60,6 +63,14 @@ export interface DatabaseAdapter {
   updatePersonnelActivePeriod(period: any): Promise<void>;
   deletePersonnelActivePeriod(id: number): Promise<void>;
   isPersonnelActiveInMonth(personId: number, yearMonth: string): Promise<boolean>;
+
+  // Personnel Department Periods
+  getPersonnelDepartmentPeriods(personId: number): Promise<any[]>;
+  getAllPersonnelDepartmentPeriods(): Promise<any[]>;
+  addPersonnelDepartmentPeriod(period: any): Promise<void>;
+  updatePersonnelDepartmentPeriod(period: any): Promise<void>;
+  deletePersonnelDepartmentPeriod(id: number): Promise<void>;
+  getCurrentDepartmentForPerson(personId: number, date?: string): Promise<string | null>;
 
   // Qualification Types Management
   getQualificationTypes(activeOnly?: boolean): Promise<any[]>;
@@ -157,8 +168,6 @@ export interface DatabaseAdapter {
   assignSlot(entry: { personId: number, personType: string, date: string, slotType: string }, auditUser?: any): Promise<void>;
   clearSlotAssignments(auditUser?: any): Promise<void>;
 
-  getItwPatterns(): Promise<any[]>;
-  setItwPatterns(patterns: any[]): Promise<void>;
   getDeptPatterns(): Promise<any[]>;
   setDeptPatterns(patterns: any[]): Promise<void>;
 
@@ -167,11 +176,6 @@ export interface DatabaseAdapter {
   getYearPlanningForYear(year: number): Promise<{ year: number; filePath: string } | undefined>;
   saveYearPlannings(plannings: { year: number; filePath: string }[]): Promise<void>;
   deleteYearPlanning(year: number): Promise<void>;
-
-  // Excel Import/Export
-  importPersonnelFromExcel(filePath: string, replaceExisting?: boolean): Promise<any>;
-  exportPersonnelToExcel(filePath: string): Promise<void>;
-  createPersonnelTemplate(filePath: string): Promise<void>;
 
   // Shift Transfers (Issue #21)
   getShiftTransfers(year?: number, month?: number): Promise<any[]>;
@@ -191,15 +195,27 @@ export interface DatabaseAdapter {
   getAuditLogs(filters?: { year?: number; month?: number }): Promise<any[]>;
   cleanupAuditLogs(): Promise<void>;
 
+  // ITW Planning
+  getItwPatterns(): Promise<any[]>;
+  setItwPatterns(patterns: any[]): Promise<void>;
+  generateItwPlanningsForYear(year: number, holidayDates?: string[]): Promise<void>;
+  getItwPhaseAssignments(startDate?: string): Promise<any[]>;
+  addItwPhaseAssignment(startDate: string, personId: number, role: string): Promise<void>;
+  removeItwPhaseAssignment(startDate: string, personId: number): Promise<void>;
+  getItwDutyRoster(year: number): Promise<any[]>;
+  setItwDutyRosterEntry(entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number }): Promise<void>;
+
+  getUniqueDepartments(): Promise<string[]>;
+
   close(): Promise<void>;
 }
 
 class SQLiteAdapter implements DatabaseAdapter {
   constructor(private db: AsyncDB) { }
 
-  async getPersonnel(includeInactive?: boolean, date?: string) {
+  async getPersonnel(includeInactive?: boolean, date?: string, department?: string) {
     const { getPersonnel } = await import('./database');
-    return getPersonnel(this.db, !!includeInactive, date);
+    return getPersonnel(this.db, !!includeInactive, date, department);
   }
   async setPersonnelActive(id: number, active: boolean) {
     const { setPersonnelActive } = await import('./database');
@@ -230,9 +246,9 @@ class SQLiteAdapter implements DatabaseAdapter {
     return updatePersonnelOrder(this.db, order);
   }
 
-  async getDutyRoster(year: number) {
+  async getDutyRoster(year: number, department?: string) {
     const { getDutyRoster } = await import('./database');
-    return getDutyRoster(this.db, year);
+    return getDutyRoster(this.db, year, department);
   }
 
   async setDutyRosterEntry(entry: any) {
@@ -372,6 +388,61 @@ class SQLiteAdapter implements DatabaseAdapter {
   async isPersonnelActiveInMonth(personId: number, yearMonth: string) {
     const { isPersonnelActiveInMonth } = await import('./database');
     return isPersonnelActiveInMonth(this.db, personId, yearMonth);
+  }
+
+  // Personnel Department Periods
+  async getPersonnelDepartmentPeriods(personId: number) {
+    const rows = await this.db.all('SELECT * FROM personnel_department_periods WHERE person_id = ? ORDER BY start_date DESC', [personId]);
+    return rows.map((r: any) => ({
+      id: r.id,
+      personId: r.person_id,
+      department: r.department,
+      startDate: r.start_date,
+      endDate: r.end_date
+    }));
+  }
+
+  async getAllPersonnelDepartmentPeriods() {
+    const rows = await this.db.all('SELECT * FROM personnel_department_periods');
+    return rows.map((r: any) => ({
+      id: r.id,
+      personId: r.person_id,
+      department: r.department,
+      startDate: r.start_date,
+      endDate: r.end_date
+    }));
+  }
+
+  async addPersonnelDepartmentPeriod(period: any) {
+    const pId = period.personId || period.person_id;
+    const sDate = period.startDate || period.start_date;
+    const eDate = period.endDate || period.end_date;
+    await this.db.run(
+      'INSERT INTO personnel_department_periods (person_id, department, start_date, end_date) VALUES (?, ?, ?, ?)',
+      [pId, period.department, sDate, eDate]
+    );
+  }
+
+  async updatePersonnelDepartmentPeriod(period: any) {
+    const sDate = period.startDate || period.start_date;
+    const eDate = period.endDate || period.end_date;
+    await this.db.run(
+      'UPDATE personnel_department_periods SET department = ?, start_date = ?, end_date = ? WHERE id = ?',
+      [period.department, sDate, eDate, period.id]
+    );
+  }
+
+  async deletePersonnelDepartmentPeriod(id: number) {
+    await this.db.run('DELETE FROM personnel_department_periods WHERE id = ?', [id]);
+  }
+
+  async getCurrentDepartmentForPerson(personId: number, date?: string) {
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    const period = await this.db.get(
+      'SELECT department FROM personnel_department_periods WHERE person_id = ? AND start_date <= ? AND (end_date IS NULL OR end_date >= ?) ORDER BY start_date DESC LIMIT 1',
+      [personId, targetDate, targetDate]
+    );
+    return period?.department || null;
   }
 
   async getQualificationTypes(activeOnly?: boolean) {
@@ -713,16 +784,6 @@ class SQLiteAdapter implements DatabaseAdapter {
     return clearSlotAssignments(this.db, auditUser);
   }
 
-  async getItwPatterns() {
-    const { getItwPatterns } = await import('./database');
-    return getItwPatterns(this.db);
-  }
-
-  async setItwPatterns(patterns: any[]) {
-    const { setItwPatterns } = await import('./database');
-    return setItwPatterns(this.db, patterns);
-  }
-
   async getDeptPatterns() {
     const { getDeptPatterns } = await import('./database');
     return getDeptPatterns(this.db);
@@ -802,9 +863,6 @@ class SQLiteAdapter implements DatabaseAdapter {
     return deleteYearPlanning(this.db, year);
   }
 
-  async close() {
-    // SQLite database is closed automatically
-  }
   // Shift Transfers (Issue #21)
   async getShiftTransfers(year?: number, month?: number) {
     const { getShiftTransfers } = await import('./database');
@@ -868,6 +926,103 @@ class SQLiteAdapter implements DatabaseAdapter {
     return cleanupAuditLogs(this.db);
   }
 
+  // ITW Planning
+  async getItwPatterns() {
+    const { getItwPatterns } = await import('./database');
+    return getItwPatterns(this.db);
+  }
+
+  async setItwPatterns(patterns: any[]) {
+    const { setItwPatterns } = await import('./database');
+    return setItwPatterns(this.db, patterns);
+  }
+
+  async generateItwPlanningsForYear(year: number, holidayDates: string[] = []) {
+    const { generateItwPlanningsForYear } = await import('./database');
+    return generateItwPlanningsForYear(this.db, year, holidayDates);
+  }
+
+  async getItwPhaseAssignments(startDate?: string) {
+    const { getItwPhaseAssignments } = await import('./database');
+    return getItwPhaseAssignments(this.db, startDate);
+  }
+
+  async addItwPhaseAssignment(startDate: string, personId: number, role: string) {
+    const { addItwPhaseAssignment } = await import('./database');
+    return addItwPhaseAssignment(this.db, startDate, personId, role);
+  }
+
+  async removeItwPhaseAssignment(startDate: string, personId: number) {
+    const { removeItwPhaseAssignment } = await import('./database');
+    return removeItwPhaseAssignment(this.db, startDate, personId);
+  }
+
+  async getItwDutyRoster(year: number) {
+    const { getItwDutyRoster } = await import('./database');
+    return getItwDutyRoster(this.db, year);
+  }
+
+  async setItwDutyRosterEntry(entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number }) {
+    const { setItwDutyRosterEntry } = await import('./database');
+    return setItwDutyRosterEntry(this.db, entry);
+  }
+
+  async getUniqueDepartments() {
+    const { getUniqueDepartments } = await import('./database');
+    return getUniqueDepartments(this.db);
+  }
+
+  async close() {
+    // SQLite database is closed automatically
+  }
+}
+
+class ItwPlanningAdapter {
+  constructor(private db: AsyncDB) { }
+
+  async getItwPatterns() {
+    const { getItwPatterns } = await import('./database');
+    return getItwPatterns(this.db);
+  }
+
+  async setItwPatterns(patterns: any[]) {
+    const { setItwPatterns } = await import('./database');
+    return setItwPatterns(this.db, patterns);
+  }
+
+  async generateItwPlanningsForYear(year: number) {
+    const { generateItwPlanningsForYear } = await import('./database');
+    return generateItwPlanningsForYear(this.db, year);
+  }
+
+  async getItwPhaseAssignments(startDate?: string) {
+    const { getItwPhaseAssignments } = await import('./database');
+    return getItwPhaseAssignments(this.db, startDate);
+  }
+
+  async addItwPhaseAssignment(startDate: string, personId: number, role: string) {
+    const { addItwPhaseAssignment } = await import('./database');
+    return addItwPhaseAssignment(this.db, startDate, personId, role);
+  }
+
+  async removeItwPhaseAssignment(startDate: string, personId: number) {
+    const { removeItwPhaseAssignment } = await import('./database');
+    return removeItwPhaseAssignment(this.db, startDate, personId);
+  }
+
+  async getItwDutyRoster(year: number) {
+    const { getItwDutyRoster } = await import('./database');
+    return getItwDutyRoster(this.db, year);
+  }
+
+  async setItwDutyRosterEntry(entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number }) {
+    const { setItwDutyRosterEntry } = await import('./database');
+    return setItwDutyRosterEntry(this.db, entry);
+  }
+
+  async close() {
+    // Database is closed automatically
+  }
 }
 
 export class DatabaseManager {
@@ -888,6 +1043,71 @@ export class DatabaseManager {
     }
 
     return this.initializeSQLite();
+  }
+
+  async getItwAdapter(): Promise<DatabaseAdapter> {
+    if (!this.adapter) {
+      await this.initialize();
+    }
+    return this.adapter!;
+  }
+
+  private async migrateLegacyItwData(mainDb: AsyncDB) {
+    try {
+      const itwPath = this.config.itwDatabasePath;
+      if (!itwPath || !fs.existsSync(itwPath)) return;
+
+      console.log('[DatabaseManager] 🔄 Migrating legacy ITW database to main database...');
+
+      const BetterSqlite3 = (await import('better-sqlite3')).default;
+      const rawLegacy = new BetterSqlite3(itwPath);
+
+      // Helper to query legacy DB
+      const legacyQuery = {
+        all: (sql: string) => rawLegacy.prepare(sql).all()
+      };
+
+      // 1. Migrate itw_patterns to dept_patterns
+      try {
+        const patterns = legacyQuery.all('SELECT * FROM itw_patterns') as any[];
+        for (const p of patterns) {
+          await mainDb.run('INSERT OR IGNORE INTO dept_patterns (start_date, pattern, department) VALUES (?, ?, ?)', 
+            [p.start_date, p.pattern, 'ITW']);
+        }
+        console.log(`[DatabaseManager] ✓ Migrated ${patterns.length} ITW patterns`);
+      } catch (e) { console.warn('[DatabaseManager] No itw_patterns found in legacy DB'); }
+
+      // 2. Migrate itw_phase_assignments
+      try {
+        const assignments = legacyQuery.all('SELECT * FROM itw_phase_assignments') as any[];
+        for (const a of assignments) {
+          await mainDb.run('INSERT OR IGNORE INTO itw_phase_assignments (start_date, person_id, role) VALUES (?, ?, ?)', 
+            [a.start_date, a.person_id, a.role]);
+        }
+        console.log(`[DatabaseManager] ✓ Migrated ${assignments.length} ITW phase assignments`);
+      } catch (e) { console.warn('[DatabaseManager] No itw_phase_assignments found in legacy DB'); }
+
+      // 3. Migrate itw_duty_roster
+      try {
+        const roster = legacyQuery.all('SELECT * FROM itw_duty_roster') as any[];
+        for (const r of roster) {
+          await mainDb.run('INSERT OR IGNORE INTO itw_duty_roster (personId, personType, date, value, type, manual_edit) VALUES (?, ?, ?, ?, ?, ?)', 
+            [r.personId, r.personType || 'person', r.date, r.value, r.type, r.manual_edit || 0]);
+        }
+        console.log(`[DatabaseManager] ✓ Migrated ${roster.length} ITW roster entries`);
+      } catch (e) { console.warn('[DatabaseManager] No itw_duty_roster found in legacy DB'); }
+
+      // Close legacy connection
+      rawLegacy.close();
+
+      // Rename legacy file to avoid repeated migration
+      const backupPath = itwPath + '.migrated';
+      fs.renameSync(itwPath, backupPath);
+      console.log(`[DatabaseManager] 🎉 Legacy ITW database migrated and renamed to ${path.basename(backupPath)}`);
+
+    } catch (error) {
+      console.error('[DatabaseManager] ❌ Failed to migrate legacy ITW data:', error);
+    }
   }
 
   private async initializePostgreSQL(): Promise<DatabaseAdapter> {
@@ -917,6 +1137,7 @@ export class DatabaseManager {
     } catch { }
 
     this.adapter = new SQLiteAdapter(db); // Same adapter works for both!
+    if (!this.adapter) throw new Error('Failed to initialize adapter');
     return this.adapter;
   }
 
@@ -952,6 +1173,7 @@ export class DatabaseManager {
         const portableDir = (process.env.PORTABLE_EXECUTABLE_DIR || '').trim();
         // 0) User config in userData/db-config.json
         let cfgDbDir = '';
+        let cfgItwDatabasePath = '';
         try {
           const cfgPath = path.join(app.getPath('userData'), 'db-config.json');
           if (fs.existsSync(cfgPath)) {
@@ -964,6 +1186,9 @@ export class DatabaseManager {
               let can = false; try { fs.accessSync(cfgDbDir, fs.constants.W_OK); can = true; } catch { }
               attempts.push({ kind: 'userConfig', dir: cfgDbDir, exists: true, canWrite: can, note: 'db-config.json' });
               if (!can) cfgDbDir = '';
+            }
+            if (json && typeof json.itwDatabasePath === 'string' && json.itwDatabasePath.trim()) {
+              cfgItwDatabasePath = String(json.itwDatabasePath).trim();
             }
           }
         } catch { }
@@ -1057,6 +1282,13 @@ export class DatabaseManager {
       };
     } catch { }
     this.adapter = new SQLiteAdapter(db);
+    if (!this.adapter) throw new Error('Failed to initialize adapter');
+
+    // Check for legacy ITW database and migrate if needed
+    if (this.config.itwDatabasePath && fs.existsSync(this.config.itwDatabasePath)) {
+      await this.migrateLegacyItwData(db);
+    }
+
     return this.adapter;
   }
 
@@ -1123,6 +1355,12 @@ export class DatabaseManager {
       console.log('[DatabaseManager] Adding old_rtw_shifts to personnel');
       await db.exec("ALTER TABLE personnel ADD COLUMN old_rtw_shifts INTEGER DEFAULT 0");
       await db.exec("UPDATE personnel SET old_rtw_shifts = 0 WHERE old_rtw_shifts IS NULL");
+    }
+
+    // Migration: add 'department' if missing
+    if (!personnelCols.some((c: any) => c.name === 'department')) {
+      console.log('[DatabaseManager] Adding department to personnel');
+      await db.exec("ALTER TABLE personnel ADD COLUMN department TEXT NOT NULL DEFAULT '1. Abteilung'");
     }
 
     // Migration: create roles table if missing
@@ -1258,6 +1496,65 @@ export class DatabaseManager {
         console.log(`[DatabaseManager] Migrated ${existingTransfers.length} shift transfers to single-month format`);
       }
     }
+
+    // Migration: add 'department' column to duty_roster if missing
+    const dutyRosterCols = await db.all("PRAGMA table_info('duty_roster')");
+    if (!dutyRosterCols.some((c: any) => c.name === 'department')) {
+      console.log('[DatabaseManager] Adding department to duty_roster');
+      await db.exec("ALTER TABLE duty_roster ADD COLUMN department TEXT NOT NULL DEFAULT '1. Abteilung'");
+    }
+
+    // Migration: add 'department' column to dept_patterns if missing
+    const deptPatternsCols = await db.all("PRAGMA table_info('dept_patterns')");
+    if (!deptPatternsCols.some((c: any) => c.name === 'department')) {
+      console.log('[DatabaseManager] Adding department to dept_patterns');
+      await db.exec("ALTER TABLE dept_patterns ADD COLUMN department TEXT NOT NULL DEFAULT '1. Abteilung'");
+    }
+
+    // Migration: create ITW tables in main DB if they don't exist
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS itw_phase_assignments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        start_date TEXT NOT NULL,
+        person_id INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        UNIQUE(start_date, person_id)
+      );
+      CREATE TABLE IF NOT EXISTS itw_duty_roster (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        personId INTEGER NOT NULL,
+        personType TEXT NOT NULL DEFAULT 'person',
+        date TEXT NOT NULL,
+        value TEXT NOT NULL,
+        type TEXT NOT NULL,
+        manual_edit INTEGER DEFAULT 0,
+        UNIQUE(personId, personType, date)
+      );
+    `);
+
+    // Migration: create personnel_department_periods if missing
+    const deptPeriodsTableExists = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='personnel_department_periods'");
+    if (!deptPeriodsTableExists) {
+      console.log('[DatabaseManager] Creating personnel_department_periods table');
+      await db.exec(`
+        CREATE TABLE personnel_department_periods (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          person_id INTEGER NOT NULL,
+          department TEXT NOT NULL,
+          start_date TEXT NOT NULL,
+          end_date TEXT,
+          FOREIGN KEY(person_id) REFERENCES personnel(id) ON DELETE CASCADE
+        )
+      `);
+      
+      // Initial migration: move current department to periods
+      const personnel = await db.all("SELECT id, department FROM personnel");
+      for (const p of personnel) {
+        await db.run("INSERT INTO personnel_department_periods (person_id, department, start_date) VALUES (?, ?, ?)", 
+          [p.id, p.department || '1. Abteilung', '2020-01-01']);
+      }
+      console.log(`[DatabaseManager] Migrated ${personnel.length} personnel to department periods`);
+    }
   }
 
   private async initializeSQLiteSchema(db: AsyncDB) {
@@ -1280,7 +1577,8 @@ export class DatabaseManager {
             itwMaschinist INTEGER NOT NULL DEFAULT 0,
             itwFahrzeugfuehrer INTEGER NOT NULL DEFAULT 0,
       sort INTEGER NOT NULL DEFAULT '0',
-      active INTEGER NOT NULL DEFAULT '1'
+      active INTEGER NOT NULL DEFAULT '1',
+      department TEXT NOT NULL DEFAULT '1. Abteilung'
         );
         
         CREATE TABLE IF NOT EXISTS settings (
@@ -1293,14 +1591,10 @@ export class DatabaseManager {
             name TEXT NOT NULL DEFAULT ''
         );
         
-        CREATE TABLE IF NOT EXISTS itw_patterns (
-            start_date TEXT PRIMARY KEY,
-            pattern TEXT NOT NULL
-        );
-        
         CREATE TABLE IF NOT EXISTS dept_patterns (
             start_date TEXT PRIMARY KEY,
-            pattern TEXT NOT NULL
+            pattern TEXT NOT NULL,
+            department TEXT NOT NULL DEFAULT '1. Abteilung'
         );
         
         CREATE TABLE IF NOT EXISTS shift_types (
@@ -1317,9 +1611,10 @@ export class DatabaseManager {
             value TEXT NOT NULL,
             type TEXT NOT NULL,
             manual_edit INTEGER DEFAULT 0,
+            department TEXT NOT NULL DEFAULT '1. Abteilung',
             UNIQUE(personId, personType, date)
         );
-        
+
         CREATE TABLE IF NOT EXISTS azubis (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -1335,6 +1630,15 @@ export class DatabaseManager {
             end_date TEXT NOT NULL,
             description TEXT,
             FOREIGN KEY (azubi_id) REFERENCES azubis (id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS personnel_department_periods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            person_id INTEGER NOT NULL,
+            department TEXT NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT,
+            FOREIGN KEY(person_id) REFERENCES personnel(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS itw_doctors (
@@ -1357,6 +1661,25 @@ export class DatabaseManager {
             sort INTEGER NOT NULL DEFAULT 0,
             archived_year INTEGER,
             occupancy_mode TEXT NOT NULL DEFAULT '24h'
+        );
+
+        CREATE TABLE IF NOT EXISTS itw_phase_assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            start_date TEXT NOT NULL,
+            person_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            UNIQUE(start_date, person_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS itw_duty_roster (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            personId INTEGER NOT NULL,
+            personType TEXT NOT NULL DEFAULT 'person',
+            date TEXT NOT NULL,
+            value TEXT NOT NULL,
+            type TEXT NOT NULL,
+            manual_edit INTEGER DEFAULT 0,
+            UNIQUE(personId, personType, date)
         );
 
         CREATE TABLE IF NOT EXISTS itw_vehicles (
@@ -1706,6 +2029,19 @@ export async function initializeDatabaseManager(config?: DatabaseConfig): Promis
     return globalDatabaseManager.getAdapter();
   }
 
+  // Read ITW database path from config
+  let cfgItwDatabasePath = '';
+  try {
+    const cfgPath = path.join(app.getPath('userData'), 'db-config.json');
+    if (fs.existsSync(cfgPath)) {
+      const raw = fs.readFileSync(cfgPath, 'utf-8');
+      const json = JSON.parse(raw || '{}');
+      if (json && typeof json.itwDatabasePath === 'string' && json.itwDatabasePath.trim()) {
+        cfgItwDatabasePath = String(json.itwDatabasePath).trim();
+      }
+    }
+  } catch { }
+
   // Check for PostgreSQL environment variable
   const pgConnectionString = process.env.RD_PLAN_PG_CONNECTION;
 
@@ -1716,7 +2052,8 @@ export async function initializeDatabaseManager(config?: DatabaseConfig): Promis
       : (process.env.RD_PLAN_DB_MODE === 'central-sqlite' ? 'central-sqlite' : 'sqlite'),
     multiUser: process.env.RD_PLAN_MULTI_USER === 'true',
     centralPath: process.env.RD_PLAN_CENTRAL_DB_PATH,
-    postgresConfig: pgConnectionString ? { connectionString: pgConnectionString } : undefined
+    postgresConfig: pgConnectionString ? { connectionString: pgConnectionString } : undefined,
+    itwDatabasePath: cfgItwDatabasePath || path.join(app.getPath('userData'), 'itw-planning.db')
   };
 
   const finalConfig = { ...defaultConfig, ...config };
@@ -1751,7 +2088,9 @@ export async function initializeDatabaseManager(config?: DatabaseConfig): Promis
   }
 
   globalDatabaseManager = new DatabaseManager(finalConfig);
-  return globalDatabaseManager.initialize();
+  const adapter = await globalDatabaseManager.initialize();
+
+  return adapter;
 }
 
 export function getDatabaseManager(): DatabaseManager {

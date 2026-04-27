@@ -264,6 +264,7 @@ interface Person {
   email?: string;
   roleId?: number;
   personnelNumber?: string;
+  department?: string;
 }
 
 interface Azubi { id: number; name: string; vorname: string; lehrjahr: number }
@@ -298,7 +299,7 @@ interface PersonnelOverviewProps {
   setFooterActions?: (actions: React.ReactNode) => void;
 }
 
-const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions }) => {
+const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: string }> = ({ setFooterActions, departmentName }) => {
   const [activeTab, setActiveTab] = useState<'stammpersonal' | 'azubis' | 'ärzte'>('stammpersonal');
   const [itwEnabled, setItwEnabled] = useState<boolean>(false);
   const [personnel, setPersonnel] = useState<Person[]>([]);
@@ -308,6 +309,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
   const [selectedAzubiForPeriods, setSelectedAzubiForPeriods] = useState<Azubi | null>(null);
   const [qualificationPeriods, setQualificationPeriods] = useState<Record<number, QualificationPeriod[]>>({});
   const [activePeriods, setActivePeriods] = useState<Record<number, ActivePeriod[]>>({});
+  const [departmentPeriods, setDepartmentPeriods] = useState<Record<number, any[]>>({});
   const [itws, setItws] = useState<ItwDoctor[]>([]);
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [draggedAzubiId, setDraggedAzubiId] = useState<number | null>(null);
@@ -357,7 +359,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
     // Wenn inaktive angezeigt werden sollen: includeInactive=true, date egal
     // Wenn inaktive ausgeblendet werden sollen: includeInactive=false, date=Aktuelles Jahr
     const currentYear = new Date().getFullYear().toString();
-    const list = await (window as any).api.getPersonnelList(showInactive, showInactive ? undefined : currentYear);
+    const list = await (window as any).api.getPersonnelList(showInactive, showInactive ? undefined : currentYear, departmentName);
     setPersonnel(list);
     setLoading(false);
   }, [showInactive]);
@@ -373,9 +375,21 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
         periodsByPerson[period.personId].push(period);
       });
       setActivePeriods(periodsByPerson);
-    } catch (error) {
-      // console.error('Fehler beim Laden der Aktivitätsperioden:', error);
-    }
+    } catch (error) {}
+  }, []);
+
+  const loadAllDepartmentPeriods = useCallback(async () => {
+    try {
+      const allPeriods = await (window as any).api.getAllPersonnelDepartmentPeriods();
+      const periodsByPerson: Record<number, any[]> = {};
+      allPeriods.forEach((period: any) => {
+        if (!periodsByPerson[period.personId]) {
+          periodsByPerson[period.personId] = [];
+        }
+        periodsByPerson[period.personId].push(period);
+      });
+      setDepartmentPeriods(periodsByPerson);
+    } catch (error) {}
   }, []);
 
   const loadAzubis = useCallback(async () => {
@@ -443,6 +457,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
     loadItws();
     loadQualificationPeriods();
     loadActivePeriods();
+    loadAllDepartmentPeriods();
     loadRoles();
     loadItwFeature();
     const handler = (_event: any) => {
@@ -468,6 +483,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
     (window as any).api.onItwUpdated?.(itwHandler);
     const settingsHandler = async () => {
       await loadItwFeature();
+      loadPersonnel();
     };
     (window as any).api.onSettingsUpdated?.(settingsHandler);
     // postMessage-Listener für Popups
@@ -614,15 +630,41 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
   const handleDeleteSelectedItw = () => { if (selectedItwId == null) return; (window as any).api.openConfirmDeleteWindow(selectedItwId, 'itw'); };
 
   const isPersonActive = (p: Person) => {
+    // If we are NOT showing inactives, then by definition anyone in the 'personnel' list is active
+    // because the backend already filtered them for us.
+    if (!showInactive) return true;
+
+    const currentYM = new Date().toISOString().slice(0, 7);
+    const currentDate = new Date().toISOString().slice(0, 10);
+    
+    // 1. Check department periods
+    // In 'all' view, we don't filter by department activity
+    if (departmentName && departmentName !== 'all') {
+      const dPeriods = departmentPeriods[p.id] || [];
+      if (dPeriods.length > 0) {
+        const inDept = dPeriods.some((per: any) => 
+          per.department === departmentName &&
+          per.startDate <= currentDate &&
+          (!per.endDate || per.endDate >= currentDate)
+        );
+        if (!inDept) return false;
+      } else {
+        // Fallback to legacy department flag if no periods exist
+        if (p.department !== departmentName) return false;
+      }
+    }
+
+    // 2. Check active periods (fitness for duty)
     const periods = activePeriods[p.id];
     if (periods && periods.length > 0) {
-      const currentYM = new Date().toISOString().slice(0, 7);
       return periods.some(per =>
         per.active &&
         per.startYM <= currentYM &&
         (!per.endYM || per.endYM >= currentYM)
       );
     }
+    
+    // 3. Fallback to legacy active flag
     return !!(p.active ?? 1);
   };
 
@@ -729,6 +771,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
                           onClick={() => handleRowClick(person.id)}
                           className={rowClass}
                           style={{ cursor: 'move' }}
+                          title={`Status: ${isPersonActive(person) ? 'Aktiv' : 'Inaktiv'}\nAbteilung: ${departmentName || 'all'}\nID: ${person.id}`}
                         >
                           <td>
                             {person.name}

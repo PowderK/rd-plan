@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
-type NavKey = 'dienstplan' | 'einteilung' | 'werte' | 'personal' | 'fahrzeuge' | 'einstellungen';
+type NavKey = 'dienstplan' | 'einteilung' | 'werte' | 'personal' | 'fahrzeuge' | 'einstellungen' | 'itw';
 
 const itemStyle: React.CSSProperties = {
 	display: 'flex',
@@ -24,9 +24,21 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 	const [collapsed, setCollapsed] = useState(false);
 	const { hasPermission, logout, isDevMode, currentUser } = useAuth();
 	const [isAdminRole, setIsAdminRole] = useState(false);
+	const [itwFeatureEnabled, setItwFeatureEnabled] = useState(false);
+	const [selectedDept, setSelectedDept] = useState<string>('all');
+	const [departments, setDepartments] = useState<string[]>([]);
 
 	useEffect(() => {
 		let cancelled = false;
+		
+		const loadDepts = async () => {
+			try {
+				const depts = await (window as any).api?.getUniqueDepartments?.();
+				if (!cancelled && Array.isArray(depts)) setDepartments(depts);
+			} catch {}
+		};
+		loadDepts();
+
 		const resolveAdminRole = async () => {
 			try {
 				if (!currentUser?.roleId) {
@@ -47,14 +59,49 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 
 				const isAdmin = String(role?.name || '').trim().toLowerCase() === 'administrator';
 				if (!cancelled) setIsAdminRole(isAdmin);
+				
+				if (isAdmin) {
+					const adminDept = await (window as any).api?.getSetting?.('admin_selected_department');
+					if (!cancelled) setSelectedDept(adminDept || 'all');
+				}
 			} catch {
 				if (!cancelled) setIsAdminRole(false);
 			}
 		};
 
 		resolveAdminRole();
-		return () => { cancelled = true; };
+		
+		const loadItwSetting = async () => {
+			try {
+				const val = await (window as any).api?.getSetting?.('itw');
+				setItwFeatureEnabled(val === 'true' || val === '1');
+			} catch {}
+		};
+		loadItwSetting();
+		
+		const onSettingsUpdated = () => {
+			resolveAdminRole();
+			loadItwSetting();
+		};
+		(window as any).api?.onSettingsUpdated?.(onSettingsUpdated);
+
+		return () => { 
+			cancelled = true; 
+			(window as any).api?.offSettingsUpdated?.(onSettingsUpdated);
+		};
 	}, [currentUser?.roleId]);
+
+	const onDepartmentChange = async (dept: string) => {
+		try {
+			setSelectedDept(dept);
+		await (window as any).api?.setSetting?.('admin_selected_department', dept);
+		// Broadcast update to all windows
+		window.dispatchEvent(new CustomEvent('settings-updated'));
+		window.dispatchEvent(new CustomEvent('rdplan-department-changed', { detail: { department: dept } }));
+	} catch (e) {
+			console.error('Failed to update admin department:', e);
+		}
+	};
 	
 	// Emit collapse state changes
 	const toggleCollapse = () => {
@@ -75,6 +122,7 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 		personal: "M16 14c2.21 0 4 1.79 4 4v2H4v-2c0-2.21 1.79-4 4-4h8Zm-4-2a4 4 0 1 1 0-8 4 4 0 0 1 0 8Z",
 		fahrzeuge: "M3 13l2-5a2 2 0 0 1 2-1h8a2 2 0 0 1 2 1l2 5v5h-2a2 2 0 0 1-2-2H7a2 2 0 0 1-2 2H3v-5Zm4-1h10",
 		einstellungen: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm8 4l-1.2-.7.2-1.4-1.4-.8-.8-1.4-1.4.2L14 6l-2-1-2 1-1.4-.2-.8 1.4-1.4.8.2 1.4L4 12l1.2.7-.2 1.4 1.4.8.8 1.4 1.4-.2 2 1 2-1 1.4.2.8-1.4 1.4-.8-.2-1.4L20 12Z",
+		itw: "M5 12h14M5 12l4-4m-4 4 4 4M19 12l-4-4m4 4-4 4", // some icon for ITW
 		power: "M12 2v10m6.36-6.36a9 9 0 1 1-12.72 0",
 		logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14l5-5-5-5m5 5H9"
 	};
@@ -85,7 +133,8 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 		{ key: 'dienstplan' as NavKey, icon: icons.dienstplan, label: 'Dienstplan', area: 'dienstplan' },
 		{ key: 'werte' as NavKey, icon: icons.werte, label: 'Werte', area: 'werte' },
 		{ key: 'personal' as NavKey, icon: icons.personal, label: 'Personal', area: 'personal' },
-		{ key: 'fahrzeuge' as NavKey, icon: icons.fahrzeuge, label: 'Fahrzeuge', area: 'fahrzeuge' }
+		{ key: 'fahrzeuge' as NavKey, icon: icons.fahrzeuge, label: 'Fahrzeuge', area: 'fahrzeuge' },
+		...((itwFeatureEnabled ? [{ key: 'itw' as NavKey, icon: icons.itw, label: 'ITW', area: 'dienstplan' }] : []))
 	].filter(item => hasPermission(item.area, 'read') || hasPermission(item.area, 'write'));
 	const Item = ({ keyName, icon, label, onClick }: { keyName: NavKey; icon: React.ReactNode; label: string; onClick: () => void }) => (
 		<button
@@ -162,6 +211,31 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 						/>
 					))}
 				</nav>
+
+				{isAdminRole && !collapsed && (
+					<div style={{ marginTop: 12, padding: '0 8px' }}>
+						<div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 4, paddingLeft: 4 }}>Abteilung (Admin)</div>
+						<select 
+							value={selectedDept} 
+							onChange={(e) => onDepartmentChange(e.target.value)}
+							style={{
+								width: '100%',
+								padding: '6px 8px',
+								borderRadius: 4,
+								border: '1px solid var(--line)',
+								background: 'var(--bg)',
+								color: 'var(--text)',
+								fontSize: 12,
+								outline: 'none'
+							}}
+						>
+							<option value="all">Alle Abteilungen</option>
+							{departments.map(d => (
+								<option key={d} value={d}>{d}</option>
+							))}
+						</select>
+					</div>
+				)}
 				<div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
 					{hasPermission('einstellungen', 'read') && (
 						<Item keyName="einstellungen" icon={<Icon path={icons.einstellungen} />} label="Einstellungen" onClick={() => emitNavigate('einstellungen')} />

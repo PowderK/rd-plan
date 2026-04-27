@@ -207,15 +207,66 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
   );
 };
 
+interface DepartmentPeriod {
+  department: string;
+  startDate: string;
+  endDate: string | null;
+}
+
+const DepartmentPeriodForm: React.FC<{
+  onSave: (p: DepartmentPeriod) => void;
+  onCancel: () => void;
+  title: string;
+}> = ({ onSave, onCancel, title }) => {
+  const [department, setDepartment] = useState('1. Abteilung');
+  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState('');
+  const [isUnlimited, setIsUnlimited] = useState(true);
+
+  return (
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+      <div style={{ background: 'white', padding: '24px', borderRadius: '8px', width: '480px' }}>
+        <h3 style={{ marginTop: 0, marginBottom: '20px' }}>{title}</h3>
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>Abteilung *</label>
+          <select value={department} onChange={e => setDepartment(e.target.value)} style={{ width: '100%', padding: '8px' }}>
+            <option value="1. Abteilung">1. Abteilung</option>
+            <option value="2. Abteilung">2. Abteilung</option>
+            <option value="3. Abteilung">3. Abteilung</option>
+          </select>
+        </div>
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>Start-Datum *</label>
+          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ width: '100%', padding: '8px' }} />
+        </div>
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', marginBottom: '6px' }}>
+            <input type="checkbox" checked={isUnlimited} onChange={e => setIsUnlimited(e.target.checked)} style={{ marginRight: '8px' }} />
+            Laufend
+          </label>
+          {!isUnlimited && <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ width: '100%', padding: '8px' }} />}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+          <button onClick={onCancel} style={{ background: '#6c757d', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px' }}>Abbrechen</button>
+          <button onClick={() => onSave({ department, startDate, endDate: isUnlimited ? null : endDate })} style={{ background: '#007bff', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px' }}>Hinzufügen</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AddPerson: React.FC = () => {
   const [name, setName] = useState('');
   const [vorname, setVorname] = useState('');
   const [teilzeit, setTeilzeit] = useState(100);
+  const [department, setDepartment] = useState('1. Abteilung');
   const [personnelNumber, setPersonnelNumber] = useState('');
   const [roleId, setRoleId] = useState<number | ''>('');
   const [roles, setRoles] = useState<Array<{ id: number; name: string }>>([]);
   const [qualifications, setQualifications] = useState<QualificationPeriod[]>([]);
+  const [departmentPeriods, setDepartmentPeriods] = useState<DepartmentPeriod[]>([]);
   const [showAddQualification, setShowAddQualification] = useState(false);
+  const [showAddDepartment, setShowAddDepartment] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [rolesLoading, setRolesLoading] = useState(true);
 
@@ -260,6 +311,11 @@ const AddPerson: React.FC = () => {
     setQualifications(qualifications.filter((_, i) => i !== index));
   };
 
+  const handleAddDepartment = (p: DepartmentPeriod) => {
+    setDepartmentPeriods([...departmentPeriods, p]);
+    setShowAddDepartment(false);
+  };
+
   const handleSave = async () => {
     if (!name.trim() || !vorname.trim()) {
       alert('Bitte Name und Vorname eingeben.');
@@ -282,6 +338,7 @@ const AddPerson: React.FC = () => {
         name, 
         vorname, 
         teilzeit,
+        department: departmentPeriods.length > 0 ? departmentPeriods[0].department : '1. Abteilung',
         personnelNumber: personnelNumber.trim(),
         roleId,
         fahrzeugfuehrer: false,
@@ -305,12 +362,24 @@ const AddPerson: React.FC = () => {
         });
       }
 
-      // Qualifikationen hinzufügen (falls die API die personId zurückgibt)
+      // Qualifikationen hinzufügen
       if (result && result.id && qualifications.length > 0) {
         for (const qual of qualifications) {
           await (window as any).api.addQualificationPeriod({
             personId: result.id,
             ...qual
+          });
+        }
+      }
+
+      // Abteilungsperioden hinzufügen
+      if (result && result.id && departmentPeriods.length > 0) {
+        for (const dp of departmentPeriods) {
+          await (window as any).api.addPersonnelDepartmentPeriod({
+            personId: result.id,
+            department: dp.department,
+            startDate: dp.startDate,
+            endDate: dp.endDate
           });
         }
       }
@@ -386,6 +455,32 @@ const AddPerson: React.FC = () => {
             boxSizing: 'border-box'
           }}
         />
+      </div>
+
+      <div style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <h3 style={{ margin: 0, fontSize: '16px' }}>Abteilungs-Zugehörigkeit *</h3>
+          <button type="button" onClick={() => setShowAddDepartment(true)} style={{ background: '#28a745', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }}>
+            + Abteilung
+          </button>
+        </div>
+        {departmentPeriods.length > 0 ? (
+          <div style={{ border: '1px solid #ddd', borderRadius: '4px' }}>
+            {departmentPeriods.map((dp, i) => (
+              <div key={i} style={{ padding: '12px', borderBottom: i < departmentPeriods.length - 1 ? '1px solid #eee' : 'none', display: 'flex', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontWeight: 500 }}>{dp.department}</div>
+                  <div style={{ fontSize: '13px', color: '#666' }}>{dp.startDate} bis {dp.endDate || 'Laufend'}</div>
+                </div>
+                <button type="button" onClick={() => setDepartmentPeriods(departmentPeriods.filter((_, idx) => idx !== i))} style={{ background: '#dc3545', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '3px', fontSize: '12px' }}>Löschen</button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ padding: '16px', background: '#f8f9fa', border: '1px dashed #ddd', borderRadius: '4px', textAlign: 'center', color: '#dc3545', fontSize: '14px' }}>
+            Bitte mindestens eine Abteilung hinzufügen!
+          </div>
+        )}
       </div>
 
       <div style={{ marginBottom: '16px' }}>
@@ -571,6 +666,15 @@ const AddPerson: React.FC = () => {
             setEditingIndex(null);
           }}
           title={editingIndex !== null ? 'Qualifikation bearbeiten' : 'Qualifikation hinzufügen'}
+        />
+      )}
+
+      {/* Abteilungs-Form Modal */}
+      {showAddDepartment && (
+        <DepartmentPeriodForm
+          onSave={handleAddDepartment}
+          onCancel={() => setShowAddDepartment(false)}
+          title="Abteilung hinzufügen"
         />
       )}
     </div>

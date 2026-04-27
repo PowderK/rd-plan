@@ -55,20 +55,32 @@ export function computeItwShiftsPerMonth(roster: any[], auswertungByType: Record
     return sums;
 }
 
+function checkVehicleActive(vid: number, mIdx: number, year: number, periods?: Record<number, any[]>, legacyActs?: Record<number, boolean[]>) {
+    const yearMonth = `${year}-${String(mIdx + 1).padStart(2, '0')}`;
+    const p = periods?.[vid] || [];
+    if (p.length > 0) {
+        return p.some(x => x.active && x.startYM <= yearMonth && (!x.endYM || x.endYM >= yearMonth));
+    }
+    // Fallback to legacy activations
+    return (legacyActs?.[vid] ?? Array(12).fill(true))[mIdx] !== false;
+}
+
 export function computePositionsPerMonth(
+    year: number,
     deptShifts: number[],
     itwShifts: number[],
     vehicles: { rtw: { id: number }[]; nef: { id: number; occupancyMode?: '24h' | 'tag' }[] },
-    acts: { rtwActs: Record<number, boolean[]>; nefActs: Record<number, boolean[]> }
+    acts: { rtwActs: Record<number, boolean[]>; nefActs: Record<number, boolean[]> },
+    periods?: { rtwPeriods: Record<number, any[]>; nefPeriods: Record<number, any[]> }
 ) {
     const positions: number[] = Array(12).fill(0);
     for (let m = 0; m < 12; m++) {
-        const rtwCount = (vehicles.rtw || []).filter(v => (acts.rtwActs[v.id] ?? Array(12).fill(true))[m] !== false).length;
+        const rtwCount = (vehicles.rtw || []).filter(v => checkVehicleActive(v.id, m, year, periods?.rtwPeriods, acts.rtwActs)).length;
 
         // Calculate NEF shifts based on occupancy mode
         let nefShifts = 0;
         (vehicles.nef || []).forEach(v => {
-            if ((acts.nefActs[v.id] ?? Array(12).fill(true))[m] !== false) {
+            if (checkVehicleActive(v.id, m, year, periods?.nefPeriods, acts.nefActs)) {
                 nefShifts += (v.occupancyMode === 'tag' ? 1 : 2);
             }
         });
@@ -207,7 +219,8 @@ export function calculateTargets(
     department: number,
     deptPatternSeqs: { startDate: string; pattern: string[] }[],
     hlfbPeriodsByPerson?: Record<number, Array<{ startYM: string; endYM?: string }>>,
-    shiftTransfers: ShiftTransfer[] = [] // Optional for backward compatibility
+    shiftTransfers: ShiftTransfer[] = [], // Optional for backward compatibility
+    vehiclePeriods?: { rtwPeriods: Record<number, any[]>; nefPeriods: Record<number, any[]> }
 ) {
     // 1. Dept Shifts
     const deptShifts = computeDeptShiftsPerMonth(year, department, deptPatternSeqs);
@@ -216,7 +229,7 @@ export function calculateTargets(
     const itwShifts = computeItwShiftsPerMonth(roster, auswertungByType, personnel);
 
     // 3. Positions Total
-    const positions = computePositionsPerMonth(deptShifts, itwShifts, vehicles, activations);
+    const positions = computePositionsPerMonth(year, deptShifts, itwShifts, vehicles, activations, vehiclePeriods);
 
     // 4. Deductions (Azubi Maschinist + Ü50)
     const azubiShifts = computeAzubiMaschinistShifts(roster, azubis);

@@ -6,7 +6,9 @@ export interface AuthSession {
   name: string;
   vorname: string;
   roleId: number | null;
+  roleName?: string;
   permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>;
+  assignedDepartment: string | 'all';
 }
 
 export class AuthService {
@@ -24,24 +26,27 @@ export class AuthService {
     };
   }
 
-  private async resolvePermissions(roleId: number | null | undefined): Promise<Record<string, 'none' | 'read' | 'read_all' | 'write'>> {
+  private async resolveRoleInfo(roleId: number | null | undefined): Promise<{ permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>, name?: string }> {
     const permissions = this.getDefaultPermissions();
-    if (!roleId) return permissions;
+    if (!roleId) return { permissions };
 
     const rolesData = await this.dbAdapter.getSetting('roles');
-    if (!rolesData) return permissions;
+    if (!rolesData) return { permissions };
 
     try {
       const roles = JSON.parse(rolesData);
       const role = roles.find((r: any) => r.id === roleId);
-      if (role && role.permissions) {
-        return { ...permissions, ...role.permissions };
+      if (role) {
+        return { 
+          permissions: { ...permissions, ...(role.permissions || {}) },
+          name: role.name
+        };
       }
     } catch (e) {
       console.error('[AuthService] Error parsing roles:', e);
     }
 
-    return permissions;
+    return { permissions };
   }
 
   private normalizePersonnelNumber(value: unknown): string {
@@ -65,7 +70,15 @@ export class AuthService {
         return { success: false, error: 'Personalnummer nicht gefunden' };
       }
 
-      const permissions = await this.resolvePermissions(person.roleId || null);
+      const { permissions, name: roleName } = await this.resolveRoleInfo(person.roleId || null);
+      
+      let assignedDepartment: string | 'all' = '1. Abteilung';
+      if (roleName?.toLowerCase() === 'administrator') {
+        assignedDepartment = 'all';
+      } else {
+        const dept = await this.dbAdapter.getCurrentDepartmentForPerson(person.id);
+        if (dept) assignedDepartment = dept;
+      }
 
       this.currentSession = {
         userId: person.id,
@@ -73,7 +86,9 @@ export class AuthService {
         name: person.name,
         vorname: person.vorname,
         roleId: person.roleId || null,
-        permissions
+        roleName,
+        permissions,
+        assignedDepartment
       };
 
       return { success: true, session: this.currentSession };
@@ -102,14 +117,25 @@ export class AuthService {
         return null;
       }
 
-      const permissions = await this.resolvePermissions(person.roleId || null);
+      const { permissions, name: roleName } = await this.resolveRoleInfo(person.roleId || null);
+      
+      let assignedDepartment: string | 'all' = 'Rettungsdienst';
+      if (roleName?.toLowerCase() === 'administrator') {
+        assignedDepartment = 'all';
+      } else {
+        const dept = await this.dbAdapter.getCurrentDepartmentForPerson(person.id);
+        if (dept) assignedDepartment = dept;
+      }
+
       this.currentSession = {
         userId: person.id,
         personnelNumber: person.personnelNumber || '',
         name: person.name,
         vorname: person.vorname,
         roleId: person.roleId || null,
-        permissions
+        roleName,
+        permissions,
+        assignedDepartment
       };
 
       return this.currentSession;

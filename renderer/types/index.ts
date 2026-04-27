@@ -11,6 +11,7 @@ export interface Personnel {
     name: string;
     role: string;
     contact: string;
+    department?: string;
 }
 
 export interface MonthTab {

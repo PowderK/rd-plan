@@ -107,7 +107,7 @@ const filterActiveAzubisForMonth = (azubis: any[], allPeriods: any[], year: numb
   });
 };
 
-const DutyRoster: React.FC = () => {
+const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) => {
   const { currentUser, hasPermission } = useAuth();
   const canWrite = hasPermission('dienstplan', 'write');
   const canRead = hasPermission('dienstplan', 'read');
@@ -276,7 +276,8 @@ const DutyRoster: React.FC = () => {
 
   useEffect(() => {
     (async () => {
-      const list = await (window as any).api.getPersonnelList();
+      const filterDate = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+      const list = await (window as any).api.getPersonnelList(false, filterDate, departmentName);
       const azubiList = await (window as any).api.getAzubiList();
       const allPeriods = await (window as any).api.getAllAzubiPeriods();
       const allQualPeriods = await (window as any).api.getAllQualificationPeriods();
@@ -414,7 +415,7 @@ const DutyRoster: React.FC = () => {
         setNefActs(map);
       } catch { }
       // Dienstplan-Einträge laden
-      const entries = await (window as any).api.getDutyRoster(yearToUse);
+      const entries = await (window as any).api.getDutyRoster(yearToUse, departmentName);
       // console.log('[Renderer] getDutyRoster fetched', Array.isArray(entries) ? entries.length : typeof entries, 'entries for year', yearToUse);
       if (Array.isArray(entries) && entries.length > 0) {
         // console.log('[Renderer] sample entry[0]=', entries[0]);
@@ -1054,7 +1055,8 @@ const DutyRoster: React.FC = () => {
   // Hilfsfunktion zum Neuladen NUR des Dienstplan-States (Roster)
   // Optional: Jahr überschreiben, sonst aktuellen State-Wert verwenden
   const reloadRoster = async (yearOverride?: number) => {
-    const list = await (window as any).api.getPersonnelList();
+    const filterDate = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+    const list = await (window as any).api.getPersonnelList(false, filterDate, departmentName);
     const azubiList = await (window as any).api.getAzubiList();
     const allPeriods = await (window as any).api.getAllAzubiPeriods();
     const allQualPeriods = await (window as any).api.getAllQualificationPeriods();

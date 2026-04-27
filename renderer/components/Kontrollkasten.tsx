@@ -34,6 +34,7 @@ interface KontrollkastenItem {
   presenceRemainingByPerson?: number;
   oldRtwShifts?: number;
   hasTransfer?: boolean;
+  isItwExternal?: boolean;
 }
 
 interface KontrollkastenProps {
@@ -140,10 +141,11 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                   className={styles.sidebarName}
                   onClick={() => setHighlightedPersonKey(highlightedPersonKey === it.key ? null : it.key)}
                   style={{
-                    color: it.lpal ? '#fd7e14' : it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : undefined,
+                    color: it.lpal ? '#fd7e14' : it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : (it.isItwExternal ? '#6b7280' : undefined),
                     cursor: 'pointer',
                     fontWeight: highlightedPersonKey === it.key ? 700 : undefined,
-                    backgroundColor: availablePersonKeys?.has(it.key) ? '#e8f5e9' : undefined,
+                    backgroundColor: availablePersonKeys?.has(it.key) ? (it.isItwExternal ? '#f3f4f6' : '#e8f5e9') : (it.isItwExternal ? '#f9fafb' : undefined),
+                    fontStyle: it.isItwExternal ? 'italic' : undefined,
                     textDecoration: highlightedPersonKey === it.key ? 'underline' : undefined,
                     whiteSpace: 'nowrap',
                     textAlign: 'right',

@@ -3,8 +3,6 @@ import { createPortal } from 'react-dom';
 import { calculateTargets } from '../utils/calculation';
 import styles from './MonthTabs.module.css';
 import { Kontrollkasten } from './Kontrollkasten';
-import CustomSelect from './CustomSelect';
-import { AzubiAutoAssignDialog, ShiftSummary, ProposedAssignment, ConflictAzubi } from './AzubiAutoAssignDialog';
 
 interface MonthTabsProps {
     currentMonth: number;
@@ -55,14 +53,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [nefName, setNefName] = useState<string>('');
     const [rtwActivations, setRtwActivations] = useState<Record<number, boolean[]>>({});
     const [nefActivations, setNefActivations] = useState<Record<number, boolean[]>>({});
+    const [rtwVehiclePeriods, setRtwVehiclePeriods] = useState<Record<number, any[]>>({});
+    const [nefVehiclePeriods, setNefVehiclePeriods] = useState<Record<number, any[]>>({});
     const [itwPatternSeqs, setItwPatternSeqs] = useState<{ startDate: string; pattern: string[] }[]>([]);
     const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
     const [isUpdating, setIsUpdating] = useState(false); // Verhindert Race-Conditions während Updates
     const [holidays, setHolidays] = useState<Set<string>>(new Set());
     // Hervorgehobene Person aus Kontrollkasten
     const [highlightedPersonKey, setHighlightedPersonKey] = useState<string | null>(null);
-    // Hervorgehobenes Datum für Verfügbarkeitsanzeige im Kontrollkasten
-    const [selectedAvailDate, setSelectedAvailDate] = useState<string | null>(null);
     // Ü50-IDs für korrekte Berechnung (analog ValuesPage)
     const [ue50Ids, setUe50Ids] = useState<Set<number>>(new Set());
     // LPAL-IDs (Leitender Praxisanleiter) - wie Ü50, aber orange
@@ -174,38 +172,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         loadComments();
     }, [loadComments]);
 
-    useEffect(() => {
-        const loadHlfbPeriods = async () => {
-            try {
-                const hlfbQualSetting = await (window as any).api.getSetting?.('hlfb_qualification_type');
-                const hlfbQualName = String(hlfbQualSetting || 'FzF HLF B');
-                const allPeriods = await (window as any).api.getAllQualificationPeriods?.();
-
-                const map: Record<number, Array<{ startYM: string; endYM?: string }>> = {};
-
-                if (Array.isArray(allPeriods)) {
-                    allPeriods.forEach((p: any) => {
-                        if (p.active && p.qualType === hlfbQualName) {
-                            if (!map[p.personId]) map[p.personId] = [];
-                            map[p.personId].push({ startYM: p.startYM, endYM: p.endYM });
-                        }
-                    });
-                }
-                setHlfbPeriodsByPerson(map);
-            } catch (e) { console.warn('Failed to load HLF-B periods', e); }
-        };
-        loadHlfbPeriods();
-
-        // Feature Toggle laden
-        const loadFeature = async () => {
-            try {
-                const val = await (window as any).api.getSetting('feature_old_rtw_shifts');
-                setFeatureOldRtwShifts(val === 'true');
-            } catch { }
-        };
-        loadFeature();
-    }, []);
-
+    // Listener für Updates
     useEffect(() => {
         const loadReleased = async () => {
             try {
@@ -217,40 +184,52 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 setReleasedMonths(status);
             } catch (e) { console.warn('Failed to load released status', e); }
         };
+
         const loadTransfers = async () => {
             try {
-                console.log('[MonthTabs] Loading shift transfers for year:', year);
                 const transfers = await (window as any).api.getShiftTransfers(year);
-                console.log('[MonthTabs] Loaded transfers:', transfers);
-                if (Array.isArray(transfers)) {
-                    console.log('[MonthTabs] Setting', transfers.length, 'transfers');
-                    setShiftTransfers(transfers);
-                } else {
-                    console.warn('[MonthTabs] Transfers is not an array:', typeof transfers);
-                }
-            } catch (e) {
-                console.error('[MonthTabs] Failed to load shift transfers:', e);
-            }
+                if (Array.isArray(transfers)) setShiftTransfers(transfers);
+            } catch (e) { console.error('[MonthTabs] Failed to load shift transfers:', e); }
         };
+
         loadReleased();
         loadTransfers();
 
-        // Listener für Updates
         const onTransfersUpdated = () => loadTransfers();
+        const onSettingsUpdated = () => loadReleased();
+
         (window as any).api?.onShiftTransfersUpdated?.(onTransfersUpdated);
-        return () => { (window as any).api?.offShiftTransfersUpdated?.(onTransfersUpdated); };
+        (window as any).api?.onSettingsUpdated?.(onSettingsUpdated);
+
+        return () => {
+            (window as any).api?.offShiftTransfersUpdated?.(onTransfersUpdated);
+            (window as any).api?.offSettingsUpdated?.(onSettingsUpdated);
+        };
     }, [year]);
 
     // Höre auf Sidebar Collapse Events
     useEffect(() => {
-        const handler = (e: Event) => {
-            const ce = e as CustomEvent;
-            if (typeof ce.detail?.collapsed === 'boolean') {
-                setSidebarCollapsed(ce.detail.collapsed);
-            }
+        const handler = () => {
+            setSidebarCollapsed(!!(window as any).sidebarCollapsed);
         };
         window.addEventListener('sidebar-collapsed', handler as EventListener);
         return () => window.removeEventListener('sidebar-collapsed', handler as EventListener);
+    }, []);
+
+    // Höre auf Abteilungswechsel
+    useEffect(() => {
+        const handler = (e: any) => {
+            const deptName = e.detail?.department || 'all';
+            let deptId = 1;
+            if (deptName.includes('1.')) deptId = 1;
+            else if (deptName.includes('2.')) deptId = 2;
+            else if (deptName.includes('3.')) deptId = 3;
+            else if (deptName === 'all') deptId = 1;
+            
+            setDepartment(deptId);
+        };
+        window.addEventListener('rdplan-department-changed', handler);
+        return () => window.removeEventListener('rdplan-department-changed', handler);
     }, []);
 
     const toggleReleased = async () => {
@@ -516,9 +495,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const sws = await (window as any).api.getSetting('show_weekend_shifts');
                 setShowWeekendShifts(sws === 'true');
             } catch { }
-            try { const r = await (window as any).api.getRtwVehicles?.(); if (Array.isArray(r)) setRtwVehicles(r); } catch { }
-            try { const n = await (window as any).api.getNefVehicles?.(); if (Array.isArray(n)) setNefVehicles(n); } catch { }
-            // Monats-Aktivierungen laden (Standard true)
+            try { const r = await (window as any).api.getRtwVehicles?.(year); if (Array.isArray(r)) setRtwVehicles(r); } catch { }
+            try { const n = await (window as any).api.getNefVehicles?.(year); if (Array.isArray(n)) setNefVehicles(n); } catch { }
+            // Monats-Aktivierungen laden
             try {
                 const acts = await (window as any).api.getRtwVehicleActivations?.(year);
                 const map: Record<number, boolean[]> = {};
@@ -566,9 +545,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     map[t.code] = (v || 'off') as any;
                 }
                 setAuswertungByType(map);
-            } catch (e) {
-                // console.error('[MonthTabs] Error loading shift types:', e);
-            }
+            } catch (e) { }
             try {
                 const docs = await (window as any).api.getItwDoctors?.();
                 if (Array.isArray(docs)) setItwDoctors(docs);
@@ -584,15 +561,37 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const feat = await (window as any).api.getSetting('feature_old_rtw_shifts');
                 setFeatureOldRtwShifts(feat === 'true' || feat === true);
             } catch { }
+            // Neue Fahrzeug-Zeiträume laden
+            try {
+                const rtwP = await (window as any).api.getAllRtwVehiclePeriods?.();
+                const rMap: Record<number, any[]> = {};
+                (rtwP || []).forEach((p: any) => {
+                    if (!rMap[p.vehicleId]) rMap[p.vehicleId] = [];
+                    rMap[p.vehicleId].push(p);
+                });
+                setRtwVehiclePeriods(rMap);
+                
+                const nefP = await (window as any).api.getAllNefVehiclePeriods?.();
+                const nMap: Record<number, any[]> = {};
+                (nefP || []).forEach((p: any) => {
+                    if (!nMap[p.vehicleId]) nMap[p.vehicleId] = [];
+                    nMap[p.vehicleId].push(p);
+                });
+                setNefVehiclePeriods(nMap);
+            } catch { }
         };
         load();
+    }, [year, currentMonth]);
+
+    // Separater Effekt für Settings-Listener (verhindert Listener-Leaks)
+    useEffect(() => {
         const onSettingsUpdated = async () => {
             try {
                 const y = await (window as any).api.getSetting('year');
                 const yearNum = Number(y || new Date().getFullYear());
                 // Fahrzeuge neu laden (z.B. nach Löschen)
-                try { const r = await (window as any).api.getRtwVehicles?.(); if (Array.isArray(r)) setRtwVehicles(r); } catch { }
-                try { const n = await (window as any).api.getNefVehicles?.(); if (Array.isArray(n)) setNefVehicles(n); } catch { }
+                try { const r = await (window as any).api.getRtwVehicles?.(yearNum); if (Array.isArray(r)) setRtwVehicles(r); } catch { }
+                try { const n = await (window as any).api.getNefVehicles?.(yearNum); if (Array.isArray(n)) setNefVehicles(n); } catch { }
                 // Aktivierungen für das Settings-Jahr neu laden
                 try {
                     const acts = await (window as any).api.getRtwVehicleActivations?.(yearNum);
@@ -633,6 +632,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     const list = await (window as any).api.getHolidaysForYear?.(yearNum);
                     const s = new Set<string>((list || []).map((h: any) => String(h.date)));
                     setHolidays(s);
+                } catch { }
+
+                // Neue Fahrzeug-Zeiträume neu laden
+                try {
+                    const rtwP = await (window as any).api.getAllRtwVehiclePeriods?.();
+                    const rMap: Record<number, any[]> = {};
+                    (rtwP || []).forEach((p: any) => {
+                        if (!rMap[p.vehicleId]) rMap[p.vehicleId] = [];
+                        rMap[p.vehicleId].push(p);
+                    });
+                    setRtwVehiclePeriods(rMap);
+                    
+                    const nefP = await (window as any).api.getAllNefVehiclePeriods?.();
+                    const nMap: Record<number, any[]> = {};
+                    (nefP || []).forEach((p: any) => {
+                        if (!nMap[p.vehicleId]) nMap[p.vehicleId] = [];
+                        nMap[p.vehicleId].push(p);
+                    });
+                    setNefVehiclePeriods(nMap);
                 } catch { }
             } catch { }
         };
@@ -700,37 +718,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         setDays(daysArr);
     }, [currentMonth, year, department, shiftPattern, JSON.stringify(deptPatternSeqs)]);
 
-    // Reagiere auf Jahreswechsel: Aktivierungen neu laden
-    useEffect(() => {
-        const loadActs = async () => {
-            try {
-                const acts = await (window as any).api.getRtwVehicleActivations?.(year);
-                const map: Record<number, boolean[]> = {};
-                (acts || []).forEach((row: any) => {
-                    const vid = Number(row.vehicleId);
-                    const m = Number(row.month);
-                    const arr = map[vid] || Array(12).fill(true);
-                    arr[m - 1] = !!row.enabled;
-                    map[vid] = arr;
-                });
-                setRtwActivations(map);
-            } catch { }
-            try {
-                const acts = await (window as any).api.getNefVehicleActivations?.(year);
-                const map: Record<number, boolean[]> = {};
-                (acts || []).forEach((row: any) => {
-                    const vid = Number(row.vehicleId);
-                    const m = Number(row.month);
-                    const arr = map[vid] || Array(12).fill(true);
-                    arr[m - 1] = !!row.enabled;
-                    map[vid] = arr;
-                });
-                setNefActivations(map);
-            } catch { }
-        };
-        loadActs();
-    }, [year]);
-
     // Feiertage bei Jahreswechsel neu laden
     useEffect(() => {
         (async () => {
@@ -793,22 +780,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         }
         return '';
     }, [localRoster, roster]);
-
-    const getOptionStyle = useCallback((val: string) => {
-        if (!val) return {};
-        const [type, idStr] = val.split(':');
-        const id = Number(idStr);
-        if (type === 'a') return { backgroundColor: '#e8f5e9', color: '#2e7d32' }; 
-        if (type === 'p') {
-            const p = personnel.find(x => x.id === id);
-            if (!p) return {};
-            if (lpalIds.has(p.id)) return { backgroundColor: '#fff3cd', color: '#856404' };
-            if ((p as any).ue50 === 1) return { backgroundColor: '#f8d7da', color: '#721c24' };
-            if ((p as any).fahrzeugfuehrerHLFB === 1) return { backgroundColor: '#cce5ff', color: '#004085' };
-        }
-        return {};
-    }, [personnel, lpalIds]);
-
     const findPersonLabelByValue = (val: string) => {
         if (!val) return '';
         try {
@@ -941,161 +912,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         } catch (e) {
             // Silently ignore errors
         }
-    };
-
-    const [azubiAutoState, setAzubiAutoState] = useState<ShiftSummary[] | null>(null);
-
-    const handleAutoAssignAzubis = () => {
-        if (!canWrite) return;
-        const summaries: ShiftSummary[] = [];
-
-        const DateStrs: string[] = days.map(d => d.date);
-
-        const isSlotTakenGlobally = (dateStr: string, slotId: string) => {
-            return !!getAssignedValueFor(dateStr, slotId);
-        };
-
-        const isAzubiAssigned = (key: string, dateStr: string) => {
-           const type = String((localRoster as any)?.[key]?.[dateStr]?.type ?? (roster as any)?.[key]?.[dateStr]?.type ?? '');
-           return type.startsWith('rtw') || type.startsWith('nef') || type.startsWith('itw');
-        };
-
-        DateStrs.forEach(DateStr => {
-            const dailyAzubisTag: typeof azubis = [];
-            const dailyAzubisNacht: typeof azubis = [];
-            
-            azubis.forEach(a => {
-                const key = `a_${a.id}`;
-                if (isAzubiAssigned(key, DateStr)) return;
-                
-                const dutyCode = getDutyCodeForDate(key, DateStr);
-                if (dutyCode && dutyCode.trim() !== '') {
-                    const evalMode = auswertungByType[dutyCode];
-                    if (evalMode === 'tag' || evalMode === '24h') dailyAzubisTag.push(a);
-                    if (evalMode === 'nacht' || evalMode === '24h') dailyAzubisNacht.push(a);
-                }
-            });
-
-            const processShift = (shift: 'tag' | 'nacht', candidates: typeof azubis) => {
-                if (candidates.length === 0) return;
-                
-                const availableMaSlots: string[] = [];
-                const availableAzSlots: string[] = [];
-                const allAvailableFallbackSlots: { id: string; label: string }[] = [];
-
-                (rtwVehicles || []).forEach((v, rIdx) => {
-                    const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                    if (!enabled) return;
-
-                    const slot2 = shift === 'tag' ? `rtw${rIdx+1}_tag_2` : `rtw${rIdx+1}_nacht_2`;
-                    const slot3 = shift === 'tag' ? `rtw${rIdx+1}_tag_3` : `rtw${rIdx+1}_nacht_3`;
-                    
-                    const taken2 = isSlotTakenGlobally(DateStr, slot2);
-                    const taken3 = isSlotTakenGlobally(DateStr, slot3);
-
-                    if (!taken2) availableMaSlots.push(slot2);
-                    if (!taken3) availableAzSlots.push(slot3);
-                    
-                    if (!taken2) allAvailableFallbackSlots.push({ id: slot2, label: `${v.name} Maschinist` });
-                    if (!taken3) allAvailableFallbackSlots.push({ id: slot3, label: `${v.name} Azubi` });
-                });
-
-                (nefVehicles || []).forEach((v, nIdx) => {
-                    const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                    if (!enabled) return;
-                    const slotId = nIdx === 0 ? 'nef_azubi' : `nef${nIdx+1}_azubi`;
-                    if (!isSlotTakenGlobally(DateStr, slotId)) allAvailableFallbackSlots.push({ id: slotId, label: `${v.name} Azubi` });
-                });
-
-                const assignments: ProposedAssignment[] = [];
-                const conflicts: ConflictAzubi[] = [];
-
-                candidates.forEach(a => {
-                    if (a.lehrjahr >= 2) {
-                        if (availableMaSlots.length > 0) {
-                            assignments.push({ azubiId: a.id, azubiName: `${a.name} ${a.vorname}`, lehrjahr: a.lehrjahr, proposedSlot: availableMaSlots.shift()! });
-                        } else {
-                            conflicts.push({ azubiId: a.id, azubiName: `${a.name} ${a.vorname}`, lehrjahr: a.lehrjahr, reason: 'Keine Maschinisten-Plätze mehr frei.' });
-                        }
-                    } else {
-                        if (availableAzSlots.length > 0) {
-                            assignments.push({ azubiId: a.id, azubiName: `${a.name} ${a.vorname}`, lehrjahr: a.lehrjahr, proposedSlot: availableAzSlots.shift()! });
-                        } else {
-                            conflicts.push({ azubiId: a.id, azubiName: `${a.name} ${a.vorname}`, lehrjahr: a.lehrjahr, reason: 'Keine regulären Azubi-Plätze mehr frei.' });
-                        }
-                    }
-                });
-
-                if (assignments.length > 0 || conflicts.length > 0) {
-                    const usedSlots = assignments.map(x => x.proposedSlot);
-                    const safeFallbacks = allAvailableFallbackSlots.filter(fb => !usedSlots.includes(fb.id));
-                    summaries.push({
-                        date: DateStr,
-                        shift,
-                        assignments,
-                        conflicts,
-                        availableFallbackSlots: safeFallbacks
-                    });
-                }
-            };
-
-            processShift('tag', dailyAzubisTag);
-            processShift('nacht', dailyAzubisNacht);
-        });
-
-        if (summaries.length > 0) {
-            setAzubiAutoState(summaries);
-        } else {
-            alert('Keine ungeplanten Azubis mit gültigen Dienstcodes für diesen Monat gefunden.');
-        }
-    };
-
-    const handleConfirmAutoAssign = async (finalAssignments: { azubiId: number; date: string; slotId: string }[]) => {
-        setAzubiAutoState(null);
-        if (finalAssignments.length === 0) return;
-
-        setIsUpdating(true);
-
-        setLocalRoster(prev => {
-            const newState = { ...prev };
-
-            finalAssignments.forEach(assignment => {
-                const key = `a_${assignment.azubiId}`;
-                const date = assignment.date;
-                const slotId = assignment.slotId;
-
-                Object.keys(newState).forEach(personKey => {
-                    if (personKey !== key && newState[personKey][date]?.type === slotId) {
-                         newState[personKey] = {
-                             ...newState[personKey],
-                             [date]: { ...(newState[personKey][date] || {}), type: '' }
-                         };
-                    }
-                });
-
-                const currentPersonState = newState[key] || {};
-                const dayEntry = { ...(currentPersonState[date] || {}), type: slotId };
-                newState[key] = { ...currentPersonState, [date]: dayEntry };
-            });
-
-            return newState;
-        });
-
-        setForceUpdateCounter(prev => prev + 1);
-
-        try {
-            await Promise.all(finalAssignments.map(assignment => 
-                (window as any).api.assignSlot({
-                    personId: assignment.azubiId,
-                    personType: 'azubi',
-                    date: assignment.date,
-                    slotType: assignment.slotId
-                })
-            ));
-        } catch(e) { console.error('Bulk auto-assign failed', e); }
-
-        if (onRosterChanged) onRosterChanged();
-        setTimeout(() => setIsUpdating(false), 100);
     };
 
     const undoLastAssignmentChange = useCallback(async () => {
@@ -1311,9 +1127,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         return mode === 'tag' ? 1 : 2;
     }, [nefVehicles]);
 
-    {/* ========================================================== */ }
-    {/* GEMEINSAME SOLL-BERECHNUNG für RTW-Tab und ITW-Tab        */ }
-    {/* ========================================================== */ }
+    // ==========================================================
+    // GEMEINSAME SOLL-BERECHNUNG für RTW-Tab und ITW-Tab
+    // ==========================================================
     useMemo(() => {
         const computeSharedTargets = () => {
             // 1. Flatten Roster for Shared Calculation
@@ -1577,34 +1393,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         rtwVehicles, nefVehicles, rtwActivations, nefActivations, department,
         deptPatternSeqs, hlfbPeriodsByPerson, shiftTransfers, currentMonth]);
 
-    const availablePersonKeys = React.useMemo(() => {
-        if (!selectedAvailDate) return undefined;
-        const keys = new Set<string>();
-
-        const DateStr = selectedAvailDate;
-        
-        // Finde alle Keys, die an DateStr eingeteilt sind
-        const isAssigned = (key: string) => {
-           const type = String((localRoster as any)?.[key]?.[DateStr]?.type ?? (roster as any)?.[key]?.[DateStr]?.type ?? '');
-           return type.startsWith('rtw') || type.startsWith('nef') || type.startsWith('itw');
-        };
-
-        (personnel || []).forEach(p => {
-            const key = `p_${p.id}`;
-            if (isAssigned(key)) return; 
-            
-            const dutyCode = getDutyCodeForDate(key, DateStr);
-            if (dutyCode && dutyCode.trim() !== '') {
-                const evalMode = auswertungByType[dutyCode];
-                if (evalMode && evalMode !== 'off') {
-                    keys.add(key);
-                }
-            }
-        });
-        
-        return keys;
-    }, [selectedAvailDate, roster, localRoster, personnel, auswertungByType, getDutyCodeForDate]);
-
     return (
         <div key={forceUpdateCounter}>
             {/* Gemeinsamer Fixed Header Container */}
@@ -1707,27 +1495,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         </span>
                     </label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <button
-                            type="button"
-                            onClick={handleAutoAssignAzubis}
-                            disabled={!canWrite}
-                            style={{
-                                padding: '6px 12px',
-                                background: canWrite ? '#fff' : '#f9fafb',
-                                color: canWrite ? '#4b5563' : '#9ca3af',
-                                border: '1px solid #d1d5db',
-                                borderRadius: '6px',
-                                fontSize: '0.85rem',
-                                fontWeight: 500,
-                                cursor: canWrite ? 'pointer' : 'not-allowed',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                            }}
-                            title="Azubis automatisch auf freie Plätze verteilen"
-                        >
-                            <span>Azubis Automatik</span>
-                        </button>
                         <button
                             type="button"
                             onClick={undoLastAssignmentChange}
@@ -2066,9 +1833,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                                     // Prüfe ob hervorgehobene Person an diesem Tag eingeteilt oder verfügbar ist
                                     let dayHighlightColor: string | undefined = undefined;
-                                    if (selectedAvailDate === d.date) {
-                                        dayHighlightColor = '#e8f5e9'; // Highlight the selected date column header
-                                    } else if (highlightedPersonKey) {
+                                    if (highlightedPersonKey) {
                                         const personId = highlightedPersonKey.replace('p_', '');
                                         const personValue = `p:${personId}`;
 
@@ -2133,9 +1898,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 const tooltipText = tooltipParts.join('\n');
 
                                                 return (
-                                                    <div
-                                                        onClick={() => setSelectedAvailDate(selectedAvailDate === d.date ? null : d.date)}
-                                                        style={{
+                                                    <div style={{
                                                         position: 'sticky',
                                                         top: 0,
                                                         background: dayHighlightColor || 'var(--bg)',
@@ -2149,8 +1912,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                         paddingRight: dayHighlightColor ? 6 : 0,
                                                         display: 'flex',
                                                         alignItems: 'center',
-                                                        gap: '6px',
-                                                        cursor: 'pointer'
+                                                        gap: '6px'
                                                     }}>
                                                         <span>{label} <small style={{ fontWeight: 400 }}>({d.weekday})</small></span>
                                                         {commentCount > 0 && (
@@ -2199,6 +1961,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                             const hasQual = p.fahrzeugfuehrer;
                                                                             const dutyCode = getDutyCodeFor(`p_${p.id}`);
                                                                             const allowed = allowedByAuswertung(dutyCode, 'tag');
+                                                                            
+                                                                            if (d.day === 2 && rIdx === 0) {
+                                                                                console.log(`[DEBUG MonthTabs] Filter p=${p.name}, hasQual=${hasQual}, dutyCode=${dutyCode}, allowed=${allowed}`);
+                                                                            }
+                                                                            
                                                                             return allowed && hasQual;
                                                                         })
                                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
@@ -2209,15 +1976,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
                                                                     const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
 
+                                                                    if (d.day === 2) {
+                                                                        console.log('[DEBUG MonthTabs] RTW Select Day 2:', {
+                                                                            slotId,
+                                                                            value,
+                                                                            personnelCount: personnel.length,
+                                                                            matchingPersonnel: optionsP.map(o => o.label)
+                                                                        });
+                                                                    }
                                                                     return (
-                                                                        <CustomSelect
-                                                                            options={renderOptions}
+                                                                        <select
+                                                                            className={styles.select}
                                                                             value={value}
                                                                             disabled={!canWrite}
-                                                                            highlightStyle={highlightStyle}
-                                                                            getOptionStyle={getOptionStyle}
-                                                                            onChange={v => { if (v === '') { clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                        />
+                                                                            style={highlightStyle}
+                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                            <option value=""></option>
+                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                        </select>
                                                                     );
                                                                 })()}
                                                                 {(() => {
@@ -2234,14 +2011,16 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
 
                                                                     return (
-                                                                        <CustomSelect
-                                                                            options={renderOptions}
+                                                                        <select
+                                                                            className={styles.select}
                                                                             value={value}
                                                                             disabled={!canWrite}
-                                                                            highlightStyle={highlightStyle}
-                                                                            getOptionStyle={getOptionStyle}
-                                                                            onChange={v => { if (v === '') { clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                        />
+                                                                            style={highlightStyle}
+                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                            <option value=""></option>
+                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                        </select>
                                                                     );
                                                                 })()}
                                                                 <div className={styles.rowLabel}>Ma</div>
@@ -2262,14 +2041,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
 
                                                                     return (
-                                                                        <CustomSelect
-                                                                            options={renderOptions}
-                                                                            value={value}
+                                                                        <select className={styles.select} value={value}
                                                                             disabled={!canWrite}
-                                                                            highlightStyle={highlightStyle}
-                                                                            getOptionStyle={getOptionStyle}
-                                                                            onChange={v => { if (v === '') { clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                        />
+                                                                            style={highlightStyle}
+                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                            <option value=""></option>
+                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                        </select>
                                                                     );
                                                                 })()}
                                                                 {(() => {
@@ -2289,14 +2068,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
 
                                                                     return (
-                                                                        <CustomSelect
-                                                                            options={renderOptions}
-                                                                            value={value}
+                                                                        <select className={styles.select} value={value}
                                                                             disabled={!canWrite}
-                                                                            highlightStyle={highlightStyle}
-                                                                            getOptionStyle={getOptionStyle}
-                                                                            onChange={v => { if (v === '') { clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                        />
+                                                                            style={highlightStyle}
+                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                            <option value=""></option>
+                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                        </select>
                                                                     );
                                                                 })()}
                                                                 <div className={styles.rowLabel}>Azubi</div>
@@ -2309,13 +2088,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const renderOptions = value && !optionsA.some(o => o.value === value)
                                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsA] : optionsA;
                                                                     return (
-                                                                        <CustomSelect
-                                                                            options={renderOptions}
-                                                                            value={value}
+                                                                        <select className={styles.select} value={value}
                                                                             disabled={!canWrite}
-                                                                            getOptionStyle={getOptionStyle}
-                                                                            onChange={v => { if (v === '') { clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                        />
+                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                            <option value=""></option>
+                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                        </select>
                                                                     );
                                                                 })()}
                                                                 {(() => {
@@ -2327,13 +2106,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const renderOptions = value && !optionsA.some(o => o.value === value)
                                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsA] : optionsA;
                                                                     return (
-                                                                        <CustomSelect
-                                                                            options={renderOptions}
-                                                                            value={value}
+                                                                        <select className={styles.select} value={value}
                                                                             disabled={!canWrite}
-                                                                            getOptionStyle={getOptionStyle}
-                                                                            onChange={v => { if (v === '') { clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                        />
+                                                                            onChange={e => handleAssign(d.date, d.dayOfYear, e.target.value, slotId)}
+                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); clearAssignedForSlot(slotId); } }}>
+                                                                            <option value=""></option>
+                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                        </select>
                                                                     );
                                                                 })()}
                                                             </div>
@@ -2371,14 +2150,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
 
                                                                     return (
-                                                                        <CustomSelect
-                                                                            options={renderOptions}
-                                                                            value={value}
+                                                                        <select className={styles.select} value={value}
                                                                             disabled={!canWrite}
-                                                                            highlightStyle={highlightStyle}
-                                                                            getOptionStyle={getOptionStyle}
-                                                                            onChange={v => { if (v === '') { clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                        />
+                                                                            style={highlightStyle}
+                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } }}>
+                                                                            <option value=""></option>
+                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                        </select>
                                                                     );
                                                                 })()}
                                                                 <div className={styles.rowLabel}>Azubi</div>
@@ -2402,13 +2181,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const renderOptions = value && !optionsA.some(o => o.value === value)
                                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsA] : optionsA;
                                                                     return (
-                                                                        <CustomSelect
-                                                                            options={renderOptions}
-                                                                            value={value}
+                                                                        <select className={styles.select} value={value}
                                                                             disabled={!canWrite}
-                                                                            getOptionStyle={getOptionStyle}
-                                                                            onChange={v => { if (v === '') { clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_azubi'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                        />
+                                                                            onChange={e => handleAssign(d.date, d.dayOfYear, e.target.value, slotId)}
+                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_azubi'); } }}>
+                                                                            <option value=""></option>
+                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                        </select>
                                                                     );
                                                                 })()}
                                                             </div>
@@ -2542,7 +2321,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         return map;
                                     })();
 
-
                                     const sidebar = (
                                         <aside className={styles.sidebar}>
                                             <div className={styles.sidebarTitle}>Kontrolle</div>
@@ -2552,7 +2330,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 showOldRtwShifts={featureOldRtwShifts}
                                                 showWeekendShifts={showWeekendShifts}
                                                 showItw={itwEnabled}
-                                                availablePersonKeys={availablePersonKeys}
                                                 highlightedPersonKey={highlightedPersonKey}
                                                 setHighlightedPersonKey={setHighlightedPersonKey}
                                                 mixColor={mixColor}
@@ -2716,14 +2493,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                             const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
 
                                             return (
-                                                <CustomSelect
-                                                    options={options}
-                                                    value={value}
+                                                <select className={styles.select} value={value}
+                                                    style={highlightStyle}
                                                     disabled={!canWrite}
-                                                    highlightStyle={highlightStyle}
-                                                    getOptionStyle={getOptionStyle}
-                                                    onChange={v => { if (v === '') { clearAssignedForDate(slotId, date); } else { handleAssign(date, 0, v, slotId); } }}
-                                                />
+                                                    onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } else { handleAssign(date, 0, v, slotId); } }}
+                                                    onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } }}>
+                                                    <option value=""></option>
+                                                    {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                </select>
                                             );
                                         };
                                         const racks: typeof days[] = [] as any;
@@ -2736,9 +2513,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                                                     // Prüfe ob hervorgehobene Person an diesem ITW-Tag eingeteilt oder verfügbar ist
                                                     let dayHighlightColor: string | undefined = undefined;
-                                                    if (selectedAvailDate === d2.date) {
-                                                        dayHighlightColor = '#e8f5e9'; // Highlight the selected date column header
-                                                    } else if (highlightedPersonKey) {
+                                                    if (highlightedPersonKey) {
                                                         const personId = highlightedPersonKey.replace('p_', '');
                                                         const personValue = `p:${personId}`;
 
@@ -2765,14 +2540,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                     return (
                                                         <div key={`itw_card_${d2.date}`} className={styles.itwCardWrap}>
                                                             {/* Datum (DD.MM) + Wochentag und gelbe Trennlinie über dem ITW-Kasten */}
-                                                            <div
-                                                                onClick={() => setSelectedAvailDate(selectedAvailDate === d2.date ? null : d2.date)}
-                                                                className={styles.itwCardHeader} style={{
+                                                            <div className={styles.itwCardHeader} style={{
                                                                 background: dayHighlightColor,
                                                                 borderRadius: dayHighlightColor ? 4 : 0,
                                                                 paddingLeft: dayHighlightColor ? 6 : undefined,
-                                                                paddingRight: dayHighlightColor ? 6 : undefined,
-                                                                cursor: 'pointer'
+                                                                paddingRight: dayHighlightColor ? 6 : undefined
                                                             }}>{label} <small style={{ fontWeight: 400, color: 'var(--muted)' }}>({d2.weekday})</small></div>
                                                             <div className={styles.itwDivider} />
                                                             <div className={styles.itwCard}>
@@ -3025,13 +2797,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     </div>
                 </div>
             )}
-
-            <AzubiAutoAssignDialog
-                isOpen={azubiAutoState !== null}
-                onClose={() => setAzubiAutoState(null)}
-                onConfirm={handleConfirmAutoAssign}
-                summaries={azubiAutoState || []}
-            />
         </div>
     );
 };
