@@ -521,20 +521,34 @@ const EditPerson: React.FC = () => {
 
         // Lade Rollen
         try {
-          const rolesData = await (window as any).api.getSetting('roles');
-          if (rolesData) {
-            const parsedRoles = JSON.parse(rolesData);
-            setRoles(Array.isArray(parsedRoles) ? parsedRoles.map((r: any) => ({ id: r.id, name: r.name })) : []);
+          let list: any[] = [];
+          try {
+            const fetchedRoles = await (window as any).api.getRoles?.();
+            if (Array.isArray(fetchedRoles) && fetchedRoles.length > 0) {
+              list = fetchedRoles;
+            }
+          } catch (error) {
+            console.warn('Failed to load roles from table:', error);
+            list = [];
           }
-        } catch (e) {
-          // console.error('Fehler beim Laden der Rollen:', e);
-        }
 
-        // Feature-Toggle laden
-        try {
-          const feat = await (window as any).api.getSetting('feature_old_rtw_shifts');
-          setShowOldRtwShiftsFeature(feat === 'true' || feat === true);
-        } catch { }
+          if (list.length === 0) {
+            try {
+              const rolesData = await (window as any).api.getSetting('roles');
+              if (rolesData) {
+                const parsedRoles = JSON.parse(String(rolesData));
+                list = Array.isArray(parsedRoles) ? parsedRoles : [];
+              }
+            } catch (error) {
+              console.warn('Failed to load legacy roles from settings:', error);
+              list = [];
+            }
+          }
+
+          setRoles(list.map((r: any) => ({ id: Number(r.id), name: String(r.name || r.id) })));
+        } catch (error) {
+          console.warn('Unexpected error loading roles:', error);
+        }
 
         try {
           const feat = await (window as any).api.getSetting('feature_shift_transfers');

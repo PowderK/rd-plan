@@ -444,6 +444,77 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
     } catch (e) {
     }
 
+    // ITW Pattern Sequenzen (department-spezifisch)
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS itw_patterns (
+            start_date TEXT,
+            department TEXT NOT NULL DEFAULT '1. Abteilung',
+            pattern TEXT NOT NULL,
+            PRIMARY KEY (start_date, department)
+        )
+    `);
+
+    // Migration: add 'department' column to itw_patterns if missing
+    try {
+        console.log("[Migration] Checking itw_patterns schema...");
+        const tableInfo: any = await db.all("PRAGMA table_info('itw_patterns')");
+        const hasDept = tableInfo.some((c: any) => c.name === 'department');
+        
+        if (tableInfo.length > 0 && !hasDept) {
+            console.log("[Migration] Column 'department' missing in itw_patterns. Performing full migration...");
+            // We need to recreate the table because the PK changes
+            await db.exec("ALTER TABLE itw_patterns RENAME TO itw_patterns_old");
+            await db.exec(`
+                CREATE TABLE itw_patterns (
+                    start_date TEXT,
+                    department TEXT NOT NULL DEFAULT '1. Abteilung',
+                    pattern TEXT NOT NULL,
+                    PRIMARY KEY (start_date, department)
+                )
+            `);
+            // Copy data, assuming all old data belongs to '1. Abteilung'
+            await db.exec("INSERT INTO itw_patterns (start_date, pattern) SELECT start_date, pattern FROM itw_patterns_old");
+            await db.exec("DROP TABLE itw_patterns_old");
+            console.log("[Migration] itw_patterns migration finished.");
+        } else if (tableInfo.length === 0) {
+            console.log("[Migration] itw_patterns table does not exist. Creating...");
+            await db.exec(`
+                CREATE TABLE itw_patterns (
+                    start_date TEXT,
+                    department TEXT NOT NULL DEFAULT '1. Abteilung',
+                    pattern TEXT NOT NULL,
+                    PRIMARY KEY (start_date, department)
+                )
+            `);
+        }
+    } catch (e) {
+        console.error("[Migration] CRITICAL: itw_patterns migration failed:", e);
+    }
+
+    // ITW Phase Assignments
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS itw_phase_assignments (
+            start_date TEXT NOT NULL,
+            person_id INTEGER NOT NULL,
+            role TEXT NOT NULL DEFAULT 'doctor',
+            PRIMARY KEY (start_date, person_id)
+        )
+    `);
+
+    // ITW Duty Roster
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS itw_duty_roster (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            personId INTEGER NOT NULL,
+            personType TEXT NOT NULL DEFAULT 'person',
+            date TEXT NOT NULL,
+            value TEXT NOT NULL,
+            type TEXT NOT NULL,
+            manual_edit INTEGER DEFAULT 0,
+            UNIQUE(personId, personType, date)
+        )
+    `);
+
     await db.exec(`
         CREATE TABLE IF NOT EXISTS shift_types (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -486,6 +557,9 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
     if (!azubiCols.some((c: any) => c.name === 'sort')) {
         await db.exec("ALTER TABLE azubis ADD COLUMN sort INTEGER DEFAULT 0");
         await db.exec("UPDATE azubis SET sort = 0 WHERE sort IS NULL");
+    }
+    if (!azubiCols.some((c: any) => c.name === 'department')) {
+        await db.exec("ALTER TABLE azubis ADD COLUMN department TEXT NOT NULL DEFAULT '1. Abteilung'");
     }
 
     // --- Azubi Periods Tabelle ---
@@ -967,21 +1041,21 @@ export const getPersonnel = async (db: AsyncDB, includeInactive: boolean = false
 
 export const addPersonnel = async (db: AsyncDB, person: any) => {
     // Contact fields removed
-    const { name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, personnelNumber, roleId, oldRtwShifts } = person;
+    const { name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, personnelNumber, roleId, oldRtwShifts, department } = person;
 
     return await db.run(
-        'INSERT INTO personnel (name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, personnelNumber, roleId, old_rtw_shifts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [name, vorname, active !== false ? 1 : 0, teilzeit || 0, fahrzeugfuehrer ? 1 : 0, fahrzeugfuehrerHLFB ? 1 : 0, nef ? 1 : 0, itwMaschinist ? 1 : 0, itwFahrzeugfuehrer ? 1 : 0, sort || 0, personnelNumber || null, roleId || null, oldRtwShifts || 0]
+        'INSERT INTO personnel (name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, personnelNumber, roleId, old_rtw_shifts, department) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [name, vorname, active !== false ? 1 : 0, teilzeit || 0, fahrzeugfuehrer ? 1 : 0, fahrzeugfuehrerHLFB ? 1 : 0, nef ? 1 : 0, itwMaschinist ? 1 : 0, itwFahrzeugfuehrer ? 1 : 0, sort || 0, personnelNumber || null, roleId || null, oldRtwShifts || 0, department || '1. Abteilung']
     );
 };
 
 export const updatePersonnel = async (db: AsyncDB, person: any) => {
     // Contact fields removed
-    const { id, name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, personnelNumber, roleId, oldRtwShifts } = person;
+    const { id, name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, personnelNumber, roleId, oldRtwShifts, department } = person;
 
     await db.run(
-        'UPDATE personnel SET name = ?, vorname = ?, active = ?, teilzeit = ?, fahrzeugfuehrer = ?, fahrzeugfuehrerHLFB = ?, nef = ?, itwMaschinist = ?, itwFahrzeugfuehrer = ?, personnelNumber = ?, roleId = ?, old_rtw_shifts = ? WHERE id = ?',
-        [name, vorname, active !== false ? 1 : 0, teilzeit || 0, fahrzeugfuehrer ? 1 : 0, fahrzeugfuehrerHLFB ? 1 : 0, nef ? 1 : 0, itwMaschinist ? 1 : 0, itwFahrzeugfuehrer ? 1 : 0, personnelNumber || null, roleId || null, oldRtwShifts || 0, id]
+        'UPDATE personnel SET name = ?, vorname = ?, active = ?, teilzeit = ?, fahrzeugfuehrer = ?, fahrzeugfuehrerHLFB = ?, nef = ?, itwMaschinist = ?, itwFahrzeugfuehrer = ?, personnelNumber = ?, roleId = ?, old_rtw_shifts = ?, department = ? WHERE id = ?',
+        [name, vorname, active !== false ? 1 : 0, teilzeit || 0, fahrzeugfuehrer ? 1 : 0, fahrzeugfuehrerHLFB ? 1 : 0, nef ? 1 : 0, itwMaschinist ? 1 : 0, itwFahrzeugfuehrer ? 1 : 0, personnelNumber || null, roleId || null, oldRtwShifts || 0, department || '1. Abteilung', id]
     );
 };
 
@@ -1031,13 +1105,23 @@ export const deleteShiftType = async (db: AsyncDB, id: number) => {
     await db.run('DELETE FROM shift_types WHERE id = ?', [id]);
 };
 
-export const getDutyRoster = async (db: AsyncDB, year: number, _department?: string) => {
+export const normalizeDepartment = (deptStr: string | null | undefined): string => {
+    const dept = String(deptStr || '').trim();
+    if (!dept || dept === 'all') return '1. Abteilung';
+    if (/^\d+$/.test(dept)) return `${dept}. Abteilung`;
+    return dept;
+};
+
+export const getDutyRoster = async (db: AsyncDB, year: number, department?: string) => {
     const start = `${year}-01-01`;
     const end = `${year}-12-31`;
-    const query = 'SELECT * FROM duty_roster WHERE date BETWEEN ? AND ?';
+    let query = 'SELECT * FROM duty_roster WHERE date BETWEEN ? AND ?';
     const params: any[] = [start, end];
-    const rows = await db.all(query, params);
-    return rows;
+    if (department && department !== 'all') {
+        query += ' AND department = ?';
+        params.push(normalizeDepartment(department));
+    }
+    return await db.all(query, params);
 };
 
 // --- Holidays CRUD ---
@@ -1155,15 +1239,16 @@ export const addAuditLog = async (db: AsyncDB, log: { user_id: number, user_name
     );
 };
 
-export const setDutyRosterEntry = async (db: AsyncDB, entry: { personId: number, personType: string, date: string, value: string, type: string, auditUser?: { id: number, name: string } }): Promise<{ success: boolean; warning?: string; vehicleAssignment?: string }> => {
+export const setDutyRosterEntry = async (db: AsyncDB, entry: { personId: number, personType: string, date: string, value: string, type: string, department?: string, auditUser?: { id: number, name: string } }): Promise<{ success: boolean; warning?: string; vehicleAssignment?: string }> => {
     if (!entry.personId || !entry.date) {
         return { success: false };
     }
 
     // Prüfe, ob die Person bereits eine Fahrzeugzuweisung oder einen Eintrag hat
+    const dept = normalizeDepartment(entry.department);
     const existingEntry = await db.get(
-        'SELECT type, value FROM duty_roster WHERE personId = ? AND personType = ? AND date = ?',
-        [entry.personId, entry.personType || 'person', entry.date]
+        'SELECT type, value FROM duty_roster WHERE personId = ? AND personType = ? AND date = ? AND department = ?',
+        [entry.personId, entry.personType || 'person', entry.date, dept]
     );
 
     let warning: string | undefined;
@@ -1191,9 +1276,9 @@ export const setDutyRosterEntry = async (db: AsyncDB, entry: { personId: number,
 
     // Speichere die Änderung OHNE das type-Feld zu löschen (Fahrzeugzuweisung bleibt erhalten)
     await db.run(`
-        INSERT INTO duty_roster (personId, personType, date, value, type, manual_edit) VALUES (?, ?, ?, ?, ?, 1)
-        ON CONFLICT(personId, personType, date) DO UPDATE SET value = excluded.value, manual_edit = 1
-    `, [entry.personId, entry.personType || 'person', entry.date, entry.value ?? '', existingEntry?.type || entry.type || 'text']);
+        INSERT INTO duty_roster (personId, personType, date, value, type, manual_edit, department) VALUES (?, ?, ?, ?, ?, 1, ?)
+        ON CONFLICT(personId, personType, date, department) DO UPDATE SET value = excluded.value, manual_edit = 1
+    `, [entry.personId, entry.personType || 'person', entry.date, entry.value ?? '', existingEntry?.type || entry.type || 'text', dept]);
 
     if (entry.auditUser && oldValue !== (entry.value || '')) {
         const pName = await getPersonName(db, entry.personId, entry.personType);
@@ -1257,7 +1342,7 @@ export const bulkSetDutyRosterEntries = async (db: AsyncDB, entries: { personId:
 };
 
 // Bulk Import für Importe, die manuelle Bearbeitungen respektieren
-export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { personId: number, personType: string, date: string, value: string, type: string }[], respectManualEdits: boolean = true, deleteEmpty: boolean = true) => {
+export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { personId: number, personType: string, date: string, value: string, type: string, department?: string }[], respectManualEdits: boolean = true, deleteEmpty: boolean = true) => {
     if (!Array.isArray(entries) || entries.length === 0) return { imported: 0, skipped: 0 };
     await db.run('BEGIN');
     let imported = 0;
@@ -1265,14 +1350,15 @@ export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { person
     try {
         for (const e of entries) {
             if (!e || !e.personId || !e.date) continue;
+            const dept = normalizeDepartment(e.department);
 
             let isManual = false;
             if (respectManualEdits) {
                 // Prüfe ob Eintrag bereits existiert und manuell bearbeitet wurde
                 const existing = await db.get(`
                     SELECT manual_edit FROM duty_roster 
-                    WHERE personId = ? AND personType = ? AND date = ?
-                `, [e.personId, e.personType || 'person', e.date]);
+                    WHERE personId = ? AND personType = ? AND date = ? AND department = ?
+                `, [e.personId, e.personType || 'person', e.date, dept]);
 
                 if (existing && existing.manual_edit === 1) {
                     isManual = true;
@@ -1291,8 +1377,8 @@ export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { person
                 if (deleteEmpty) {
                     await db.run(`
                         DELETE FROM duty_roster 
-                        WHERE personId = ? AND personType = ? AND date = ?
-                    `, [e.personId, e.personType || 'person', e.date]);
+                        WHERE personId = ? AND personType = ? AND date = ? AND department = ?
+                    `, [e.personId, e.personType || 'person', e.date, dept]);
                     imported++;
                 }
                 // Wenn deleteEmpty=false, ignorieren wir leere Excel-Zellen -> DB-Eintrag bleibt erhalten
@@ -1301,15 +1387,15 @@ export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { person
 
             try {
                 await db.run(`
-                    INSERT INTO duty_roster (personId, personType, date, value, type, manual_edit) VALUES (?, ?, ?, ?, ?, 0)
-                    ON CONFLICT(personId, personType, date) DO UPDATE SET 
+                    INSERT INTO duty_roster (personId, personType, date, value, type, manual_edit, department) VALUES (?, ?, ?, ?, ?, 0, ?)
+                    ON CONFLICT(personId, personType, date, department) DO UPDATE SET 
                         value = excluded.value,
                         type = CASE 
                             WHEN duty_roster.type LIKE 'rtw%' OR duty_roster.type LIKE 'nef%' OR duty_roster.type LIKE 'itw%' THEN duty_roster.type
                             ELSE excluded.type 
                         END,
                         manual_edit = 0
-                `, [e.personId, e.personType || 'person', e.date, e.value, e.type ?? 'text']);
+                `, [e.personId, e.personType || 'person', e.date, e.value, e.type ?? 'text', dept]);
                 imported++;
             } catch (ie) {
             }
@@ -1325,7 +1411,13 @@ export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { person
 /**
  * Löscht Einträge für Personen, die nicht im aktuellen Import enthalten sind (Sync-Modus)
  */
-export const deleteOrphanedDutyRosterEntries = async (db: AsyncDB, year: number, monthRange: { start: number; end: number } | number | undefined, seenPersonIds: string[]) => {
+export const deleteOrphanedDutyRosterEntries = async (
+    db: AsyncDB,
+    year: number,
+    monthRange: { start: number; end: number } | number | undefined,
+    seenPersonIds: string[],
+    department?: string
+) => {
     if (!seenPersonIds || seenPersonIds.length === 0) return 0;
 
     let dateCondition = "";
@@ -1353,12 +1445,18 @@ export const deleteOrphanedDutyRosterEntries = async (db: AsyncDB, year: number,
     // Platzhalter für die IN-Klausel erstellen
     const placeholders = seenPersonIds.map(() => "?").join(",");
     
-    // SQLite Abgleich über PersonId und PersonType kombiniert
+    let deptCondition = '';
+    if (department && department !== 'all') {
+        deptCondition = ' AND department = ?';
+        params.push(normalizeDepartment(department));
+    }
+
     const sql = `
         DELETE FROM duty_roster 
         WHERE ${dateCondition}
         AND manual_edit = 0
         AND (personType = 'person' OR personType = 'azubi')
+        ${deptCondition}
         AND (personId || ':' || personType) NOT IN (${placeholders})
     `;
 
@@ -1372,8 +1470,201 @@ export const deleteOrphanedDutyRosterEntries = async (db: AsyncDB, year: number,
     }
 };
 
-export const getAzubiList = async (db: AsyncDB) => {
-    const azubis = await db.all('SELECT * FROM azubis ORDER BY sort ASC, id ASC');
+/**
+ * Ordnet Azubis Abteilungen zu und dupliziert bei Bedarf pro Abteilung
+ * (wenn Diensteinträge in mehreren Abteilungen dieselbe Azubi-ID nutzen).
+ * Läuft einmalig (Flag migration_azubi_department_scope_v1).
+ */
+export const migrateAzubisDepartmentScope = async (db: AsyncDB): Promise<{ updated: number; duplicated: number; skipped: boolean }> => {
+    const flag = await db.get("SELECT value FROM settings WHERE key = 'migration_azubi_department_scope_v1'");
+    if (flag?.value === '1') {
+        return { updated: 0, duplicated: 0, skipped: true };
+    }
+
+    const azubiCols = await db.all("PRAGMA table_info('azubis')");
+    if (!azubiCols.some((c: any) => c.name === 'department')) {
+        return { updated: 0, duplicated: 0, skipped: true };
+    }
+
+    let defaultDept = '1. Abteilung';
+    try {
+        const s = await db.get("SELECT value FROM settings WHERE key = 'department'");
+        if (s?.value) defaultDept = normalizeDepartment(String(s.value));
+    } catch { /* ignore */ }
+
+    const dutyCols = await db.all("PRAGMA table_info('duty_roster')");
+    const dutyHasDept = dutyCols.some((c: any) => c.name === 'department');
+
+    let updated = 0;
+    let duplicated = 0;
+
+    if (dutyHasDept) {
+        const usageRows = await db.all(`
+            SELECT personId AS azubi_id, department, COUNT(*) AS cnt
+            FROM duty_roster
+            WHERE personType = 'azubi'
+            GROUP BY personId, department
+        `) as Array<{ azubi_id: number; department: string; cnt: number }>;
+
+        const byAzubi = new Map<number, Array<{ dept: string; cnt: number }>>();
+        for (const row of usageRows) {
+            const id = Number(row.azubi_id);
+            const dept = normalizeDepartment(row.department);
+            if (!byAzubi.has(id)) byAzubi.set(id, []);
+            byAzubi.get(id)!.push({ dept, cnt: Number(row.cnt) || 0 });
+        }
+
+        for (const [azubiId, deptUsages] of byAzubi) {
+            const azubi = await db.get('SELECT * FROM azubis WHERE id = ?', [azubiId]) as any;
+            if (!azubi) continue;
+
+            if (deptUsages.length === 1) {
+                const dept = deptUsages[0].dept;
+                if (normalizeDepartment(azubi.department) !== dept) {
+                    await db.run('UPDATE azubis SET department = ? WHERE id = ?', [dept, azubiId]);
+                    updated++;
+                }
+                continue;
+            }
+
+            deptUsages.sort((a, b) => b.cnt - a.cnt);
+            const primaryDept = deptUsages[0].dept;
+            if (normalizeDepartment(azubi.department) !== primaryDept) {
+                await db.run('UPDATE azubis SET department = ? WHERE id = ?', [primaryDept, azubiId]);
+                updated++;
+            }
+
+            for (let i = 1; i < deptUsages.length; i++) {
+                const dept = deptUsages[i].dept;
+                const existing = await db.get(
+                    `SELECT id FROM azubis WHERE LOWER(name) = LOWER(?) AND LOWER(vorname) = LOWER(?) AND department = ?`,
+                    [azubi.name, azubi.vorname, dept]
+                ) as { id: number } | undefined;
+
+                let targetId: number;
+                if (existing?.id) {
+                    targetId = existing.id;
+                } else {
+                    const sortRow: any = await db.get('SELECT MAX(sort) AS m FROM azubis WHERE department = ?', [dept]);
+                    const nextSort = (sortRow?.m != null ? Number(sortRow.m) : -1) + 1;
+                    const ins = await db.run(
+                        'INSERT INTO azubis (name, vorname, lehrjahr, sort, department) VALUES (?, ?, ?, ?, ?)',
+                        [azubi.name, azubi.vorname, azubi.lehrjahr, nextSort, dept]
+                    );
+                    targetId = ins.lastInsertRowid as number;
+                    duplicated++;
+
+                    const periods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ?', [azubiId]);
+                    for (const p of periods as any[]) {
+                        await db.run(
+                            'INSERT INTO azubi_periods (azubi_id, start_date, end_date, description, lehrjahr) VALUES (?, ?, ?, ?, ?)',
+                            [targetId, p.start_date, p.end_date, p.description || '', p.lehrjahr || 1]
+                        );
+                    }
+                }
+
+                await db.run(
+                    `UPDATE duty_roster SET personId = ?
+                     WHERE personType = 'azubi' AND personId = ? AND department = ?`,
+                    [targetId, azubiId, dept]
+                );
+            }
+        }
+    }
+
+    const orphans = await db.all(`
+        SELECT a.id FROM azubis a
+        WHERE NOT EXISTS (
+            SELECT 1 FROM duty_roster d WHERE d.personType = 'azubi' AND d.personId = a.id
+        )
+    `) as Array<{ id: number }>;
+
+    for (const { id } of orphans) {
+        const row = await db.get('SELECT department FROM azubis WHERE id = ?', [id]) as { department?: string } | undefined;
+        const dept = String(row?.department || '').trim();
+        if (!dept) {
+            await db.run('UPDATE azubis SET department = ? WHERE id = ?', [defaultDept, id]);
+            updated++;
+        }
+    }
+
+    await db.run(
+        `INSERT INTO settings (key, value) VALUES ('migration_azubi_department_scope_v1', '1')
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    );
+
+    console.log(`[Database] Azubi-Abteilungs-Migration: ${updated} aktualisiert, ${duplicated} dupliziert`);
+    return { updated, duplicated, skipped: false };
+};
+
+const DEFAULT_DEPARTMENTS = ['1. Abteilung', '2. Abteilung', '3. Abteilung'];
+
+/**
+ * Kopiert globale Freigabe-Keys (roster_released_{year}_{month}) auf alle bekannten Abteilungen.
+ * Läuft einmalig (Flag migration_roster_released_per_department_v1).
+ */
+export const migrateRosterReleasedPerDepartment = async (
+    db: AsyncDB
+): Promise<{ migrated: number; skipped: boolean }> => {
+    const {
+        isLegacyRosterReleasedKey,
+        parseLegacyRosterReleasedKey,
+        rosterReleasedSettingKey,
+    } = await import('./roster-release-keys');
+
+    const flag = await db.get("SELECT value FROM settings WHERE key = 'migration_roster_released_per_department_v1'");
+    if (flag?.value === '1') {
+        return { migrated: 0, skipped: true };
+    }
+
+    const deptRows = await getUniqueDepartments(db);
+    const departments = deptRows.length > 0 ? deptRows : [...DEFAULT_DEPARTMENTS];
+
+    const legacyRows = await db.all(
+        "SELECT key, value FROM settings WHERE key LIKE 'roster_released_%'"
+    ) as Array<{ key: string; value: string }>;
+
+    let migrated = 0;
+    for (const row of legacyRows) {
+        if (!isLegacyRosterReleasedKey(row.key)) continue;
+        const parsed = parseLegacyRosterReleasedKey(row.key);
+        if (!parsed) continue;
+
+        for (const dept of departments) {
+            const newKey = rosterReleasedSettingKey(parsed.year, parsed.monthIndex, dept);
+            const existing = await db.get('SELECT value FROM settings WHERE key = ?', [newKey]);
+            if (!existing) {
+                await db.run(
+                    `INSERT INTO settings (key, value) VALUES (?, ?)
+                     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+                    [newKey, row.value]
+                );
+                migrated++;
+            }
+        }
+        await db.run('DELETE FROM settings WHERE key = ?', [row.key]);
+    }
+
+    await db.run(
+        `INSERT INTO settings (key, value) VALUES ('migration_roster_released_per_department_v1', '1')
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    );
+
+    if (migrated > 0) {
+        console.log(`[Database] Freigabe pro Abteilung: ${migrated} Einstellungen aus Legacy-Keys übernommen`);
+    }
+    return { migrated, skipped: false };
+};
+
+export const getAzubiList = async (db: AsyncDB, department?: string) => {
+    let query = 'SELECT * FROM azubis';
+    const params: any[] = [];
+    if (department && department !== 'all') {
+        query += ' WHERE department = ?';
+        params.push(normalizeDepartment(department));
+    }
+    query += ' ORDER BY sort ASC, id ASC';
+    const azubis = await db.all(query, params);
     const currentDate = new Date();
 
     // Für jeden Azubi das aktuelle Lehrjahr aus den Zeiträumen berechnen
@@ -1429,17 +1720,23 @@ export const getAzubi = async (db: AsyncDB, id: number) => {
     return azubi;
 };
 
-export const addAzubi = async (db: AsyncDB, azubi: { name: string, vorname: string, lehrjahr: number, periods?: any[] }) => {
+export const addAzubi = async (db: AsyncDB, azubi: { name: string, vorname: string, lehrjahr: number, department?: string, periods?: any[] }) => {
+    const dept = normalizeDepartment(azubi.department);
     let azubiId: number;
-    // determine next sort index
+    // determine next sort index (pro Abteilung)
     try {
-        const row: any = await db.get('SELECT MAX(sort) as m FROM azubis');
+        const row: any = await db.get('SELECT MAX(sort) as m FROM azubis WHERE department = ?', [dept]);
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
-        const result = await db.run('INSERT INTO azubis (name, vorname, lehrjahr, sort) VALUES (?, ?, ?, ?)', [azubi.name, azubi.vorname, azubi.lehrjahr, next]);
+        const result = await db.run(
+            'INSERT INTO azubis (name, vorname, lehrjahr, sort, department) VALUES (?, ?, ?, ?, ?)',
+            [azubi.name, azubi.vorname, azubi.lehrjahr, next, dept]
+        );
         azubiId = result.lastInsertRowid as number;
     } catch (e) {
-        // fallback if something goes wrong
-        const result = await db.run('INSERT INTO azubis (name, vorname, lehrjahr) VALUES (?, ?, ?)', [azubi.name, azubi.vorname, azubi.lehrjahr]);
+        const result = await db.run(
+            'INSERT INTO azubis (name, vorname, lehrjahr, department) VALUES (?, ?, ?, ?)',
+            [azubi.name, azubi.vorname, azubi.lehrjahr, dept]
+        );
         azubiId = result.lastInsertRowid as number;
     }
 
@@ -1452,8 +1749,15 @@ export const addAzubi = async (db: AsyncDB, azubi: { name: string, vorname: stri
     return azubiId;
 };
 
-export const updateAzubi = async (db: AsyncDB, azubi: { id: number, name: string, vorname: string, lehrjahr: number }) => {
-    await db.run('UPDATE azubis SET name = ?, vorname = ?, lehrjahr = ? WHERE id = ?', [azubi.name, azubi.vorname, azubi.lehrjahr, azubi.id]);
+export const updateAzubi = async (db: AsyncDB, azubi: { id: number, name: string, vorname: string, lehrjahr: number, department?: string }) => {
+    if (azubi.department != null) {
+        await db.run(
+            'UPDATE azubis SET name = ?, vorname = ?, lehrjahr = ?, department = ? WHERE id = ?',
+            [azubi.name, azubi.vorname, azubi.lehrjahr, normalizeDepartment(azubi.department), azubi.id]
+        );
+    } else {
+        await db.run('UPDATE azubis SET name = ?, vorname = ?, lehrjahr = ? WHERE id = ?', [azubi.name, azubi.vorname, azubi.lehrjahr, azubi.id]);
+    }
 };
 
 export const deleteAzubi = async (db: AsyncDB, id: number) => {
@@ -1938,6 +2242,8 @@ export const getUniqueDepartments = async (db: AsyncDB) => {
             SELECT department FROM personnel
             UNION
             SELECT department FROM personnel_department_periods
+            UNION
+            SELECT department FROM azubis
         ) WHERE department IS NOT NULL AND department != ''
     `);
     return rows.map((r: any) => r.department);
@@ -2794,16 +3100,35 @@ export const initializeDefaultVehiclePositions = async (
 export const getYearPlannings = async (db: AsyncDB) => {
     // Defensive: Stelle sicher, dass die Tabelle existiert
     await ensureYearPlanningsTable(db);
-    return await db.all('SELECT year, filePath FROM year_plannings ORDER BY year ASC');
+    return await db.all('SELECT year, filePath, department FROM year_plannings ORDER BY year ASC, department ASC');
 };
 
-export const getYearPlanningForYear = async (db: AsyncDB, year: number) => {
+const normalizePlanningDepartment = (deptStr: string | null | undefined): string => normalizeDepartment(deptStr);
+
+export const getYearPlanningForYear = async (db: AsyncDB, year: number, department?: string) => {
     // Defensive: Stelle sicher, dass die Tabelle existiert
     await ensureYearPlanningsTable(db);
-    return await db.get('SELECT year, filePath FROM year_plannings WHERE year = ?', [year]);
+    if (department) {
+        const norm = normalizePlanningDepartment(department);
+        const exact = await db.get(
+            'SELECT year, filePath, department FROM year_plannings WHERE year = ? AND department = ?',
+            [year, norm]
+        );
+        if (exact) return exact;
+        // Legacy: nur Ziffer „2“ statt „2. Abteilung“
+        const num = norm.match(/^(\d+)\./)?.[1];
+        if (num) {
+            return await db.get(
+                'SELECT year, filePath, department FROM year_plannings WHERE year = ? AND department = ?',
+                [year, num]
+            );
+        }
+        return undefined;
+    }
+    return await db.get('SELECT year, filePath, department FROM year_plannings WHERE year = ?', [year]);
 };
 
-export const saveYearPlannings = async (db: AsyncDB, plannings: { year: number; filePath: string }[]) => {
+export const saveYearPlannings = async (db: AsyncDB, plannings: { year: number; filePath: string; department?: string }[]) => {
     // Defensive: Stelle sicher, dass die Tabelle existiert
     await ensureYearPlanningsTable(db);
 
@@ -2814,8 +3139,8 @@ export const saveYearPlannings = async (db: AsyncDB, plannings: { year: number; 
     for (const planning of plannings) {
         if (planning.year && planning.filePath) {
             await db.run(
-                'INSERT INTO year_plannings (year, filePath) VALUES (?, ?)',
-                [planning.year, planning.filePath]
+                'INSERT INTO year_plannings (year, filePath, department) VALUES (?, ?, ?)',
+                [planning.year, planning.filePath, planning.department || '1. Abteilung']
             );
         }
     }
@@ -2835,10 +3160,33 @@ const ensureYearPlanningsTable = async (db: AsyncDB) => {
     if (!exists) {
         await db.exec(`
             CREATE TABLE year_plannings (
-                year INTEGER PRIMARY KEY,
-                filePath TEXT NOT NULL
+                year INTEGER,
+                department TEXT DEFAULT '1. Abteilung',
+                filePath TEXT NOT NULL,
+                PRIMARY KEY (year, department)
             )
         `);
+    } else {
+        // Prüfe ob Spalte department existiert
+        const columns = await db.all("PRAGMA table_info(year_plannings)");
+        const hasDept = columns.some((c: any) => c.name === 'department');
+        if (!hasDept) {
+            // Migration: Neue Tabelle erstellen, Daten kopieren
+            await db.exec(`
+                CREATE TABLE year_plannings_new (
+                    year INTEGER,
+                    department TEXT DEFAULT '1. Abteilung',
+                    filePath TEXT NOT NULL,
+                    PRIMARY KEY (year, department)
+                )
+            `);
+            await db.exec(`
+                INSERT INTO year_plannings_new (year, filePath)
+                SELECT year, filePath FROM year_plannings
+            `);
+            await db.exec("DROP TABLE year_plannings");
+            await db.exec("ALTER TABLE year_plannings_new RENAME TO year_plannings");
+        }
     }
 };
 
@@ -2889,24 +3237,33 @@ export const getGlobalCommentsForMonth = async (db: AsyncDB, year: number, month
 };
 
 // --- ITW Planning Functions ---
-export const getItwPatterns = async (db: AsyncDB) => {
-    const rows = await db.all('SELECT start_date as startDate, pattern FROM itw_patterns ORDER BY start_date ASC');
-    return rows.map((r: any) => ({ startDate: String(r.startDate), pattern: String(r.pattern) }));
+export const getItwPatterns = async (db: AsyncDB, department?: string) => {
+    let query = 'SELECT start_date as startDate, pattern, department FROM itw_patterns';
+    const params = [];
+    if (department && department !== 'all') {
+        query += ' WHERE department = ?';
+        params.push(department);
+    }
+    query += ' ORDER BY start_date ASC';
+    const rows = await db.all(query, params);
+    return rows.map((r: any) => ({ 
+        startDate: String(r.startDate), 
+        pattern: String(r.pattern),
+        department: String(r.department || '1. Abteilung')
+    }));
 };
 
-export const setItwPatterns = async (db: AsyncDB, patterns: { startDate: string, pattern: string }[]) => {
+export const setItwPatterns = async (db: AsyncDB, patterns: { startDate: string, pattern: string, department?: string }[]) => {
     await db.run('BEGIN');
     try {
         await db.run('DELETE FROM itw_patterns');
-        let ins = 0;
         for (const p of (patterns || [])) {
             if (!p || !p.startDate || !p.pattern) continue;
             const sd = String(p.startDate).trim();
             if (!/\d{4}-\d{2}-\d{2}/.test(sd)) continue;
             const parts = String(p.pattern || '').split(',').map(s => s.trim());
-            const norm = (parts.slice(0, 21).concat(Array(21).fill('')).slice(0, 21)).map(v => (v === '1' || v === '2' || v === '3' || v === 'IW') ? v : '');
-            await db.run('INSERT INTO itw_patterns (start_date, pattern) VALUES (?, ?)', [sd, norm.join(',')]);
-            ins++;
+            const norm = (parts.slice(0, 21).concat(Array(21).fill(''))).slice(0, 21).map(v => (v === '1' || v === '2' || v === '3' || v === 'IW') ? v : '');
+            await db.run('INSERT INTO itw_patterns (start_date, department, pattern) VALUES (?, ?, ?)', [sd, p.department || '1. Abteilung', norm.join(',')]);
         }
         await db.run('COMMIT');
     } catch (e) {
@@ -2917,7 +3274,7 @@ export const setItwPatterns = async (db: AsyncDB, patterns: { startDate: string,
 
 export const generateItwPlanningsForYear = async (db: AsyncDB, year: number, holidayDates: string[] = []) => {
     // 1. Get all ITW patterns and phase assignments
-    const patterns = await getItwPatterns(db);
+    const patterns = await getItwPatterns(db); // Alle abteilungen laden
     const assignments = await getItwPhaseAssignments(db);
     const holidaySet = new Set(holidayDates);
 
@@ -2929,48 +3286,49 @@ export const generateItwPlanningsForYear = async (db: AsyncDB, year: number, hol
 
     if (patterns.length === 0 || assignments.length === 0) return;
 
-    // Helper to get active pattern for a date
-    const sortedPatterns = [...patterns].sort((a, b) => a.startDate.localeCompare(b.startDate));
-    const getPatternForDate = (dateStr: string) => {
-        let active = sortedPatterns[0];
-        for (const p of sortedPatterns) {
-            if (p.startDate <= dateStr) active = p;
-            else break;
-        }
-        return active;
-    };
-
-    // Helper to normalize pattern string
-    const normalizePattern = (pStr: string) => {
-        return String(pStr).split(',').map(s => s.trim() === 'IW' ? 'IW' : '');
-    };
-
     const dayMs = 24 * 3600 * 1000;
 
     // 3. Process each assignment
     for (const assignment of assignments) {
         const personId = assignment.person_id;
-        const aStartStr = assignment.start_date;
         
-        // A phase is 21 days
+        // Find department of person
+        const person = await db.get('SELECT department FROM personnel WHERE id = ?', [personId]);
+        const dept = person?.department || '1. Abteilung';
+        
+        // Filter patterns for this department
+        const deptPatterns = patterns.filter(p => p.department === dept);
+        if (deptPatterns.length === 0) continue;
+        
+        const sortedPatterns = [...deptPatterns].sort((a, b) => a.startDate.localeCompare(b.startDate));
+        
+        const getPatternForDate = (dateStr: string) => {
+            let active = sortedPatterns[0];
+            for (const p of sortedPatterns) {
+                if (p.startDate <= dateStr) active = p;
+                else break;
+            }
+            return active;
+        };
+
+        const normalizePattern = (pStr: string) => {
+            return String(pStr).split(',').map(s => s.trim() === 'IW' ? 'IW' : '');
+        };
+
+        const aStartStr = assignment.start_date;
         const aStart = new Date(aStartStr + 'T00:00:00Z').getTime();
         const aEnd = aStart + (21 * dayMs);
         
         const yearStart = new Date(`${year}-01-01T00:00:00Z`).getTime();
         const yearEnd = new Date(`${year}-12-31T23:59:59Z`).getTime();
         
-        // Skip if assignment is completely outside the year
         if (aEnd < yearStart || aStart > yearEnd) continue;
 
-        // Iterate through each day of the phase
         for (let i = 0; i < 21; i++) {
             const currentTime = aStart + (i * dayMs);
-            const date = new Date(currentTime);
-            const dateStr = date.toISOString().slice(0, 10);
+            const dateStr = new Date(currentTime).toISOString().slice(0, 10);
             
-            // Only process if within the target year
             if (dateStr.startsWith(String(year))) {
-                // Skip holidays
                 if (holidaySet.has(dateStr)) continue;
 
                 const activeSeq = getPatternForDate(dateStr);
@@ -2984,7 +3342,6 @@ export const generateItwPlanningsForYear = async (db: AsyncDB, year: number, hol
                 if (diffDays >= 0) {
                     const patternIndex = ((diffDays % pattern.length) + pattern.length) % pattern.length;
                     if (pattern[patternIndex] === 'IW') {
-                        // Insert into roster if no manual entry exists
                         await db.run(
                             `INSERT OR IGNORE INTO itw_duty_roster (personId, personType, date, value, type, manual_edit)
                              VALUES (?, 'person', ?, '1', 'IW', 0)`,

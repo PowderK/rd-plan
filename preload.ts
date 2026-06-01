@@ -43,6 +43,8 @@ contextBridge.exposeInMainWorld('api', {
     getPersonnel: (includeInactive?: boolean, department?: string) => ipcRenderer.invoke('get-personnel', includeInactive === true, department),
     updateShift: (shift: any) => ipcRenderer.invoke('update-shift', shift),
     getSetting: (key: string) => ipcRenderer.invoke('get-setting', key),
+    getRoles: () => ipcRenderer.invoke('get-roles'),
+    saveRoles: (roles: any[]) => ipcRenderer.invoke('save-roles', roles),
     setSetting: (key: string, value: string) => ipcRenderer.invoke('set-setting', key, value),
     openSettingsWindow: () => ipcRenderer.send('open-settings-window'),
     onSettingsUpdated: (callback: () => void) => ipcRenderer.on('settings-updated', callback),
@@ -78,7 +80,7 @@ contextBridge.exposeInMainWorld('api', {
     // System Info
     getSystemUsername: () => ipcRenderer.invoke('get-system-username'),
     openAzubiWindow: () => ipcRenderer.send('open-azubi-window'),
-    getAzubiList: () => ipcRenderer.invoke('get-azubi-list'),
+    getAzubiList: (department?: string) => ipcRenderer.invoke('get-azubi-list', department),
     addAzubi: (azubi: any) => ipcRenderer.invoke('add-azubi', azubi),
     updateAzubi: (azubi: any) => ipcRenderer.invoke('update-azubi', azubi),
     deleteAzubi: (id: number) => ipcRenderer.invoke('delete-azubi', id),
@@ -191,7 +193,7 @@ contextBridge.exposeInMainWorld('api', {
     addHoliday: (date: string, name?: string) => ipcRenderer.invoke('add-holiday', date, name ?? ''),
     deleteHoliday: (date: string) => ipcRenderer.invoke('delete-holiday', date),
     // ITW Patterns
-    getItwPatterns: () => ipcRenderer.invoke('get-itw-patterns'),
+    getItwPatterns: (department?: string) => ipcRenderer.invoke('get-itw-patterns', department),
     setItwPatterns: (patterns: { startDate: string, pattern: string }[]) => ipcRenderer.invoke('set-itw-patterns', patterns),
     generateItwPlanningsForYear: (year: number) => ipcRenderer.invoke('generate-itw-plannings-for-year', year),
     // Department Patterns
@@ -206,6 +208,7 @@ contextBridge.exposeInMainWorld('api', {
     listBackups: (limit?: number) => ipcRenderer.invoke('list-backups', limit),
     getBackupSummary: (backupDir: string, year?: number, month?: number) => ipcRenderer.invoke('get-backup-summary', backupDir, year, month),
     restoreBackup: (backupDir: string) => ipcRenderer.invoke('restore-backup', backupDir),
+    importBackup: (backupDbPath: string, options?: { personnel?: boolean; assignments?: boolean; qualifications?: boolean; individualSettings?: boolean; dutyRoster?: boolean; replaceExisting?: boolean }) => ipcRenderer.invoke('import-backup', backupDbPath, options),
     // Update Management
     getCurrentVersion: () => ipcRenderer.invoke('get-current-version'),
     createManualBackup: (label: string) => ipcRenderer.invoke('create-manual-backup', label),
@@ -216,8 +219,8 @@ contextBridge.exposeInMainWorld('api', {
     previewDutyRoster: (filePath: string, year: number, month?: number) => ipcRenderer.invoke('preview-duty-roster-import', filePath, year, month),
     // Year Plannings
     getYearPlannings: () => ipcRenderer.invoke('get-year-plannings'),
-    getYearPlanningForYear: (year: number) => ipcRenderer.invoke('get-year-planning-for-year', year),
-    saveYearPlannings: (plannings: { year: number; filePath: string }[]) => ipcRenderer.invoke('save-year-plannings', plannings),
+    getYearPlanningForYear: (year: number, department?: string) => ipcRenderer.invoke('get-year-planning-for-year', year, department),
+    saveYearPlannings: (plannings: { year: number; filePath: string; department?: string }[]) => ipcRenderer.invoke('save-year-plannings', plannings),
     deleteYearPlanning: (year: number) => ipcRenderer.invoke('delete-year-planning', year),
     // Shift Transfers (Issue #21)
     getShiftTransfers: (year?: number, month?: number) => ipcRenderer.invoke('get-shift-transfers', year, month),

@@ -80,6 +80,7 @@ interface RosterEntry {
     date: string;
     value: string;
     type: string; // 'text' for duty roster entries
+    department?: string;
 }
 
 interface AvailabilityConflict {
@@ -87,6 +88,163 @@ interface AvailabilityConflict {
     date: string;
     dutyRosterValue: string;
     einteilungValue: string;
+}
+
+type PersonMatch = { id: number; type: 'person' | 'azubi' };
+
+type BlockNameMaps = {
+    full: Map<string, PersonMatch>;
+    last: Map<string, PersonMatch | 'conflict'>;
+    byId: Map<number, PersonMatch>;
+};
+
+type RosterSheetLayout = {
+    headerRow: number;
+    firstDateCol: number;
+    nameCol: number;
+    personnelStart: number;
+    personnelEnd: number;
+    azubiStart: number;
+    azubiEnd: number;
+};
+
+/** Excel-Zeilen (1-basiert) der Standard-Vorplanung */
+const ROSTER_EXCEL_PERSONNEL_FIRST = 6;
+const ROSTER_EXCEL_PERSONNEL_LAST = 57;
+const ROSTER_EXCEL_AZUBI_HEADER = 69; // Überschrift „Lehrjahr“ – kein Azubi-Name
+const ROSTER_EXCEL_AZUBI_FIRST = 70;
+const ROSTER_EXCEL_AZUBI_LAST = 87;
+
+const excelRowToIndex = (excelRow: number) => excelRow - 1;
+
+type MergeRange = { s: { r: number; c: number }; e: { r: number; c: number } };
+
+const ROSTER_SECTION_LABELS = new Set([
+    'lehrjahr', 'name', 'namen', 'vorname', 'nachname',
+    'azubi', 'azubis', 'personal', 'stammpersonal', 'mitarbeiter',
+    'dienst', 'dienste', 'schicht', 'schichten', 'datum', 'kw'
+]);
+
+function getMergeAt(worksheet: XLSX.WorkSheet, row: number, col: number): MergeRange | null {
+    const merges = worksheet['!merges'] as MergeRange[] | undefined;
+    if (!merges?.length) return null;
+    for (const m of merges) {
+        if (row >= m.s.r && row <= m.e.r && col >= m.s.c && col <= m.e.c) return m;
+    }
+    return null;
+}
+
+/** Nur die eigene Zelle – keine Werte aus zusammengeführten Kopfzeilen (z. B. B69 „Namen“ → B70). */
+function getRosterNameFromCell(worksheet: XLSX.WorkSheet, row: number, col: number): string | null {
+    const merge = getMergeAt(worksheet, row, col);
+    if (merge && (row !== merge.s.r || col !== merge.s.c)) {
+        return null;
+    }
+    const cell = worksheet[XLSX.utils.encode_cell({ r: row, c: col })];
+    if (!cell || cell.v == null) return null;
+    const raw = String(cell.v).trim();
+    return raw || null;
+}
+
+function isRosterSectionLabel(rawName: string): boolean {
+    const n = rawName.trim().toLowerCase();
+    if (!n) return true;
+    if (/^\d+\.?\s*lehrjahr$/i.test(rawName.trim())) return true;
+    if (ROSTER_SECTION_LABELS.has(n)) return true;
+    return n.startsWith('azubi ');
+}
+
+function shouldSkipRosterNameRow(row: number, rawName: string, block: 'person' | 'azubi'): boolean {
+    if (isRosterSectionLabel(rawName)) return true;
+    // Zeile 69 und darüber im Azubi-Bereich sind Kopfzeilen (Lehrjahr, Namen, …)
+    if (block === 'azubi' && row < excelRowToIndex(ROSTER_EXCEL_AZUBI_FIRST)) return true;
+    return false;
+}
+
+/** Erste Zeile mit echtem Azubi-Namen (ab Zeile 70, ohne Kopfzeile 69). */
+function findAzubiDataStartRow(worksheet: XLSX.WorkSheet, layout: RosterSheetLayout): number {
+    const defaultStart = excelRowToIndex(ROSTER_EXCEL_AZUBI_FIRST);
+    for (let row = excelRowToIndex(ROSTER_EXCEL_AZUBI_HEADER); row <= layout.azubiEnd; row++) {
+        const rawName = getRosterNameFromCell(worksheet, row, layout.nameCol);
+        if (!rawName) continue;
+        if (shouldSkipRosterNameRow(row, rawName, 'azubi')) continue;
+        return row;
+    }
+    return defaultStart;
+}
+
+function addPersonNameVariants(maps: BlockNameMaps, p: { id: number; name: string; vorname?: string }, type: 'person' | 'azubi') {
+    const name = String(p.name || '').trim();
+    const vorname = String(p.vorname || '').trim();
+    const variants = new Set<string>();
+    if (name && vorname) {
+        variants.add(`${name}, ${vorname}`.toLowerCase());
+        variants.add(`${vorname} ${name}`.toLowerCase());
+        variants.add(`${name} ${vorname}`.toLowerCase());
+    }
+    if (name) variants.add(name.toLowerCase());
+    for (const v of variants) {
+        maps.full.set(v, { id: p.id, type });
+    }
+    const key = normalizeLastName(name);
+    if (key) {
+        if (maps.last.has(key)) maps.last.set(key, 'conflict');
+        else maps.last.set(key, { id: p.id, type });
+    }
+    maps.byId.set(p.id, { id: p.id, type });
+}
+
+function buildBlockNameMaps(personnel: { id: number; name: string; vorname?: string }[], azubis: { id: number; name: string; vorname?: string }[]) {
+    const personnelMaps: BlockNameMaps = { full: new Map(), last: new Map(), byId: new Map() };
+    const azubiMaps: BlockNameMaps = { full: new Map(), last: new Map(), byId: new Map() };
+    for (const p of personnel) addPersonNameVariants(personnelMaps, p, 'person');
+    for (const a of azubis) addPersonNameVariants(azubiMaps, a, 'azubi');
+    return { personnel: personnelMaps, azubi: azubiMaps };
+}
+
+function resolvePersonMatch(
+    rawName: string,
+    maps: BlockNameMaps,
+    mapByLastName: Record<string, number>,
+    expectedType: 'person' | 'azubi'
+): PersonMatch | null {
+    const keyFull = rawName.toLowerCase();
+    let info: PersonMatch | null = maps.full.get(keyFull) || null;
+
+    if (!info) {
+        const keyLast = normalizeLastName(rawName);
+        const mappedId = mapByLastName[keyLast];
+        if (mappedId != null && maps.byId.has(mappedId)) {
+            info = maps.byId.get(mappedId)!;
+        } else {
+            const ln = maps.last.get(keyLast);
+            if (ln && ln !== 'conflict') info = ln;
+            else if (ln === 'conflict') return null;
+        }
+    }
+
+    if (!info || info.type !== expectedType) return null;
+    return info;
+}
+
+/** Vorplanung: feste Zeilen – Stammpersonal 6–57, Azubis 70–87; Zeile 69 = Überschrift. */
+function getRosterSheetLayout(worksheet: XLSX.WorkSheet, targetYear: number): RosterSheetLayout {
+    const base = detectLayout(worksheet, targetYear);
+    const layout: RosterSheetLayout = {
+        headerRow: base.headerRow,
+        firstDateCol: base.firstDateCol,
+        nameCol: 1, // Namen immer Spalte B
+        personnelStart: excelRowToIndex(ROSTER_EXCEL_PERSONNEL_FIRST),
+        personnelEnd: excelRowToIndex(ROSTER_EXCEL_PERSONNEL_LAST),
+        azubiStart: excelRowToIndex(ROSTER_EXCEL_AZUBI_FIRST),
+        azubiEnd: excelRowToIndex(ROSTER_EXCEL_AZUBI_LAST)
+    };
+    layout.azubiStart = findAzubiDataStartRow(worksheet, layout);
+    console.log(
+        `[RosterImporter] Layout: Personal Zeilen ${ROSTER_EXCEL_PERSONNEL_FIRST}–${ROSTER_EXCEL_PERSONNEL_LAST}, ` +
+        `Azubis Zeilen ${layout.azubiStart + 1}–${ROSTER_EXCEL_AZUBI_LAST} (Kopf bis Zeile ${ROSTER_EXCEL_AZUBI_HEADER} ignoriert)`
+    );
+    return layout;
 }
 
 export class RosterImporter {
@@ -100,8 +258,9 @@ export class RosterImporter {
         const conflicts: AvailabilityConflict[] = [];
         
         // Hole alle Personen für Namensauflösung
-        const personnel = await this.dbAdapter.getPersonnel();
-        const azubis = await this.dbAdapter.getAzubiList();
+        const importDept = entriesToImport[0]?.department;
+        const personnel = await this.dbAdapter.getPersonnel(false, undefined, importDept);
+        const azubis = await this.dbAdapter.getAzubiList(importDept);
         const personMap = new Map<string, string>();
         
         for (const p of personnel) {
@@ -186,7 +345,7 @@ export class RosterImporter {
         // Hole bestehende Fahrzeugzuweisungen (duty_roster entries mit type = 'rtw%', 'nef%', 'itw%')
         const vehicleAssignments = new Map<string, string>(); // key: "personType_personId_date" -> vehicle assignment (type)
         for (const year of years) {
-            const dutyRoster = await this.dbAdapter.getDutyRoster(year);
+            const dutyRoster = await this.dbAdapter.getDutyRoster(year, importDept);
             for (const entry of dutyRoster) {
                 // Nur Einträge mit Fahrzeugzuweisung berücksichtigen
                 if (entry.type && (entry.type.startsWith('rtw') || entry.type.startsWith('nef') || entry.type.startsWith('itw'))) {
@@ -234,14 +393,13 @@ export class RosterImporter {
     ): Promise<Array<{ azubiId: number; azubiName: string; importDateRange: { start: string; end: string } }>> {
         const azubisWithoutPeriod: Array<{ azubiId: number; azubiName: string; importDateRange: { start: string; end: string } }> = [];
         
-        // Hole alle Azubis
-        const azubis = await this.dbAdapter.getAzubiList();
+        const importDept = entriesToImport.find(e => e.personType === 'azubi')?.department;
+        const azubis = await this.dbAdapter.getAzubiList(importDept);
         const azubiMap = new Map<number, { id: number; name: string; vorname: string }>();
         for (const a of azubis) {
             azubiMap.set(a.id, a);
         }
         
-        // Hole alle Azubi-Zeiträume
         const allPeriods = await this.dbAdapter.getAllAzubiPeriods();
         const periodsByAzubi = new Map<number, Array<{ start_date: string; end_date: string }>>();
         for (const period of allPeriods) {
@@ -254,10 +412,10 @@ export class RosterImporter {
             });
         }
         
-        // Sammle Azubi-Einträge und deren Datumsbereich
+        // Sammle Azubi-Einträge mit tatsächlichem Dienst (leere Sync-Zellen ignorieren)
         const azubiImportData = new Map<number, Set<string>>();
         for (const entry of entriesToImport) {
-            if (entry.personType === 'azubi') {
+            if (entry.personType === 'azubi' && entry.value?.trim()) {
                 if (!azubiImportData.has(entry.personId)) {
                     azubiImportData.set(entry.personId, new Set());
                 }
@@ -322,26 +480,23 @@ export class RosterImporter {
     }
 
     // Sammelt unbekannte Namen aus dem Azubi-Block für Monatsimport
-    private async collectUnknownAzubiNames(
-        worksheet: XLSX.WorkSheet, 
-        fixed: any, 
-        year: number, 
+    private collectUnknownAzubiNames(
+        worksheet: XLSX.WorkSheet,
+        layout: RosterSheetLayout,
+        year: number,
         month: number | { start: number, end: number } | undefined,
-        fullNameMap: Map<string, {id: number, type: 'person' | 'azubi'}>,
-        lastNameMap: Map<string, {id: number, type: 'person' | 'azubi'} | 'conflict'>,
-        mapByLastName: Record<string, number>,
-        idMap: Map<number, {id: number, type: 'person' | 'azubi'}>
-    ): Promise<string[]> {
+        azubiMaps: BlockNameMaps,
+        mapByLastName: Record<string, number>
+    ): string[] {
         const unknownNames = new Set<string>();
-        
-        for (let col = fixed.firstDateCol; col < fixed.firstDateCol + 2000; col++) {
-            const dateAddr = XLSX.utils.encode_cell({ r: fixed.headerRow, c: col });
+
+        for (let col = layout.firstDateCol; col < layout.firstDateCol + 2000; col++) {
+            const dateAddr = XLSX.utils.encode_cell({ r: layout.headerRow, c: col });
             const dateCell = worksheet[dateAddr];
             if (!dateCell || dateCell.v == null) break;
-            
+
             const dateValue = parseHeaderDate(dateCell.v, year);
             if (!dateValue || dateValue.getFullYear() !== year) continue;
-            // Only filter by month if month is specified
             if (month !== undefined) {
                 if (typeof month === 'number') {
                     if (dateValue.getMonth() !== month) continue;
@@ -349,44 +504,21 @@ export class RosterImporter {
                     if (dateValue.getMonth() < month.start || dateValue.getMonth() > month.end) continue;
                 }
             }
-            
-            for (let row = fixed.azubiStart; row <= fixed.azubiEnd; row++) {
-                const nameAddr = XLSX.utils.encode_cell({ r: row, c: fixed.nameCol });
-                const nameCell = worksheet[nameAddr];
-                if (!nameCell || nameCell.v == null) continue;
-                
-                const rawName = String(nameCell.v).trim();
-                if (!rawName) continue;
-                
-                // Prüfe, ob dieser Azubi überhaupt Diensteinträge für die gefilterten Daten hat
+
+            for (let row = layout.azubiStart; row <= layout.azubiEnd; row++) {
+                const rawName = getRosterNameFromCell(worksheet, row, layout.nameCol);
+                if (!rawName || shouldSkipRosterNameRow(row, rawName, 'azubi')) continue;
+
                 const valueAddr = XLSX.utils.encode_cell({ r: row, c: col });
                 const valueCell = worksheet[valueAddr];
                 const rawValue = valueCell && valueCell.v != null ? String(valueCell.v).trim() : '';
-                
-                // Nur berücksichtigen, wenn tatsächlich ein Diensteintrag vorhanden ist
                 if (!rawValue) continue;
-                
-                // Check if this name is already known
-                const keyFull = rawName.toLowerCase();
-                let personInfo = fullNameMap.get(keyFull) || null;
-                if (!personInfo) {
-                    const keyLast = normalizeLastName(rawName);
-                    const mappedId = mapByLastName[keyLast];
-                    if (mappedId && idMap.has(mappedId)) {
-                        personInfo = idMap.get(mappedId)!;
-                    } else {
-                        const ln = lastNameMap.get(keyLast);
-                        if (ln && ln !== 'conflict') personInfo = ln;
-                    }
-                }
-                
-                // If name is unknown, add to collection
-                if (!personInfo) {
-                    unknownNames.add(rawName);
-                }
+
+                const match = resolvePersonMatch(rawName, azubiMaps, mapByLastName, 'azubi');
+                if (!match) unknownNames.add(rawName);
             }
         }
-        
+
         return Array.from(unknownNames).sort();
     }
 
@@ -423,12 +555,12 @@ export class RosterImporter {
                 // Namen in Spalte B (nameCol: 1), Dienstarten ab Spalte D (firstDateCol: 3)
                 // Personal: Zeilen 6-57 (Excel) = 5-56 (0-based)
                 // Azubis: Zeilen 70-87 (Excel) = 69-86 (0-based)
-                const fixed = { headerRow: 3, firstDateCol: 3, nameCol: 1, personnelStart: 5, personnelEnd: 56, azubiStart: 69, azubiEnd: 86 };
+                const fixed = getRosterSheetLayout(worksheet, year);
                 const baseAddr = XLSX.utils.encode_cell({ r: 1, c: 0 });
                 const baseCell = worksheet[baseAddr];
                 const baseDate = baseCell ? (parseHeaderDate(baseCell.v, year) || (typeof baseCell.v === 'number' ? excelSerialDateToJSDate(baseCell.v) : null)) : null;
 
-                const collect = (startRow: number, endRow: number) => {
+                const collect = (startRow: number, endRow: number, block: 'person' | 'azubi') => {
                     for (let col = fixed.firstDateCol; col < fixed.firstDateCol + 2000; col++) {
                         const dateAddr = XLSX.utils.encode_cell({ r: fixed.headerRow, c: col });
                         const dateCell = worksheet[dateAddr];
@@ -440,11 +572,8 @@ export class RosterImporter {
                         if (month !== undefined) { if (typeof month === "number") { if (dateValue.getMonth() !== month) continue; } else { if (dateValue.getMonth() < month.start || dateValue.getMonth() > month.end) continue; } }
                         const dateStr = toISODateString(dateValue);
                         for (let row = startRow; row <= endRow; row++) {
-                            const nameAddr = XLSX.utils.encode_cell({ r: row, c: fixed.nameCol });
-                            const nameCell = worksheet[nameAddr];
-                            if (!nameCell || nameCell.v == null) continue;
-                            const rawName = String(nameCell.v).trim();
-                            if (!rawName) continue;
+                            const rawName = getRosterNameFromCell(worksheet, row, fixed.nameCol);
+                            if (!rawName || shouldSkipRosterNameRow(row, rawName, block)) continue;
                             const keyFull = rawName.toLowerCase();
                             let personInfo = fullNameMap.get(keyFull) || null;
                             if (!personInfo) {
@@ -457,8 +586,8 @@ export class RosterImporter {
                         }
                     }
                 };
-                collect(fixed.personnelStart, fixed.personnelEnd);
-                collect(fixed.azubiStart, fixed.azubiEnd);
+                collect(fixed.personnelStart, fixed.personnelEnd, 'person');
+                collect(fixed.azubiStart, fixed.azubiEnd, 'azubi');
             }
 
             const unmatchedSet = new Set<string>();
@@ -487,6 +616,7 @@ export class RosterImporter {
             newAzubis?: Array<{name: string, vorname: string, lehrjahr: number}>; 
             newShiftTypes?: Array<{code: string, description: string, color: string, auswertung: string}>;
             azubiPeriodAdjustments?: Array<{azubiId: number, startDate: string, endDate: string, description?: string, lehrjahr: number}>;
+            department?: string;
         }
     ): Promise<{
         success: boolean, 
@@ -503,37 +633,22 @@ export class RosterImporter {
             console.log('[RosterImporter] Excel-Datei geladen. Sheets:', sheetNames);
             const entriesToImport: RosterEntry[] = [];
             const seenPersons = new Set<string>(); // "personId:personType"
+            const allUnknownAzubiNames = new Set<string>();
 
-            // Build name maps once
-            const personnel = await this.dbAdapter.getPersonnel();
-            const azubis = await this.dbAdapter.getAzubiList();
-            console.log(`[RosterImporter] Datenbank geladen: ${personnel.length} Personal, ${azubis.length} Azubis`);
-            const fullNameMap = new Map<string, {id: number, type: 'person' | 'azubi'}>();
-            const lastNameMap = new Map<string, {id: number, type: 'person' | 'azubi'} | 'conflict'>();
-            const idMap = new Map<number, {id: number, type: 'person' | 'azubi'}>();
-            for (const p of personnel) {
-                fullNameMap.set(`${p.name}, ${p.vorname}`.toLowerCase(), { id: p.id, type: 'person' });
-                const key = normalizeLastName(String(p.name || ''));
-                if (!key) continue;
-                if (lastNameMap.has(key)) lastNameMap.set(key, 'conflict'); else lastNameMap.set(key, { id: p.id, type: 'person' });
-                idMap.set(p.id, { id: p.id, type: 'person' });
-            }
-            for (const a of azubis) {
-                // Add multiple name formats for azubis
-                const fullName = `${a.name}, ${a.vorname}`.toLowerCase();
-                const nameOnly = a.name.toLowerCase();
-                
-                fullNameMap.set(fullName, { id: a.id, type: 'azubi' });
-                // Also add name-only format for azubis without vorname
-                if (!a.vorname || a.vorname.trim() === '') {
-                    fullNameMap.set(nameOnly, { id: a.id, type: 'azubi' });
+            const importDept = options?.department;
+            const personnel = await this.dbAdapter.getPersonnel(false, undefined, importDept);
+            let azubis = await this.dbAdapter.getAzubiList(importDept);
+            console.log(`[RosterImporter] Datenbank geladen (${importDept || 'alle'}): ${personnel.length} Personal, ${azubis.length} Azubis`);
+
+            if (options?.newAzubis && options.newAzubis.length > 0) {
+                console.log('[RosterImporter] Erstelle neue Azubis vor Import:', options.newAzubis);
+                for (const newAzubi of options.newAzubis) {
+                    await this.dbAdapter.addAzubi({ ...newAzubi, department: importDept });
                 }
-                
-                const key = normalizeLastName(String(a.name || ''));
-                if (!key) continue;
-                if (lastNameMap.has(key)) lastNameMap.set(key, 'conflict'); else lastNameMap.set(key, { id: a.id, type: 'azubi' });
-                idMap.set(a.id, { id: a.id, type: 'azubi' });
+                azubis = await this.dbAdapter.getAzubiList(importDept);
             }
+
+            let { personnel: personnelMaps, azubi: azubiMaps } = buildBlockNameMaps(personnel, azubis);
             const mapByLastName = options?.mappings || {};
 
             const useSpecificSheet = sheetNames.includes('Vorplanung');
@@ -543,93 +658,69 @@ export class RosterImporter {
                 const worksheet = workbook.Sheets[sheetName];
                 if (!worksheet) continue;
 
-                // Preferred fixed layout for your sheet
-                // Namen in Spalte B, Dienstarten ab Spalte D
-                const fixed = {
-                    headerRow: 3,           // Zeile 4 (Excel) = Index 3 (0-based) - Datums-Header
-                    firstDateCol: 3,        // Spalte D (Excel) = Index 3 (0-based) - Erste Dienstart-Spalte
-                    nameCol: 1,             // Spalte B (Excel) = Index 1 (0-based) - Namen-Spalte
-                    personnelStart: 5,      // Zeile 6 (Excel) = Index 5 (0-based)
-                    personnelEnd: 56,       // Zeile 57 (Excel) = Index 56 (0-based)
-                    azubiStart: 69,         // Zeile 70 (Excel) = Index 69 (0-based) - B70 START
-                    azubiEnd: 86            // Zeile 87 (Excel) = Index 86 (0-based) - B87 END
-                };
+                const layout = getRosterSheetLayout(worksheet, year);
 
-                // Determine base date from A2 for formula fallback
                 const baseAddr = XLSX.utils.encode_cell({ r: 1, c: 0 }); // A2
                 const baseCell = worksheet[baseAddr];
                 const baseDate = baseCell ? (parseHeaderDate(baseCell.v, year) || (typeof baseCell.v === 'number' ? excelSerialDateToJSDate(baseCell.v) : null)) : null;
 
-                console.log(`[RosterImporter] Verwende Blatt '${sheetName}'. Fixes Layout aktiv. baseDate(A2)=${baseDate ? baseDate.toDateString() : 'n/a'}`);
+                console.log(`[RosterImporter] Verwende Blatt '${sheetName}'. baseDate(A2)=${baseDate ? baseDate.toDateString() : 'n/a'}`);
 
-                // Debug: Log first few header cells
-                for (let c = fixed.firstDateCol; c < fixed.firstDateCol + 7; c++) {
-                    const addr = XLSX.utils.encode_cell({ r: fixed.headerRow, c });
-                    const cell: any = worksheet[addr];
-                    const parsed = cell ? parseHeaderDate(cell.v, year) : null;
-                    console.log(`[RosterImporter][Header] ${addr} t=${cell?.t} v=${cell?.v} f=${cell?.f} w=${cell?.w} -> ${parsed ? parsed.toDateString() : 'n/a'}`);
-                }
-
-                const processBlock = (startRow: number, endRow: number, blockLabel: string, skipEmpty = false) => {
-                    console.log(`[RosterImporter] Verarbeite Block ${blockLabel}: Zeilen ${startRow + 1}-${endRow + 1} (1-based)`);
-                    for (let col = fixed.firstDateCol; col < fixed.firstDateCol + 2000; col++) {
-                        const dateAddr = XLSX.utils.encode_cell({ r: fixed.headerRow, c: col });
+                const processBlock = (
+                    startRow: number,
+                    endRow: number,
+                    blockLabel: string,
+                    maps: BlockNameMaps,
+                    expectedType: 'person' | 'azubi',
+                    skipEmpty = false
+                ) => {
+                    console.log(`[RosterImporter] Verarbeite Block ${blockLabel}: Excel-Zeilen ${startRow + 1}–${endRow + 1}`);
+                    for (let col = layout.firstDateCol; col < layout.firstDateCol + 2000; col++) {
+                        const dateAddr = XLSX.utils.encode_cell({ r: layout.headerRow, c: col });
                         const dateCell = worksheet[dateAddr];
 
-                        // Stop if header cell is completely empty and no base fallback
                         if ((!dateCell || dateCell.v == null) && !baseDate) break;
 
                         let dateValue: Date | null = dateCell ? parseHeaderDate(dateCell.v, year) : null;
                         if (!dateValue && baseDate) {
-                            // Fallback: A2 + offset days
-                            const offset = col - fixed.firstDateCol;
+                            const offset = col - layout.firstDateCol;
                             const dt = new Date(baseDate);
                             dt.setDate(dt.getDate() + offset);
                             dateValue = dt;
                         }
                         if (!dateValue) continue;
                         if (dateValue.getFullYear() !== year) continue;
-                        if (month !== undefined) { if (typeof month === "number") { if (dateValue.getMonth() !== month) continue; } else { if (dateValue.getMonth() < month.start || dateValue.getMonth() > month.end) continue; } }
+                        if (month !== undefined) {
+                            if (typeof month === 'number') {
+                                if (dateValue.getMonth() !== month) continue;
+                            } else {
+                                if (dateValue.getMonth() < month.start || dateValue.getMonth() > month.end) continue;
+                            }
+                        }
 
                         const dateStr = toISODateString(dateValue);
 
                         for (let row = startRow; row <= endRow; row++) {
-                            const nameAddr = XLSX.utils.encode_cell({ r: row, c: fixed.nameCol });
-                            const nameCell = worksheet[nameAddr];
-                            if (!nameCell || nameCell.v == null) continue;
-                            const rawName = String(nameCell.v).trim();
-                            if (!rawName) continue;
+                            const rawName = getRosterNameFromCell(worksheet, row, layout.nameCol);
+                            if (!rawName || shouldSkipRosterNameRow(row, rawName, expectedType)) continue;
 
-                            // Lookup order: full name -> last name -> mapping override
-                            const keyFull = rawName.toLowerCase();
-                            let personInfo = fullNameMap.get(keyFull) || null;
-                            
+                            const personInfo = resolvePersonMatch(rawName, maps, mapByLastName, expectedType);
                             if (!personInfo) {
-                                const keyLast = normalizeLastName(rawName);
-                                // mapping override first
-                                const mappedId = mapByLastName[keyLast];
-                                if (mappedId && idMap.has(mappedId)) {
-                                    personInfo = idMap.get(mappedId)!;
-                                } else {
-                                    const ln = lastNameMap.get(keyLast);
-                                    if (ln && ln !== 'conflict') personInfo = ln;
-                                    else if (ln === 'conflict') {
-                                        console.warn(`[RosterImporter] Mehrdeutiger Nachname '${rawName}' – übersprungen.`);
-                                        continue;
-                                    }
+                                if (expectedType === 'azubi') {
+                                    const dutyAddr = XLSX.utils.encode_cell({ r: row, c: col });
+                                    const dutyCell = worksheet[dutyAddr];
+                                    const dutyValue = dutyCell && dutyCell.v != null ? String(dutyCell.v).trim() : '';
+                                    if (dutyValue) allUnknownAzubiNames.add(rawName);
                                 }
+                                continue;
                             }
-                            
-                            if (!personInfo) continue;
+
                             seenPersons.add(`${personInfo.id}:${personInfo.type}`);
 
                             const dutyAddr = XLSX.utils.encode_cell({ r: row, c: col });
                             const dutyCell = worksheet[dutyAddr];
                             const dutyValue = dutyCell && dutyCell.v != null ? String(dutyCell.v).trim() : '';
-                            
-                            // Leere Zellen überspringen wenn:
-                            //  - Jahresimport (month === null/undefined): immer überspringen
-                            //  - skipEmpty=true (Azubi-Block): immer überspringen (keine Sync-Löschung für Azubis)
+
                             if (!dutyValue && (month == null || skipEmpty)) continue;
 
                             entriesToImport.push({
@@ -637,95 +728,19 @@ export class RosterImporter {
                                 personType: personInfo.type,
                                 date: dateStr,
                                 value: dutyValue,
-                                type: 'text'
+                                type: 'text',
+                                department: options?.department
                             });
                         }
                     }
                 };
 
-                // Debug: show sample names in personnel and azubi blocks
-                for (const [probeRow, label] of [[fixed.personnelStart, 'Personal'], [fixed.azubiStart, 'Azubi']] as const) {
-                    for (let i = 0; i < 5; i++) {
-                        const r = probeRow + i;
-                        const addr = XLSX.utils.encode_cell({ r, c: fixed.nameCol });
-                        const cell = worksheet[addr];
-                        if (!cell) continue;
-                        const raw = String(cell.v ?? '').trim();
-                        const full = fullNameMap.get(raw.toLowerCase());
-                        const ln = lastNameMap.get(raw.toLowerCase());
-                        console.log(`[RosterImporter][Probe ${label}] ${addr}='${raw}' -> full=${!!full} ln=${ln && ln !== 'conflict' ? 'hit' : (ln === 'conflict' ? 'conflict' : 'miss')}`);
-                    }
-                }
+                processBlock(layout.personnelStart, layout.personnelEnd, 'Personal', personnelMaps, 'person');
+                processBlock(layout.azubiStart, layout.azubiEnd, 'Azubis', azubiMaps, 'azubi', false);
 
-                // Process personnel block always
-                processBlock(fixed.personnelStart, fixed.personnelEnd, 'Personal');
-                
-                // Process azubi block for both month and year imports
-                // Collect unknown azubi names first
-                const unknownAzubiNames = await this.collectUnknownAzubiNames(worksheet, fixed, year, month, fullNameMap, lastNameMap, mapByLastName, idMap);
-                
-                if (unknownAzubiNames.length > 0) {
-                    // If new azubis are provided in options, create them first
-                    if (options?.newAzubis && options.newAzubis.length > 0) {
-                        console.log('[RosterImporter] Erstelle neue Azubis:', options.newAzubis);
-                        for (const newAzubi of options.newAzubis) {
-                            await this.dbAdapter.addAzubi(newAzubi);
-                        }
-                        // Reload azubi list and rebuild ALL maps completely
-                        const updatedAzubis = await this.dbAdapter.getAzubiList();
-                        // Clear existing azubi entries from maps
-                        fullNameMap.clear();
-                        lastNameMap.clear();
-                        idMap.clear();
-                        
-                        // Rebuild maps with personnel
-                        for (const p of personnel) {
-                            fullNameMap.set(`${p.name}, ${p.vorname}`.toLowerCase(), { id: p.id, type: 'person' });
-                            const key = normalizeLastName(String(p.name || ''));
-                            if (key) {
-                                if (lastNameMap.has(key)) lastNameMap.set(key, 'conflict'); 
-                                else lastNameMap.set(key, { id: p.id, type: 'person' });
-                            }
-                            idMap.set(p.id, { id: p.id, type: 'person' });
-                        }
-                        
-                        // Rebuild maps with updated azubis
-                        for (const a of updatedAzubis) {
-                            // Add multiple name formats for azubis
-                            const fullName = `${a.name}, ${a.vorname}`.toLowerCase();
-                            const nameOnly = a.name.toLowerCase();
-                            
-                            fullNameMap.set(fullName, { id: a.id, type: 'azubi' });
-                            // Also add name-only format for azubis without vorname
-                            if (!a.vorname || a.vorname.trim() === '') {
-                                fullNameMap.set(nameOnly, { id: a.id, type: 'azubi' });
-                            }
-                            
-                            const key = normalizeLastName(String(a.name || ''));
-                            if (key) {
-                                if (lastNameMap.has(key)) lastNameMap.set(key, 'conflict'); 
-                                else lastNameMap.set(key, { id: a.id, type: 'azubi' });
-                            }
-                            idMap.set(a.id, { id: a.id, type: 'azubi' });
-                            
-                            console.log(`[RosterImporter] Azubi in Maps: fullName='${fullName}', nameOnly='${nameOnly}', key='${key}'`);
-                        }
-                        console.log('[RosterImporter] Maps nach Azubi-Erstellung aktualisiert. Neue Azubi-Anzahl:', updatedAzubis.length);
-                    } else {
-                        // Return unknown names for user dialog
-                        console.log('[RosterImporter] Gefundene unbekannte Azubi-Namen für Dialog:', unknownAzubiNames);
-                        return { 
-                            success: true, 
-                            message: `Unbekannte Azubi-Namen gefunden: ${unknownAzubiNames.join(', ')}`, 
-                            importedCount: 0,
-                            unknownAzubis: unknownAzubiNames 
-                        };
-                    }
+                for (const name of this.collectUnknownAzubiNames(worksheet, layout, year, month, azubiMaps, mapByLastName)) {
+                    allUnknownAzubiNames.add(name);
                 }
-                
-                // Now process the azubi block (for both month and year imports)
-                // skipEmpty=false: leere Zellen werden beim Monatsimport als Löschung (Sync) interpretiert, genau wie beim Personal.
-                processBlock(fixed.azubiStart, fixed.azubiEnd, 'Azubis', false);
             }
 
             if (entriesToImport.length > 0) {
@@ -805,21 +820,36 @@ export class RosterImporter {
                 // die im Import-Block NICHT vorkommen, aber in der DB existieren (Orphaned Entries).
                 if (deleteEmpty && seenPersons.size > 0) {
                     const seenList = Array.from(seenPersons);
-                    const deletedOrphans = await this.dbAdapter.deleteOrphanedDutyRosterEntries(year, month, seenList);
+                    const deletedOrphans = await this.dbAdapter.deleteOrphanedDutyRosterEntries(year, month, seenList, options?.department);
                     if (deletedOrphans > 0) {
                         console.log(`[RosterImporter] Sync-Cleanup: ${deletedOrphans} verwaiste Einträge von nicht mehr im Excel gelisteten Personen wurden entfernt.`);
                     }
                 }
                 
-                // Rückgabe mit Konflikten
-                return { 
-                    success: true, 
-                    message: `Dienstplan erfolgreich importiert. ${result.imported} Einträge verarbeitet, ${result.skipped} geschützt/übersprungen.`, 
+                const unknownAzubiList = allUnknownAzubiNames.size > 0 ? Array.from(allUnknownAzubiNames).sort() : undefined;
+                if (unknownAzubiList?.length) {
+                    console.log('[RosterImporter] Unbekannte Azubi-Namen (Import für bekannte Azubis abgeschlossen):', unknownAzubiList);
+                }
+
+                return {
+                    success: true,
+                    message: `Dienstplan erfolgreich importiert. ${result.imported} Einträge verarbeitet, ${result.skipped} geschützt/übersprungen.`,
                     importedCount: result.imported,
+                    unknownAzubis: unknownAzubiList,
                     availabilityConflicts: availabilityConflicts.length > 0 ? availabilityConflicts : undefined
                 };
             } else {
                 console.warn('[RosterImporter] Keine Einträge zum Import gefunden.');
+            }
+
+            const unknownAzubiList = allUnknownAzubiNames.size > 0 ? Array.from(allUnknownAzubiNames).sort() : undefined;
+            if (unknownAzubiList?.length) {
+                return {
+                    success: true,
+                    message: `Unbekannte Azubi-Namen gefunden: ${unknownAzubiList.join(', ')}`,
+                    importedCount: 0,
+                    unknownAzubis: unknownAzubiList
+                };
             }
 
             return { success: true, message: `Keine Einträge zum Import gefunden.`, importedCount: 0 };

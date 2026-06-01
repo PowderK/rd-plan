@@ -131,7 +131,7 @@ electron_1.contextBridge.exposeInMainWorld('api', {
     addHoliday: (date, name) => electron_1.ipcRenderer.invoke('add-holiday', date, name ?? ''),
     deleteHoliday: (date) => electron_1.ipcRenderer.invoke('delete-holiday', date),
     // ITW Patterns
-    getItwPatterns: () => electron_1.ipcRenderer.invoke('get-itw-patterns'),
+    getItwPatterns: (department) => electron_1.ipcRenderer.invoke('get-itw-patterns', department),
     setItwPatterns: (patterns) => electron_1.ipcRenderer.invoke('set-itw-patterns', patterns),
     // Department Patterns
     getDeptPatterns: () => electron_1.ipcRenderer.invoke('get-dept-patterns'),
@@ -146,6 +146,10 @@ electron_1.contextBridge.exposeInMainWorld('api', {
     // Utils
     clearSlotAssignments: () => electron_1.ipcRenderer.invoke('clear-slot-assignments'),
     assignSlot: (entry) => electron_1.ipcRenderer.invoke('assign-slot', entry),
+    // Year Plannings
+    getYearPlannings: () => electron_1.ipcRenderer.invoke('get-year-plannings'),
+    saveYearPlannings: (plannings) => electron_1.ipcRenderer.invoke('save-year-plannings', plannings),
+    getYearPlanningForYear: (year, department) => electron_1.ipcRenderer.invoke('get-year-planning-for-year', year, department),
 });
 // Ergänze für Electron Dialog API
 electron_1.contextBridge.exposeInMainWorld('electronAPI', {

@@ -49,7 +49,8 @@ const ItwVorplanungTab: React.FC = () => {
             const currentYearHolidays = await (window as any).api.getHolidaysForYear?.(year) || [];
             const prevYearHolidays = await (window as any).api.getHolidaysForYear?.(year - 1) || [];
             const nextYearHolidays = await (window as any).api.getHolidaysForYear?.(year + 1) || [];
-            setHolidays([...prevYearHolidays, ...currentYearHolidays, ...nextYearHolidays]);
+            const allHolidayObjects = [...prevYearHolidays, ...currentYearHolidays, ...nextYearHolidays];
+            setHolidays(allHolidayObjects.map((h: any) => h.date));
 
             const now = new Date();
             const yearMonth = now.toISOString().slice(0, 7);
@@ -255,6 +256,26 @@ const ItwVorplanungTab: React.FC = () => {
         console.log('[ITW] Schichtübertrag abgeschlossen');
     };
 
+    const removeSchichtFromRoster = async (personId: number, phaseStartStr: string, phaseEndStr: string) => {
+        const itwDays = calculatePhaseItwDays(phaseStartStr, phaseEndStr);
+        console.log(`[ITW] Lösche ${itwDays.length} IW-Tage für Person ${personId} von ${phaseStartStr} bis ${phaseEndStr}`);
+        
+        for (const dateStr of itwDays) {
+            try {
+                await (window as any).api.setItwDutyRosterEntry?.({
+                    personId,
+                    personType: 'person',
+                    date: dateStr,
+                    value: '',
+                    type: '',
+                    manual_edit: 0
+                });
+            } catch (e: any) {
+                console.error(`[ITW] Fehler beim Löschen der Schicht für ${dateStr}:`, e);
+            }
+        }
+    };
+
     const getAssignmentForPhase = (phaseStart: string, role: string) => {
         const pStart = new Date(phaseStart + 'T00:00:00Z').getTime();
         return assignments.find(a => {
@@ -280,6 +301,8 @@ const ItwVorplanungTab: React.FC = () => {
         });
         
         if (oldEntry && oldEntry.person_id) {
+             // Clear old roster entries
+             await removeSchichtFromRoster(oldEntry.person_id, oldEntry.start_date, phaseEnd);
              await (window as any).api.removeItwPhaseAssignment?.(oldEntry.start_date, oldEntry.person_id);
         }
 

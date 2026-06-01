@@ -10,7 +10,7 @@ import headerPngUrl from '../../media/Header.png?url';
 type HeaderProps = {
   currentMonth?: string; // not displayed anymore
   rescueStation: string | number;
-  department: number;
+  department: string | number;
   year: number;
   onOpenSettings?: () => void;
 };
@@ -79,7 +79,7 @@ const Header: React.FC<HeaderProps> = ({ rescueStation, department, year }) => {
           }}
         >
           <div style={{ color: '#fff', fontSize: 'clamp(16px, 2.4vw, 24px)', fontWeight: 800, letterSpacing: '0.3px', textShadow: '0 1px 2px rgba(0,0,0,0.35)', marginLeft: 'clamp(8px, 1vw, 16px)' }}>
-            Feuer- und Rettungswache {String(rescueStation)} {department}. Abteilung {year}
+            Feuer- und Rettungswache {String(rescueStation)} {typeof department === 'number' ? `${department}. Abteilung` : department} {year}
           </div>
         </div>
       </div>

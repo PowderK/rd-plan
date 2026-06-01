@@ -273,15 +273,33 @@ const AddPerson: React.FC = () => {
   useEffect(() => {
     const loadRoles = async () => {
       try {
-        const raw = await (window as any).api.getSetting('roles');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          const list = Array.isArray(parsed) ? parsed : [];
-          setRoles(list.map((r: any) => ({ id: Number(r.id), name: String(r.name || r.id) })));
-        } else {
-          setRoles([]);
+        let list: any[] = [];
+        try {
+          const fetchedRoles = await (window as any).api.getRoles?.();
+          if (Array.isArray(fetchedRoles) && fetchedRoles.length > 0) {
+            list = fetchedRoles;
+          }
+        } catch (error) {
+          console.warn('Failed to load roles from table:', error);
+          list = [];
         }
-      } catch {
+
+        if (list.length === 0) {
+          try {
+            const raw = await (window as any).api.getSetting('roles');
+            if (raw) {
+              const parsed = JSON.parse(String(raw));
+              list = Array.isArray(parsed) ? parsed : [];
+            }
+          } catch (error) {
+            console.warn('Failed to load legacy roles from settings:', error);
+            list = [];
+          }
+        }
+
+        setRoles(list.map((r: any) => ({ id: Number(r.id), name: String(r.name || r.id) })));
+      } catch (error) {
+        console.warn('Unexpected error loading roles:', error);
         setRoles([]);
       } finally {
         setRolesLoading(false);

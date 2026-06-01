@@ -4,7 +4,7 @@ import url from 'url';
 import fs from 'fs';
 import os from 'os';
 import { execSync } from 'child_process';
-import { initializeDatabaseManager, DatabaseAdapter, createDatabaseBackup, listDatabaseBackups, getSummaryForBackup, restoreDatabaseFromBackup, previewDutyRosterImport, getDatabaseManager } from './database-manager';
+import { initializeDatabaseManager, DatabaseAdapter, createDatabaseBackup, listDatabaseBackups, getSummaryForBackup, restoreDatabaseFromBackup, previewDutyRosterImport, getDatabaseManager, importFromBackup } from './database-manager';
 import { getUpdateManager, getCurrentVersion, performUpdate } from './update-manager';
 import { initializeAuthService, getAuthService } from './auth-service';
 
@@ -132,6 +132,16 @@ async function isCurrentUserAdmin(): Promise<boolean> {
         if (!currentUser || currentUser.roleId == null) return false;
 
         const adapter = await ensureDatabaseAdapter();
+        try {
+            const roles = await adapter.getRoles();
+            if (Array.isArray(roles) && roles.length > 0) {
+                const role = roles.find((r: any) => Number(r?.id) === Number(currentUser.roleId));
+                return String(role?.name || '').trim().toLowerCase() === 'administrator';
+            }
+        } catch (e) {
+            console.error('[isCurrentUserAdmin] Error reading roles from table:', e);
+        }
+
         const rolesData = await adapter.getSetting('roles');
         if (!rolesData) return false;
 
@@ -303,55 +313,100 @@ async function ensureDatabaseAdapter(): Promise<DatabaseAdapter> {
 
 // Ensure Admin-Rolle and Admin-Person exist
 async function ensureAdminRoleAndUser(adapter: DatabaseAdapter): Promise<void> {
-    try {
-        // 1. Prüfe ob Admin-Rolle existiert
-        const rolesData = await adapter.getSetting('roles');
-        let roles = [];
-        let adminRole = null;
+    const mapLegacyRoleToRow = (role: any) => ({
+        id: role.id || null,
+        name: role.name,
+        description: role.description || '',
+        canEditPersonnel: role.permissions?.personal === 'write' ? 1 : 0,
+        canEditVehicles: role.permissions?.fahrzeuge === 'write' ? 1 : 0,
+        canEditSettings: role.permissions?.einstellungen === 'write' ? 1 : 0,
+        canEditRoster: role.permissions?.einteilung === 'write' || role.permissions?.dienstplan === 'write' ? 1 : 0,
+        canViewReports: ['read', 'read_all', 'write'].includes(role.permissions?.werte) ? 1 : 0,
+        canExportData: role.permissions?.werte === 'write' ? 1 : 0,
+        canManageUsers: role.permissions?.personal === 'write' || role.permissions?.einstellungen === 'write' ? 1 : 0,
+        sort: role.sort || role.id || 0
+    });
 
-        if (rolesData) {
-            try {
-                roles = JSON.parse(rolesData);
-                adminRole = roles.find((r: any) => r.name === 'Administrator');
-            } catch (e) {
-                console.error('[ensureAdminRoleAndUser] Error parsing roles:', e);
+    const getRolesFromSettings = async () => {
+        const settingsValue = await adapter.getSetting('roles');
+        if (!settingsValue) return [];
+        try {
+            const parsed = JSON.parse(settingsValue);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+            console.error('[ensureAdminRoleAndUser] Error parsing roles:', e);
+            return [];
+        }
+    };
+
+    const getAdminRole = (roles: any[]) => roles.find((r: any) => String(r?.name).trim().toLowerCase() === 'administrator');
+
+    try {
+        let rolesFromTable: any[] = [];
+        try {
+            rolesFromTable = await adapter.getRoles();
+        } catch (e) {
+            console.error('[ensureAdminRoleAndUser] Error reading roles from table:', e);
+            rolesFromTable = [];
+        }
+
+        if (!Array.isArray(rolesFromTable) || rolesFromTable.length === 0) {
+            const legacyRoles = await getRolesFromSettings();
+            if (legacyRoles.length > 0) {
+                for (const legacyRole of legacyRoles) {
+                    await adapter.addRole(mapLegacyRoleToRow(legacyRole));
+                }
+                rolesFromTable = await adapter.getRoles();
             }
         }
 
-        // 2. Erstelle Admin-Rolle falls nicht vorhanden
+        let adminRole = getAdminRole(rolesFromTable);
+
         if (!adminRole) {
-            const adminRoleId = roles.length > 0 ? Math.max(...roles.map((r: any) => r.id)) + 1 : 1;
-            adminRole = {
-                id: adminRoleId,
+            const legacyRoles = await getRolesFromSettings();
+            if (legacyRoles.length > 0) {
+                for (const legacyRole of legacyRoles) {
+                    await adapter.addRole(mapLegacyRoleToRow(legacyRole));
+                }
+                rolesFromTable = await adapter.getRoles();
+                adminRole = getAdminRole(rolesFromTable);
+            }
+        }
+
+        if (!adminRole) {
+            const newAdminRole = {
+                id: null,
                 name: 'Administrator',
                 description: 'Volle Rechte für alle Bereiche',
-                permissions: {
-                    einteilung: 'write',
-                    dienstplan: 'write',
-                    werte: 'write',
-                    personal: 'write',
-                    fahrzeuge: 'write',
-                    einstellungen: 'write'
-                }
+                canEditPersonnel: 1,
+                canEditVehicles: 1,
+                canEditSettings: 1,
+                canEditRoster: 1,
+                canViewReports: 1,
+                canExportData: 1,
+                canManageUsers: 1,
+                sort: 1
             };
-            roles.push(adminRole);
-            await adapter.setSetting('roles', JSON.stringify(roles));
+            await adapter.addRole(newAdminRole);
+            rolesFromTable = await adapter.getRoles();
+            adminRole = getAdminRole(rolesFromTable) || rolesFromTable[0];
             console.log('[ensureAdminRoleAndUser] ✓ Admin-Rolle erstellt');
         }
 
-        // 3. Prüfe ob bereits ein Benutzer mit Administrator-Rechten existiert
+        if (!adminRole) {
+            throw new Error('Admin role could not be created or found');
+        }
+
         const allPersonnel = await adapter.getPersonnel();
-        const hasAdminUser = allPersonnel.some((p: any) => p.roleId && p.roleId === adminRole.id);
+        const hasAdminUser = allPersonnel.some((p: any) => p.roleId && Number(p.roleId) === Number(adminRole.id));
 
         if (hasAdminUser) {
             console.log('[ensureAdminRoleAndUser] ✓ Administrator-Benutzer bereits vorhanden');
             return;
         }
 
-        // 4. Prüfe ob Admin-Person mit Personalnummer 'admin' existiert
         const adminPerson = allPersonnel.find((p: any) => p.personnelNumber === 'admin');
 
-        // 5. Erstelle Admin-Person nur wenn kein Admin-Benutzer existiert
         if (!adminPerson) {
             await adapter.addPersonnel({
                 name: 'Administrator',
@@ -367,8 +422,7 @@ async function ensureAdminRoleAndUser(adapter: DatabaseAdapter): Promise<void> {
                 roleId: adminRole.id
             });
             console.log('[ensureAdminRoleAndUser] ✓ Admin-Person erstellt (Personalnummer: admin)');
-        } else if (!adminPerson.roleId || adminPerson.roleId !== adminRole.id) {
-            // Admin-Person hat keine oder falsche Rolle - aktualisieren
+        } else if (!adminPerson.roleId || Number(adminPerson.roleId) !== Number(adminRole.id)) {
             await adapter.updatePersonnel({
                 ...adminPerson,
                 roleId: adminRole.id
@@ -573,6 +627,30 @@ ipcMain.handle('auth-check-permission', async (_event, area: string, level: 'rea
 ipcMain.handle('get-setting', async (_event, key: string) => {
     const adapter = await ensureDatabaseAdapter();
     return await adapter.getSetting(key);
+});
+
+ipcMain.handle('get-roles', async () => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getRoles();
+});
+
+ipcMain.handle('save-roles', async (_event, roles: any[]) => {
+    const auth = getAuthService();
+    auth.requirePermission('einstellungen', 'write');
+
+    const adapter = await ensureDatabaseAdapter();
+    const savedRoles = await adapter.saveRoles(roles);
+
+    try {
+        await adapter.setSetting('roles', JSON.stringify(roles));
+        await auth.refreshCurrentSession();
+        await applyRoleBasedMenuVisibility();
+        BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch { } });
+    } catch (e) {
+        console.warn('[Main] Warning: Could not update legacy roles setting after saving roles:', e);
+    }
+
+    return savedRoles;
 });
 
 ipcMain.handle('set-setting', async (_event, key: string, value: string) => {
@@ -876,9 +954,9 @@ ipcMain.handle('assign-slot', async (_event, entry: { personId: number, personTy
 });
 
 // Azubi handlers
-ipcMain.handle('get-azubi-list', async () => {
+ipcMain.handle('get-azubi-list', async (_event, department?: string) => {
     const adapter = await ensureDatabaseAdapter();
-    return await adapter.getAzubiList();
+    return await adapter.getAzubiList(department);
 });
 
 ipcMain.handle('add-azubi', async (_event, azubi: any) => {
@@ -1097,12 +1175,12 @@ ipcMain.handle('delete-shift-transfer', async (_event, id: number) => {
     return true;
 });
 
-ipcMain.handle('get-year-planning-for-year', async (_event, year: number) => {
+ipcMain.handle('get-year-planning-for-year', async (_event, year: number, department?: string) => {
     const adapter = await ensureDatabaseAdapter();
-    return await adapter.getYearPlanningForYear(year);
+    return await adapter.getYearPlanningForYear(year, department);
 });
 
-ipcMain.handle('save-year-plannings', async (_event, plannings: { year: number; filePath: string }[]) => {
+ipcMain.handle('save-year-plannings', async (_event, plannings: { year: number; filePath: string; department?: string }[]) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.saveYearPlannings(plannings);
     return true;
@@ -1455,10 +1533,10 @@ ipcMain.handle('delete-holiday', async (_event, date: string) => {
 });
 
 // Pattern handlers
-ipcMain.handle('get-itw-patterns', async () => {
+ipcMain.handle('get-itw-patterns', async (_event, department?: string) => {
     const dbManager = getDatabaseManager();
     const adapter = await dbManager.getItwAdapter();
-    return await adapter.getItwPatterns();
+    return await adapter.getItwPatterns(department);
 });
 
 ipcMain.handle('set-itw-patterns', async (_event, patterns: any[]) => {
@@ -1678,6 +1756,16 @@ ipcMain.handle('restore-backup', async (_event, backupDir: string) => {
         app.relaunch();
         app.exit(0);
         return { success: true };
+    } catch (e: any) {
+        return { success: false, message: e?.message || String(e) };
+    }
+});
+
+// Import selected tables from a backup DB into current DB (merge, not full restore)
+ipcMain.handle('import-backup', async (_event, backupDbPath: string, options?: { personnel?: boolean; azubis?: boolean; assignments?: boolean; qualifications?: boolean; individualSettings?: boolean; dutyRoster?: boolean; replaceExisting?: boolean }) => {
+    try {
+        const res = await importFromBackup(backupDbPath, options);
+        return { success: true, result: res };
     } catch (e: any) {
         return { success: false, message: e?.message || String(e) };
     }

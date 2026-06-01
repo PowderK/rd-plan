@@ -15,6 +15,8 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
   });
   const [year, setYear] = useState<number>((window as any).rdPlanYear || new Date().getFullYear());
   const [personnel, setPersonnel] = useState<any[]>([]);
+  /** Alle Personen der Abteilung (ohne Monatsfilter) – für Namensauflösung in der Einteilung. */
+  const [personnelLookup, setPersonnelLookup] = useState<{ id: number; name: string; vorname?: string }[]>([]);
   const [azubis, setAzubis] = useState<any[]>([]);
   const [roster, setRoster] = useState<RosterState>({});
   const [deptPatternSeqs, setDeptPatternSeqs] = useState<{ startDate: string; pattern: string[] }[]>([]);
@@ -48,6 +50,16 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
       // Pass current year/month to filter personnel by active periods
       const filterDate = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`;
       const rawList = await (window as any).api.getPersonnelList(false, filterDate, departmentName);
+      try {
+        const deptWide = await (window as any).api.getPersonnelList(false, undefined, departmentName);
+        setPersonnelLookup((deptWide || []).map((p: any) => ({
+          id: Number(p.id),
+          name: String(p.name || ''),
+          vorname: p.vorname ? String(p.vorname) : undefined
+        })));
+      } catch {
+        setPersonnelLookup([]);
+      }
       const allQualPeriods = await (window as any).api.getAllQualificationPeriods?.();
 
       // Filtere Personal: Nur Personen MIT Rettungsdienst-Qualifikation
@@ -211,7 +223,7 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
 
       setPersonnel(enrichedList);
     } catch { }
-    try { const a = await (window as any).api.getAzubiList(); setAzubis(a || []); } catch { }
+    try { const a = await (window as any).api.getAzubiList(departmentName); setAzubis(a || []); } catch { }
     try {
       const seqs = await (window as any).api.getDeptPatterns?.();
       const norm = (arr: string[], len = 21) => (arr || [])
@@ -309,6 +321,8 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
           currentMonth={currentMonth}
           onMonthChange={handleMonthChange}
           onYearChange={handleYearChange}
+          departmentName={departmentName}
+          personnelLookup={personnelLookup}
           personnel={personnel}
           azubis={azubis}
           roster={roster}

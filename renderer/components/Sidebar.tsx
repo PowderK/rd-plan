@@ -25,7 +25,7 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 	const { hasPermission, logout, isDevMode, currentUser } = useAuth();
 	const [isAdminRole, setIsAdminRole] = useState(false);
 	const [itwFeatureEnabled, setItwFeatureEnabled] = useState(false);
-	const [selectedDept, setSelectedDept] = useState<string>('all');
+	const [selectedDept, setSelectedDept] = useState<string>('');
 	const [departments, setDepartments] = useState<string[]>([]);
 
 	useEffect(() => {
@@ -46,43 +46,62 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 					return;
 				}
 
-				const rolesRaw = await (window as any).api?.getSetting?.('roles');
-				if (!rolesRaw) {
+					let roles: any[] = [];
+					try {
+						const fetchedRoles = await (window as any).api?.getRoles?.();
+						if (Array.isArray(fetchedRoles) && fetchedRoles.length > 0) {
+							roles = fetchedRoles;
+						}
+					} catch {
+					}
+
+					if (roles.length === 0) {
+						const rolesRaw = await (window as any).api?.getSetting?.('roles');
+						if (rolesRaw) {
+							const parsed = JSON.parse(String(rolesRaw));
+							if (Array.isArray(parsed)) roles = parsed;
+						}
+					}
+
+					if (roles.length === 0) {
+						if (!cancelled) setIsAdminRole(false);
+						return;
+					}
+
+					const role = roles.find((r: any) => Number(r?.id) === Number(currentUser.roleId));
+					const isAdmin = String(role?.name || '').trim().toLowerCase() === 'administrator';
+					if (!cancelled) setIsAdminRole(isAdmin);
+
+					if (isAdmin) {
+						const adminDept = await (window as any).api?.getSetting?.('admin_selected_department');
+						const currentDepts = await (window as any).api?.getUniqueDepartments?.();
+						if (!cancelled) {
+							if (adminDept && currentDepts.includes(adminDept)) {
+								setSelectedDept(adminDept);
+							} else if (currentDepts.length > 0) {
+								setSelectedDept(currentDepts[0]);
+								await (window as any).api?.setSetting?.('admin_selected_department', currentDepts[0]);
+							}
+						}
+					}
+				} catch {
 					if (!cancelled) setIsAdminRole(false);
-					return;
 				}
-
-				const roles = JSON.parse(String(rolesRaw));
-				const role = Array.isArray(roles)
-					? roles.find((r: any) => Number(r?.id) === Number(currentUser.roleId))
-					: null;
-
-				const isAdmin = String(role?.name || '').trim().toLowerCase() === 'administrator';
-				if (!cancelled) setIsAdminRole(isAdmin);
-				
-				if (isAdmin) {
-					const adminDept = await (window as any).api?.getSetting?.('admin_selected_department');
-					if (!cancelled) setSelectedDept(adminDept || 'all');
-				}
-			} catch {
-				if (!cancelled) setIsAdminRole(false);
-			}
-		};
-
-		resolveAdminRole();
-		
-		const loadItwSetting = async () => {
-			try {
-				const val = await (window as any).api?.getSetting?.('itw');
-				setItwFeatureEnabled(val === 'true' || val === '1');
-			} catch {}
-		};
-		loadItwSetting();
-		
-		const onSettingsUpdated = () => {
+			};
 			resolveAdminRole();
+			
+			const loadItwSetting = async () => {
+				try {
+					const val = await (window as any).api?.getSetting?.('itw');
+					setItwFeatureEnabled(val === 'true' || val === '1');
+				} catch {}
+			};
 			loadItwSetting();
-		};
+
+			const onSettingsUpdated = () => {
+				resolveAdminRole();
+				loadItwSetting();
+			};
 		(window as any).api?.onSettingsUpdated?.(onSettingsUpdated);
 
 		return () => { 
@@ -229,7 +248,6 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 								outline: 'none'
 							}}
 						>
-							<option value="all">Alle Abteilungen</option>
 							{departments.map(d => (
 								<option key={d} value={d}>{d}</option>
 							))}

@@ -1,4 +1,18 @@
 
+/** Baut Monats-Aktivierungs-Map aus API-Zeilen (vehicleId, month, enabled). */
+export function buildVehicleActivationMap(rows: unknown): Record<number, boolean[]> {
+    const map: Record<number, boolean[]> = {};
+    (Array.isArray(rows) ? rows : []).forEach((row: any) => {
+        const vid = Number(row?.vehicleId);
+        const m = Number(row?.month);
+        if (!Number.isFinite(vid) || !Number.isFinite(m) || m < 1 || m > 12) return;
+        const arr = Array.isArray(map[vid]) ? map[vid].slice() : Array(12).fill(true);
+        arr[m - 1] = !!row.enabled;
+        map[vid] = arr;
+    });
+    return map;
+}
+
 export function computeDeptShiftsPerMonth(year: number, department: number, seqs: { startDate: string; pattern: string[] }[]) {
     const counts: number[] = Array(12).fill(0);
     for (let m = 0; m < 12; m++) {
@@ -242,7 +256,16 @@ export function calculateTargets(
 
     // 6. Hamilton Allocation
     const targetsById: Record<number, number[]> = {};
-    personnel.forEach(p => targetsById[p.id] = Array(12).fill(0));
+    const ensureTargetRow = (personId: number) => {
+        if (!Number.isFinite(personId)) return;
+        if (!targetsById[personId]) targetsById[personId] = Array(12).fill(0);
+    };
+    personnel.forEach(p => ensureTargetRow(p.id));
+    // Schichtübernahmen können Personen betreffen, die (noch) nicht in der gefilterten personnel-Liste stehen
+    for (const t of shiftTransfers) {
+        if (t.to_person_id) ensureTargetRow(Number(t.to_person_id));
+        if (t.from_person_id) ensureTargetRow(Number(t.from_person_id));
+    }
 
     // Gruppierung der Übernahmen pro Monat für Hamilton-Integration
     const transfersByMonth: Record<number, ShiftTransfer[]> = {};
@@ -319,6 +342,7 @@ export function calculateTargets(
         }
 
         for (const f of floors) {
+            ensureTargetRow(f.id);
             targetsById[f.id][m] = f.v;
         }
     }

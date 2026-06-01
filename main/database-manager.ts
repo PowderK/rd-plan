@@ -30,9 +30,9 @@ export interface DatabaseAdapter {
   setDutyRosterEntry(entry: any): Promise<{ success: boolean; warning?: string; vehicleAssignment?: string; }>;
   bulkSetDutyRosterEntries(entries: any[]): Promise<number>;
   bulkImportDutyRosterEntries(entries: any[], respectManualEdits?: boolean, deleteEmpty?: boolean): Promise<{ imported: number; skipped: number; }>;
-  deleteOrphanedDutyRosterEntries(year: number, monthRange: { start: number; end: number } | number | undefined, seenPersonIds: string[]): Promise<any>;
+  deleteOrphanedDutyRosterEntries(year: number, monthRange: { start: number; end: number } | number | undefined, seenPersonIds: string[], department?: string): Promise<any>;
 
-  getAzubiList(): Promise<any[]>;
+  getAzubiList(department?: string): Promise<any[]>;
   getAzubi(id: number): Promise<any | null>;
   addAzubi(azubi: any): Promise<any>;
   updateAzubi(azubi: any): Promise<void>;
@@ -143,6 +143,9 @@ export interface DatabaseAdapter {
 
   getSetting(key: string): Promise<string | null>;
   setSetting(key: string, value: string): Promise<void>;
+  getRoles(): Promise<any[]>;
+  addRole(role: any): Promise<void>;
+  saveRoles(roles: any[]): Promise<any[]>;
 
   getShiftTypes(): Promise<any[]>;
   addShiftType(type: any): Promise<void>;
@@ -172,9 +175,9 @@ export interface DatabaseAdapter {
   setDeptPatterns(patterns: any[]): Promise<void>;
 
   // Year Plannings
-  getYearPlannings(): Promise<{ year: number; filePath: string }[]>;
-  getYearPlanningForYear(year: number): Promise<{ year: number; filePath: string } | undefined>;
-  saveYearPlannings(plannings: { year: number; filePath: string }[]): Promise<void>;
+  getYearPlannings(): Promise<{ year: number; filePath: string; department?: string }[]>;
+  getYearPlanningForYear(year: number, department?: string): Promise<{ year: number; filePath: string; department?: string } | undefined>;
+  saveYearPlannings(plannings: { year: number; filePath: string; department?: string }[]): Promise<void>;
   deleteYearPlanning(year: number): Promise<void>;
 
   // Shift Transfers (Issue #21)
@@ -196,7 +199,7 @@ export interface DatabaseAdapter {
   cleanupAuditLogs(): Promise<void>;
 
   // ITW Planning
-  getItwPatterns(): Promise<any[]>;
+  getItwPatterns(department?: string): Promise<any[]>;
   setItwPatterns(patterns: any[]): Promise<void>;
   generateItwPlanningsForYear(year: number, holidayDates?: string[]): Promise<void>;
   getItwPhaseAssignments(startDate?: string): Promise<any[]>;
@@ -266,14 +269,14 @@ class SQLiteAdapter implements DatabaseAdapter {
     return bulkImportDutyRosterEntries(this.db, entries, respectManualEdits, deleteEmpty);
   }
 
-  async deleteOrphanedDutyRosterEntries(year: number, monthRange: { start: number; end: number } | number | undefined, seenPersonIds: string[]) {
+  async deleteOrphanedDutyRosterEntries(year: number, monthRange: { start: number; end: number } | number | undefined, seenPersonIds: string[], department?: string) {
     const { deleteOrphanedDutyRosterEntries } = await import('./database');
-    return deleteOrphanedDutyRosterEntries(this.db, year, monthRange, seenPersonIds);
+    return deleteOrphanedDutyRosterEntries(this.db, year, monthRange, seenPersonIds, department);
   }
 
-  async getAzubiList() {
+  async getAzubiList(department?: string) {
     const { getAzubiList } = await import('./database');
-    return getAzubiList(this.db);
+    return getAzubiList(this.db, department);
   }
 
   async getAzubi(id: number) {
@@ -744,6 +747,117 @@ class SQLiteAdapter implements DatabaseAdapter {
     return setSetting(this.db, key, value);
   }
 
+  async getRoles() {
+    const rows = await this.db.all('SELECT id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort FROM roles ORDER BY sort ASC, id ASC');
+    return rows;
+  }
+
+  async addRole(role: any) {
+    await this.db.run(
+      `INSERT OR IGNORE INTO roles (id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        role.id || null,
+        role.name,
+        role.description || '',
+        role.canEditPersonnel ? 1 : 0,
+        role.canEditVehicles ? 1 : 0,
+        role.canEditSettings ? 1 : 0,
+        role.canEditRoster ? 1 : 0,
+        role.canViewReports ? 1 : 0,
+        role.canExportData ? 1 : 0,
+        role.canManageUsers ? 1 : 0,
+        role.sort || 0
+      ]
+    );
+  }
+
+  async saveRoles(roles: any[]) {
+    const existingRoles = await this.db.all('SELECT id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort FROM roles');
+    const existingById = new Map<number, any>(existingRoles.map((r: any) => [Number(r.id), r]));
+    const existingByName = new Map<string, any>(existingRoles.map((r: any) => [String(r.name || ''), r]));
+    const keptIds: number[] = [];
+
+    await this.db.exec('BEGIN TRANSACTION');
+    try {
+      for (let index = 0; index < roles.length; index++) {
+        const role = roles[index];
+        if (!role || !role.name || typeof role.name !== 'string') {
+          continue;
+        }
+
+        const roleId = typeof role.id === 'number' ? role.id : Number(role.id);
+        const existingByIdRow = (roleId > 0 && existingById.has(roleId)) ? existingById.get(roleId) : null;
+        const existingByNameRow = existingByIdRow ? null : existingByName.get(role.name);
+        const existingRow = existingByIdRow || existingByNameRow;
+
+        const canEditPersonnel = role.permissions?.personal === 'write' ? 1 : 0;
+        const canEditVehicles = role.permissions?.fahrzeuge === 'write' ? 1 : 0;
+        const canEditSettings = role.permissions?.einstellungen === 'write' ? 1 : 0;
+        const canEditRoster = role.permissions?.einteilung === 'write' || role.permissions?.dienstplan === 'write' ? 1 : 0;
+        const canViewReports = role.permissions?.werte === 'read' || role.permissions?.werte === 'read_all' ? 1 : 0;
+        const canExportData = role.permissions?.werte === 'read_all' ? 1 : 0;
+        const canManageUsers = existingRow ? existingRow.canManageUsers : 0;
+        const sort = typeof role.sort === 'number' ? role.sort : index;
+
+        if (existingRow) {
+          await this.db.run(
+            `UPDATE roles SET name = ?, description = ?, canEditPersonnel = ?, canEditVehicles = ?, canEditSettings = ?, canEditRoster = ?, canViewReports = ?, canExportData = ?, canManageUsers = ?, sort = ? WHERE id = ?`,
+            [
+              role.name,
+              role.description || '',
+              canEditPersonnel,
+              canEditVehicles,
+              canEditSettings,
+              canEditRoster,
+              canViewReports,
+              canExportData,
+              canManageUsers,
+              sort,
+              existingRow.id
+            ]
+          );
+          keptIds.push(existingRow.id);
+        } else {
+          const result = await this.db.run(
+            `INSERT INTO roles (name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              role.name,
+              role.description || '',
+              canEditPersonnel,
+              canEditVehicles,
+              canEditSettings,
+              canEditRoster,
+              canViewReports,
+              canExportData,
+              canManageUsers,
+              sort
+            ]
+          );
+          const insertedId = result?.lastID;
+          if (insertedId) {
+            keptIds.push(insertedId);
+          }
+        }
+      }
+
+      if (keptIds.length > 0) {
+        const placeholders = keptIds.map(() => '?').join(',');
+        await this.db.run(`DELETE FROM roles WHERE id NOT IN (${placeholders})`, keptIds);
+      } else {
+        await this.db.run('DELETE FROM roles');
+      }
+
+      await this.db.exec('COMMIT');
+    } catch (err) {
+      await this.db.exec('ROLLBACK');
+      throw err;
+    }
+
+    return this.getRoles();
+  }
+
   async getShiftTypes() {
     const { getShiftTypes } = await import('./database');
     return getShiftTypes(this.db);
@@ -848,12 +962,12 @@ class SQLiteAdapter implements DatabaseAdapter {
     return getYearPlannings(this.db);
   }
 
-  async getYearPlanningForYear(year: number) {
+  async getYearPlanningForYear(year: number, department?: string) {
     const { getYearPlanningForYear } = await import('./database');
-    return getYearPlanningForYear(this.db, year);
+    return getYearPlanningForYear(this.db, year, department);
   }
 
-  async saveYearPlannings(plannings: { year: number; filePath: string }[]) {
+  async saveYearPlannings(plannings: { year: number; filePath: string; department?: string }[]) {
     const { saveYearPlannings } = await import('./database');
     return saveYearPlannings(this.db, plannings);
   }
@@ -927,9 +1041,9 @@ class SQLiteAdapter implements DatabaseAdapter {
   }
 
   // ITW Planning
-  async getItwPatterns() {
+  async getItwPatterns(department?: string) {
     const { getItwPatterns } = await import('./database');
-    return getItwPatterns(this.db);
+    return getItwPatterns(this.db, department);
   }
 
   async setItwPatterns(patterns: any[]) {
@@ -972,6 +1086,12 @@ class SQLiteAdapter implements DatabaseAdapter {
     return getUniqueDepartments(this.db);
   }
 
+  async rerunAzubiDepartmentMigration() {
+    const { migrateAzubisDepartmentScope } = await import('./database');
+    await this.db.run("DELETE FROM settings WHERE key = 'migration_azubi_department_scope_v1'");
+    return migrateAzubisDepartmentScope(this.db);
+  }
+
   async close() {
     // SQLite database is closed automatically
   }
@@ -990,9 +1110,9 @@ class ItwPlanningAdapter {
     return setItwPatterns(this.db, patterns);
   }
 
-  async generateItwPlanningsForYear(year: number) {
+  async generateItwPlanningsForYear(year: number, holidayDates: string[] = []) {
     const { generateItwPlanningsForYear } = await import('./database');
-    return generateItwPlanningsForYear(this.db, year);
+    return generateItwPlanningsForYear(this.db, year, holidayDates);
   }
 
   async getItwPhaseAssignments(startDate?: string) {
@@ -1259,7 +1379,27 @@ export class DatabaseManager {
       }
     }
 
-    const db = await this.initializeSQLiteWithPath(dbPath);
+    let db: AsyncDB;
+    try {
+      db = await this.initializeSQLiteWithPath(dbPath);
+    } catch (error: any) {
+      console.error('[DatabaseManager] Initial SQLite open failed:', error?.message || error, 'path:', dbPath);
+      const fallbackDbDir = path.join(app.getPath('userData'), 'DB');
+      const fallbackDbPath = path.join(fallbackDbDir, 'rd-plan.db');
+      if (fallbackDbPath !== dbPath) {
+        try { fs.mkdirSync(fallbackDbDir, { recursive: true }); } catch { }
+        try { fs.accessSync(fallbackDbDir, fs.constants.W_OK); } catch (innerError) {
+          console.error('[DatabaseManager] Fallback directory not writable:', fallbackDbDir, String((innerError as any)?.message || innerError));
+          throw error;
+        }
+        console.log('[DatabaseManager] Falling back to userData SQLite database at:', fallbackDbPath);
+        db = await this.initializeSQLiteWithPath(fallbackDbPath);
+        dbPath = fallbackDbPath;
+      } else {
+        throw error;
+      }
+    }
+
     this.currentDbPath = dbPath;
     // Collect diagnostics
     try {
@@ -1295,7 +1435,23 @@ export class DatabaseManager {
   private async initializeSQLiteWithPath(dbPath: string): Promise<AsyncDB> {
     // Import BetterSqlite3 dynamically to create a custom AsyncDB with specific path
     const BetterSqlite3 = (await import('better-sqlite3')).default;
-    const raw = new BetterSqlite3(dbPath);
+    try {
+      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    } catch {
+      // ignore directory creation errors; better-sqlite3 will report actual failure
+    }
+
+    const fileExists = fs.existsSync(dbPath);
+    if (fileExists) {
+      try {
+        fs.accessSync(dbPath, fs.constants.R_OK | fs.constants.W_OK);
+      } catch (accessError) {
+        console.error('[DatabaseManager] SQLite file exists but cannot be accessed:', dbPath, String((accessError as any)?.code || (accessError as any)?.message || accessError));
+        throw accessError;
+      }
+    }
+
+    const raw = new BetterSqlite3(dbPath, { fileMustExist: fileExists });
 
     const db: AsyncDB = {
       exec: async (sql: string) => { raw.exec(sql); },
@@ -1332,6 +1488,48 @@ export class DatabaseManager {
   }
 
   private async runMigrations(db: AsyncDB) {
+    // Migration: add 'department' column to itw_patterns if missing
+    try {
+        const itwPatternsCols = await db.all("PRAGMA table_info('itw_patterns')");
+        if (itwPatternsCols.length > 0 && !itwPatternsCols.some((c: any) => c.name === 'department')) {
+            console.log('[DatabaseManager] Migrating itw_patterns: Adding department column');
+            await db.exec("ALTER TABLE itw_patterns RENAME TO itw_patterns_old");
+            await db.exec(`
+                CREATE TABLE itw_patterns (
+                    start_date TEXT,
+                    department TEXT NOT NULL DEFAULT '1. Abteilung',
+                    pattern TEXT NOT NULL,
+                    PRIMARY KEY (start_date, department)
+                )
+            `);
+            await db.exec("INSERT INTO itw_patterns (start_date, pattern) SELECT start_date, pattern FROM itw_patterns_old");
+            await db.exec("DROP TABLE itw_patterns_old");
+        }
+    } catch (e) {
+        console.error('[DatabaseManager] Error migrating itw_patterns:', e);
+    }
+
+    // Migration: add 'department' column to year_plannings if missing
+    try {
+        const ypCols = await db.all("PRAGMA table_info('year_plannings')");
+        if (ypCols.length > 0 && !ypCols.some((c: any) => c.name === 'department')) {
+            console.log('[DatabaseManager] Migrating year_plannings: Adding department column');
+            await db.exec("ALTER TABLE year_plannings RENAME TO year_plannings_old");
+            await db.exec(`
+                CREATE TABLE year_plannings (
+                    year INTEGER NOT NULL,
+                    filePath TEXT NOT NULL,
+                    department TEXT NOT NULL DEFAULT '1. Abteilung',
+                    PRIMARY KEY (year, department)
+                )
+            `);
+            await db.exec("INSERT INTO year_plannings (year, filePath) SELECT year, filePath FROM year_plannings_old");
+            await db.exec("DROP TABLE year_plannings_old");
+        }
+    } catch (e) {
+        console.error('[DatabaseManager] Error migrating year_plannings:', e);
+    }
+
     // Migration: add 'lehrjahr' column to azubi_periods if missing
     const azubiPeriodsCols = await db.all("PRAGMA table_info('azubi_periods')");
     if (!azubiPeriodsCols.some((c: any) => c.name === 'lehrjahr')) {
@@ -1452,17 +1650,56 @@ export class DatabaseManager {
         console.log('[DatabaseManager] Added feature_shift_transfers setting');
       }
     } else {
-      // Migration: Convert valid_from to YYYY-MM format and remove valid_until
+      // Migration: ensure 'month' column exists and convert old valid_from/valid_until rows if necessary
       const columns = await db.all("PRAGMA table_info(shift_transfers)");
+      const hasMonth = columns.some((col: any) => col.name === 'month');
+      const hasValidFrom = columns.some((col: any) => col.name === 'valid_from');
       const hasValidUntil = columns.some((col: any) => col.name === 'valid_until');
 
-      if (hasValidUntil) {
+      if (!hasMonth) {
+        if (hasValidFrom) {
+          console.log('[DatabaseManager] Migrating shift_transfers to single-month format');
+
+          const existingTransfers = await db.all("SELECT * FROM shift_transfers");
+          await db.exec("DROP TABLE shift_transfers");
+          await db.exec(`
+            CREATE TABLE shift_transfers (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              from_person_id INTEGER NOT NULL,
+              to_person_id INTEGER NOT NULL,
+              shift_count REAL NOT NULL,
+              position_type TEXT NOT NULL,
+              month TEXT NOT NULL,
+              reason TEXT,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(from_person_id) REFERENCES personnel(id) ON DELETE CASCADE,
+              FOREIGN KEY(to_person_id) REFERENCES personnel(id) ON DELETE CASCADE
+            )
+          `);
+          await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_from ON shift_transfers(from_person_id)`);
+          await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_to ON shift_transfers(to_person_id)`);
+          await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_month ON shift_transfers(month)`);
+
+          for (const transfer of existingTransfers) {
+            const month = transfer.valid_from ? String(transfer.valid_from).substring(0, 7) : '';
+            await db.run(
+              `INSERT INTO shift_transfers (id, from_person_id, to_person_id, shift_count, position_type, month, reason, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [transfer.id, transfer.from_person_id, transfer.to_person_id, transfer.shift_count,
+              transfer.position_type, month, transfer.reason, transfer.created_at]
+            );
+          }
+
+          console.log(`[DatabaseManager] Migrated ${existingTransfers.length} shift transfers to single-month format`);
+        } else {
+          console.log('[DatabaseManager] Adding missing month column to shift_transfers');
+          await db.exec("ALTER TABLE shift_transfers ADD COLUMN month TEXT DEFAULT ''");
+          await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_month ON shift_transfers(month)`);
+        }
+      } else if (hasValidUntil) {
         console.log('[DatabaseManager] Migrating shift_transfers to single-month format');
 
-        // Get existing data
         const existingTransfers = await db.all("SELECT * FROM shift_transfers");
-
-        // Drop and recreate table with new schema
         await db.exec("DROP TABLE shift_transfers");
         await db.exec(`
           CREATE TABLE shift_transfers (
@@ -1482,9 +1719,8 @@ export class DatabaseManager {
         await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_to ON shift_transfers(to_person_id)`);
         await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_month ON shift_transfers(month)`);
 
-        // Migrate existing data: convert YYYY-MM-DD to YYYY-MM
         for (const transfer of existingTransfers) {
-          const month = transfer.valid_from.substring(0, 7); // Extract YYYY-MM
+          const month = transfer.valid_from ? String(transfer.valid_from).substring(0, 7) : '';
           await db.run(
             `INSERT INTO shift_transfers (id, from_person_id, to_person_id, shift_count, position_type, month, reason, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -1502,6 +1738,62 @@ export class DatabaseManager {
     if (!dutyRosterCols.some((c: any) => c.name === 'department')) {
       console.log('[DatabaseManager] Adding department to duty_roster');
       await db.exec("ALTER TABLE duty_roster ADD COLUMN department TEXT NOT NULL DEFAULT '1. Abteilung'");
+    }
+
+    const azubiColsMgr = await db.all("PRAGMA table_info('azubis')");
+    const azubiDeptAdded = !azubiColsMgr.some((c: any) => c.name === 'department');
+    if (azubiDeptAdded) {
+      console.log('[DatabaseManager] Adding department to azubis');
+      await db.exec("ALTER TABLE azubis ADD COLUMN department TEXT NOT NULL DEFAULT '1. Abteilung'");
+    }
+
+    // UNIQUE(personId, personType, date, department) für abteilungsgetrennte Dienstpläne
+    const dutyRosterSqlRow = await db.get("SELECT sql FROM sqlite_master WHERE type='table' AND name='duty_roster'");
+    const dutyRosterSql = String(dutyRosterSqlRow?.sql || '');
+    if (dutyRosterSql && !/UNIQUE\s*\(\s*personId\s*,\s*personType\s*,\s*date\s*,\s*department\s*\)/i.test(dutyRosterSql)) {
+      console.log('[DatabaseManager] Migrating duty_roster UNIQUE constraint to include department');
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS duty_roster_dept_unique (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          personId INTEGER NOT NULL,
+          personType TEXT NOT NULL DEFAULT 'person',
+          date TEXT NOT NULL,
+          value TEXT NOT NULL,
+          type TEXT NOT NULL,
+          manual_edit INTEGER DEFAULT 0,
+          department TEXT NOT NULL DEFAULT '1. Abteilung',
+          UNIQUE(personId, personType, date, department)
+        )
+      `);
+      await db.exec(`
+        INSERT INTO duty_roster_dept_unique (personId, personType, date, value, type, manual_edit, department)
+        SELECT personId, COALESCE(personType, 'person'), date, value, type, COALESCE(manual_edit, 0), COALESCE(department, '1. Abteilung')
+        FROM duty_roster
+      `);
+      await db.exec('DROP TABLE duty_roster');
+      await db.exec('ALTER TABLE duty_roster_dept_unique RENAME TO duty_roster');
+      await db.exec(`CREATE INDEX IF NOT EXISTS idx_duty_roster_date_person ON duty_roster (date, personId, personType)`);
+      await db.exec(`CREATE INDEX IF NOT EXISTS idx_duty_roster_type ON duty_roster (type) WHERE type != ''`);
+    }
+
+    try {
+      const { migrateAzubisDepartmentScope } = await import('./database');
+      const mig = await migrateAzubisDepartmentScope(db);
+      if (!mig.skipped && (mig.updated > 0 || mig.duplicated > 0)) {
+        console.log(`[DatabaseManager] Azubi-Abteilungen zugeordnet: ${mig.updated} aktualisiert, ${mig.duplicated} pro Abteilung dupliziert`);
+      }
+    } catch (e) {
+      console.error('[DatabaseManager] Azubi-Abteilungs-Migration fehlgeschlagen:', e);
+    }
+
+    try {
+      const { migrateRosterReleasedPerDepartment } = await import('./database');
+      const releaseMig = await migrateRosterReleasedPerDepartment(db);
+      if (!releaseMig.skipped && releaseMig.migrated > 0) {
+        console.log(`[DatabaseManager] Freigabe pro Abteilung migriert: ${releaseMig.migrated} Einstellungen`);
+      }
+    } catch (e) {
+      console.error('[DatabaseManager] Freigabe-Abteilungs-Migration fehlgeschlagen:', e);
     }
 
     // Migration: add 'department' column to dept_patterns if missing
@@ -1612,7 +1904,7 @@ export class DatabaseManager {
             type TEXT NOT NULL,
             manual_edit INTEGER DEFAULT 0,
             department TEXT NOT NULL DEFAULT '1. Abteilung',
-            UNIQUE(personId, personType, date)
+            UNIQUE(personId, personType, date, department)
         );
 
         CREATE TABLE IF NOT EXISTS azubis (
@@ -1620,7 +1912,8 @@ export class DatabaseManager {
             name TEXT NOT NULL,
             vorname TEXT NOT NULL,
             lehrjahr INTEGER NOT NULL,
-            sort INTEGER NOT NULL DEFAULT 0
+            sort INTEGER NOT NULL DEFAULT 0,
+            department TEXT NOT NULL DEFAULT '1. Abteilung'
         );
         
         CREATE TABLE IF NOT EXISTS azubi_periods (
@@ -1703,6 +1996,20 @@ export class DatabaseManager {
             month INTEGER NOT NULL,
             enabled INTEGER NOT NULL DEFAULT 1,
             PRIMARY KEY(vehicleId, year, month)
+        );
+
+        CREATE TABLE IF NOT EXISTS itw_patterns (
+            start_date TEXT,
+            department TEXT NOT NULL DEFAULT '1. Abteilung',
+            pattern TEXT NOT NULL,
+            PRIMARY KEY (start_date, department)
+        );
+
+        CREATE TABLE IF NOT EXISTS year_plannings (
+            year INTEGER NOT NULL,
+            filePath TEXT NOT NULL,
+            department TEXT NOT NULL DEFAULT '1. Abteilung',
+            PRIMARY KEY (year, department)
         );
 
         CREATE TABLE IF NOT EXISTS rtw_vehicle_periods (
@@ -1964,7 +2271,7 @@ export class DatabaseManager {
     return items;
   }
 
-  async getBackupSummary(backupDir: string, year?: number, month?: number): Promise<{ personnel: number; azubis: number; dutyRoster: number }> {
+  async getBackupSummary(backupDir: string, year?: number, month?: number): Promise<{ personnel: number; azubis: number; dutyRoster: number; qualifications: number }> {
     const BetterSqlite3 = (await import('better-sqlite3')).default;
     const dbPath = path.join(backupDir, 'rd-plan.db');
     const raw = new BetterSqlite3(dbPath, { readonly: true });
@@ -1984,8 +2291,9 @@ export class DatabaseManager {
     } else {
       dutyRoster = getCount('SELECT COUNT(*) as cnt FROM duty_roster');
     }
+    const qualifications = getCount('SELECT COUNT(*) as cnt FROM qualification_periods');
     try { raw.close(); } catch { }
-    return { personnel, azubis, dutyRoster };
+    return { personnel, azubis, dutyRoster, qualifications };
   }
 
   async restoreBackup(backupDir: string): Promise<void> {
@@ -1996,6 +2304,493 @@ export class DatabaseManager {
     // Copy backup over current DB; note: active connection will still point to same file
     fs.copyFileSync(src, this.currentDbPath);
     console.log('[DatabaseManager] Backup wiederhergestellt von:', src);
+  }
+
+  /**
+   * Importiert selektiv Daten aus einer anderen rd-plan SQLite-Datenbank (z.B. Backup/ältere Version).
+   * options: { personnel, assignments, qualifications, individualSettings, dutyRoster, replaceExisting }
+   */
+  async importFromDatabase(backupDbPath: string, options: { personnel?: boolean; azubis?: boolean; assignments?: boolean; individualSettings?: boolean; qualifications?: boolean; dutyRoster?: boolean; replaceExisting?: boolean } = {}) {
+    const BetterSqlite3 = (await import('better-sqlite3')).default;
+    if (!backupDbPath || !fs.existsSync(backupDbPath)) throw new Error('Backup/DB-Datei nicht gefunden');
+    const raw = new BetterSqlite3(backupDbPath, { readonly: true });
+    const adapter = this.getAdapter();
+
+    const imported = { personnel: 0, azubis: 0, azubiPeriods: 0, assignments: 0, settings: 0, qualificationTypes: 0, qualifications: 0, dutyRoster: 0 };
+    const errors: string[] = [];
+
+    const normalizeDepartment = (deptStr: string | null | undefined): string => {
+      const dept = String(deptStr || '').trim();
+      if (!dept) return '1. Abteilung';
+      if (/^\d+$/.test(dept)) return `${dept}. Abteilung`;
+      return dept;
+    };
+
+    const getLegacySetting = (key: string): string | null => {
+      try {
+        const settingsTable = raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'").get();
+        if (!settingsTable) return null;
+        const setting = raw.prepare('SELECT value FROM settings WHERE key = ?').get(key) as any;
+        return setting ? String(setting.value || '') : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const legacyDepartment = normalizeDepartment(getLegacySetting('department') || '1. Abteilung');
+
+    // Build existing personnel lookup
+    const existingPersons = await adapter.getPersonnel();
+    const lookupByNumber = new Map<string, number>();
+    const lookupByName = new Map<string, number>();
+    for (const p of existingPersons || []) {
+      if (p.personnelNumber) lookupByNumber.set(String(p.personnelNumber), p.id);
+      const sig = `${String(p.name || '').toLowerCase()}|${String(p.vorname || '').toLowerCase()}`;
+      lookupByName.set(sig, p.id);
+    }
+
+    const idMapping = new Map<number, number>(); // oldId -> newId (personnel)
+    const azubiIdMapping = new Map<number, number>(); // oldId -> newId (azubis)
+
+    const hasTable = (tableName: string) => {
+      try {
+        return !!raw.prepare('SELECT name FROM sqlite_master WHERE type = ? AND name = ?').get('table', tableName);
+      } catch {
+        return false;
+      }
+    };
+
+    const getColumns = (tableName: string) => {
+      try {
+        return (raw.prepare(`PRAGMA table_info('${tableName}')`).all() as any[]).map((c: any) => String(c.name));
+      } catch {
+        return [];
+      }
+    };
+
+    // Begin transaction on current DB via adapter's low-level DB if possible
+    // We'll use adapter's methods for inserts
+
+    try {
+      // Personnel
+      if (options.personnel) {
+        try {
+          const rows = raw.prepare('SELECT * FROM personnel').all() as any[];
+          for (const r of rows) {
+            const oldId = Number(r.id);
+            let matchedId: number | undefined;
+            if (r.personnelNumber) matchedId = lookupByNumber.get(String(r.personnelNumber));
+            if (!matchedId) {
+              const sig = `${String(r.name || '').toLowerCase()}|${String(r.vorname || '').toLowerCase()}`;
+              matchedId = lookupByName.get(sig);
+            }
+
+            if (matchedId && !options.replaceExisting) {
+              idMapping.set(oldId, matchedId);
+              continue;
+            }
+
+            const personObj = {
+              name: r.name || '',
+              vorname: r.vorname || '',
+              active: r.active === 0 ? 0 : 1,
+              teilzeit: r.teilzeit || 0,
+              fahrzeugfuehrer: r.fahrzeugfuehrer ? 1 : 0,
+              fahrzeugfuehrerHLFB: r.fahrzeugfuehrerHLFB ? 1 : 0,
+              nef: r.nef ? 1 : 0,
+              itwMaschinist: r.itwMaschinist ? 1 : 0,
+              itwFahrzeugfuehrer: r.itwFahrzeugfuehrer ? 1 : 0,
+              sort: r.sort || 0,
+              personnelNumber: r.personnelNumber || null,
+              roleId: r.roleId || null,
+              oldRtwShifts: r.old_rtw_shifts || 0,
+              department: normalizeDepartment(r.department)
+            };
+
+            if (matchedId && options.replaceExisting) {
+              // update existing
+              try {
+                await adapter.updatePersonnel({ id: matchedId, ...personObj });
+                idMapping.set(oldId, matchedId);
+                imported.personnel++;
+              } catch (e: any) {
+                errors.push('Failed to update personnel ' + String(r.id) + ': ' + (e?.message || String(e)));
+              }
+            } else {
+              try {
+                const res = await adapter.addPersonnel(personObj as any);
+                let assignedId: number | undefined;
+                // Try to read common return shapes
+                try {
+                  assignedId = Number((res && (res as any).lastInsertRowid) || (res && (res as any).lastInsertRowid === 0 ? 0 : undefined));
+                } catch {}
+                // If adapter didn't return inserted id, try to find the inserted person by personnelNumber or name/vorname
+                if (!assignedId) {
+                  try {
+                    const all = await adapter.getPersonnel();
+                    if (personObj.personnelNumber) {
+                      const found = all.find((x: any) => String(x.personnelNumber) === String(personObj.personnelNumber));
+                      if (found) assignedId = found.id;
+                    }
+                    if (!assignedId) {
+                      const sig = `${String(personObj.name || '').toLowerCase()}|${String(personObj.vorname || '').toLowerCase()}`;
+                      const found2 = all.find((x: any) => `${String(x.name||'').toLowerCase()}|${String(x.vorname||'').toLowerCase()}` === sig);
+                      if (found2) assignedId = found2.id;
+                    }
+                  } catch (e) {
+                    // ignore lookup errors
+                  }
+                }
+                if (assignedId) idMapping.set(oldId, assignedId);
+                imported.personnel++;
+              } catch (e: any) {
+                errors.push('Failed to add personnel ' + String(r.id) + ': ' + (e?.message || String(e)));
+              }
+            }
+          }
+        } catch (e: any) {
+          errors.push('Personnel import failed: ' + (e?.message || String(e)));
+        }
+      }
+
+      // Azubis (+ Zeiträume)
+      const importAzubis = options.azubis !== false && (options.azubis === true || options.dutyRoster || options.personnel);
+      if (importAzubis && hasTable('azubis')) {
+        try {
+          const azubiCols = getColumns('azubis');
+          const existingAzubis = await adapter.getAzubiList();
+          const azubiLookup = new Map<string, number>();
+          const azubiLookupNameOnly = new Map<string, number[]>();
+
+          for (const a of existingAzubis || []) {
+            const dept = normalizeDepartment(a.department);
+            const sig = `${dept}|${String(a.name || '').toLowerCase()}|${String(a.vorname || '').toLowerCase()}`;
+            azubiLookup.set(sig, a.id);
+            const nameKey = `${dept}|${String(a.name || '').toLowerCase()}`;
+            if (!azubiLookupNameOnly.has(nameKey)) azubiLookupNameOnly.set(nameKey, []);
+            azubiLookupNameOnly.get(nameKey)!.push(a.id);
+          }
+
+          const rows = raw.prepare('SELECT * FROM azubis').all() as any[];
+          for (const r of rows) {
+            const oldId = Number(r.id);
+            const dept = azubiCols.includes('department')
+              ? normalizeDepartment(r.department || legacyDepartment)
+              : legacyDepartment;
+            const sig = `${dept}|${String(r.name || '').toLowerCase()}|${String(r.vorname || '').toLowerCase()}`;
+            let matchedId = azubiLookup.get(sig);
+
+            if (!matchedId && !String(r.vorname || '').trim()) {
+              const nameKey = `${dept}|${String(r.name || '').toLowerCase()}`;
+              const candidates = azubiLookupNameOnly.get(nameKey);
+              if (candidates?.length === 1) matchedId = candidates[0];
+            }
+
+            if (matchedId && !options.replaceExisting) {
+              azubiIdMapping.set(oldId, matchedId);
+              continue;
+            }
+
+            const azubiObj = {
+              name: String(r.name || ''),
+              vorname: String(r.vorname || ''),
+              lehrjahr: Number(r.lehrjahr) || 1,
+              department: dept
+            };
+
+            if (matchedId && options.replaceExisting) {
+              try {
+                await adapter.updateAzubi({ id: matchedId, ...azubiObj });
+                azubiIdMapping.set(oldId, matchedId);
+                imported.azubis++;
+              } catch (e: any) {
+                errors.push(`Azubi-Update fehlgeschlagen (alt ${oldId}): ${e?.message || String(e)}`);
+              }
+            } else {
+              try {
+                const newId = await adapter.addAzubi(azubiObj);
+                const assignedId = Number(newId) || undefined;
+                if (assignedId) {
+                  azubiIdMapping.set(oldId, assignedId);
+                  azubiLookup.set(sig, assignedId);
+                  imported.azubis++;
+                }
+              } catch (e: any) {
+                errors.push(`Azubi-Import fehlgeschlagen (alt ${oldId}): ${e?.message || String(e)}`);
+              }
+            }
+          }
+
+          if (hasTable('azubi_periods')) {
+            const periodRows = raw.prepare('SELECT * FROM azubi_periods').all() as any[];
+            for (const p of periodRows) {
+              const oldAzubiId = Number(p.azubi_id);
+              const newAzubiId = azubiIdMapping.get(oldAzubiId);
+              if (!newAzubiId) continue;
+              try {
+                const existing = await adapter.getAzubiPeriods(newAzubiId);
+                const start = String(p.start_date || '');
+                const end = String(p.end_date || '');
+                const duplicate = (existing || []).some((ep: any) =>
+                  String(ep.start_date) === start && String(ep.end_date) === end
+                );
+                if (duplicate) continue;
+                await adapter.addAzubiPeriod({
+                  azubi_id: newAzubiId,
+                  start_date: start,
+                  end_date: end,
+                  description: p.description || '',
+                  lehrjahr: p.lehrjahr || 1
+                });
+                imported.azubiPeriods++;
+              } catch (e: any) {
+                errors.push(`Azubi-Zeitraum Import (Azubi ${oldAzubiId}): ${e?.message || String(e)}`);
+              }
+            }
+          }
+        } catch (e: any) {
+          errors.push('Azubi-Import fehlgeschlagen: ' + (e?.message || String(e)));
+        }
+      }
+
+      // Assignments (personnel_department_periods)
+      if (options.assignments) {
+        try {
+          let rows: any[] = [];
+          if (hasTable('personnel_department_periods')) {
+            const cols = getColumns('personnel_department_periods');
+            if (cols.includes('department')) {
+              rows = raw.prepare('SELECT * FROM personnel_department_periods').all() as any[];
+            } else {
+              rows = (raw.prepare('SELECT person_id, start_date, end_date FROM personnel_department_periods').all() as any[])
+                .map(p => ({ ...p, department: legacyDepartment }));
+            }
+          } else if (hasTable('personnel')) {
+            const persCols = getColumns('personnel');
+            if (persCols.includes('department')) {
+              const persRows = raw.prepare('SELECT id, department FROM personnel').all() as any[];
+              rows = persRows.map(p => ({ person_id: p.id, department: p.department || legacyDepartment, start_date: '2020-01-01', end_date: null }));
+            } else {
+              const persRows = raw.prepare('SELECT id FROM personnel').all() as any[];
+              rows = persRows.map(p => ({ person_id: p.id, department: legacyDepartment, start_date: '2020-01-01', end_date: null }));
+            }
+          }
+
+          for (const r of rows) {
+            const oldPid = Number(r.person_id || r.personId || r.person);
+            const newPid = idMapping.get(oldPid);
+            if (!newPid) continue; // skip if person not imported/mapped
+            const period = {
+              personId: newPid,
+              department: normalizeDepartment(r.department || legacyDepartment),
+              startDate: r.start_date || r.startDate,
+              endDate: r.end_date || r.endDate || null
+            };
+            try {
+              await adapter.addPersonnelDepartmentPeriod(period as any);
+              imported.assignments++;
+            } catch (e: any) {
+              errors.push('Failed to add personnel department period for old person ' + String(oldPid) + ': ' + (e?.message || String(e)));
+            }
+          }
+        } catch (e: any) {
+          errors.push('Assignments import failed: ' + (e?.message || String(e)));
+        }
+      }
+
+      // Qualifications (types + periods)
+      if (options.qualifications) {
+        try {
+          if (hasTable('qualification_types')) {
+            const existingTypes = await adapter.getQualificationTypes(false);
+            const existingTypeByName = new Map<string, number>((existingTypes || []).map((t: any) => [String(t.name || '').toLowerCase(), t.id]));
+            const rows = raw.prepare('SELECT id, name, description, category, active, sort, excludeFromStats FROM qualification_types').all() as any[];
+            for (const r of rows) {
+              const typeObj = {
+                name: String(r.name || ''),
+                description: r.description || '',
+                category: r.category || '',
+                active: r.active !== 0,
+                sort: Number(r.sort || 0),
+                excludeFromStats: r.excludeFromStats === 1
+              };
+              const existingId = existingTypeByName.get(String(typeObj.name).toLowerCase());
+              if (existingId) {
+                if (options.replaceExisting) {
+                  try {
+                    await adapter.updateQualificationType({ id: existingId, ...typeObj });
+                    imported.qualificationTypes++;
+                  } catch (e: any) {
+                    errors.push('Failed to update qualification type ' + String(typeObj.name) + ': ' + (e?.message || String(e)));
+                  }
+                }
+                continue;
+              }
+              try {
+                await adapter.addQualificationType(typeObj);
+                imported.qualificationTypes++;
+              } catch (e: any) {
+                errors.push('Failed to add qualification type ' + String(typeObj.name) + ': ' + (e?.message || String(e)));
+              }
+            }
+          }
+
+          if (hasTable('qualification_periods')) {
+            const rows = raw.prepare('SELECT * FROM qualification_periods').all() as any[];
+            const existingQualifications = new Map<number, Set<string>>();
+            for (const r of rows) {
+              const oldPid = Number(r.personId || r.person_id || 0);
+              const newPid = idMapping.get(oldPid);
+              if (!newPid) continue;
+              const qualType = String(r.qualType || '');
+              const startYM = String(r.startYM || '');
+              const endYM = r.endYM || null;
+              const active = r.active === 0 ? 0 : 1;
+              const key = `${qualType}||${startYM}||${endYM || ''}||${active}`;
+              let set = existingQualifications.get(newPid);
+              if (!set) {
+                const existing = await adapter.getQualificationPeriods(newPid);
+                set = new Set<string>((existing || []).map((p: any) => `${String(p.qualType || '')}||${String(p.startYM || '')}||${String(p.endYM || '')}||${p.active === 0 ? 0 : 1}`));
+                existingQualifications.set(newPid, set);
+              }
+              if (set.has(key)) continue;
+              try {
+                await adapter.addQualificationPeriod({ personId: newPid, qualType, startYM, endYM, active });
+                imported.qualifications++;
+                set.add(key);
+              } catch (e: any) {
+                errors.push('Failed to add qualification period for old person ' + String(oldPid) + ': ' + (e?.message || String(e)));
+              }
+            }
+          }
+        } catch (e: any) {
+          errors.push('Qualifications import failed: ' + (e?.message || String(e)));
+        }
+      }
+
+      // Individual settings: import settings entries that look person-specific
+      if (options.individualSettings) {
+        try {
+          const rows = raw.prepare("SELECT key, value FROM settings").all() as any[];
+          for (const s of rows) {
+            const key: string = String(s.key || '');
+            // Heuristische Auswahl: keys die mit person*, user*, personal* beginnen
+            if (/^(person|personal|user|person_)/i.test(key)) {
+              try {
+                // Only insert if not exists to avoid overwriting local config
+                const existing = await adapter.getSetting(key);
+                if (existing == null) {
+                  await adapter.setSetting(key, String(s.value || ''));
+                  imported.settings++;
+                }
+              } catch (e: any) {
+                errors.push('Failed to import setting ' + key + ': ' + (e?.message || String(e)));
+              }
+            }
+          }
+        } catch (e: any) {
+          errors.push('Individual settings import failed: ' + (e?.message || String(e)));
+        }
+      }
+
+      // Duty roster
+      if (options.dutyRoster) {
+        try {
+          const dutyCols = hasTable('duty_roster') ? getColumns('duty_roster') : [];
+          const rows = raw.prepare('SELECT * FROM duty_roster').all() as any[];
+          const toImport: any[] = [];
+          for (const r of rows) {
+            const oldPid = Number(r.personId || r.person_id || 0);
+            const personType = String(r.personType || r.person_type || 'person');
+            let newPid: number | undefined;
+            if (personType === 'azubi') {
+              newPid = azubiIdMapping.get(oldPid);
+              if (!newPid) {
+                try {
+                  const exists = await adapter.getAzubi(oldPid);
+                  if (exists) newPid = oldPid;
+                } catch { /* ignore */ }
+              }
+            } else {
+              newPid = idMapping.get(oldPid);
+            }
+            if (!newPid) continue;
+            const entryDept = dutyCols.includes('department')
+              ? normalizeDepartment(r.department || legacyDepartment)
+              : legacyDepartment;
+            toImport.push({
+              personId: newPid,
+              personType,
+              date: r.date,
+              value: r.value ?? '',
+              type: r.type ?? 'text',
+              department: entryDept
+            });
+          }
+          if (toImport.length > 0) {
+            await adapter.bulkImportDutyRosterEntries(toImport, false, true);
+            imported.dutyRoster = toImport.length;
+          }
+        } catch (e: any) {
+          errors.push('Duty roster import failed: ' + (e?.message || String(e)));
+        }
+      }
+
+    } finally {
+      try { raw.close(); } catch { }
+    }
+
+    // Post-import cleanup: Normalize all department names in existing records
+    try {
+      // Normalize personnel.department
+      const personnel = await adapter.getPersonnel(true); // includeInactive
+      for (const p of personnel || []) {
+        if (p.department) {
+          const normalized = normalizeDepartment(p.department);
+          if (normalized !== p.department) {
+            try {
+              await adapter.updatePersonnel({ ...p, department: normalized });
+            } catch (e: any) {
+              errors.push(`Konnte Personnel-Abteilung nicht normalisieren für ID ${p.id}: ${e?.message}`);
+            }
+          }
+        }
+      }
+      
+      // Normalize personnel_department_periods.department
+      try {
+        const allDeptPeriods = await adapter.getAllPersonnelDepartmentPeriods();
+        for (const period of allDeptPeriods || []) {
+          const normalized = normalizeDepartment(period.department);
+          if (normalized !== period.department) {
+            try {
+              await adapter.updatePersonnelDepartmentPeriod({ ...period, department: normalized });
+            } catch (e: any) {
+              errors.push(`Konnte Department-Periode nicht normalisieren für ID ${period.id}: ${e?.message}`);
+            }
+          }
+        }
+      } catch { /* ignore if method not available */ }
+    } catch (e: any) {
+      errors.push(`Post-import department normalization failed: ${e?.message}`);
+    }
+
+    try {
+      const mig = await this.rerunAzubiDepartmentMigration();
+      if (mig && !mig.skipped && (mig.updated > 0 || mig.duplicated > 0)) {
+        console.log(`[DatabaseManager] Post-Import Azubi-Abteilungen: ${mig.updated} aktualisiert, ${mig.duplicated} dupliziert`);
+      }
+    } catch (e: any) {
+      errors.push(`Azubi-Abteilungs-Zuordnung nach Import: ${e?.message || String(e)}`);
+    }
+
+    return { success: errors.length === 0, imported, errors };
+  }
+
+  /** Nach DB-Import: Azubis anhand Dienstplan-Einträge den Abteilungen zuordnen. */
+  private async rerunAzubiDepartmentMigration() {
+    if (!(this.adapter instanceof SQLiteAdapter)) return null;
+    return this.adapter.rerunAzubiDepartmentMigration();
   }
 
 
@@ -2126,6 +2921,11 @@ export async function getSummaryForBackup(backupDir: string, year?: number, mont
 export async function restoreDatabaseFromBackup(backupDir: string) {
   const mgr = getDatabaseManager();
   return mgr.restoreBackup(backupDir);
+}
+
+export async function importFromBackup(backupDbPath: string, options?: { personnel?: boolean; azubis?: boolean; assignments?: boolean; qualifications?: boolean; individualSettings?: boolean; dutyRoster?: boolean; replaceExisting?: boolean }) {
+  const mgr = getDatabaseManager();
+  return mgr.importFromDatabase(backupDbPath, options);
 }
 
 // Preview duty roster import without writing

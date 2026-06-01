@@ -362,7 +362,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
     const list = await (window as any).api.getPersonnelList(showInactive, showInactive ? undefined : currentYear, departmentName);
     setPersonnel(list);
     setLoading(false);
-  }, [showInactive]);
+  }, [showInactive, departmentName]);
 
   const loadActivePeriods = useCallback(async () => {
     try {
@@ -393,7 +393,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
   }, []);
 
   const loadAzubis = useCallback(async () => {
-    const list = await (window as any).api.getAzubiList();
+    const list = await (window as any).api.getAzubiList(departmentName);
     setAzubis(list);
     // Lade Zeiträume für alle Azubis
     const allPeriods = await (window as any).api.getAllAzubiPeriods();
@@ -405,7 +405,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
       periodsByAzubi[period.azubi_id].push(period);
     });
     setAzubiPeriods(periodsByAzubi);
-  }, []);
+  }, [departmentName]);
 
   const loadQualificationPeriods = useCallback(async () => {
     try {
@@ -430,13 +430,33 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
 
   const loadRoles = useCallback(async () => {
     try {
-      const rolesData = await (window as any).api.getSetting('roles');
-      if (rolesData) {
-        const parsedRoles = JSON.parse(rolesData);
-        setRoles(Array.isArray(parsedRoles) ? parsedRoles.map((r: any) => ({ id: r.id, name: r.name })) : []);
+      let list: any[] = [];
+      try {
+        const fetchedRoles = await (window as any).api.getRoles?.();
+        if (Array.isArray(fetchedRoles) && fetchedRoles.length > 0) {
+          list = fetchedRoles;
+        }
+      } catch (error) {
+        console.warn('Failed to load roles from table:', error);
+        list = [];
       }
-    } catch (e) {
-      // console.error('Fehler beim Laden der Rollen:', e);
+
+      if (list.length === 0) {
+        try {
+          const rolesData = await (window as any).api.getSetting('roles');
+          if (rolesData) {
+            const parsedRoles = JSON.parse(String(rolesData));
+            list = Array.isArray(parsedRoles) ? parsedRoles : [];
+          }
+        } catch (error) {
+          console.warn('Failed to load legacy roles from settings:', error);
+          list = [];
+        }
+      }
+
+      setRoles(Array.isArray(list) ? list.map((r: any) => ({ id: Number(r.id), name: String(r.name || r.id) })) : []);
+    } catch (error) {
+      console.warn('Unexpected error loading roles:', error);
     }
   }, []);
 
@@ -507,7 +527,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
       (window as any).api.offSettingsUpdated?.(settingsHandler);
       window.removeEventListener('message', messageHandler);
     };
-  }, [loadPersonnel, loadAzubis]);
+  }, [loadPersonnel, loadAzubis, departmentName]);
 
   const onDragStart = (id: number) => setDraggedId(id);
   const onDragOver = (e: React.DragEvent<HTMLTableRowElement>, overId: number, ctx: 'person' | 'azubi' | 'itw') => {

@@ -42,8 +42,13 @@ const AppContent: React.FC = () => {
                 if (adminDept) {
                     setDepartmentName(String(adminDept));
                 } else {
-                    const dep = await (window as any).api.getSetting('department_name');
-                    setDepartmentName(dep || '1. Abteilung');
+                    const currentDepts = await (window as any).api.getUniqueDepartments?.();
+                    if (Array.isArray(currentDepts) && currentDepts.length > 0) {
+                        setDepartmentName(currentDepts[0]);
+                        await (window as any).api.setSetting('admin_selected_department', currentDepts[0]);
+                    } else {
+                        setDepartmentName('1. Abteilung');
+                    }
                 }
             }
         } catch {}
@@ -66,8 +71,19 @@ const AppContent: React.FC = () => {
                 }
             };
             window.addEventListener('rdplan-year-changed', handleYearChange);
+
+            // Reagiere auf Abteilungs-Änderungen
+            const handleDepartmentChange = (e: any) => {
+                if (e.detail?.department) {
+                    setDepartmentName(e.detail.department);
+                }
+            };
+            window.addEventListener('rdplan-department-changed', handleDepartmentChange);
             
-            return () => window.removeEventListener('rdplan-year-changed', handleYearChange);
+            return () => {
+                window.removeEventListener('rdplan-year-changed', handleYearChange);
+                window.removeEventListener('rdplan-department-changed', handleDepartmentChange);
+            };
         }
     }, [isAuthenticated, currentUser]);
 
@@ -135,6 +151,7 @@ const AppContent: React.FC = () => {
                                             <SettingsMenu
                                                 onClose={() => setActiveView('dienstplan')}
                                                 setFooterActions={setFooterActions}
+                                                departmentName={departmentName}
                                             />
                                         );
                 case 'itw':
@@ -179,7 +196,7 @@ const AppContent: React.FC = () => {
                 <div style={{ gridRow: 1, gridColumn: '1 / span 2' }}>
                     <Header 
                         rescueStation={rescueStation} 
-                        department={departmentName === 'ITW' ? 2 : (departmentName === 'Abteilung 3' ? 3 : 1)} 
+                        department={departmentName} 
                         year={year} 
                     />
                 </div>
