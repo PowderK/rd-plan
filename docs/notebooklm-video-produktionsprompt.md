@@ -19,11 +19,12 @@ GESTALTUNGSREGELN (VERBINDLICH):
 - Der Abschnittstitel muss exakt zum jeweiligen Kapitel aus dem Skript passen.
 
 ASSET-REGELN (VERBINDLICH):
-- Ich stelle Screenshots/Visuals als PNG-Dateien bereit.
-- Dateinamen entsprechen den IDs aus dem Skript, z. B. S1.png, S2.png, A1.png.
-- Nutze ausschließlich diese IDs und Dateinamen.
-- Keine neuen Asset-Namen erfinden.
-- Wenn eine Szene laut Skript ein bestimmtes Asset verlangt, referenziere exakt diese Datei.
+- Es werden exakt zwei Screenshots verwendet:
+  1) Wertetabelle (Gesamtansicht)
+  2) Detailansicht eines Kollegen
+- Nutze ausschließlich diese beiden Screenshots in allen Szenen.
+- Keine weiteren Assets, keine zusätzlichen Screenshots, keine neuen Dateinamen.
+- Wenn eine Hervorhebung nötig ist, beschreibe nur statische Markierungen im jeweiligen Screenshot.
 
 INHALTSQUELLEN:
 - Verwende ausschließlich die bereitgestellten RD-Plan-Skripte als inhaltliche Grundlage.
@@ -45,21 +46,22 @@ Tabelle mit den Spalten:
 3) Abschnittstitel
 4) Sprechertext (Kurzfassung)
 5) Header-Text (App-Header + Abschnitt)
-6) Visual (Screenshot/Animation)
-7) Asset-Datei (z. B. S3.png)
-8) Animation/Bewegung (z. B. Zoom-in, Highlight, Fade)
-9) On-Screen-Text (falls nötig, sehr kurz)
+6) Visual (Wertetabelle oder Detailansicht Kollege)
+7) Markierung im Screenshot (welcher Bereich hervorgehoben wird)
+8) On-Screen-Text (falls nötig, sehr kurz)
 
 BLOCK 3 – QUALITÄTSPRÜFUNG
 Kurze Checkliste mit genau diesen Punkten:
 - Sprache klar und ohne Floskeln
 - Ton persönlich-seriös
 - Jeder Abschnitt hat korrekten Header
-- Asset-Namen exakt gemäß Skript
+- Genau zwei Screenshots verwendet (Wertetabelle + Detailansicht Kollege)
+- Keine Animationen beschrieben
 - Keine erfundenen Inhalte
 
 WEITERE REGELN:
-- Bevorzuge einfache Animationen: Zoom, Highlight, Fade, Cursor-Klick.
+- Animationen sind in NotebookLM nicht möglich und werden nicht verwendet.
+- Erlaubt sind nur statische Hervorhebungen/Ausschnitte innerhalb der zwei Screenshots.
 - Kein visuelles Overdesign.
 - Keine Emojis.
 - Deutsche Sprache, professionelle Rechtschreibung.
@@ -70,6 +72,6 @@ Wenn Informationen fehlen, markiere die Stelle mit [BENÖTIGT: ...] statt Inhalt
 ## Optional: Kurzprompt für Folgevideos
 
 ```text
-Nutze dasselbe Format wie zuvor (Sprechertext, Szenenplan, Qualitätsprüfung), denselben Stil (persönlich-seriös, ohne Floskeln) und dieselben Header-/Asset-Regeln.
+Nutze dasselbe Format wie zuvor (Sprechertext, Szenenplan, Qualitätsprüfung), denselben Stil (persönlich-seriös, ohne Floskeln) und dieselben Header-/Screenshot-Regeln.
 Quelle ist ausschließlich das aktuell bereitgestellte RD-Plan-Skript.
 ```

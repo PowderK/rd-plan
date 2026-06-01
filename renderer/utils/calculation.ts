@@ -1,4 +1,18 @@
 
+/** Baut Monats-Aktivierungs-Map aus API-Zeilen (vehicleId, month, enabled). */
+export function buildVehicleActivationMap(rows: unknown): Record<number, boolean[]> {
+    const map: Record<number, boolean[]> = {};
+    (Array.isArray(rows) ? rows : []).forEach((row: any) => {
+        const vid = Number(row?.vehicleId);
+        const m = Number(row?.month);
+        if (!Number.isFinite(vid) || !Number.isFinite(m) || m < 1 || m > 12) return;
+        const arr = Array.isArray(map[vid]) ? map[vid].slice() : Array(12).fill(true);
+        arr[m - 1] = !!row.enabled;
+        map[vid] = arr;
+    });
+    return map;
+}
+
 export function computeDeptShiftsPerMonth(year: number, department: number, seqs: { startDate: string; pattern: string[] }[]) {
     const counts: number[] = Array(12).fill(0);
     for (let m = 0; m < 12; m++) {
@@ -55,20 +69,32 @@ export function computeItwShiftsPerMonth(roster: any[], auswertungByType: Record
     return sums;
 }
 
+function checkVehicleActive(vid: number, mIdx: number, year: number, periods?: Record<number, any[]>, legacyActs?: Record<number, boolean[]>) {
+    const yearMonth = `${year}-${String(mIdx + 1).padStart(2, '0')}`;
+    const p = periods?.[vid] || [];
+    if (p.length > 0) {
+        return p.some(x => x.active && x.startYM <= yearMonth && (!x.endYM || x.endYM >= yearMonth));
+    }
+    // Fallback to legacy activations
+    return (legacyActs?.[vid] ?? Array(12).fill(true))[mIdx] !== false;
+}
+
 export function computePositionsPerMonth(
+    year: number,
     deptShifts: number[],
     itwShifts: number[],
     vehicles: { rtw: { id: number }[]; nef: { id: number; occupancyMode?: '24h' | 'tag' }[] },
-    acts: { rtwActs: Record<number, boolean[]>; nefActs: Record<number, boolean[]> }
+    acts: { rtwActs: Record<number, boolean[]>; nefActs: Record<number, boolean[]> },
+    periods?: { rtwPeriods: Record<number, any[]>; nefPeriods: Record<number, any[]> }
 ) {
     const positions: number[] = Array(12).fill(0);
     for (let m = 0; m < 12; m++) {
-        const rtwCount = (vehicles.rtw || []).filter(v => (acts.rtwActs[v.id] ?? Array(12).fill(true))[m] !== false).length;
+        const rtwCount = (vehicles.rtw || []).filter(v => checkVehicleActive(v.id, m, year, periods?.rtwPeriods, acts.rtwActs)).length;
 
         // Calculate NEF shifts based on occupancy mode
         let nefShifts = 0;
         (vehicles.nef || []).forEach(v => {
-            if ((acts.nefActs[v.id] ?? Array(12).fill(true))[m] !== false) {
+            if (checkVehicleActive(v.id, m, year, periods?.nefPeriods, acts.nefActs)) {
                 nefShifts += (v.occupancyMode === 'tag' ? 1 : 2);
             }
         });
@@ -207,7 +233,8 @@ export function calculateTargets(
     department: number,
     deptPatternSeqs: { startDate: string; pattern: string[] }[],
     hlfbPeriodsByPerson?: Record<number, Array<{ startYM: string; endYM?: string }>>,
-    shiftTransfers: ShiftTransfer[] = [] // Optional for backward compatibility
+    shiftTransfers: ShiftTransfer[] = [], // Optional for backward compatibility
+    vehiclePeriods?: { rtwPeriods: Record<number, any[]>; nefPeriods: Record<number, any[]> }
 ) {
     // 1. Dept Shifts
     const deptShifts = computeDeptShiftsPerMonth(year, department, deptPatternSeqs);
@@ -216,7 +243,7 @@ export function calculateTargets(
     const itwShifts = computeItwShiftsPerMonth(roster, auswertungByType, personnel);
 
     // 3. Positions Total
-    const positions = computePositionsPerMonth(deptShifts, itwShifts, vehicles, activations);
+    const positions = computePositionsPerMonth(year, deptShifts, itwShifts, vehicles, activations, vehiclePeriods);
 
     // 4. Deductions (Azubi Maschinist + Ü50)
     const azubiShifts = computeAzubiMaschinistShifts(roster, azubis);
@@ -229,7 +256,16 @@ export function calculateTargets(
 
     // 6. Hamilton Allocation
     const targetsById: Record<number, number[]> = {};
-    personnel.forEach(p => targetsById[p.id] = Array(12).fill(0));
+    const ensureTargetRow = (personId: number) => {
+        if (!Number.isFinite(personId)) return;
+        if (!targetsById[personId]) targetsById[personId] = Array(12).fill(0);
+    };
+    personnel.forEach(p => ensureTargetRow(p.id));
+    // Schichtübernahmen können Personen betreffen, die (noch) nicht in der gefilterten personnel-Liste stehen
+    for (const t of shiftTransfers) {
+        if (t.to_person_id) ensureTargetRow(Number(t.to_person_id));
+        if (t.from_person_id) ensureTargetRow(Number(t.from_person_id));
+    }
 
     // Gruppierung der Übernahmen pro Monat für Hamilton-Integration
     const transfersByMonth: Record<number, ShiftTransfer[]> = {};
@@ -306,6 +342,7 @@ export function calculateTargets(
         }
 
         for (const f of floors) {
+            ensureTargetRow(f.id);
             targetsById[f.id][m] = f.v;
         }
     }

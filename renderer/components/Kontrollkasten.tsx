@@ -34,6 +34,7 @@ interface KontrollkastenItem {
   presenceRemainingByPerson?: number;
   oldRtwShifts?: number;
   hasTransfer?: boolean;
+  isItwExternal?: boolean;
 }
 
 interface KontrollkastenProps {
@@ -49,6 +50,7 @@ interface KontrollkastenProps {
   showOldRtwShifts?: boolean;
   showWeekendShifts?: boolean;
   showItw?: boolean;
+  availablePersonKeys?: Set<string>;
 }
 
 export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
@@ -64,6 +66,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
   showOldRtwShifts = false,
   showWeekendShifts = false,
   showItw = true,
+  availablePersonKeys,
 }) => {
   // Dynamisches Grid-Layout
   const wCol = showWeekendShifts ? '22px ' : '';
@@ -89,14 +92,14 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
     }}>
       {/* Header-Zeile */}
       <div style={{ display: 'contents' }}>
-        <span style={{ textAlign: 'right', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>Name</span>
-        <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>Soll | Ist</span>
-        <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>NEF</span>
-        {showItw && <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>ITW</span>}
-        {showWeekendShifts && <span style={{ textAlign: 'center', paddingRight: 4, fontSize: 9, fontWeight: 600, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>WE</span>}
-        {showOldRtwShifts && <span style={{ textAlign: 'center', paddingRight: 4, fontSize: 9, fontWeight: 600, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>Alt</span>}
-        <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>Ges.</span>
-        <span style={{ textAlign: 'center', fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid #e5e7eb' }}>T/N | Rest</span>
+        <span style={{ textAlign: 'right', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)' }}>Name</span>
+        <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)' }}>Soll | Ist</span>
+        <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)' }}>NEF</span>
+        {showItw && <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)' }}>ITW</span>}
+        {showWeekendShifts && <span style={{ textAlign: 'center', paddingRight: 4, fontSize: 9, fontWeight: 600, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)' }}>WE</span>}
+        {showOldRtwShifts && <span style={{ textAlign: 'center', paddingRight: 4, fontSize: 9, fontWeight: 600, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)' }}>Alt</span>}
+        <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)' }}>Ges.</span>
+        <span style={{ textAlign: 'center', fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)' }}>T/N | Rest</span>
       </div>
 
       {/* Items */}
@@ -138,13 +141,15 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                   className={styles.sidebarName}
                   onClick={() => setHighlightedPersonKey(highlightedPersonKey === it.key ? null : it.key)}
                   style={{
-                    color: it.lpal ? '#fd7e14' : it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : undefined,
+                    color: it.lpal ? '#fd7e14' : it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : (it.isItwExternal ? '#6b7280' : undefined),
                     cursor: 'pointer',
                     fontWeight: highlightedPersonKey === it.key ? 700 : undefined,
+                    backgroundColor: availablePersonKeys?.has(it.key) ? (it.isItwExternal ? '#f3f4f6' : '#e8f5e9') : (it.isItwExternal ? '#f9fafb' : undefined),
+                    fontStyle: it.isItwExternal ? 'italic' : undefined,
                     textDecoration: highlightedPersonKey === it.key ? 'underline' : undefined,
                     whiteSpace: 'nowrap',
                     textAlign: 'right',
-                    borderRight: '1px solid #e5e7eb',
+                    borderRight: '1px solid var(--line)',
                     paddingRight: 4,
                   }}
                 >
@@ -152,7 +157,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                 </span>
 
                 {/* Soll/Ist mit Waage */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, borderRight: '1px solid #e5e7eb', paddingRight: 4 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, borderRight: '1px solid var(--line)', paddingRight: 4 }}>
                   <span className={styles.sidebarVal} style={{ fontSize: 11, color: it.hasTransfer ? '#3b82f6' : undefined, fontWeight: it.hasTransfer ? 600 : undefined }}>
                     {(it.target === '' ? '–' : it.target) + ' | ' + it.count}
                   </span>
@@ -160,37 +165,37 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                 </div>
 
                 {/* NEF */}
-                <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4 }}>
+                <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4 }}>
                   {it.nef}
                 </span>
 
                 {showItw && (
-                  <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4 }}>
+                  <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4 }}>
                     {it.itw}
                   </span>
                 )}
 
                 {/* WE */}
                 {showWeekendShifts && (
-                  <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4, color: weekendColor, fontWeight: weekendColor ? 600 : undefined }}>
+                  <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4, color: weekendColor, fontWeight: weekendColor ? 600 : undefined }}>
                     {typeof it.weekend === 'number' ? it.weekend : '–'}
                   </span>
                 )}
 
                 {/* Alte RTW-Schichten */}
                 {showOldRtwShifts && (
-                  <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4, color: '#666' }}>
+                  <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4, color: '#666' }}>
                     {it.oldRtwShifts || 0}
                   </span>
                 )}
 
                 {/* Gesamt */}
                 {!it.ue50 && !it.lpal && (
-                  <span className={styles.sidebarVal} style={{ ...restStyle, textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4 }}>
+                  <span className={styles.sidebarVal} style={{ ...restStyle, textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4 }}>
                     {Number.isFinite(it.rest) ? it.rest : '–'}
                   </span>
                 )}
-                {(it.ue50 || it.lpal) && <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid #e5e7eb', paddingRight: 4 }}>–</span>}
+                {(it.ue50 || it.lpal) && <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4 }}>–</span>}
 
                 {/* Tag/Nacht Waage und Rest V untereinander */}
                 {!it.ue50 && !it.lpal && (

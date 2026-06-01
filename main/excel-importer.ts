@@ -18,6 +18,7 @@ export interface PersonnelImportData {
   qualifications?: Array<{ qualType: string; startYM: string; endYM: string | null; active?: boolean }>;
   // Neue Aktivitäts-Zeiträume
   activePeriods?: Array<{ startYM: string; endYM: string | null; description?: string }>;
+  department?: string;
 }
 
 export interface AzubiImportData {
@@ -246,8 +247,9 @@ export class ExcelPersonnelImporter {
     const teilzeit = row['Teilzeit'] ? parseInt(String(row['Teilzeit']), 10) : 0;
     const personnelNumber = row['Personalnummer'] ? String(row['Personalnummer']).trim() : undefined;
     const role = row['Rolle'] ? String(row['Rolle']).trim() : undefined;
+    const department = row['Abteilung'] ? String(row['Abteilung']).trim() : undefined;
 
-    console.log(`[ExcelImporter] Person: "${name}" "${vorname}" | Raw Name=${row['Name']}, Vorname=${row['Vorname']}, Teilzeit=${teilzeit}, Rolle=${role}`);
+    console.log(`[ExcelImporter] Person: "${name}" "${vorname}" | Raw Name=${row['Name']}, Vorname=${row['Vorname']}, Teilzeit=${teilzeit}, Rolle=${role}, Abteilung=${department}`);
 
     // Extrahiere Qualifikationen aus den _Von/_Bis Spalten
     const qualifications: Array<{ qualType: string; startYM: string; endYM: string | null; active?: boolean }> = [];
@@ -376,7 +378,8 @@ export class ExcelPersonnelImporter {
       personnelNumber,
       role,
       qualifications: qualifications.length > 0 ? qualifications : undefined,
-      activePeriods: activePeriods.length > 0 ? activePeriods : undefined
+      activePeriods: activePeriods.length > 0 ? activePeriods : undefined,
+      department
     };
   }
 
@@ -528,6 +531,12 @@ export class ExcelPersonnelImporter {
               console.log(`[ExcelImporter] Updating roleId for ${person.name}: ${newRoleId}`);
             }
 
+            if (person.department !== undefined) {
+              sql += ', department = ?';
+              params.push(person.department);
+              console.log(`[ExcelImporter] Updating department for ${person.name}: ${person.department}`);
+            }
+            
             sql += ' WHERE id = ?';
             params.push(personId);
 
@@ -611,7 +620,7 @@ export class ExcelPersonnelImporter {
 
           // Universal INSERT (New Format)
           insertResult = await this.db.run(
-            'INSERT INTO personnel (name, vorname, active, sort, teilzeit, personnelNumber, roleId, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO personnel (name, vorname, active, sort, teilzeit, personnelNumber, roleId, department, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
               person.name,
               person.vorname,
@@ -620,6 +629,7 @@ export class ExcelPersonnelImporter {
               person.teilzeit || 0,
               person.personnelNumber || '',
               roleId,
+              person.department || '1. Abteilung',
               0, // fahrzeugfuehrer default
               0, // fahrzeugfuehrerHLFB default
               0, // nef default
@@ -785,13 +795,13 @@ export class ExcelPersonnelImporter {
   static createTemplate(filePath: string): void {
     const templateData = [
       // Header mit neuen Feldern + Legacy-Kompatibilität
-      ['Name', 'Vorname', 'Aktiv', 'Teilzeit*', 'Fahrzeugführer*', 'Fahrzeugführer HLFB*', 'NEF*', 'ITW Maschinist*', 'ITW Fahrzeugführer*', 'Aktiv_Von', 'Aktiv_Bis', 'Aktiv_Beschreibung'],
+      ['Name', 'Vorname', 'Abteilung', 'Teilzeit*', 'Fahrzeugführer*', 'Fahrzeugführer HLFB*', 'NEF*', 'ITW Maschinist*', 'ITW Fahrzeugführer*', 'Aktiv_Von', 'Aktiv_Bis', 'Aktiv_Beschreibung'],
       // Beispieldaten
-      ['Mustermann', 'Max', 'ja', 'nein', 'ja', 'nein', 'ja', 'nein', 'nein', '2025-01', '', 'Festanstellung'],
-      ['Musterfrau', 'Maria', 'ja', 'ja', 'ja', 'ja', 'nein', 'ja', 'ja', '2025-03', '2025-08', 'Befristet'],
-      ['Beispiel', 'Ben', '1', '0', '1', '0', '1', '0', '1', '', '', ''],
+      ['Mustermann', 'Max', '1. Abteilung', '100', 'ja', 'ja', 'nein', 'nein', 'nein', '2025-01', '', 'Festanstellung'],
+      ['Musterfrau', 'Maria', '1. Abteilung', '75', 'ja', 'ja', 'ja', 'ja', 'ja', '2025-03', '2025-08', 'Befristet'],
+      ['Beispiel', 'Ben', '2. Abteilung', '100', '1', '1', '0', '1', '0', '', '', ''],
       // Hinweiszeile
-      ['', '', '', '', '', '', '', '', '', 'Format: YYYY-MM', 'Format: YYYY-MM', '']
+      ['', '', '', '%', 'ja/nein', 'ja/nein', 'ja/nein', 'ja/nein', 'ja/nein', 'Format: YYYY-MM', 'Format: YYYY-MM', '']
     ];
 
     const worksheet = XLSX.utils.aoa_to_sheet(templateData);
@@ -800,6 +810,7 @@ export class ExcelPersonnelImporter {
     worksheet['!cols'] = [
       { width: 15 }, // Name
       { width: 15 }, // Vorname
+      { width: 15 }, // Abteilung
       { width: 10 }, // Teilzeit
       { width: 15 }, // Fahrzeugführer
       { width: 18 }, // Fahrzeugführer HLFB
@@ -846,7 +857,7 @@ export class ExcelPersonnelImporter {
       } catch (e) { }
 
       // Erstelle Header mit separaten Spalten für jede Qualifikation
-      const headers = ['Name', 'Vorname', 'Aktiv', 'Teilzeit', 'Personalnummer', 'Rolle', 'Personal_Aktiv_Von', 'Personal_Aktiv_Bis', 'Personal_Aktiv_Beschreibung', 'Personal_Aktiv_Zeiträume_JSON'];
+      const headers = ['Name', 'Vorname', 'Aktiv', 'Abteilung', 'Teilzeit', 'Personalnummer', 'Rolle', 'Personal_Aktiv_Von', 'Personal_Aktiv_Bis', 'Personal_Aktiv_Beschreibung', 'Personal_Aktiv_Zeiträume_JSON'];
       const qualHeaders: string[] = [];
 
       for (const qualType of qualTypes) {
@@ -890,6 +901,7 @@ export class ExcelPersonnelImporter {
           person.name,
           person.vorname || '',
           person.active ? 'ja' : 'nein',
+          person.department || '1. Abteilung',
           person.teilzeit || 0,
           person.personnelNumber || '',
           roleName,

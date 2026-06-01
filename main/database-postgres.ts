@@ -252,12 +252,6 @@ export async function initializePostgreSQLDatabase(config: PostgresConfig): Prom
             name VARCHAR(255) NOT NULL DEFAULT ''
         );
 
-        -- ITW patterns table
-        CREATE TABLE IF NOT EXISTS itw_patterns (
-            start_date DATE PRIMARY KEY,
-            pattern TEXT NOT NULL
-        );
-
         -- Department patterns table
         CREATE TABLE IF NOT EXISTS dept_patterns (
             start_date DATE PRIMARY KEY,
@@ -407,4 +401,51 @@ export function convertSQLiteToPostgreSQL(sql: string, params: any[] = []): { sq
     pgSql = pgSql.replace(/AUTOINCREMENT/gi, 'SERIAL');
     
     return { sql: pgSql, params };
+}
+
+/**
+ * Initialize ITW planning database schema (separate from main database)
+ */
+export async function initializeItwPlanningDatabase(config: PostgresConfig): Promise<AsyncDB> {
+    const db = new PostgreSQLDatabase(config);
+
+    // Create ITW-specific tables
+    await db.exec(`
+        -- ITW patterns table
+        CREATE TABLE IF NOT EXISTS itw_patterns (
+            start_date DATE PRIMARY KEY,
+            pattern TEXT NOT NULL
+        );
+
+        -- ITW phase assignments table
+        CREATE TABLE IF NOT EXISTS itw_phase_assignments (
+            id SERIAL PRIMARY KEY,
+            start_date DATE NOT NULL,
+            person_id INTEGER NOT NULL,
+            role VARCHAR(100) NOT NULL,
+            UNIQUE(start_date, person_id)
+        );
+
+        -- ITW duty roster table
+        CREATE TABLE IF NOT EXISTS itw_duty_roster (
+            id SERIAL PRIMARY KEY,
+            personId INTEGER NOT NULL,
+            personType VARCHAR(50) NOT NULL DEFAULT 'person',
+            date DATE NOT NULL,
+            value VARCHAR(50) NOT NULL,
+            type VARCHAR(50) NOT NULL,
+            manual_edit INTEGER DEFAULT 0,
+            UNIQUE(personId, personType, date)
+        );
+
+        -- Create indexes
+        CREATE INDEX IF NOT EXISTS idx_itw_phase_assignments_date ON itw_phase_assignments (start_date);
+        CREATE INDEX IF NOT EXISTS idx_itw_phase_assignments_person ON itw_phase_assignments (person_id);
+        CREATE INDEX IF NOT EXISTS idx_itw_duty_roster_date_person ON itw_duty_roster (date, personId, personType);
+        CREATE INDEX IF NOT EXISTS idx_itw_duty_roster_type ON itw_duty_roster (type) WHERE type != '';
+    `);
+
+    console.log('[PostgreSQL] ITW planning database schema initialized successfully');
+
+    return db;
 }

@@ -80,31 +80,31 @@ try {
     // Fallback für verschiedene Verzeichnisstrukturen
     versionPath = path.join(__dirname, '../../version.json');
   }
-  
+
   if (fs.existsSync(versionPath)) {
     const versionData = JSON.parse(fs.readFileSync(versionPath, 'utf8'));
     const version = versionData.version || 'unknown';
 
     // Globale Versionssynchronisation aus zentraler version.json
     syncVersionGlobal(version);
-    
+
     let splashContent = fs.readFileSync(
       path.join(__dirname, '..', 'dist', 'splash.html'),
       'utf8'
     );
-    
+
     // Ersetze Version Placeholder
     splashContent = splashContent.replace(
       /<div class="version" id="version">.*?<\/div>/,
       `<div class="version" id="version">Version ${version}</div>`
     );
-    
+
     fs.writeFileSync(
       path.join(__dirname, '..', 'dist', 'splash.html'),
       splashContent,
       'utf8'
     );
-    
+
     console.log('[copy-assets] ✓ Assets copied successfully');
     console.log(`[copy-assets] Version injected: ${version}`);
   } else {

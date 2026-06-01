@@ -5,13 +5,13 @@ interface FooterProps {
 }
 
 const Footer: React.FC<FooterProps> = ({ actions }) => {
+    if (!actions) return null;
+    
     return (
         <footer style={{ textAlign: 'center', padding: '10px', borderTop: '1px solid #ccc' }}>
-            {actions ? (
-                <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
-                    {actions}
-                </div>
-            ) : null}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
+                {actions}
+            </div>
         </footer>
     );
 };

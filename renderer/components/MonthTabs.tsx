@@ -1,13 +1,26 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { calculateTargets } from '../utils/calculation';
+import { buildVehicleActivationMap, calculateTargets } from '../utils/calculation';
+import { rosterReleasedSettingKey } from '../utils/rosterRelease';
 import styles from './MonthTabs.module.css';
 import { Kontrollkasten } from './Kontrollkasten';
+
+/** Abteilungsnummer aus Anzeigenamen (z. B. „2. Abteilung“ → 2). */
+export function departmentNameToId(departmentName?: string): number {
+    const d = String(departmentName || '');
+    if (d.includes('3')) return 3;
+    if (d.includes('2')) return 2;
+    return 1;
+}
 
 interface MonthTabsProps {
     currentMonth: number;
     onMonthChange: (month: number) => void;
     onYearChange?: (year: number) => void;
+    /** Aktuelle Abteilung aus App/Sidebar – nicht mit globalem Setting „department“ verwechseln. */
+    departmentName?: string;
+    /** Vollständige Namensliste der Abteilung (ohne Monatsfilter) für Slot-Labels. */
+    personnelLookup?: { id: number; name: string; vorname?: string }[];
     personnel: { id: number; name: string; vorname: string; fahrzeugfuehrer?: boolean; nef?: boolean; fahrzeugfuehrerHLFB?: boolean | number; teilzeit?: number }[];
     azubis: { id: number; name: string; vorname: string; lehrjahr: number }[];
     roster: Record<string, Record<string, { value: string; type: string }>>;
@@ -24,14 +37,22 @@ const months = [
     'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'
 ];
 
-const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYearChange, personnel, azubis, roster, year, shiftPattern, deptPatternSeqs = [], onRosterChanged, onEntryAssigned }) => {
+type AssignmentUndoEntry = {
+    date: string;
+    slotId: string;
+    previousValue: string;
+    nextValue: string;
+    ts: number;
+};
+
+const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYearChange, departmentName, personnelLookup, personnel, azubis, roster, year, shiftPattern, deptPatternSeqs = [], onRosterChanged, onEntryAssigned }) => {
     const { hasPermission, currentUser } = useAuth();
     const canWrite = hasPermission('einteilung', 'write');
     // Read permission is implicit if they can see the page, but we use it to check for "read-only" status
     // If they have write permission, they are not read-only.
     // If they DON'T have write permission, we enforcement visibility rules.
 
-    const [department, setDepartment] = useState<number>(1);
+    const [department, setDepartment] = useState<number>(() => departmentNameToId(departmentName));
     const [localRoster, setLocalRoster] = useState(roster || {} as Record<string, Record<string, { value: string; type: string }>>);
     const [rtwVehicles, setRtwVehicles] = useState<{ id: number; name: string }[]>([]);
     const [nefVehicles, setNefVehicles] = useState<{ id: number; name: string; occupancy_mode?: '24h' | 'tag' }[]>([]);
@@ -45,7 +66,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [nefName, setNefName] = useState<string>('');
     const [rtwActivations, setRtwActivations] = useState<Record<number, boolean[]>>({});
     const [nefActivations, setNefActivations] = useState<Record<number, boolean[]>>({});
-    const [itwPatternSeqs, setItwPatternSeqs] = useState<{ startDate: string; pattern: string[] }[]>([]);
+    const [rtwVehiclePeriods, setRtwVehiclePeriods] = useState<Record<number, any[]>>({});
+    const [nefVehiclePeriods, setNefVehiclePeriods] = useState<Record<number, any[]>>({});
+    const [itwPatternSeqs, setItwPatternSeqs] = useState<{ startDate: string; department: string; pattern: string[] }[]>([]);
     const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
     const [isUpdating, setIsUpdating] = useState(false); // Verhindert Race-Conditions während Updates
     const [holidays, setHolidays] = useState<Set<string>>(new Set());
@@ -59,10 +82,23 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [hlfbPeriodsByPerson, setHlfbPeriodsByPerson] = useState<Record<number, Array<{ startYM: string; endYM?: string }>>>({});
     // Performance: Debouncing für Roster-Updates
     const [updateTimeout, setUpdateTimeout] = useState<NodeJS.Timeout | null>(null);
+    const undoStackStorageKey = '__rdPlanAssignmentUndoStack';
+    const redoStackStorageKey = '__rdPlanAssignmentRedoStack';
+    const isApplyingUndoRef = React.useRef(false);
+    const [undoStack, setUndoStack] = useState<AssignmentUndoEntry[]>(() => {
+        const existing = (window as any)[undoStackStorageKey];
+        return Array.isArray(existing) ? existing : [];
+    });
+    const [redoStack, setRedoStack] = useState<AssignmentUndoEntry[]>(() => {
+        const existing = (window as any)[redoStackStorageKey];
+        return Array.isArray(existing) ? existing : [];
+    });
 
     const [showWeekendShifts, setShowWeekendShifts] = useState<boolean>(false);
     // Freigabe-Status pro Monat
     const [releasedMonths, setReleasedMonths] = useState<boolean[]>(Array(12).fill(false));
+    /** Monate mit unbesetzten Pflichtpositionen (für gelbe Markierung bei Freigabe). */
+    const [monthsWithEmptySlots, setMonthsWithEmptySlots] = useState<boolean[]>(Array(12).fill(false));
     // Sidebar Collapse Status
     const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
     // Feature Toggle: Alte RTW Schichten
@@ -70,6 +106,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     // Schichtübernahmen
     const [shiftTransfers, setShiftTransfers] = useState<any[]>([]);
     const [availableYears, setAvailableYears] = useState<number[]>([]);
+
+    useEffect(() => {
+        (window as any)[undoStackStorageKey] = undoStack;
+    }, [undoStack]);
+
+    useEffect(() => {
+        (window as any)[redoStackStorageKey] = redoStack;
+    }, [redoStack]);
 
     useEffect(() => {
         const loadYearOptions = async () => {
@@ -143,292 +187,62 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         loadComments();
     }, [loadComments]);
 
-    useEffect(() => {
-        const loadHlfbPeriods = async () => {
-            try {
-                const hlfbQualSetting = await (window as any).api.getSetting?.('hlfb_qualification_type');
-                const hlfbQualName = String(hlfbQualSetting || 'FzF HLF B');
-                const allPeriods = await (window as any).api.getAllQualificationPeriods?.();
-
-                const map: Record<number, Array<{ startYM: string; endYM?: string }>> = {};
-
-                if (Array.isArray(allPeriods)) {
-                    allPeriods.forEach((p: any) => {
-                        if (p.active && p.qualType === hlfbQualName) {
-                            if (!map[p.personId]) map[p.personId] = [];
-                            map[p.personId].push({ startYM: p.startYM, endYM: p.endYM });
-                        }
-                    });
-                }
-                setHlfbPeriodsByPerson(map);
-            } catch (e) { console.warn('Failed to load HLF-B periods', e); }
-        };
-        loadHlfbPeriods();
-
-        // Feature Toggle laden
-        const loadFeature = async () => {
-            try {
-                const val = await (window as any).api.getSetting('feature_old_rtw_shifts');
-                setFeatureOldRtwShifts(val === 'true');
-            } catch { }
-        };
-        loadFeature();
-    }, []);
-
+    // Listener für Updates
     useEffect(() => {
         const loadReleased = async () => {
             try {
                 const status = await Promise.all(months.map(async (_, i) => {
-                    const key = `roster_released_${year}_${i}`;
+                    const key = rosterReleasedSettingKey(year, i, departmentName);
                     const val = await (window as any).api.getSetting(key);
                     return val === '1';
                 }));
                 setReleasedMonths(status);
             } catch (e) { console.warn('Failed to load released status', e); }
         };
+
         const loadTransfers = async () => {
             try {
-                console.log('[MonthTabs] Loading shift transfers for year:', year);
                 const transfers = await (window as any).api.getShiftTransfers(year);
-                console.log('[MonthTabs] Loaded transfers:', transfers);
-                if (Array.isArray(transfers)) {
-                    console.log('[MonthTabs] Setting', transfers.length, 'transfers');
-                    setShiftTransfers(transfers);
-                } else {
-                    console.warn('[MonthTabs] Transfers is not an array:', typeof transfers);
-                }
-            } catch (e) {
-                console.error('[MonthTabs] Failed to load shift transfers:', e);
-            }
+                if (Array.isArray(transfers)) setShiftTransfers(transfers);
+            } catch (e) { console.error('[MonthTabs] Failed to load shift transfers:', e); }
         };
+
         loadReleased();
         loadTransfers();
 
-        // Listener für Updates
         const onTransfersUpdated = () => loadTransfers();
+        const onSettingsUpdated = () => loadReleased();
+
         (window as any).api?.onShiftTransfersUpdated?.(onTransfersUpdated);
-        return () => { (window as any).api?.offShiftTransfersUpdated?.(onTransfersUpdated); };
-    }, [year]);
+        (window as any).api?.onSettingsUpdated?.(onSettingsUpdated);
+
+        return () => {
+            (window as any).api?.offShiftTransfersUpdated?.(onTransfersUpdated);
+            (window as any).api?.offSettingsUpdated?.(onSettingsUpdated);
+        };
+    }, [year, departmentName]);
 
     // Höre auf Sidebar Collapse Events
     useEffect(() => {
-        const handler = (e: Event) => {
-            const ce = e as CustomEvent;
-            if (typeof ce.detail?.collapsed === 'boolean') {
-                setSidebarCollapsed(ce.detail.collapsed);
-            }
+        const handler = () => {
+            setSidebarCollapsed(!!(window as any).sidebarCollapsed);
         };
         window.addEventListener('sidebar-collapsed', handler as EventListener);
         return () => window.removeEventListener('sidebar-collapsed', handler as EventListener);
     }, []);
 
-    const toggleReleased = async () => {
-        const newVal = !releasedMonths[currentMonth];
+    // Abteilung aus App-Prop / Sidebar-Event (nicht aus globalem settings.department)
+    useEffect(() => {
+        setDepartment(departmentNameToId(departmentName));
+    }, [departmentName]);
 
-        // Prüfungen nur beim Freigeben (nicht beim Zurücksetzen)
-        if (newVal) {
-            // Erstelle Liste nur der Tage, die in der Einteilung vorhanden sind (days array)
-            const monthDays: string[] = days.map(d => d.date);
-
-            // Lade RTW-Positionen von allen aktiven Fahrzeugen
-            const rtwPositionsMap: Record<number, Array<{ positionName: string; sort: number }>> = {};
-            for (const v of rtwVehicles || []) {
-                const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                if (!enabled) continue;
-                try {
-                    const positions = await (window as any).api.getVehiclePositions?.('rtw', v.id) || [];
-                    rtwPositionsMap[v.id] = positions.sort((a: any, b: any) => a.sort - b.sort);
-                } catch { }
-            }
-
-            // Lade NEF-Positionen von allen aktiven Fahrzeugen
-            const nefPositionsMap: Record<number, Array<{ positionName: string; sort: number }>> = {};
-            for (const v of nefVehicles || []) {
-                const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                if (!enabled) continue;
-                try {
-                    const positions = await (window as any).api.getVehiclePositions?.('nef', v.id) || [];
-                    nefPositionsMap[v.id] = positions.sort((a: any, b: any) => a.sort - b.sort);
-                } catch { }
-            }
-
-            // 1. Prüfung: Sind alle RTW/NEF Positionen besetzt (Azubi-Plätze werden nicht überwacht)?
-            const emptySlots: string[] = [];
-
-            for (const iso of monthDays) {
-                // RTW Positionen prüfen
-                for (let rIdx = 0; rIdx < (rtwVehicles || []).length; rIdx++) {
-                    const v = rtwVehicles[rIdx];
-                    const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                    if (!enabled) continue;
-
-                    const positions = rtwPositionsMap[v.id] || [];
-
-                    // Tag-Schicht - nur erste 2 Positionen (keine Azubis)
-                    for (let pIdx = 0; pIdx < Math.min(2, positions.length); pIdx++) {
-                        const pos = positions[pIdx];
-                        const slotId = `rtw${rIdx + 1}_tag_${pIdx + 1}`;
-                        const value = getAssignedValueFor(iso, slotId);
-
-                        if (!value || value.trim() === '') {
-                            const dt = new Date(iso + 'T00:00:00');
-                            const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-                            // Positionsname ohne Zahl am Ende verwenden
-                            const posName = pos.positionName.replace(/\s+\d+$/, '');
-                            emptySlots.push(`${label}: ${v.name || `RTW ${rIdx + 1}`} ${posName} Tag`);
-                        }
-                    }
-
-                    // Nacht-Schicht - nur erste 2 Positionen (keine Azubis)
-                    for (let pIdx = 0; pIdx < Math.min(2, positions.length); pIdx++) {
-                        const pos = positions[pIdx];
-                        const slotId = `rtw${rIdx + 1}_nacht_${pIdx + 1}`;
-                        const value = getAssignedValueFor(iso, slotId);
-
-                        if (!value || value.trim() === '') {
-                            const dt = new Date(iso + 'T00:00:00');
-                            const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-                            // Positionsname ohne Zahl am Ende verwenden
-                            const posName = pos.positionName.replace(/\s+\d+$/, '');
-                            emptySlots.push(`${label}: ${v.name || `RTW ${rIdx + 1}`} ${posName} Nacht`);
-                        }
-                    }
-                }
-
-                // NEF Positionen prüfen
-                for (let nIdx = 0; nIdx < (nefVehicles || []).length; nIdx++) {
-                    const v = nefVehicles[nIdx];
-                    const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                    if (!enabled) continue;
-
-                    const positions = nefPositionsMap[v.id] || [];
-                    if (positions.length === 0) continue;
-
-                    const slotId = `nef${nIdx + 1}_assist`;
-                    const value = getAssignedValueFor(iso, slotId);
-                    if (!value || value.trim() === '') {
-                        const dt = new Date(iso + 'T00:00:00');
-                        const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-                        // Ersten Positionsnamen verwenden (normalerweise "Assistent")
-                        const posName = positions[0].positionName.replace(/\s+\d+$/, '');
-                        emptySlots.push(`${label}: ${v.name || `NEF ${nIdx + 1}`} ${posName}`);
-                    }
-                }
-            }
-
-            if (emptySlots.length > 0) {
-                const maxShow = 10;
-                const preview = emptySlots.slice(0, maxShow).join('\n');
-                const more = emptySlots.length > maxShow ? `\n... und ${emptySlots.length - maxShow} weitere` : '';
-                alert(`Freigabe nicht möglich!\n\nFolgende Positionen sind nicht besetzt:\n\n${preview}${more}`);
-                return;
-            }
-
-            // 2. Prüfung: Sind alle eingeteilten Personen im Dienstplan verfügbar?
-            const unavailableAssignments: string[] = [];
-
-            for (const iso of monthDays) {
-                // RTW Slots prüfen
-                for (let rIdx = 0; rIdx < (rtwVehicles || []).length; rIdx++) {
-                    const v = rtwVehicles[rIdx];
-                    const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                    if (!enabled) continue;
-
-                    const positions = rtwPositionsMap[v.id] || [];
-
-                    // Tag-Schicht - alle Positionen prüfen (inkl. Azubis falls vorhanden)
-                    for (let pIdx = 0; pIdx < positions.length; pIdx++) {
-                        const pos = positions[pIdx];
-                        const slotId = `rtw${rIdx + 1}_tag_${pIdx + 1}`;
-                        const value = getAssignedValueFor(iso, slotId);
-
-                        if (value && value.startsWith('p:')) {
-                            const personId = value.replace('p:', '');
-                            const key = `p_${personId}`;
-                            const dutyCode = getDutyCodeForDate(key, iso);
-                            const allowed = allowedByAuswertung(dutyCode, 'tag');
-
-                            if (!allowed) {
-                                const person = personnel.find(p => p.id === Number(personId));
-                                const dt = new Date(iso + 'T00:00:00');
-                                const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-                                const posName = pos.positionName.replace(/\s+\d+$/, '');
-                                unavailableAssignments.push(`${label}: ${person?.name || personId} bei ${v.name || `RTW ${rIdx + 1}`} ${posName} Tag`);
-                            }
-                        }
-                    }
-
-                    // Nacht-Schicht - alle Positionen prüfen (inkl. Azubis falls vorhanden)
-                    for (let pIdx = 0; pIdx < positions.length; pIdx++) {
-                        const pos = positions[pIdx];
-                        const slotId = `rtw${rIdx + 1}_nacht_${pIdx + 1}`;
-                        const value = getAssignedValueFor(iso, slotId);
-
-                        if (value && value.startsWith('p:')) {
-                            const personId = value.replace('p:', '');
-                            const key = `p_${personId}`;
-                            const dutyCode = getDutyCodeForDate(key, iso);
-                            const allowed = allowedByAuswertung(dutyCode, 'nacht');
-
-                            if (!allowed) {
-                                const person = personnel.find(p => p.id === Number(personId));
-                                const dt = new Date(iso + 'T00:00:00');
-                                const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-                                const posName = pos.positionName.replace(/\s+\d+$/, '');
-                                unavailableAssignments.push(`${label}: ${person?.name || personId} bei ${v.name || `RTW ${rIdx + 1}`} ${posName} Nacht`);
-                            }
-                        }
-                    }
-                }
-
-                // NEF Slots prüfen
-                for (let nIdx = 0; nIdx < (nefVehicles || []).length; nIdx++) {
-                    const v = nefVehicles[nIdx];
-                    const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                    if (!enabled) continue;
-
-                    const positions = nefPositionsMap[v.id] || [];
-                    if (positions.length === 0) continue;
-
-                    const slotId = `nef${nIdx + 1}_assist`;
-                    const value = getAssignedValueFor(iso, slotId);
-                    if (value && value.startsWith('p:')) {
-                        const personId = value.replace('p:', '');
-                        const key = `p_${personId}`;
-                        const dutyCode = getDutyCodeForDate(key, iso);
-                        const shift = v.occupancy_mode === '24h' ? '24h' : 'tag';
-                        const allowed = allowedByAuswertung(dutyCode, shift);
-
-                        if (!allowed) {
-                            const person = personnel.find(p => p.id === Number(personId));
-                            const dt = new Date(iso + 'T00:00:00');
-                            const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-                            const posName = positions[0].positionName.replace(/\s+\d+$/, '');
-                            unavailableAssignments.push(`${label}: ${person?.name || personId} bei ${v.name || `NEF ${nIdx + 1}`} ${posName}`);
-                        }
-                    }
-                }
-            }
-
-            if (unavailableAssignments.length > 0) {
-                const maxShow = 10;
-                const preview = unavailableAssignments.slice(0, maxShow).join('\n');
-                const more = unavailableAssignments.length > maxShow ? `\n... und ${unavailableAssignments.length - maxShow} weitere` : '';
-                alert(`Freigabe nicht möglich!\n\nFolgende Personen sind nicht verfügbar:\n\n${preview}${more}`);
-                return;
-            }
-        }
-
-        const key = `roster_released_${year}_${currentMonth}`;
-        try {
-            await (window as any).api.setSetting(key, newVal ? '1' : '0');
-            setReleasedMonths(prev => {
-                const next = [...prev];
-                next[currentMonth] = newVal;
-                return next;
-            });
-        } catch (e) { console.warn('Failed to save released status', e); }
-    };
+    useEffect(() => {
+        const handler = (e: any) => {
+            setDepartment(departmentNameToId(e.detail?.department));
+        };
+        window.addEventListener('rdplan-department-changed', handler);
+        return () => window.removeEventListener('rdplan-department-changed', handler);
+    }, []);
 
     useEffect(() => {
         const loadUe50 = async () => {
@@ -478,39 +292,19 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     useEffect(() => {
         const load = async () => {
             try {
-                const dep = await (window as any).api.getSetting('department');
-                if (dep) setDepartment(Number(dep));
-            } catch { }
-            try {
                 const sws = await (window as any).api.getSetting('show_weekend_shifts');
                 setShowWeekendShifts(sws === 'true');
             } catch { }
-            try { const r = await (window as any).api.getRtwVehicles?.(); if (Array.isArray(r)) setRtwVehicles(r); } catch { }
-            try { const n = await (window as any).api.getNefVehicles?.(); if (Array.isArray(n)) setNefVehicles(n); } catch { }
-            // Monats-Aktivierungen laden (Standard true)
+            try { const r = await (window as any).api.getRtwVehicles?.(year); if (Array.isArray(r)) setRtwVehicles(r); } catch { }
+            try { const n = await (window as any).api.getNefVehicles?.(year); if (Array.isArray(n)) setNefVehicles(n); } catch { }
+            // Monats-Aktivierungen laden
             try {
                 const acts = await (window as any).api.getRtwVehicleActivations?.(year);
-                const map: Record<number, boolean[]> = {};
-                (acts || []).forEach((row: any) => {
-                    const vid = Number(row.vehicleId);
-                    const m = Number(row.month);
-                    const arr = map[vid] || Array(12).fill(true);
-                    arr[m - 1] = !!row.enabled;
-                    map[vid] = arr;
-                });
-                setRtwActivations(map);
+                setRtwActivations(buildVehicleActivationMap(acts));
             } catch { }
             try {
                 const acts = await (window as any).api.getNefVehicleActivations?.(year);
-                const map: Record<number, boolean[]> = {};
-                (acts || []).forEach((row: any) => {
-                    const vid = Number(row.vehicleId);
-                    const m = Number(row.month);
-                    const arr = map[vid] || Array(12).fill(true);
-                    arr[m - 1] = !!row.enabled;
-                    map[vid] = arr;
-                });
-                setNefActivations(map);
+                setNefActivations(buildVehicleActivationMap(acts));
             } catch { }
             try {
                 const itwVal = await (window as any).api.getSetting('itw');
@@ -521,7 +315,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const norm = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(len).fill('')).slice(0, len).map(v => (v === 'IW' ? 'IW' : ''));
                 const seqs = await (window as any).api.getItwPatterns?.();
                 if (Array.isArray(seqs) && seqs.length > 0) {
-                    const parsed = seqs.map((s: any) => ({ startDate: String(s.startDate), pattern: norm(String(s.pattern).split(',').map((x: string) => x.trim()), 21) }));
+                    const parsed = seqs.map((s: any) => ({ 
+                        startDate: String(s.startDate), 
+                        department: s.department || '1. Abteilung',
+                        pattern: norm(String(s.pattern).split(',').map((x: string) => x.trim()), 21) 
+                    }));
                     parsed.sort((a, b) => a.startDate.localeCompare(b.startDate));
                     setItwPatternSeqs(parsed);
                 }
@@ -535,9 +333,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     map[t.code] = (v || 'off') as any;
                 }
                 setAuswertungByType(map);
-            } catch (e) {
-                // console.error('[MonthTabs] Error loading shift types:', e);
-            }
+            } catch (e) { }
             try {
                 const docs = await (window as any).api.getItwDoctors?.();
                 if (Array.isArray(docs)) setItwDoctors(docs);
@@ -553,46 +349,56 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const feat = await (window as any).api.getSetting('feature_old_rtw_shifts');
                 setFeatureOldRtwShifts(feat === 'true' || feat === true);
             } catch { }
+            // Neue Fahrzeug-Zeiträume laden
+            try {
+                const rtwP = await (window as any).api.getAllRtwVehiclePeriods?.();
+                const rMap: Record<number, any[]> = {};
+                (rtwP || []).forEach((p: any) => {
+                    if (!rMap[p.vehicleId]) rMap[p.vehicleId] = [];
+                    rMap[p.vehicleId].push(p);
+                });
+                setRtwVehiclePeriods(rMap);
+                
+                const nefP = await (window as any).api.getAllNefVehiclePeriods?.();
+                const nMap: Record<number, any[]> = {};
+                (nefP || []).forEach((p: any) => {
+                    if (!nMap[p.vehicleId]) nMap[p.vehicleId] = [];
+                    nMap[p.vehicleId].push(p);
+                });
+                setNefVehiclePeriods(nMap);
+            } catch { }
         };
         load();
+    }, [year, currentMonth]);
+
+    // Separater Effekt für Settings-Listener (verhindert Listener-Leaks)
+    useEffect(() => {
         const onSettingsUpdated = async () => {
             try {
                 const y = await (window as any).api.getSetting('year');
                 const yearNum = Number(y || new Date().getFullYear());
                 // Fahrzeuge neu laden (z.B. nach Löschen)
-                try { const r = await (window as any).api.getRtwVehicles?.(); if (Array.isArray(r)) setRtwVehicles(r); } catch { }
-                try { const n = await (window as any).api.getNefVehicles?.(); if (Array.isArray(n)) setNefVehicles(n); } catch { }
+                try { const r = await (window as any).api.getRtwVehicles?.(yearNum); if (Array.isArray(r)) setRtwVehicles(r); } catch { }
+                try { const n = await (window as any).api.getNefVehicles?.(yearNum); if (Array.isArray(n)) setNefVehicles(n); } catch { }
                 // Aktivierungen für das Settings-Jahr neu laden
                 try {
                     const acts = await (window as any).api.getRtwVehicleActivations?.(yearNum);
-                    const map: Record<number, boolean[]> = {};
-                    (acts || []).forEach((row: any) => {
-                        const vid = Number(row.vehicleId);
-                        const m = Number(row.month);
-                        const arr = map[vid] || Array(12).fill(true);
-                        arr[m - 1] = !!row.enabled;
-                        map[vid] = arr;
-                    });
-                    setRtwActivations(map);
+                    setRtwActivations(buildVehicleActivationMap(acts));
                 } catch { }
                 try {
                     const acts = await (window as any).api.getNefVehicleActivations?.(yearNum);
-                    const map: Record<number, boolean[]> = {};
-                    (acts || []).forEach((row: any) => {
-                        const vid = Number(row.vehicleId);
-                        const m = Number(row.month);
-                        const arr = map[vid] || Array(12).fill(true);
-                        arr[m - 1] = !!row.enabled;
-                        map[vid] = arr;
-                    });
-                    setNefActivations(map);
+                    setNefActivations(buildVehicleActivationMap(acts));
                 } catch { }
                 // ITW-Sequenzen aktualisieren
                 try {
                     const norm = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(len).fill('')).slice(0, len).map(v => (v === 'IW' ? 'IW' : ''));
                     const seqs = await (window as any).api.getItwPatterns?.();
                     if (Array.isArray(seqs) && seqs.length > 0) {
-                        const parsed = seqs.map((s: any) => ({ startDate: String(s.startDate), pattern: norm(String(s.pattern).split(',').map((x: string) => x.trim()), 21) }));
+                        const parsed = seqs.map((s: any) => ({ 
+                            startDate: String(s.startDate), 
+                            department: s.department || '1. Abteilung',
+                            pattern: norm(String(s.pattern).split(',').map((x: string) => x.trim()), 21) 
+                        }));
                         parsed.sort((a, b) => a.startDate.localeCompare(b.startDate));
                         setItwPatternSeqs(parsed);
                     }
@@ -602,6 +408,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     const list = await (window as any).api.getHolidaysForYear?.(yearNum);
                     const s = new Set<string>((list || []).map((h: any) => String(h.date)));
                     setHolidays(s);
+                } catch { }
+
+                // Neue Fahrzeug-Zeiträume neu laden
+                try {
+                    const rtwP = await (window as any).api.getAllRtwVehiclePeriods?.();
+                    const rMap: Record<number, any[]> = {};
+                    (rtwP || []).forEach((p: any) => {
+                        if (!rMap[p.vehicleId]) rMap[p.vehicleId] = [];
+                        rMap[p.vehicleId].push(p);
+                    });
+                    setRtwVehiclePeriods(rMap);
+                    
+                    const nefP = await (window as any).api.getAllNefVehiclePeriods?.();
+                    const nMap: Record<number, any[]> = {};
+                    (nefP || []).forEach((p: any) => {
+                        if (!nMap[p.vehicleId]) nMap[p.vehicleId] = [];
+                        nMap[p.vehicleId].push(p);
+                    });
+                    setNefVehiclePeriods(nMap);
                 } catch { }
             } catch { }
         };
@@ -669,37 +494,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         setDays(daysArr);
     }, [currentMonth, year, department, shiftPattern, JSON.stringify(deptPatternSeqs)]);
 
-    // Reagiere auf Jahreswechsel: Aktivierungen neu laden
-    useEffect(() => {
-        const loadActs = async () => {
-            try {
-                const acts = await (window as any).api.getRtwVehicleActivations?.(year);
-                const map: Record<number, boolean[]> = {};
-                (acts || []).forEach((row: any) => {
-                    const vid = Number(row.vehicleId);
-                    const m = Number(row.month);
-                    const arr = map[vid] || Array(12).fill(true);
-                    arr[m - 1] = !!row.enabled;
-                    map[vid] = arr;
-                });
-                setRtwActivations(map);
-            } catch { }
-            try {
-                const acts = await (window as any).api.getNefVehicleActivations?.(year);
-                const map: Record<number, boolean[]> = {};
-                (acts || []).forEach((row: any) => {
-                    const vid = Number(row.vehicleId);
-                    const m = Number(row.month);
-                    const arr = map[vid] || Array(12).fill(true);
-                    arr[m - 1] = !!row.enabled;
-                    map[vid] = arr;
-                });
-                setNefActivations(map);
-            } catch { }
-        };
-        loadActs();
-    }, [year]);
-
     // Feiertage bei Jahreswechsel neu laden
     useEffect(() => {
         (async () => {
@@ -762,12 +556,315 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         }
         return '';
     }, [localRoster, roster]);
-    const findPersonLabelByValue = (val: string) => {
+
+    type VehiclePositionRow = { positionName: string; sort: number };
+    const [rtwPositionsMap, setRtwPositionsMap] = useState<Record<number, VehiclePositionRow[]>>({});
+    const [nefPositionsMap, setNefPositionsMap] = useState<Record<number, VehiclePositionRow[]>>({});
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const rtw: Record<number, VehiclePositionRow[]> = {};
+            for (const v of rtwVehicles || []) {
+                try {
+                    const positions = await (window as any).api.getVehiclePositions?.('rtw', v.id) || [];
+                    rtw[v.id] = positions.sort((a: VehiclePositionRow, b: VehiclePositionRow) => a.sort - b.sort);
+                } catch { /* ignore */ }
+            }
+            const nef: Record<number, VehiclePositionRow[]> = {};
+            for (const v of nefVehicles || []) {
+                try {
+                    const positions = await (window as any).api.getVehiclePositions?.('nef', v.id) || [];
+                    nef[v.id] = positions.sort((a: VehiclePositionRow, b: VehiclePositionRow) => a.sort - b.sort);
+                } catch { /* ignore */ }
+            }
+            if (!cancelled) {
+                setRtwPositionsMap(rtw);
+                setNefPositionsMap(nef);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [rtwVehicles, nefVehicles]);
+
+    const buildDepartmentDaysForMonth = useCallback((monthIndex: number): string[] => {
+        const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+        const dates: string[] = [];
+        let base = 0;
+        for (let m = 0; m < monthIndex; ++m) base += new Date(year, m + 1, 0).getDate();
+        for (let d = 1; d <= daysInMonth; ++d) {
+            const idx = base + (d - 1);
+            let depDay: string | undefined;
+            if (Array.isArray(deptPatternSeqs) && deptPatternSeqs.length > 0) {
+                const iso = new Date(Date.UTC(year, monthIndex, d)).toISOString().slice(0, 10);
+                const seqs = [...deptPatternSeqs].sort((a, b) => a.startDate.localeCompare(b.startDate));
+                let active = seqs[0];
+                for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
+                const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
+                const cur = new Date(iso + 'T00:00:00Z');
+                const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                const pat = active?.pattern || [];
+                depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : undefined;
+            } else if (shiftPattern && shiftPattern.length) {
+                depDay = shiftPattern[(idx % shiftPattern.length)];
+            }
+            if (depDay !== undefined && String(department) === depDay) {
+                dates.push(new Date(Date.UTC(year, monthIndex, d)).toISOString().slice(0, 10));
+            }
+        }
+        return dates;
+    }, [year, department, shiftPattern, deptPatternSeqs]);
+
+    const collectEmptySlotsForMonth = useCallback((
+        monthIndex: number,
+        rtwMap: Record<number, VehiclePositionRow[]>,
+        nefMap: Record<number, VehiclePositionRow[]>
+    ): string[] => {
+        const monthDays = buildDepartmentDaysForMonth(monthIndex);
+        const emptySlots: string[] = [];
+
+        for (const iso of monthDays) {
+            for (let rIdx = 0; rIdx < (rtwVehicles || []).length; rIdx++) {
+                const v = rtwVehicles[rIdx];
+                const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[monthIndex] !== false;
+                if (!enabled) continue;
+
+                const positions = rtwMap[v.id] || [];
+
+                for (let pIdx = 0; pIdx < Math.min(2, positions.length); pIdx++) {
+                    const pos = positions[pIdx];
+                    const slotId = `rtw${rIdx + 1}_tag_${pIdx + 1}`;
+                    const value = getAssignedValueFor(iso, slotId);
+                    if (!value || value.trim() === '') {
+                        const dt = new Date(iso + 'T00:00:00');
+                        const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                        const posName = pos.positionName.replace(/\s+\d+$/, '');
+                        emptySlots.push(`${label}: ${v.name || `RTW ${rIdx + 1}`} ${posName} Tag`);
+                    }
+                }
+
+                for (let pIdx = 0; pIdx < Math.min(2, positions.length); pIdx++) {
+                    const pos = positions[pIdx];
+                    const slotId = `rtw${rIdx + 1}_nacht_${pIdx + 1}`;
+                    const value = getAssignedValueFor(iso, slotId);
+                    if (!value || value.trim() === '') {
+                        const dt = new Date(iso + 'T00:00:00');
+                        const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                        const posName = pos.positionName.replace(/\s+\d+$/, '');
+                        emptySlots.push(`${label}: ${v.name || `RTW ${rIdx + 1}`} ${posName} Nacht`);
+                    }
+                }
+            }
+
+            for (let nIdx = 0; nIdx < (nefVehicles || []).length; nIdx++) {
+                const v = nefVehicles[nIdx];
+                const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[monthIndex] !== false;
+                if (!enabled) continue;
+
+                const positions = nefMap[v.id] || [];
+                if (positions.length === 0) continue;
+
+                const slotId = `nef${nIdx + 1}_assist`;
+                const value = getAssignedValueFor(iso, slotId);
+                if (!value || value.trim() === '') {
+                    const dt = new Date(iso + 'T00:00:00');
+                    const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                    const posName = positions[0].positionName.replace(/\s+\d+$/, '');
+                    emptySlots.push(`${label}: ${v.name || `NEF ${nIdx + 1}`} ${posName}`);
+                }
+            }
+        }
+
+        return emptySlots;
+    }, [buildDepartmentDaysForMonth, rtwVehicles, nefVehicles, rtwActivations, nefActivations, getAssignedValueFor]);
+
+    useEffect(() => {
+        const flags = Array.from({ length: 12 }, (_, i) =>
+            collectEmptySlotsForMonth(i, rtwPositionsMap, nefPositionsMap).length > 0
+        );
+        setMonthsWithEmptySlots(flags);
+    }, [collectEmptySlotsForMonth, rtwPositionsMap, nefPositionsMap, localRoster, roster]);
+
+    const loadVehiclePositionMaps = useCallback(async () => {
+        const rtw: Record<number, VehiclePositionRow[]> = {};
+        for (const v of rtwVehicles || []) {
+            try {
+                const positions = await (window as any).api.getVehiclePositions?.('rtw', v.id) || [];
+                rtw[v.id] = positions.sort((a: VehiclePositionRow, b: VehiclePositionRow) => a.sort - b.sort);
+            } catch { /* ignore */ }
+        }
+        const nef: Record<number, VehiclePositionRow[]> = {};
+        for (const v of nefVehicles || []) {
+            try {
+                const positions = await (window as any).api.getVehiclePositions?.('nef', v.id) || [];
+                nef[v.id] = positions.sort((a: VehiclePositionRow, b: VehiclePositionRow) => a.sort - b.sort);
+            } catch { /* ignore */ }
+        }
+        return { rtw, nef };
+    }, [rtwVehicles, nefVehicles]);
+
+    const toggleReleased = useCallback(async () => {
+        const newVal = !releasedMonths[currentMonth];
+
+        if (newVal) {
+            let rtwMap = rtwPositionsMap;
+            let nefMap = nefPositionsMap;
+            if (Object.keys(rtwMap).length === 0 && (rtwVehicles || []).length > 0) {
+                const loaded = await loadVehiclePositionMaps();
+                rtwMap = loaded.rtw;
+                nefMap = loaded.nef;
+            }
+
+            const emptySlots = collectEmptySlotsForMonth(currentMonth, rtwMap, nefMap);
+            if (emptySlots.length > 0) {
+                const maxShow = 10;
+                const preview = emptySlots.slice(0, maxShow).join('\n');
+                const more = emptySlots.length > maxShow ? `\n... und ${emptySlots.length - maxShow} weitere` : '';
+                alert(
+                    `Hinweis: Folgende Positionen sind nicht besetzt:\n\n${preview}${more}\n\n` +
+                    'Die Freigabe wird trotzdem gespeichert. Der Monat wird gelb markiert, solange Lücken bestehen.'
+                );
+            }
+
+            const monthDays = buildDepartmentDaysForMonth(currentMonth);
+            const unavailableAssignments: string[] = [];
+
+            for (const iso of monthDays) {
+                for (let rIdx = 0; rIdx < (rtwVehicles || []).length; rIdx++) {
+                    const v = rtwVehicles[rIdx];
+                    const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
+                    if (!enabled) continue;
+
+                    const positions = rtwMap[v.id] || [];
+
+                    for (let pIdx = 0; pIdx < positions.length; pIdx++) {
+                        const pos = positions[pIdx];
+                        const slotId = `rtw${rIdx + 1}_tag_${pIdx + 1}`;
+                        const value = getAssignedValueFor(iso, slotId);
+
+                        if (value && value.startsWith('p:')) {
+                            const personId = value.replace('p:', '');
+                            const key = `p_${personId}`;
+                            const dutyCode = getDutyCodeForDate(key, iso);
+                            const allowed = allowedByAuswertung(dutyCode, 'tag');
+
+                            if (!allowed) {
+                                const person = personnel.find(p => p.id === Number(personId));
+                                const dt = new Date(iso + 'T00:00:00');
+                                const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                                const posName = pos.positionName.replace(/\s+\d+$/, '');
+                                unavailableAssignments.push(`${label}: ${person?.name || personId} bei ${v.name || `RTW ${rIdx + 1}`} ${posName} Tag`);
+                            }
+                        }
+                    }
+
+                    for (let pIdx = 0; pIdx < positions.length; pIdx++) {
+                        const pos = positions[pIdx];
+                        const slotId = `rtw${rIdx + 1}_nacht_${pIdx + 1}`;
+                        const value = getAssignedValueFor(iso, slotId);
+
+                        if (value && value.startsWith('p:')) {
+                            const personId = value.replace('p:', '');
+                            const key = `p_${personId}`;
+                            const dutyCode = getDutyCodeForDate(key, iso);
+                            const allowed = allowedByAuswertung(dutyCode, 'nacht');
+
+                            if (!allowed) {
+                                const person = personnel.find(p => p.id === Number(personId));
+                                const dt = new Date(iso + 'T00:00:00');
+                                const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                                const posName = pos.positionName.replace(/\s+\d+$/, '');
+                                unavailableAssignments.push(`${label}: ${person?.name || personId} bei ${v.name || `RTW ${rIdx + 1}`} ${posName} Nacht`);
+                            }
+                        }
+                    }
+                }
+
+                for (let nIdx = 0; nIdx < (nefVehicles || []).length; nIdx++) {
+                    const v = nefVehicles[nIdx];
+                    const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
+                    if (!enabled) continue;
+
+                    const positions = nefMap[v.id] || [];
+                    if (positions.length === 0) continue;
+
+                    const slotId = `nef${nIdx + 1}_assist`;
+                    const value = getAssignedValueFor(iso, slotId);
+                    if (value && value.startsWith('p:')) {
+                        const personId = value.replace('p:', '');
+                        const key = `p_${personId}`;
+                        const dutyCode = getDutyCodeForDate(key, iso);
+                        const shift = v.occupancy_mode === '24h' ? '24h' : 'tag';
+                        const allowed = allowedByAuswertung(dutyCode, shift);
+
+                        if (!allowed) {
+                            const person = personnel.find(p => p.id === Number(personId));
+                            const dt = new Date(iso + 'T00:00:00');
+                            const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                            const posName = positions[0].positionName.replace(/\s+\d+$/, '');
+                            unavailableAssignments.push(`${label}: ${person?.name || personId} bei ${v.name || `NEF ${nIdx + 1}`} ${posName}`);
+                        }
+                    }
+                }
+            }
+
+            if (unavailableAssignments.length > 0) {
+                const maxShow = 10;
+                const preview = unavailableAssignments.slice(0, maxShow).join('\n');
+                const more = unavailableAssignments.length > maxShow ? `\n... und ${unavailableAssignments.length - maxShow} weitere` : '';
+                alert(`Freigabe nicht möglich!\n\nFolgende Personen sind nicht verfügbar:\n\n${preview}${more}`);
+                return;
+            }
+        }
+
+        const key = rosterReleasedSettingKey(year, currentMonth, departmentName);
+        try {
+            await (window as any).api.setSetting(key, newVal ? '1' : '0');
+            setReleasedMonths(prev => {
+                const next = [...prev];
+                next[currentMonth] = newVal;
+                return next;
+            });
+        } catch (e) { console.warn('Failed to save released status', e); }
+    }, [
+        releasedMonths,
+        currentMonth,
+        year,
+        departmentName,
+        rtwPositionsMap,
+        nefPositionsMap,
+        rtwVehicles,
+        nefVehicles,
+        loadVehiclePositionMaps,
+        collectEmptySlotsForMonth,
+        buildDepartmentDaysForMonth,
+        rtwActivations,
+        nefActivations,
+        getAssignedValueFor,
+        getDutyCodeForDate,
+        allowedByAuswertung,
+        personnel,
+    ]);
+
+    const personNameById = useMemo(() => {
+        const map = new Map<number, string>();
+        const add = (list: { id: number; name: string; vorname?: string }[] | undefined) => {
+            (list || []).forEach(p => {
+                if (p?.id != null && p.name) map.set(Number(p.id), String(p.name));
+            });
+        };
+        add(personnelLookup);
+        add(personnel);
+        return map;
+    }, [personnelLookup, personnel]);
+
+    const findPersonLabelByValue = useCallback((val: string) => {
         if (!val) return '';
         try {
             const [t, idStr] = val.split(':');
             const id = Number(idStr);
             if (t === 'p') {
+                const fromMap = personNameById.get(id);
+                if (fromMap) return fromMap;
                 const p = personnel.find(x => x.id === id);
                 return p ? `${p.name}` : `Person ${id}`;
             }
@@ -781,10 +878,33 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             }
         } catch { /* ignore */ }
         return val;
-    };
+    }, [personNameById, personnel, azubis, itwDoctors]);
+
+    const pushUndoEntry = useCallback((entry: AssignmentUndoEntry) => {
+        if (!entry.slotId || entry.previousValue === entry.nextValue) return;
+        setUndoStack(prev => {
+            const next = [...prev, entry];
+            return next.length > 2000 ? next.slice(next.length - 2000) : next;
+        });
+        setRedoStack([]);
+    }, []);
 
     const handleAssign = useCallback(async (date: string, dayIdx: number, value: string, slotId?: string) => {
+        if (!canWrite) return;
         if (!value) return;
+        if (slotId) {
+            const currentValue = getAssignedValueFor(date, slotId);
+            if (currentValue === value) return;
+            if (!isApplyingUndoRef.current) {
+                pushUndoEntry({
+                    date,
+                    slotId,
+                    previousValue: currentValue,
+                    nextValue: value,
+                    ts: Date.now()
+                });
+            }
+        }
         const [t, idStr] = value.split(':');
         const pid = Number(idStr);
         const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : 'person');
@@ -838,11 +958,21 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         } catch (e) {
             setIsUpdating(false);
         }
-    }, [localRoster, updateTimeout, onRosterChanged, onEntryAssigned]);
+    }, [canWrite, localRoster, updateTimeout, onRosterChanged, onEntryAssigned, getAssignedValueFor, pushUndoEntry]);
     const clearAssignedForDate = async (slotId: string, date: string) => {
+        if (!canWrite) return;
         const currentVal = getAssignedValueFor(date, slotId);
         if (!currentVal) return;
         try {
+            if (!isApplyingUndoRef.current) {
+                pushUndoEntry({
+                    date,
+                    slotId,
+                    previousValue: currentVal,
+                    nextValue: '',
+                    ts: Date.now()
+                });
+            }
             const [t, idStr] = currentVal.split(':');
             const pid = Number(idStr);
             const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : 'person');
@@ -862,6 +992,166 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             // Silently ignore errors
         }
     };
+
+    const undoLastAssignmentChange = useCallback(async () => {
+        if (!canWrite) return;
+        if (undoStack.length === 0) return;
+
+        const lastEntry = undoStack[undoStack.length - 1];
+        setUndoStack(prev => prev.slice(0, -1));
+        if (!lastEntry) return;
+
+        try {
+            isApplyingUndoRef.current = true;
+            const currentVal = getAssignedValueFor(lastEntry.date, lastEntry.slotId);
+            if (currentVal === lastEntry.previousValue) return;
+
+            const parseAssignment = (val: string) => {
+                if (!val) return null;
+                const [t, idStr] = val.split(':');
+                const pid = Number(idStr);
+                if (!Number.isFinite(pid)) return null;
+                const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : 'person');
+                const key = ptype === 'person' ? `p_${pid}` : (ptype === 'azubi' ? `a_${pid}` : `d_${pid}`);
+                return { pid, ptype, key };
+            };
+
+            const currentTarget = parseAssignment(currentVal);
+            const previousTarget = parseAssignment(lastEntry.previousValue);
+
+            setLocalRoster(prev => {
+                const newState = { ...prev } as Record<string, Record<string, { value: string; type: string }>>;
+
+                Object.keys(newState).forEach(personKey => {
+                    const dayEntry = newState[personKey]?.[lastEntry.date];
+                    if (!dayEntry || dayEntry.type !== lastEntry.slotId) return;
+                    newState[personKey] = {
+                        ...newState[personKey],
+                        [lastEntry.date]: { ...(dayEntry as any), type: '' }
+                    };
+                });
+
+                if (previousTarget) {
+                    const currentPersonState = newState[previousTarget.key] || {};
+                    const dayEntry = { ...(currentPersonState[lastEntry.date] || {}), type: lastEntry.slotId };
+                    newState[previousTarget.key] = { ...currentPersonState, [lastEntry.date]: dayEntry };
+                }
+
+                return newState;
+            });
+            setForceUpdateCounter(prev => prev + 1);
+
+            if (currentTarget) {
+                await (window as any).api.assignSlot({
+                    personId: currentTarget.pid,
+                    personType: currentTarget.ptype,
+                    date: lastEntry.date,
+                    slotType: ''
+                });
+            }
+
+            if (previousTarget) {
+                await (window as any).api.assignSlot({
+                    personId: previousTarget.pid,
+                    personType: previousTarget.ptype,
+                    date: lastEntry.date,
+                    slotType: lastEntry.slotId
+                });
+            }
+
+            if (onRosterChanged) onRosterChanged();
+            setRedoStack(prev => {
+                const next = [...prev, lastEntry];
+                return next.length > 2000 ? next.slice(next.length - 2000) : next;
+            });
+        } catch {
+            setUndoStack(prev => [...prev, lastEntry as AssignmentUndoEntry]);
+        } finally {
+            setTimeout(() => {
+                isApplyingUndoRef.current = false;
+            }, 0);
+        }
+    }, [canWrite, undoStack, getAssignedValueFor, onRosterChanged]);
+
+    const redoLastAssignmentChange = useCallback(async () => {
+        if (!canWrite) return;
+        if (redoStack.length === 0) return;
+
+        const lastEntry = redoStack[redoStack.length - 1];
+        setRedoStack(prev => prev.slice(0, -1));
+        if (!lastEntry) return;
+
+        try {
+            isApplyingUndoRef.current = true;
+            const currentVal = getAssignedValueFor(lastEntry.date, lastEntry.slotId);
+            if (currentVal === lastEntry.nextValue) return;
+
+            const parseAssignment = (val: string) => {
+                if (!val) return null;
+                const [t, idStr] = val.split(':');
+                const pid = Number(idStr);
+                if (!Number.isFinite(pid)) return null;
+                const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : 'person');
+                const key = ptype === 'person' ? `p_${pid}` : (ptype === 'azubi' ? `a_${pid}` : `d_${pid}`);
+                return { pid, ptype, key };
+            };
+
+            const currentTarget = parseAssignment(currentVal);
+            const nextTarget = parseAssignment(lastEntry.nextValue);
+
+            setLocalRoster(prev => {
+                const newState = { ...prev } as Record<string, Record<string, { value: string; type: string }>>;
+
+                Object.keys(newState).forEach(personKey => {
+                    const dayEntry = newState[personKey]?.[lastEntry.date];
+                    if (!dayEntry || dayEntry.type !== lastEntry.slotId) return;
+                    newState[personKey] = {
+                        ...newState[personKey],
+                        [lastEntry.date]: { ...(dayEntry as any), type: '' }
+                    };
+                });
+
+                if (nextTarget) {
+                    const currentPersonState = newState[nextTarget.key] || {};
+                    const dayEntry = { ...(currentPersonState[lastEntry.date] || {}), type: lastEntry.slotId };
+                    newState[nextTarget.key] = { ...currentPersonState, [lastEntry.date]: dayEntry };
+                }
+
+                return newState;
+            });
+            setForceUpdateCounter(prev => prev + 1);
+
+            if (currentTarget) {
+                await (window as any).api.assignSlot({
+                    personId: currentTarget.pid,
+                    personType: currentTarget.ptype,
+                    date: lastEntry.date,
+                    slotType: ''
+                });
+            }
+
+            if (nextTarget) {
+                await (window as any).api.assignSlot({
+                    personId: nextTarget.pid,
+                    personType: nextTarget.ptype,
+                    date: lastEntry.date,
+                    slotType: lastEntry.slotId
+                });
+            }
+
+            if (onRosterChanged) onRosterChanged();
+            setUndoStack(prev => {
+                const next = [...prev, lastEntry];
+                return next.length > 2000 ? next.slice(next.length - 2000) : next;
+            });
+        } catch {
+            setRedoStack(prev => [...prev, lastEntry as AssignmentUndoEntry]);
+        } finally {
+            setTimeout(() => {
+                isApplyingUndoRef.current = false;
+            }, 0);
+        }
+    }, [canWrite, redoStack, getAssignedValueFor, onRosterChanged]);
 
     const vehicleHeaderRef = React.useRef<HTMLDivElement>(null);
     const contentRef = React.useRef<HTMLDivElement>(null);
@@ -916,9 +1206,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         return mode === 'tag' ? 1 : 2;
     }, [nefVehicles]);
 
-    {/* ========================================================== */ }
-    {/* GEMEINSAME SOLL-BERECHNUNG für RTW-Tab und ITW-Tab        */ }
-    {/* ========================================================== */ }
+    // ==========================================================
+    // GEMEINSAME SOLL-BERECHNUNG für RTW-Tab und ITW-Tab
+    // ==========================================================
     useMemo(() => {
         const computeSharedTargets = () => {
             // 1. Flatten Roster for Shared Calculation
@@ -1252,18 +1542,24 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         zIndex: 103
                     }}>
                         <span style={{ fontSize: 14, color: '#666' }}>Status:</span>
+                        {(() => {
+                            const isReleased = releasedMonths[currentMonth];
+                            const hasGaps = isReleased && monthsWithEmptySlots[currentMonth];
+                            const statusColor = !isReleased ? '#dc3545' : (hasGaps ? '#f59e0b' : '#28a745');
+                            return (
+                                <>
                         <div style={{
                             position: 'relative',
                             width: 40,
                             height: 20,
-                            background: releasedMonths[currentMonth] ? '#28a745' : '#dc3545',
+                            background: statusColor,
                             borderRadius: 10,
                             transition: 'background 0.3s'
                         }}>
                             <div style={{
                                 position: 'absolute',
                                 top: 2,
-                                left: releasedMonths[currentMonth] ? 22 : 2,
+                                left: isReleased ? 22 : 2,
                                 width: 16,
                                 height: 16,
                                 background: 'white',
@@ -1274,15 +1570,66 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         </div>
                         <input
                             type="checkbox"
-                            checked={releasedMonths[currentMonth]}
+                            checked={isReleased}
                             onChange={toggleReleased}
                             disabled={!canWrite}
                             style={{ display: 'none' }}
                         />
-                        <span style={{ fontSize: 14, fontWeight: 600, color: releasedMonths[currentMonth] ? '#28a745' : '#dc3545', minWidth: 110, whiteSpace: 'nowrap' }}>
-                            {releasedMonths[currentMonth] ? 'Freigegeben' : 'In Bearbeitung'}
+                        <span style={{ fontSize: 14, fontWeight: 600, color: statusColor, minWidth: 110, whiteSpace: 'nowrap' }}>
+                            {!isReleased ? 'In Bearbeitung' : (hasGaps ? 'Freigegeben (Lücken)' : 'Freigegeben')}
                         </span>
+                                </>
+                            );
+                        })()}
                     </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button
+                            type="button"
+                            onClick={undoLastAssignmentChange}
+                            disabled={!canWrite || undoStack.length === 0}
+                            title={undoStack.length > 0 ? `Zurück (${undoStack.length})` : 'Keine Änderung zum Rückgängigmachen'}
+                            aria-label="Zurück"
+                            style={{
+                                width: 30,
+                                height: 30,
+                                borderRadius: 6,
+                                border: '1px solid #d1d5db',
+                                background: (!canWrite || undoStack.length === 0) ? '#f9fafb' : '#fff',
+                                color: (!canWrite || undoStack.length === 0) ? '#9ca3af' : '#4b5563',
+                                cursor: (!canWrite || undoStack.length === 0) ? 'not-allowed' : 'pointer',
+                                fontSize: 16,
+                                lineHeight: 1,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}
+                        >
+                            ↶
+                        </button>
+                        <button
+                            type="button"
+                            onClick={redoLastAssignmentChange}
+                            disabled={!canWrite || redoStack.length === 0}
+                            title={redoStack.length > 0 ? `Wiederherstellen (${redoStack.length})` : 'Keine Änderung zum Wiederherstellen'}
+                            aria-label="Wiederherstellen"
+                            style={{
+                                width: 30,
+                                height: 30,
+                                borderRadius: 6,
+                                border: '1px solid #d1d5db',
+                                background: (!canWrite || redoStack.length === 0) ? '#f9fafb' : '#fff',
+                                color: (!canWrite || redoStack.length === 0) ? '#9ca3af' : '#4b5563',
+                                cursor: (!canWrite || redoStack.length === 0) ? 'not-allowed' : 'pointer',
+                                fontSize: 16,
+                                lineHeight: 1,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}
+                        >
+                            ↷
+                        </button>
+                    </div>
                     </div>
                 </div>
                 {/* Monats-Tabs */}
@@ -1295,9 +1642,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     paddingBottom: 20
                 }}>
                     {months.map((m, i) => {
-                        // Status-Farbe: Grün wenn freigegeben, Rot wenn nicht
+                        // Status-Farbe: Rot = in Bearbeitung, Grün = freigegeben vollständig, Gelb = freigegeben mit Lücken
                         const isReleased = releasedMonths[i];
-                        const stripeColor = isReleased ? '#28a745' : '#dc3545';
+                        const hasGaps = isReleased && monthsWithEmptySlots[i];
+                        const stripeColor = !isReleased ? '#dc3545' : (hasGaps ? '#f59e0b' : '#28a745');
 
                         return (
                             <button
@@ -1468,9 +1816,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                     <div key={`rtw_header_${rIdx}`} style={{
                                         marginRight: 8,
                                         marginBottom: 8,
-                                        minWidth: 338,
-                                        paddingTop: 8,
-                                        paddingLeft: 0,
+                                        width: 'var(--vehicle-card-width)',
+                                        minWidth: 'var(--vehicle-card-width)',
+                                        maxWidth: 'var(--vehicle-card-width)',
+                                        padding: 8,
+                                        boxSizing: 'border-box',
                                         background: 'var(--bg)'
                                     }}>
                                         <div style={{ paddingBottom: 4, borderBottom: '2px solid #ef4444' }}>
@@ -1492,9 +1842,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                     <div key={`nef_header_${nIdx}`} style={{
                                         marginRight: 8,
                                         marginBottom: 8,
-                                        minWidth: 238,
-                                        paddingTop: 8,
-                                        paddingLeft: 0,
+                                        width: 'var(--vehicle-card-width)',
+                                        minWidth: 'var(--vehicle-card-width)',
+                                        maxWidth: 'var(--vehicle-card-width)',
+                                        padding: 8,
+                                        boxSizing: 'border-box',
                                         background: 'var(--bg)'
                                     }}>
                                         <div style={{ paddingBottom: 4, borderBottom: '2px solid #ef4444' }}>
@@ -1698,6 +2050,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                             const hasQual = p.fahrzeugfuehrer;
                                                                             const dutyCode = getDutyCodeFor(`p_${p.id}`);
                                                                             const allowed = allowedByAuswertung(dutyCode, 'tag');
+                                                                            
+                                                                            if (d.day === 2 && rIdx === 0) {
+                                                                                console.log(`[DEBUG MonthTabs] Filter p=${p.name}, hasQual=${hasQual}, dutyCode=${dutyCode}, allowed=${allowed}`);
+                                                                            }
+                                                                            
                                                                             return allowed && hasQual;
                                                                         })
                                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
@@ -1708,6 +2065,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
                                                                     const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
 
+                                                                    if (d.day === 2) {
+                                                                        console.log('[DEBUG MonthTabs] RTW Select Day 2:', {
+                                                                            slotId,
+                                                                            value,
+                                                                            personnelCount: personnel.length,
+                                                                            matchingPersonnel: optionsP.map(o => o.label)
+                                                                        });
+                                                                    }
                                                                     return (
                                                                         <select
                                                                             className={styles.select}
@@ -1906,6 +2271,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...optionsA] : optionsA;
                                                                     return (
                                                                         <select className={styles.select} value={value}
+                                                                            disabled={!canWrite}
                                                                             onChange={e => handleAssign(d.date, d.dayOfYear, e.target.value, slotId)}
                                                                             onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_azubi'); } }}>
                                                                             <option value=""></option>
@@ -2130,27 +2496,29 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         const assignedItwDates = new Set<string>();
 
                                         // 1. Musterfolge (Deaktiviert: ITW-Spalten nur anzeigen, wenn tatsächlich Einträge im Dienstplan existieren)
-                                        /*
+                                        // 1. Musterfolge (Loop-Vorschau für die aktuelle Abteilung)
+                                        const deptStr = `${department}. Abteilung`;
                                         for (let i = 1; i <= daysInMonth; i++) {
-                                            const iso = new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0,10);
+                                            const iso = new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0, 10);
                                             if (holidays.has(iso)) continue;
-                                            
-                                            const seqs = [...(itwPatternSeqs || [])].sort((a,b) => a.startDate.localeCompare(b.startDate));
+
+                                            const seqs = [...(itwPatternSeqs || [])]
+                                                .filter(s => s.department === deptStr)
+                                                .sort((a, b) => a.startDate.localeCompare(b.startDate));
                                             if (seqs.length === 0) continue;
-                                            
+
                                             let active = seqs[0];
                                             for (const s of seqs) { if (s.startDate <= iso) active = s; else break; }
-                                            
+
                                             const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
                                             const cur = new Date(iso + 'T00:00:00Z');
-                                            const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000*60*60*24));
+                                            const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
                                             const pat = active?.pattern || [];
                                             if (pat.length === 0) continue;
-                                            
+
                                             const val = pat[((diffDays % pat.length) + pat.length) % pat.length];
-                                            if (val) assignedItwDates.add(iso);
+                                            if (val === 'IW') assignedItwDates.add(iso);
                                         }
-                                        */
 
                                         // 2. Tatsächliche Einträge
                                         try {
@@ -2218,6 +2586,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                             return (
                                                 <select className={styles.select} value={value}
                                                     style={highlightStyle}
+                                                    disabled={!canWrite}
                                                     onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } else { handleAssign(date, 0, v, slotId); } }}
                                                     onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } }}>
                                                     <option value=""></option>

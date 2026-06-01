@@ -7,25 +7,26 @@ function useYear(): [number, React.Dispatch<React.SetStateAction<number>>] {
   return [year, setYear];
 }
 
-function useRoster(year: number) {
+function useRoster(year: number, departmentName?: string) {
   const [roster, setRoster] = useState<any[]>([]);
   useEffect(() => {
     (async () => {
       try {
-        const rows = await (window as any).api.getDutyRoster(year);
+        const rows = await (window as any).api.getDutyRoster(year, departmentName);
         setRoster(Array.isArray(rows) ? rows : []);
       } catch { setRoster([]); }
     })();
-  }, [year]);
+  }, [year, departmentName]);
   return roster;
 }
 
-function usePersonnel(year: number) {
+function usePersonnel(year: number, departmentName?: string) {
   const [list, setList] = useState<{ id: number; name: string; vorname: string; fahrzeugfuehrerHLFB?: boolean; hlfbMonthly?: boolean[]; ue50?: boolean; ue50Monthly?: boolean[]; lpal?: boolean; lpalMonthly?: boolean[]; rettungsdienst?: boolean; rettungsdienstMonthly?: boolean[] }[]>([]);
   const fetch = async () => {
     try {
+      const currentYear = year.toString();
       const [rawList, allPeriods, hlfbQualSetting, ue50QualSetting, lpalQualSetting, rdQualSetting] = await Promise.all([
-        (window as any).api.getPersonnelList?.(),
+        (window as any).api.getPersonnelList?.(false, currentYear, departmentName),
         (window as any).api.getAllQualificationPeriods?.(),
         (window as any).api.getSetting?.('hlfb_qualification_type'),
         (window as any).api.getSetting?.('ue50_qualification_type'),
@@ -154,7 +155,7 @@ function usePersonnel(year: number) {
       api.onPersonnelUpdated(fetch);
       return () => api.offPersonnelUpdated(fetch);
     }
-  }, [year]); // Re-fetch when year changes
+  }, [year, departmentName]); // Re-fetch when year or department changes
   return list;
 }
 
@@ -235,20 +236,20 @@ function useAuswertungByType() {
   return map;
 }
 
-function useVehicles() {
+function useVehicles(year: number) {
   const [rtw, setRtw] = useState<{ id: number; name: string }[]>([]);
   const [nef, setNef] = useState<{ id: number; name: string; occupancyMode?: '24h' | 'tag' }[]>([]);
   useEffect(() => {
     (async () => {
-      try { const r = await (window as any).api.getRtwVehicles?.(); if (Array.isArray(r)) setRtw(r); } catch { }
+      try { const r = await (window as any).api.getRtwVehicles?.(year); if (Array.isArray(r)) setRtw(r); } catch { }
       try {
-        const n = await (window as any).api.getNefVehicles?.();
+        const n = await (window as any).api.getNefVehicles?.(year);
         if (Array.isArray(n)) {
           setNef(n.map((v: any) => ({ ...v, occupancyMode: v.occupancy_mode || v.occupancyMode || '24h' })));
         }
       } catch { }
     })();
-  }, []);
+  }, [year]);
   return { rtw, nef };
 }
 
@@ -424,15 +425,15 @@ function computeShiftsPerPerson(row1: number[], row2: number[]) {
   return row1.map((num, i) => (row2[i] > 0 ? +(num / row2[i]).toFixed(2) : 0));
 }
 
-const ValuesPage: React.FC = () => {
+const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) => {
   const [year, setYear] = useYear();
-  const roster = useRoster(year);
-  const personnel = usePersonnel(year);
+  const roster = useRoster(year, departmentName);
+  const personnel = usePersonnel(year, departmentName);
   const azubis = useAzubis();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const ue50Ids = useUe50PersonnelIds(year);
   const auswertungByType = useAuswertungByType();
-  const { rtw, nef } = useVehicles();
+  const { rtw, nef } = useVehicles(year);
   const { rtwActs, nefActs } = useActivations(year);
   const department = useDepartment();
   const deptPatternSeqs = useDeptPatterns();

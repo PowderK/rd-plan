@@ -11,8 +11,9 @@ export interface SettingsExportData {
   settings: Array<{ key: string; value: string }>;
   shiftTypes: Array<{ id: number; code: string; description: string }>;
   holidays: Array<{ date: string; name: string }>;
-  itwPatterns: Array<{ start_date: string; pattern: string }>;
-  deptPatterns: Array<{ start_date: string; pattern: string }>;
+  itwPatterns: Array<{ start_date: string; pattern: string; department?: string }>;
+  deptPatterns: Array<{ start_date: string; pattern: string; department?: string }>;
+  yearPlannings: Array<{ year: number; department: string; filePath: string; data?: string }>;
   rtwVehicles: Array<{ id: number; name: string; sort: number; archived_year?: number }>;
   nefVehicles: Array<{ id: number; name: string; sort: number; archived_year?: number; occupancy_mode: string }>;
   itwVehicles: Array<{ id: number; name: string; sort: number; archived_year?: number }>;
@@ -23,6 +24,9 @@ export interface SettingsExportData {
   rtwVehiclePeriods: Array<{ id: number; vehicleId: number; startYM: string; endYM: string | null; active: boolean }>;
   nefVehiclePeriods: Array<{ id: number; vehicleId: number; startYM: string; endYM: string | null; active: boolean }>;
   itwVehiclePeriods: Array<{ id: number; vehicleId: number; startYM: string; endYM: string | null; active: boolean }>;
+  shiftTransfers?: Array<{ id: number; from_person_id: number; to_person_id: number; shift_count: number; position_type: string; month: string; reason: string; created_at: string }>;
+  rosterCommentsPersonal?: Array<{ id: number; person_id: number; date: string; comment: string; created_at: string; created_by?: string; updated_at?: string }>;
+  rosterCommentsGlobal?: Array<{ id: number; date: string; comment: string; created_at: string; created_by?: string; updated_at?: string }>;
 }
 
 export interface SettingsImportResult {
@@ -33,6 +37,7 @@ export interface SettingsImportResult {
     holidays: number;
     itwPatterns: number;
     deptPatterns: number;
+    yearPlannings: number;
     rtwVehicles: number;
     nefVehicles: number;
     itwVehicles: number;
@@ -43,6 +48,9 @@ export interface SettingsImportResult {
     rtwVehiclePeriods: number;
     nefVehiclePeriods: number;
     itwVehiclePeriods: number;
+    shiftTransfers: number;
+    rosterCommentsPersonal: number;
+    rosterCommentsGlobal: number;
   };
   skipped: number;
   errors: string[];
@@ -71,8 +79,8 @@ export class SettingsImporter {
       const settings = await this.db.all('SELECT key, value FROM settings ORDER BY key');
       const shiftTypes = await this.db.all('SELECT id, code, description FROM shift_types ORDER BY code');
       const holidays = await this.db.all('SELECT date, name FROM holidays ORDER BY date');
-      const itwPatterns = await this.db.all('SELECT start_date, pattern FROM itw_patterns ORDER BY start_date');
-      const deptPatterns = await this.db.all('SELECT start_date, pattern FROM dept_patterns ORDER BY start_date');
+      const itwPatterns = await this.db.all('SELECT start_date, department, pattern FROM itw_patterns ORDER BY start_date');
+      const deptPatterns = await this.db.all('SELECT start_date, department, pattern FROM dept_patterns ORDER BY start_date');
       const rtwVehicles = await this.db.all('SELECT id, name, sort, archived_year FROM rtw_vehicles ORDER BY sort');
       const nefVehicles = await this.db.all('SELECT id, name, sort, archived_year, occupancy_mode FROM nef_vehicles ORDER by sort');
       const itwVehicles = await this.db.all('SELECT id, name, sort, archived_year FROM itw_vehicles ORDER BY sort');
@@ -83,6 +91,12 @@ export class SettingsImporter {
       const rtwVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM rtw_vehicle_periods ORDER BY vehicleId, startYM');
       const nefVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM nef_vehicle_periods ORDER BY vehicleId, startYM');
       const itwVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM itw_vehicle_periods ORDER BY vehicleId, startYM');
+      
+      // Neue Tabellen (Issue #21 & #22) und Year Plannings
+      const yearPlannings = await this.db.all('SELECT year, filePath, department FROM year_plannings ORDER BY year, department');
+      const shiftTransfers = await this.db.all('SELECT id, from_person_id, to_person_id, shift_count, position_type, month, reason, created_at FROM shift_transfers ORDER BY month');
+      const rosterCommentsPersonal = await this.db.all('SELECT id, person_id, date, comment, created_at, created_by, updated_at FROM roster_comments_personal ORDER BY date');
+      const rosterCommentsGlobal = await this.db.all('SELECT id, date, comment, created_at, created_by, updated_at FROM roster_comments_global ORDER BY date');
 
       const exportData: SettingsExportData = {
         metadata: {
@@ -95,6 +109,7 @@ export class SettingsImporter {
         holidays: holidays || [],
         itwPatterns: itwPatterns || [],
         deptPatterns: deptPatterns || [],
+        yearPlannings: yearPlannings || [],
         rtwVehicles: rtwVehicles || [],
         nefVehicles: nefVehicles || [],
         itwVehicles: itwVehicles || [],
@@ -104,7 +119,10 @@ export class SettingsImporter {
         vehiclePositions: vehiclePositions || [],
         rtwVehiclePeriods: rtwVehiclePeriods || [],
         nefVehiclePeriods: nefVehiclePeriods || [],
-        itwVehiclePeriods: itwVehiclePeriods || []
+        itwVehiclePeriods: itwVehiclePeriods || [],
+        shiftTransfers: shiftTransfers || [],
+        rosterCommentsPersonal: rosterCommentsPersonal || [],
+        rosterCommentsGlobal: rosterCommentsGlobal || []
       };
 
       // Als JSON speichern
@@ -139,6 +157,9 @@ export class SettingsImporter {
       const itwVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM itw_vehicle_periods ORDER BY vehicleId, startYM');
       const personnelActivePeriods = await this.db.all('SELECT id, personId, startYM, endYM, description, active FROM personnel_active_periods ORDER BY personId, startYM');
       const qualificationPeriods = await this.db.all('SELECT id, personId, qualType, startYM, endYM, active FROM qualification_periods ORDER BY personId, qualType, startYM');
+      
+      // Neue Tabellen
+      const yearPlannings = await this.db.all('SELECT year, filePath, department FROM year_plannings ORDER BY year, department');
 
       // Erstelle Workbook
       const wb = XLSX.utils.book_new();
@@ -185,8 +206,8 @@ export class SettingsImporter {
       // ITW-Patterns-Sheet
       if (itwPatterns && itwPatterns.length > 0) {
         const itwData = [
-          ['Gültig ab', 'Muster (21 Tage)'],
-          ...itwPatterns.map(p => [p.start_date, p.pattern])
+          ['Gültig ab', 'Muster (21 Tage)', 'Abteilung'],
+          ...itwPatterns.map(p => [p.start_date, p.pattern, p.department || '1. Abteilung'])
         ];
         const itwWs = XLSX.utils.aoa_to_sheet(itwData);
         XLSX.utils.book_append_sheet(wb, itwWs, 'ITW-Schichtfolgen');
@@ -195,11 +216,21 @@ export class SettingsImporter {
       // Department-Patterns-Sheet
       if (deptPatterns && deptPatterns.length > 0) {
         const deptData = [
-          ['Gültig ab', 'Muster (21 Tage)'],
-          ...deptPatterns.map(p => [p.start_date, p.pattern])
+          ['Gültig ab', 'Muster (21 Tage)', 'Abteilung'],
+          ...deptPatterns.map(p => [p.start_date, p.pattern, p.department || '1. Abteilung'])
         ];
         const deptWs = XLSX.utils.aoa_to_sheet(deptData);
         XLSX.utils.book_append_sheet(wb, deptWs, 'Abteilungs-Schichtfolgen');
+      }
+
+      // Year-Plannings-Sheet
+      if (yearPlannings && yearPlannings.length > 0) {
+        const yearData = [
+          ['Jahr', 'Abteilung', 'Daten (JSON)'],
+          ...yearPlannings.map((p: any) => [p.year, p.department, p.filePath || p.data])
+        ];
+        const yearWs = XLSX.utils.aoa_to_sheet(yearData);
+        XLSX.utils.book_append_sheet(wb, yearWs, 'Jahresplanungen');
       }
 
       // RTW-Vehicles-Sheet
@@ -350,9 +381,13 @@ export class SettingsImporter {
         roles: 0,
         qualificationTypes: 0,
         vehiclePositions: 0,
+        yearPlannings: 0,
         rtwVehiclePeriods: 0,
         nefVehiclePeriods: 0,
-        itwVehiclePeriods: 0
+        itwVehiclePeriods: 0,
+        shiftTransfers: 0,
+        rosterCommentsPersonal: 0,
+        rosterCommentsGlobal: 0
       },
       skipped: 0,
       errors: []
@@ -452,9 +487,9 @@ export class SettingsImporter {
           for (const pattern of data.itwPatterns) {
             if (pattern.start_date && pattern.pattern) {
               await this.db.run(`
-                INSERT INTO itw_patterns (start_date, pattern) VALUES (?, ?)
-                ON CONFLICT(start_date) DO ${replaceExisting ? 'UPDATE SET pattern = excluded.pattern' : 'NOTHING'}
-              `, [pattern.start_date, pattern.pattern]);
+                INSERT INTO itw_patterns (start_date, pattern, department) VALUES (?, ?, ?)
+                ON CONFLICT(start_date, department) DO ${replaceExisting ? 'UPDATE SET pattern = excluded.pattern' : 'NOTHING'}
+              `, [pattern.start_date, pattern.pattern, pattern.department || '1. Abteilung']);
               result.imported.itwPatterns++;
             }
           }
@@ -469,10 +504,28 @@ export class SettingsImporter {
           for (const pattern of data.deptPatterns) {
             if (pattern.start_date && pattern.pattern) {
               await this.db.run(`
-                INSERT INTO dept_patterns (start_date, pattern) VALUES (?, ?)
-                ON CONFLICT(start_date) DO ${replaceExisting ? 'UPDATE SET pattern = excluded.pattern' : 'NOTHING'}
-              `, [pattern.start_date, pattern.pattern]);
+                INSERT INTO dept_patterns (start_date, pattern, department) VALUES (?, ?, ?)
+                ON CONFLICT(start_date, department) DO ${replaceExisting ? 'UPDATE SET pattern = excluded.pattern' : 'NOTHING'}
+              `, [pattern.start_date, pattern.pattern, pattern.department || '1. Abteilung']);
               result.imported.deptPatterns++;
+            }
+          }
+        }
+
+        // Jahresplanungen importieren
+        if (data.yearPlannings && Array.isArray(data.yearPlannings)) {
+          if (replaceExisting) {
+            await this.db.run('DELETE FROM year_plannings');
+          }
+          for (const p of data.yearPlannings) {
+            // Mapping: 'data' aus JSON zu 'filePath' in DB (oder direkt 'filePath' falls vorhanden)
+            const filePath = p.data || (p as any).filePath;
+            if (p.year && p.department && filePath) {
+              await this.db.run(`
+                INSERT INTO year_plannings (year, department, filePath) VALUES (?, ?, ?)
+                ON CONFLICT(year, department) DO ${replaceExisting ? 'UPDATE SET filePath = excluded.filePath' : 'NOTHING'}
+              `, [p.year, p.department, filePath]);
+              result.imported.yearPlannings++;
             }
           }
         }
@@ -838,6 +891,54 @@ export class SettingsImporter {
             }
           }
         }
+        // Shift-Transfers importieren
+        if (data.shiftTransfers && Array.isArray(data.shiftTransfers)) {
+          if (replaceExisting) {
+            await this.db.run('DELETE FROM shift_transfers');
+          }
+          for (const t of data.shiftTransfers) {
+            if (t.from_person_id && t.to_person_id && t.month) {
+              await this.db.run(`
+                INSERT INTO shift_transfers (from_person_id, to_person_id, shift_count, position_type, month, reason, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+              `, [t.from_person_id, t.to_person_id, t.shift_count, t.position_type, t.month, t.reason || '', t.created_at]);
+              result.imported.shiftTransfers++;
+            }
+          }
+        }
+
+        // Roster-Comments importieren
+        if (data.rosterCommentsPersonal && Array.isArray(data.rosterCommentsPersonal)) {
+          if (replaceExisting) {
+            await this.db.run('DELETE FROM roster_comments_personal');
+          }
+          for (const c of data.rosterCommentsPersonal) {
+            if (c.person_id && c.date && c.comment) {
+              await this.db.run(`
+                INSERT INTO roster_comments_personal (person_id, date, comment, created_at, created_by, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(person_id, date) DO ${replaceExisting ? 'UPDATE SET comment = excluded.comment, updated_at = excluded.updated_at' : 'NOTHING'}
+              `, [c.person_id, c.date, c.comment, c.created_at, c.created_by || null, c.updated_at || null]);
+              result.imported.rosterCommentsPersonal++;
+            }
+          }
+        }
+
+        if (data.rosterCommentsGlobal && Array.isArray(data.rosterCommentsGlobal)) {
+          if (replaceExisting) {
+            await this.db.run('DELETE FROM roster_comments_global');
+          }
+          for (const c of data.rosterCommentsGlobal) {
+            if (c.date && c.comment) {
+              await this.db.run(`
+                INSERT INTO roster_comments_global (date, comment, created_at, created_by, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(date) DO ${replaceExisting ? 'UPDATE SET comment = excluded.comment, updated_at = excluded.updated_at' : 'NOTHING'}
+              `, [c.date, c.comment, c.created_at, c.created_by || null, c.updated_at || null]);
+              result.imported.rosterCommentsGlobal++;
+            }
+          }
+        }
 
         await this.db.run('COMMIT');
         result.success = true;
@@ -882,11 +983,12 @@ export class SettingsImporter {
           { date: '2025-12-25', name: 'Weihnachten' }
         ],
         itwPatterns: [
-          { start_date: '2025-01-01', pattern: 'IW,,,,IW,,,,IW,,,,IW,,,,IW,,,,I' }
+          { start_date: '2025-01-01', pattern: 'IW,,,,IW,,,,IW,,,,IW,,,,IW,,,,I', department: '1. Abteilung' }
         ],
         deptPatterns: [
-          { start_date: '2025-01-01', pattern: '1,2,3,1,2,3,1,2,3,1,2,3,1,2,3,1,2,3,1,2,3' }
+          { start_date: '2025-01-01', pattern: '1,2,3,1,2,3,1,2,3,1,2,3,1,2,3,1,2,3,1,2,3', department: '1. Abteilung' }
         ],
+        yearPlannings: [],
         rtwVehicles: [
           { id: 1, name: 'RTW 1', sort: 0, archived_year: undefined }
         ],

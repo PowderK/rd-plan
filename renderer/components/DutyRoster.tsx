@@ -7,6 +7,8 @@ import CommentDialog from './CommentDialog';
 // DepartmentDutyDaysTableData entfernt
 import { BUILD_INFO } from '../buildInfo';
 import { useAuth } from '../contexts/AuthContext';
+import { buildVehicleActivationMap } from '../utils/calculation';
+import { rosterReleasedSettingKey } from '../utils/rosterRelease';
 
 interface Person {
   id: number;
@@ -107,7 +109,24 @@ const filterActiveAzubisForMonth = (azubis: any[], allPeriods: any[], year: numb
   });
 };
 
-const DutyRoster: React.FC = () => {
+/** Excel-Vorplanung für Jahr + Abteilung (wie in Einstellungen hinterlegt). */
+async function resolveRosterImportPath(targetYear: number, departmentName?: string): Promise<string | null> {
+  const dept = departmentName?.trim() || undefined;
+  try {
+    const yearPlanning = await (window as any).api.getYearPlanningForYear?.(targetYear, dept);
+    if (yearPlanning?.filePath) return String(yearPlanning.filePath);
+  } catch { /* ignore */ }
+  // Globaler Legacy-Pfad nur ohne Abteilungswahl – sonst würde oft die 1. Abteilung greifen
+  if (!dept) {
+    try {
+      const legacy = await (window as any).api.getSetting('rosterImportPath');
+      if (legacy) return String(legacy);
+    } catch { /* ignore */ }
+  }
+  return null;
+}
+
+const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) => {
   const { currentUser, hasPermission } = useAuth();
   const canWrite = hasPermission('dienstplan', 'write');
   const canRead = hasPermission('dienstplan', 'read');
@@ -122,8 +141,15 @@ const DutyRoster: React.FC = () => {
   const [shiftTypes, setShiftTypes] = useState<{ id: number, code: string, description: string }[]>([]);
   const [customDropdownValues, setCustomDropdownValues] = useState<string[]>([]);
   const [department, setDepartment] = useState<number>(1);
+  useEffect(() => {
+    if (departmentName) {
+      if (departmentName.includes('3')) setDepartment(3);
+      else if (departmentName.includes('2')) setDepartment(2);
+      else setDepartment(1);
+    }
+  }, [departmentName]);
   const [itwEnabled, setItwEnabled] = useState<boolean>(false);
-  const [itwPatternSeqs, setItwPatternSeqs] = useState<{ startDate: string; pattern: string[] }[]>([]);
+  const [itwPatternSeqs, setItwPatternSeqs] = useState<{ startDate: string; department: string; pattern: string[] }[]>([]);
   const [deptPatternSeqs, setDeptPatternSeqs] = useState<{ startDate: string; pattern: string[] }[]>([]);
   const [holidays, setHolidays] = useState<Set<string>>(new Set());
   const [auswertungByType, setAuswertungByType] = useState<Record<string, 'off' | 'tag' | 'nacht' | '24h' | 'itw'>>({});
@@ -155,7 +181,7 @@ const DutyRoster: React.FC = () => {
   const [showAzubiPeriodDialog, setShowAzubiPeriodDialog] = useState(false);
   const [azubisWithoutPeriod, setAzubisWithoutPeriod] = useState<Array<{ azubiId: number, azubiName: string, importDateRange: { start: string, end: string } }>>([]);
   const [pendingImportYear, setPendingImportYear] = useState<number>(0);
-  const [pendingImportMonth, setPendingImportMonth] = useState<number | undefined>(undefined);
+  const [pendingImportMonth, setPendingImportMonth] = useState<number | { start: number, end: number } | undefined>(undefined);
   // Fahrzeuge und Aktivierungen für Positions-Berechnungen
   const [rtwVehicles, setRtwVehicles] = useState<{ id: number; name: string }[]>([]);
   const [nefVehicles, setNefVehicles] = useState<{ id: number; name: string }[]>([]);
@@ -276,8 +302,9 @@ const DutyRoster: React.FC = () => {
 
   useEffect(() => {
     (async () => {
-      const list = await (window as any).api.getPersonnelList();
-      const azubiList = await (window as any).api.getAzubiList();
+      const filterDate = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+      const list = await (window as any).api.getPersonnelList(false, filterDate, departmentName);
+      const azubiList = await (window as any).api.getAzubiList(departmentName);
       const allPeriods = await (window as any).api.getAllAzubiPeriods();
       const allQualPeriods = await (window as any).api.getAllQualificationPeriods();
 
@@ -307,19 +334,22 @@ const DutyRoster: React.FC = () => {
         return hasRD;
       });
 
-      console.log('[DutyRoster Initial] Personnel before filter:', list.length, '| after filter:', filteredPersonnel.length);
-      setPersonnel(filteredPersonnel);
-      setAzubis(azubiList);
-      setAzubiPeriods(allPeriods);
+      console.log('[DutyRoster Initial] Personnel before filter:', list?.length || 0, '| after filter:', filteredPersonnel?.length || 0);
+      setPersonnel(filteredPersonnel || []);
+      setAzubis(Array.isArray(azubiList) ? azubiList : []);
+      setAzubiPeriods(Array.isArray(allPeriods) ? allPeriods : []);
 
       // Lade jahresspezifische Vorplanungen
       try {
         const plannings = await (window as any).api.getYearPlannings?.();
         if (plannings && Array.isArray(plannings)) {
           setYearPlannings(plannings.map((p: any) => ({ year: Number(p.year), filePath: String(p.filePath) })));
+        } else {
+          setYearPlannings([]);
         }
       } catch (e) {
-        // console.error('Failed to load year plannings:', e);
+        console.warn('[DutyRoster] Failed to load year plannings:', e);
+        setYearPlannings([]);
       }
 
       // Lade das Jahr aus den Settings für initialen Daten-Load
@@ -350,18 +380,23 @@ const DutyRoster: React.FC = () => {
       } catch { }
       const custom = await (window as any).api.getSetting('customDropdownValues');
       if (custom) setCustomDropdownValues(String(custom).split('\n').map(s => s.trim()).filter(Boolean));
-      const dep = await (window as any).api.getSetting('department');
-      if (dep) setDepartment(Number(dep));
+      // department wird jetzt über den Hook oben gesetzt
       const itwVal = await (window as any).api.getSetting('itw');
       if (itwVal) setItwEnabled(itwVal === 'true');
       // ITW Sequenzen laden
       try {
         const norm = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(len).fill('')).slice(0, len).map(v => (v === 'IW' ? 'IW' : ''));
-        const seqs = await (window as any).api.getItwPatterns?.();
+        const seqs = await (window as any).api.getItwPatterns?.(departmentName); // Filter by current department
         if (Array.isArray(seqs) && seqs.length > 0) {
-          const parsed = seqs.map((s: any) => ({ startDate: String(s.startDate), pattern: norm(String(s.pattern).split(',').map((x: string) => x.trim()), 21) }));
-          parsed.sort((a, b) => a.startDate.localeCompare(b.startDate));
+          const parsed = seqs.map((s: any) => ({ 
+            startDate: String(s.startDate), 
+            department: s.department || '1. Abteilung',
+            pattern: norm(String(s.pattern).split(',').map((x: string) => x.trim()), 21) 
+          }));
+          parsed.sort((a: any, b: any) => a.startDate.localeCompare(b.startDate));
           setItwPatternSeqs(parsed);
+        } else {
+          setItwPatternSeqs([]);
         }
       } catch { }
       // Dept Sequenzen laden
@@ -391,30 +426,14 @@ const DutyRoster: React.FC = () => {
       } catch { }
       try {
         const acts = await (window as any).api.getRtwVehicleActivations?.(yearToUse);
-        const map: Record<number, boolean[]> = {};
-        (acts || []).forEach((row: any) => {
-          const vid = Number(row.vehicleId);
-          const m = Number(row.month);
-          const arr = map[vid] || Array(12).fill(true);
-          arr[m - 1] = !!row.enabled;
-          map[vid] = arr;
-        });
-        setRtwActs(map);
+        setRtwActs(buildVehicleActivationMap(acts));
       } catch { }
       try {
         const acts = await (window as any).api.getNefVehicleActivations?.(yearToUse);
-        const map: Record<number, boolean[]> = {};
-        (acts || []).forEach((row: any) => {
-          const vid = Number(row.vehicleId);
-          const m = Number(row.month);
-          const arr = map[vid] || Array(12).fill(true);
-          arr[m - 1] = !!row.enabled;
-          map[vid] = arr;
-        });
-        setNefActs(map);
+        setNefActs(buildVehicleActivationMap(acts));
       } catch { }
       // Dienstplan-Einträge laden
-      const entries = await (window as any).api.getDutyRoster(yearToUse);
+      const entries = await (window as any).api.getDutyRoster(yearToUse, departmentName);
       // console.log('[Renderer] getDutyRoster fetched', Array.isArray(entries) ? entries.length : typeof entries, 'entries for year', yearToUse);
       if (Array.isArray(entries) && entries.length > 0) {
         // console.log('[Renderer] sample entry[0]=', entries[0]);
@@ -435,37 +454,39 @@ const DutyRoster: React.FC = () => {
       const personalIds = new Set(list.map((p: { id: number }) => p.id));
       const azubiIds = new Set(azubiList.map((a: { id: number }) => a.id));
       const rosterObj: Record<string, Record<string, { value: string, type: string, manualEdit?: boolean }>> = {};
-      entries.forEach((entry: any) => {
-        const iso = String(entry.date);
-        if (!iso) return;
-        // Normalize type: if value matches a known shift code, prefer dropdown
-        try {
-          const existingType = String(entry.type || '');
-          const isSlot = /^(rtw|nef|itw)/.test(existingType);
-          if (!isSlot) {
-            if (entry && entry.value) {
-              const code = String(entry.value).trim();
-              if (shiftTypes && Array.isArray(shiftTypes) && shiftTypes.some((t: any) => t.code === code)) {
-                entry.type = 'dropdown';
+      if (Array.isArray(entries)) {
+        entries.forEach((entry: any) => {
+          const iso = String(entry?.date || '');
+          if (!iso) return;
+          // Normalize type: if value matches a known shift code, prefer dropdown
+          try {
+            const existingType = String(entry.type || '');
+            const isSlot = /^(rtw|nef|itw)/.test(existingType);
+            if (!isSlot) {
+              if (entry && entry.value) {
+                const code = String(entry.value).trim();
+                if (shiftTypes && Array.isArray(shiftTypes) && shiftTypes.some((t: any) => t.code === code)) {
+                  entry.type = 'dropdown';
+                } else {
+                  entry.type = 'text';
+                }
               } else {
-                entry.type = 'text';
+                entry.type = existingType || 'text';
               }
-            } else {
-              entry.type = existingType || 'text';
             }
+          } catch (e) { /* ignore */ }
+          let key = '';
+          if (entry.personType === 'person' && personalIds.has(entry.personId)) {
+            key = `p_${entry.personId}`;
+          } else if (entry.personType === 'azubi' && azubiIds.has(entry.personId)) {
+            key = `a_${entry.personId}`;
+          } else {
+            key = String(entry.personId);
           }
-        } catch (e) { /* ignore */ }
-        let key = '';
-        if (entry.personType === 'person' && personalIds.has(entry.personId)) {
-          key = `p_${entry.personId}`;
-        } else if (entry.personType === 'azubi' && azubiIds.has(entry.personId)) {
-          key = `a_${entry.personId}`;
-        } else {
-          key = String(entry.personId);
-        }
-        if (!rosterObj[key]) rosterObj[key] = {};
-        rosterObj[key][iso] = { value: entry.value, type: String(entry.type || ''), manualEdit: !!entry.manual_edit };
-      });
+          if (!rosterObj[key]) rosterObj[key] = {};
+          rosterObj[key][iso] = { value: entry.value || '', type: String(entry.type || ''), manualEdit: !!entry.manual_edit };
+        });
+      }
       // console.log('[Renderer] constructed rosterObj keys=', Object.keys(rosterObj).slice(0,20), 'total=', Object.keys(rosterObj).length);
       setRoster(rosterObj);
 
@@ -506,11 +527,17 @@ const DutyRoster: React.FC = () => {
         // ITW-Pattern Sequenzen neu laden
         try {
           const norm = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(len).fill('')).slice(0, len).map(v => (v === 'IW' ? 'IW' : ''));
-          const seqs = await (window as any).api.getItwPatterns?.();
+          const seqs = await (window as any).api.getItwPatterns?.(departmentName);
           if (Array.isArray(seqs) && seqs.length > 0) {
-            const parsed = seqs.map((s: any) => ({ startDate: String(s.startDate), pattern: norm(String(s.pattern).split(',').map((x: string) => x.trim()), 21) }));
-            parsed.sort((a, b) => a.startDate.localeCompare(b.startDate));
+            const parsed = seqs.map((s: any) => ({ 
+              startDate: String(s.startDate), 
+              department: s.department || '1. Abteilung',
+              pattern: norm(String(s.pattern).split(',').map((x: string) => x.trim()), 21) 
+            }));
+            parsed.sort((a: any, b: any) => a.startDate.localeCompare(b.startDate));
             setItwPatternSeqs(parsed);
+          } else {
+            setItwPatternSeqs([]);
           }
         } catch { }
         // Dept Sequenzen neu laden
@@ -533,7 +560,7 @@ const DutyRoster: React.FC = () => {
         // Freigabe-Status neu laden
         try {
           const releasedProms = Array(12).fill(0).map((_, i) => {
-            const key = `roster_released_${newYear}_${i}`;
+            const key = rosterReleasedSettingKey(newYear, i, departmentName);
             return (window as any).api.getSetting(key).then((val: string) => val === '1');
           });
           const status = await Promise.all(releasedProms);
@@ -550,11 +577,11 @@ const DutyRoster: React.FC = () => {
       (window as any).api && (window as any).api.offDutyRosterUpdated && (window as any).api.offDutyRosterUpdated(onUpdated);
       (window as any).api?.offSettingsUpdated?.(onSettingsUpdated);
     };
-  }, []);
+  }, [departmentName]);
 
   useEffect(() => {
     loadComments();
-  }, [year, currentMonth]);
+  }, [year, currentMonth, departmentName]);
 
   useEffect(() => {
     if (!commentMenu) return;
@@ -696,7 +723,7 @@ const DutyRoster: React.FC = () => {
   // New Azubi Dialog Handler
   const handleCreateNewAzubis = async (newAzubis: Array<{ name: string, vorname: string, lehrjahr: number }>) => {
     try {
-      const retryResult = await (window as any).api.importDutyRoster(pendingImportPath, year, currentMonth, { newAzubis });
+      const retryResult = await (window as any).api.importDutyRoster(pendingImportPath, year, currentMonth, { newAzubis, department: departmentName });
       if (retryResult.success) {
         let message = `Import erfolgreich: ${retryResult.importedCount} Einträge wurden verarbeitet. ${newAzubis.length} neue Azubis wurden angelegt.`;
 
@@ -727,7 +754,7 @@ const DutyRoster: React.FC = () => {
 
   const handleAdjustAzubiPeriods = async (adjustments: Array<{ azubiId: number, startDate: string, endDate: string, description: string, lehrjahr: number }>) => {
     try {
-      const retryResult = await (window as any).api.importDutyRoster(pendingImportPath, pendingImportYear, pendingImportMonth, { azubiPeriodAdjustments: adjustments });
+      const retryResult = await (window as any).api.importDutyRoster(pendingImportPath, pendingImportYear, pendingImportMonth, { azubiPeriodAdjustments: adjustments, department: departmentName });
       if (retryResult.success) {
         let message = `Import erfolgreich: ${retryResult.importedCount} Einträge wurden verarbeitet. ${adjustments.length} Azubi-Zeiträume wurden angepasst.`;
 
@@ -759,7 +786,7 @@ const DutyRoster: React.FC = () => {
   // New ShiftType Dialog Handlers
   const handleCreateNewShiftTypes = async (newShiftTypes: Array<{ code: string, description: string, color: string, auswertung: string }>) => {
     try {
-      const retryResult = await (window as any).api.importDutyRoster(pendingImportPath, pendingImportYear, pendingImportMonth, { newShiftTypes });
+      const retryResult = await (window as any).api.importDutyRoster(pendingImportPath, pendingImportYear, pendingImportMonth, { newShiftTypes, department: departmentName });
       if (retryResult.success) {
         // Check if there are still unknown azubis after creating shift types
         if (retryResult.unknownAzubis && retryResult.unknownAzubis.length > 0) {
@@ -817,31 +844,18 @@ const DutyRoster: React.FC = () => {
 
   // Import-Handler
   const handleImport = async () => {
-    // Versuche jahresspezifische Vorplanungsdatei zu laden
-    let rosterImportPath = null;
-    try {
-      const yearPlanning = await (window as any).api.getYearPlanningForYear?.(year);
-      if (yearPlanning?.filePath) {
-        rosterImportPath = yearPlanning.filePath;
-      }
-    } catch (e) {
-      // console.warn('Fehler beim Laden der jahresspezifischen Vorplanung:', e);
-    }
-
-    // Fallback: alte rosterImportPath Einstellung
-    if (!rosterImportPath) {
-      rosterImportPath = await (window as any).api.getSetting('rosterImportPath');
-    }
+    const rosterImportPath = await resolveRosterImportPath(year, departmentName);
 
     if (!rosterImportPath) {
-      alert('Bitte hinterlegen Sie zuerst eine Vorplanungsdatei für das Jahr ' + year + ' in den Einstellungen.');
+      const deptLabel = departmentName || 'die aktuelle Abteilung';
+      alert(`Bitte hinterlegen Sie zuerst eine Vorplanungsdatei für ${year} und ${deptLabel} in den Einstellungen (Dienstplan → Jahresspezifische Vorplanungsdateien).`);
       return;
     }
     const ok = window.confirm(`Möchten Sie den Dienstplan für ${months[currentMonth]} ${year} aus der Excel-Datei importieren? Bestehende Daten für diesen Monat werden überschrieben.`);
     if (!ok) return;
 
     try {
-      const result = await (window as any).api.importDutyRoster(rosterImportPath, year, currentMonth);
+      const result = await (window as any).api.importDutyRoster(rosterImportPath, year, currentMonth, { department: departmentName });
       if (result.success) {
         // Check if unknown shift types were found
         if (result.unknownShiftTypes && result.unknownShiftTypes.length > 0) {
@@ -878,12 +892,16 @@ const DutyRoster: React.FC = () => {
           );
 
           if (createNewAzubis) {
-            // Show new azubi dialog
             setShowNewAzubiDialog(true);
             setUnknownAzubiNames(result.unknownAzubis);
             setPendingImportPath(rosterImportPath);
             setPendingImportYear(year);
             setPendingImportMonth(currentMonth);
+            return;
+          }
+          if (result.importedCount > 0) {
+            await reloadRoster();
+            alert(`Import teilweise erfolgreich: ${result.importedCount} Einträge verarbeitet. Unbekannte Azubi-Namen wurden übersprungen.`);
           }
           return;
         }
@@ -907,6 +925,99 @@ const DutyRoster: React.FC = () => {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Ein unbekannter Fehler ist aufgetreten.';
       alert(`Fehler beim Import: ${message}`);
+    }
+  };
+
+  const handleSyncPastAndFuture = async () => {
+    const rosterImportPath = await resolveRosterImportPath(year, departmentName);
+
+    if (!rosterImportPath) {
+      const deptLabel = departmentName || 'die aktuelle Abteilung';
+      alert(`Bitte hinterlegen Sie zuerst eine Vorplanungsdatei für ${year} und ${deptLabel} in den Einstellungen (Dienstplan → Jahresspezifische Vorplanungsdateien).`);
+      return;
+    }
+    
+    const startMonthIndex = currentMonth > 0 ? currentMonth - 1 : 0;
+    const endMonthIndex = 11;
+    
+    const rangeLabel = startMonthIndex === endMonthIndex 
+      ? months[startMonthIndex] 
+      : `${months[startMonthIndex]} bis ${months[endMonthIndex]}`;
+      
+    const ok = window.confirm(`Möchten Sie den Dienstplan für den Zeitraum ${rangeLabel} ${year} synchronisieren?\n\nDies führt einen Abgleich (Sync) durch, bei dem leere Zellen in Excel bestehende Einträge im Programm löschen. Manuelle Änderungen werden im Synchronisations-Modus NICHT überschrieben.`);
+    if (!ok) return;
+
+    const monthRange = { start: startMonthIndex, end: endMonthIndex };
+
+    try {
+      const result = await (window as any).api.importDutyRoster(rosterImportPath, year, monthRange, { department: departmentName });
+      if (result.success) {
+        // Check if unknown shift types were found
+        if (result.unknownShiftTypes && result.unknownShiftTypes.length > 0) {
+          const createNewShiftTypes = window.confirm(
+            `Folgende unbekannte Dienstarten wurden gefunden:\n${result.unknownShiftTypes.join('\n')}\n\nMöchten Sie diese als neue Dienstarten anlegen?`
+          );
+
+          if (createNewShiftTypes) {
+            setPendingImportPath(rosterImportPath);
+            setPendingImportYear(year);
+            setPendingImportMonth(monthRange);
+            setUnknownShiftTypes(result.unknownShiftTypes);
+            setShowNewShiftTypeDialog(true);
+            return;
+          }
+        }
+
+        // Check for unknown azubis
+        if (result.unknownAzubis && result.unknownAzubis.length > 0) {
+          const createNewAzubis = window.confirm(
+            `Folgende unbekannte Azubi-Namen wurden gefunden:\n${result.unknownAzubis.join('\n')}\n\nMöchten Sie diese als neue Azubis anlegen?`
+          );
+
+          if (createNewAzubis) {
+            setPendingImportPath(rosterImportPath);
+            setPendingImportYear(year);
+            setPendingImportMonth(monthRange);
+            setShowNewAzubiDialog(true);
+            setUnknownAzubiNames(result.unknownAzubis);
+            return;
+          }
+          if (result.importedCount > 0) {
+            await reloadRoster();
+            alert(`Synchronisation teilweise erfolgreich: ${result.importedCount} Einträge verarbeitet. Unbekannte Azubi-Namen wurden übersprungen.`);
+            return;
+          }
+        }
+
+        // Check for azubis without period
+        if (result.azubisWithoutPeriod && result.azubisWithoutPeriod.length > 0) {
+          setAzubisWithoutPeriod(result.azubisWithoutPeriod);
+          setPendingImportPath(rosterImportPath);
+          setPendingImportYear(year);
+          setPendingImportMonth(monthRange);
+          setShowAzubiPeriodDialog(true);
+          return;
+        }
+
+        let message = `Synchronisation erfolgreich: ${result.importedCount} Einträge wurden verarbeitet.`;
+        
+        // Check for availability conflicts
+        if (result.availabilityConflicts && result.availabilityConflicts.length > 0) {
+          const conflictList = result.availabilityConflicts.map((c: any) => 
+            `${c.personName} am ${c.date}: Schichtart "${c.dutyRosterValue}" (nicht verfügbar), aber eingeteilt auf "${c.einteilungValue}"`
+          ).join('\n');
+          
+          message += `\n\n⚠️ WARNUNG: ${result.availabilityConflicts.length} Verfügbarkeitskonflikt(e) gefunden:\n\n${conflictList}\n\nBitte prüfen Sie die Einteilungen!`;
+        }
+        
+        alert(message);
+        await reloadRoster();
+      } else {
+        alert(`Synchronisation fehlgeschlagen: ${result.message}`);
+      }
+    } catch (error) {
+      // console.error('Fehler bei der Synchronisation:', error);
+      alert('Fehler bei der Synchronisation.');
     }
   };
 
@@ -953,8 +1064,9 @@ const DutyRoster: React.FC = () => {
   // Hilfsfunktion zum Neuladen NUR des Dienstplan-States (Roster)
   // Optional: Jahr überschreiben, sonst aktuellen State-Wert verwenden
   const reloadRoster = async (yearOverride?: number) => {
-    const list = await (window as any).api.getPersonnelList();
-    const azubiList = await (window as any).api.getAzubiList();
+    const filterDate = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+    const list = await (window as any).api.getPersonnelList(false, filterDate, departmentName);
+    const azubiList = await (window as any).api.getAzubiList(departmentName);
     const allPeriods = await (window as any).api.getAllAzubiPeriods();
     const allQualPeriods = await (window as any).api.getAllQualificationPeriods();
 
@@ -979,7 +1091,7 @@ const DutyRoster: React.FC = () => {
     setAzubiPeriods(allPeriods);
     // Hole Dienstplan-Einträge für das lokal ausgewählte Jahr (nicht globales Setting)
     const yUse = typeof yearOverride === 'number' ? yearOverride : year;
-    const entries = await (window as any).api.getDutyRoster(yUse);
+    const entries = await (window as any).api.getDutyRoster(yUse, departmentName);
     // console.log('[Renderer] reloadRoster getDutyRoster fetched', Array.isArray(entries) ? entries.length : typeof entries, 'entries');
     if (Array.isArray(entries) && entries.length > 0) {
       // console.log('[Renderer] reloadRoster sample entry[0]=', entries[0]);
@@ -1053,39 +1165,23 @@ const DutyRoster: React.FC = () => {
       } catch (e) { console.warn('[DutyRoster] load holidays on year change failed', e); }
       try {
         const acts = await (window as any).api.getRtwVehicleActivations?.(year);
-        const map: Record<number, boolean[]> = {};
-        (acts || []).forEach((row: any) => {
-          const vid = Number(row.vehicleId);
-          const m = Number(row.month);
-          const arr = map[vid] || Array(12).fill(true);
-          arr[m - 1] = !!row.enabled;
-          map[vid] = arr;
-        });
-        setRtwActs(map);
+        setRtwActs(buildVehicleActivationMap(acts));
       } catch { }
       try {
         const acts = await (window as any).api.getNefVehicleActivations?.(year);
-        const map: Record<number, boolean[]> = {};
-        (acts || []).forEach((row: any) => {
-          const vid = Number(row.vehicleId);
-          const m = Number(row.month);
-          const arr = map[vid] || Array(12).fill(true);
-          arr[m - 1] = !!row.enabled;
-          map[vid] = arr;
-        });
-        setNefActs(map);
+        setNefActs(buildVehicleActivationMap(acts));
       } catch { }
       // Freigabe-Status laden bei Jahreswechsel
       try {
         const status = await Promise.all(Array(12).fill(0).map(async (_, i) => {
-          const key = `roster_released_${year}_${i}`;
+          const key = rosterReleasedSettingKey(year, i, departmentName);
           const val = await (window as any).api.getSetting(key);
           return val === '1';
         }));
         setReleasedMonths(status);
       } catch (e) { console.warn('Failed to load released status', e); }
     })();
-  }, [year]);
+  }, [year, departmentName]);
 
   // KPI-Hilfswerte für aktuellen Monat berechnen
   // console.log('[DEBUG] KPI calculation start, roster keys:', Object.keys(roster).length, 'personnel:', personnel.length, 'filteredAzubis:', filteredAzubis.length);
@@ -1284,7 +1380,7 @@ const DutyRoster: React.FC = () => {
       }
     }
 
-    const entry = { personId: origId, personType, date, value, type };
+    const entry = { personId: origId, personType, date, value, type, department: departmentName || '1. Abteilung' };
     // console.log('[Renderer] setDutyRosterEntry SEND', entry);
     try {
       await (window as any).api.setDutyRosterEntry(entry);
@@ -1313,19 +1409,34 @@ const DutyRoster: React.FC = () => {
         {/* Überschrift - ROT */}
         <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <h2 style={{ margin: 0, marginRight: 'auto' }}>Dienstplan</h2>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            Jahr:
+        </div>
+        {/* Monats-Tabs - GRÜN */}
+        <div style={{ 
+          display: 'flex', 
+          gap: 24, 
+          alignItems: 'center', 
+          marginTop: 8,
+          marginBottom: 0, 
+          paddingTop: 4,
+          paddingBottom: 4,
+          flexWrap: 'wrap',
+          borderBottom: '1px solid var(--line)'
+        }}>
+          {/* Jahresumschalter direkt bei den Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 500 }}>Jahr:</span>
             <select
               value={year}
               disabled={!canWrite}
               onChange={e => setYear(Number(e.target.value))}
               style={{
-                padding: '6px 10px',
-                fontSize: 14,
+                padding: '4px 8px',
+                fontSize: 13,
                 borderRadius: 6,
-                border: '1px solid #bbb',
+                border: '1px solid #ddd',
                 background: '#fff',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                color: 'var(--text)'
               }}
             >
               {yearPlannings.length > 0 ? (
@@ -1336,8 +1447,88 @@ const DutyRoster: React.FC = () => {
                 <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>
               )}
             </select>
-          </label>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+            <button 
+              onClick={handleImport} 
+              disabled={!canWrite}
+              title="Importiert den aktuellen Monat aus der Excel-Vorplanung"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 16px',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: '3px solid transparent',
+                fontSize: '14px',
+                fontWeight: 500,
+                color: '#6b7280',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                if (!canWrite) return;
+                e.currentTarget.style.color = 'var(--text)';
+                e.currentTarget.style.borderBottomColor = 'var(--accent)';
+                e.currentTarget.style.background = '#f8f9fa';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#6b7280';
+                e.currentTarget.style.borderBottomColor = 'transparent';
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <svg aria-hidden width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Import Monat
+            </button>
+            
+            <button 
+              onClick={handleSyncPastAndFuture} 
+              disabled={!canWrite}
+              title="Abgleich des Vormonats und des restlichen Jahres (Sync-Modus)"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 16px',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: '3px solid transparent',
+                fontSize: '14px',
+                fontWeight: 500,
+                color: '#6b7280',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                if (!canWrite) return;
+                e.currentTarget.style.color = 'var(--text)';
+                e.currentTarget.style.borderBottomColor = 'var(--accent)';
+                e.currentTarget.style.background = '#f8f9fa';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#6b7280';
+                e.currentTarget.style.borderBottomColor = 'transparent';
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <svg aria-hidden width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M21 2v6h-6" />
+                <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+                <path d="M3 22v-6h6" />
+                <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+              </svg>
+              Sync (Monat zurück + Rest-Jahr)
+            </button>
+          </div>
         </div>
+
         {/* Monats-Tabs - GRÜN */}
         <div className="tab-navigation tab-navigation-with-header" style={{
           background: 'var(--bg)',
@@ -1346,7 +1537,7 @@ const DutyRoster: React.FC = () => {
           display: 'flex',
           gap: '4px',
           borderBottom: '1px solid var(--line)',
-          marginBottom: '16px',
+          marginBottom: '8px',
           flexWrap: 'wrap'
         }}>
           {months.map((m, i) => (
@@ -1382,32 +1573,6 @@ const DutyRoster: React.FC = () => {
             </button>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-          <button onClick={handleImport} disabled={!canWrite}>
-            Import Monat (Excel)
-          </button>
-          <span style={{ fontSize: 12, color: 'var(--muted)' }}>Importiert den aktuellen Monat aus der in den Einstellungen hinterlegten Excel-Datei.</span>
-        </div>
-        {/* Horizontaler Scrollbalken oben */}
-        <div
-          id="top-scroller"
-          style={{
-            overflowX: 'auto',
-            overflowY: 'hidden',
-            height: '20px',
-            background: 'var(--bg)',
-            borderBottom: '1px solid #d6e4ff',
-            marginBottom: '4px'
-          }}
-          onScroll={(e) => {
-            const bottomScroller = document.getElementById('table-wrapper');
-            if (bottomScroller) {
-              bottomScroller.scrollLeft = e.currentTarget.scrollLeft;
-            }
-          }}
-        >
-          <div style={{ width: Math.max(800, days.length * 40), height: '1px' }}></div>
-        </div>
       </div>
       {/* Table Wrapper für Scroll-Synchronisation */}
       <div
@@ -1424,12 +1589,13 @@ const DutyRoster: React.FC = () => {
           boxSizing: 'border-box'
         }}
         onScroll={(e) => {
-          const topScroller = document.getElementById('top-scroller');
-          if (topScroller) {
-            topScroller.scrollLeft = e.currentTarget.scrollLeft;
+          const bottomScroller = document.getElementById('bottom-scroller');
+          if (bottomScroller) {
+            bottomScroller.scrollLeft = e.currentTarget.scrollLeft;
           }
         }}
       >
+
         {/* Alle Monate sichtbar lassen, damit Kommentare auch in nicht freigegebenen Monaten möglich sind */}
         {false ? (
           <div style={{
@@ -2200,6 +2366,7 @@ const AzubiPeriodDialog: React.FC<AzubiPeriodDialogProps> = ({ azubisWithoutPeri
           </>
         )}
       </div>
+
     </div>
   );
 };
