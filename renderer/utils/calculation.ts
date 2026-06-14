@@ -204,7 +204,14 @@ export function computeWeightedPresence(
             }
         }
 
-        const weightedCounts = rawCounts.map((v, i) => hlfbStatus[i] ? Math.round(v * 0.75) : v);
+        const weightedCounts = rawCounts.map((v, i) => {
+            const rd = (p as any).rettungsdienstMonthly;
+            const dept = (p as any).deptActiveMonthly;
+            if (rd && !rd[i]) return 0;
+            if (dept && !dept[i]) return 0;
+
+            return hlfbStatus[i] ? Math.round(v * 0.75) : v;
+        });
         return { id: p.id, counts: weightedCounts };
     });
 }

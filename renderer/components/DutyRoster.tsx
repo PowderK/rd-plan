@@ -9,6 +9,7 @@ import { BUILD_INFO } from '../buildInfo';
 import { useAuth } from '../contexts/AuthContext';
 import { buildVehicleActivationMap } from '../utils/calculation';
 import { rosterReleasedSettingKey } from '../utils/rosterRelease';
+import { qualificationAppliesInMonth } from '../utils/personPeriods';
 
 interface Person {
   id: number;
@@ -323,15 +324,11 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         });
       }
 
+      const yearMonth = `${year}-${String(currentMonth + 1).padStart(2, '0')}`;
       const filteredPersonnel = (list || []).filter((p: any) => {
         const pPeriods = periodsByPerson[p.id] || [];
-        const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName && per.active);
-        // Person muss mindestens eine aktive Rettungsdienst-Periode haben (in irgendeinem Zeitraum)
-        const hasRD = rdPeriods.length > 0;
-        if (!hasRD) {
-          console.log('[DutyRoster Initial] Filtered out:', p.name, '- No Rettungsdienst qualification');
-        }
-        return hasRD;
+        const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
+        return rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
       });
 
       console.log('[DutyRoster Initial] Personnel before filter:', list?.length || 0, '| after filter:', filteredPersonnel?.length || 0);
@@ -1080,10 +1077,11 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       });
     }
 
+    const yearMonth = `${year}-${String(currentMonth + 1).padStart(2, '0')}`;
     const filteredPersonnel = (list || []).filter((p: any) => {
       const pPeriods = periodsByPerson[p.id] || [];
-      const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName && per.active);
-      return rdPeriods.length > 0;
+      const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
+      return rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
     });
 
     setPersonnel(filteredPersonnel);

@@ -1,4 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { departmentNameToId } from './MonthTabs';
+import { useAuth } from '../contexts/AuthContext';
+import {
+  buildDepartmentActiveMonthly,
+  indexDepartmentPeriodsByPerson,
+  qualificationAppliesInMonth,
+  yearMonthKey,
+} from '../utils/personPeriods';
 
 const monthNames = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 
@@ -20,19 +28,45 @@ function useRoster(year: number, departmentName?: string) {
   return roster;
 }
 
+type PersonnelStatsRow = {
+  id: number;
+  name: string;
+  vorname: string;
+  fahrzeugfuehrerHLFB?: boolean;
+  hlfbMonthly?: boolean[];
+  ue50?: boolean;
+  ue50Monthly?: boolean[];
+  lpal?: boolean;
+  lpalMonthly?: boolean[];
+  rettungsdienst?: boolean;
+  rettungsdienstMonthly?: boolean[];
+  deptActiveMonthly?: boolean[];
+};
+
+function isEligibleForStatsMonth(person: PersonnelStatsRow, monthIndex: number): boolean {
+  if (!person.rettungsdienstMonthly?.[monthIndex]) return false;
+  if (person.deptActiveMonthly && !person.deptActiveMonthly[monthIndex]) return false;
+  return true;
+}
+
 function usePersonnel(year: number, departmentName?: string) {
-  const [list, setList] = useState<{ id: number; name: string; vorname: string; fahrzeugfuehrerHLFB?: boolean; hlfbMonthly?: boolean[]; ue50?: boolean; ue50Monthly?: boolean[]; lpal?: boolean; lpalMonthly?: boolean[]; rettungsdienst?: boolean; rettungsdienstMonthly?: boolean[] }[]>([]);
+  const [list, setList] = useState<PersonnelStatsRow[]>([]);
   const fetch = async () => {
     try {
       const currentYear = year.toString();
-      const [rawList, allPeriods, hlfbQualSetting, ue50QualSetting, lpalQualSetting, rdQualSetting] = await Promise.all([
+      const [rawList, allPeriods, allDeptPeriods, hlfbQualSetting, ue50QualSetting, lpalQualSetting, rdQualSetting] = await Promise.all([
         (window as any).api.getPersonnelList?.(false, currentYear, departmentName),
         (window as any).api.getAllQualificationPeriods?.(),
+        (window as any).api.getAllPersonnelDepartmentPeriods?.(),
         (window as any).api.getSetting?.('hlfb_qualification_type'),
         (window as any).api.getSetting?.('ue50_qualification_type'),
         (window as any).api.getSetting?.('lpal_qualification_type'),
         (window as any).api.getSetting?.('rettungsdienst_qualification_type')
       ]);
+
+      const deptPeriodsByPerson = indexDepartmentPeriodsByPerson(
+        Array.isArray(allDeptPeriods) ? allDeptPeriods : []
+      );
 
       const hlfbQualName = String(hlfbQualSetting || 'FzF HLF B');
       const ue50QualName = String(ue50QualSetting || 'Ü50');
@@ -71,57 +105,39 @@ function usePersonnel(year: number, departmentName?: string) {
         const rettungsdienstPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
         const hasRettungsdienstPeriod = rettungsdienstPeriods.length > 0;
 
-        // Prüfe auf HLF-B Qualifikation pro Monat
+        const qualApplies = (periods: any[], ym: string) =>
+          periods.some((per: any) => qualificationAppliesInMonth(per, ym));
+
         if (hasHlfbPeriod) {
           for (let m = 0; m < 12; m++) {
-            const ym = `${year}-${String(m + 1).padStart(2, '0')}`;
-            const isActive = hlfbPeriods.some((per: any) =>
-              per.active &&
-              per.startYM <= ym &&
-              (!per.endYM || per.endYM >= ym)
-            );
-            hlfbMonthly[m] = isActive;
+            hlfbMonthly[m] = qualApplies(hlfbPeriods, yearMonthKey(year, m));
           }
         }
 
-        // Prüfe auf Ü50 Qualifikation pro Monat
         if (hasUe50Period) {
           for (let m = 0; m < 12; m++) {
-            const ym = `${year}-${String(m + 1).padStart(2, '0')}`;
-            const isActive = ue50Periods.some((per: any) =>
-              per.active &&
-              per.startYM <= ym &&
-              (!per.endYM || per.endYM >= ym)
-            );
-            ue50Monthly[m] = isActive;
+            ue50Monthly[m] = qualApplies(ue50Periods, yearMonthKey(year, m));
           }
         }
 
-        // Prüfe auf LPAL Qualifikation pro Monat
         if (hasLpalPeriod) {
           for (let m = 0; m < 12; m++) {
-            const ym = `${year}-${String(m + 1).padStart(2, '0')}`;
-            const isActive = lpalPeriods.some((per: any) =>
-              per.active &&
-              per.startYM <= ym &&
-              (!per.endYM || per.endYM >= ym)
-            );
-            lpalMonthly[m] = isActive;
+            lpalMonthly[m] = qualApplies(lpalPeriods, yearMonthKey(year, m));
           }
         }
 
-        // Prüfe auf Rettungsdienst Qualifikation pro Monat
         if (hasRettungsdienstPeriod) {
           for (let m = 0; m < 12; m++) {
-            const ym = `${year}-${String(m + 1).padStart(2, '0')}`;
-            const isActive = rettungsdienstPeriods.some((per: any) =>
-              per.active &&
-              per.startYM <= ym &&
-              (!per.endYM || per.endYM >= ym)
-            );
-            rettungsdienstMonthly[m] = isActive;
+            rettungsdienstMonthly[m] = qualApplies(rettungsdienstPeriods, yearMonthKey(year, m));
           }
         }
+
+        const deptActiveMonthly = buildDepartmentActiveMonthly(
+          p.id,
+          year,
+          deptPeriodsByPerson,
+          departmentName
+        );
 
         // Statisches Flag als Fallback
         const staticFlag = p.fahrzeugfuehrerHLFB === 1 || p.fahrzeugfuehrerHLFB === true || p.fahrzeugfuehrerHLFB === '1' ||
@@ -141,7 +157,8 @@ function usePersonnel(year: number, departmentName?: string) {
           lpal: lpalMonthly.some(b => b),
           lpalMonthly,
           rettungsdienst: rettungsdienstMonthly.some(b => b),
-          rettungsdienstMonthly
+          rettungsdienstMonthly,
+          deptActiveMonthly
         };
       });
 
@@ -159,20 +176,20 @@ function usePersonnel(year: number, departmentName?: string) {
   return list;
 }
 
-function useAzubis() {
+function useAzubis(departmentName?: string) {
   const [list, setList] = useState<{ id: number; name: string; vorname: string }[]>([]);
   useEffect(() => {
     (async () => {
       try {
-        const r = await (window as any).api.getAzubiList?.();
+        const r = await (window as any).api.getAzubiList?.(departmentName);
         setList(Array.isArray(r) ? r : []);
       } catch { setList([]); }
     })();
-  }, []);
+  }, [departmentName]);
   return list;
 }
 
-function useUe50PersonnelIds(year: number) {
+function useUe50PersonnelIds(year: number, departmentName?: string) {
   const [ue50Ids, setUe50Ids] = useState<Set<number>>(new Set());
   useEffect(() => {
     (async () => {
@@ -186,8 +203,7 @@ function useUe50PersonnelIds(year: number) {
         const lpalSetting = await (window as any).api.getSetting('lpal_qualification_type');
         if (lpalSetting) lpalQualName = String(lpalSetting);
 
-        // Lade alle Personen
-        const personnel = await (window as any).api.getPersonnelList?.() || [];
+        const personnel = await (window as any).api.getPersonnelList?.(false, String(year), departmentName) || [];
         const ids = new Set<number>();
 
         // Für jede Person prüfen, ob sie Ü50- oder LPAL-Qualifikation hat
@@ -214,7 +230,7 @@ function useUe50PersonnelIds(year: number) {
         setUe50Ids(ids);
       } catch { setUe50Ids(new Set()); }
     })();
-  }, [year]);
+  }, [year, departmentName]);
   return ue50Ids;
 }
 
@@ -285,19 +301,6 @@ function useActivations(year: number) {
     })();
   }, [year]);
   return { rtwActs, nefActs };
-}
-
-function useDepartment() {
-  const [department, setDepartment] = useState<number>(1);
-  useEffect(() => {
-    (async () => {
-      try {
-        const dep = await (window as any).api.getSetting?.('department');
-        setDepartment(Number(dep) || 1);
-      } catch { }
-    })();
-  }, []);
-  return department;
 }
 
 function useDeptPatterns() {
@@ -377,7 +380,7 @@ function computeActivePersonnelPerMonth(
   year: number,
   roster: any[],
   auswertungByType: Record<string, 'off' | 'tag' | 'nacht' | '24h' | 'itw'>,
-  personnel: Array<{ id: number; fahrzeugfuehrerHLFB?: boolean; rettungsdienstMonthly?: boolean[] }>,
+  personnel: PersonnelStatsRow[],
   ue50Ids: Set<number>
 ) {
   // Ermittelt Anwesenheit pro Monat und zählt UNGEWICHTET: jede Person mit >0 Präsenz zählt 1
@@ -407,8 +410,8 @@ function computeActivePersonnelPerMonth(
 
       // NEU: Prüfe ob Person in diesem Monat Rettungsdienst-Qualifikation hat
       const person = personnel.find(p => p.id === pid);
-      if (!person || !person.rettungsdienstMonthly || !person.rettungsdienstMonthly[month]) {
-        continue; // Person hat keine Rettungsdienst-Qualifikation in diesem Monat
+      if (!person || !isEligibleForStatsMonth(person, month)) {
+        continue;
       }
 
       presentByMonth[month].add(pid);
@@ -427,16 +430,28 @@ function computeShiftsPerPerson(row1: number[], row2: number[]) {
 
 const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) => {
   const [year, setYear] = useYear();
+  const [department, setDepartment] = useState<number>(() => departmentNameToId(departmentName));
   const roster = useRoster(year, departmentName);
   const personnel = usePersonnel(year, departmentName);
-  const azubis = useAzubis();
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const ue50Ids = useUe50PersonnelIds(year);
+  const azubis = useAzubis(departmentName);
+  const { currentUser } = useAuth();
+  const ue50Ids = useUe50PersonnelIds(year, departmentName);
   const auswertungByType = useAuswertungByType();
   const { rtw, nef } = useVehicles(year);
   const { rtwActs, nefActs } = useActivations(year);
-  const department = useDepartment();
   const deptPatternSeqs = useDeptPatterns();
+
+  useEffect(() => {
+    setDepartment(departmentNameToId(departmentName));
+  }, [departmentName]);
+
+  useEffect(() => {
+    const handler = (e: CustomEvent<{ department?: string }>) => {
+      setDepartment(departmentNameToId(e.detail?.department));
+    };
+    window.addEventListener('rdplan-department-changed', handler as EventListener);
+    return () => window.removeEventListener('rdplan-department-changed', handler as EventListener);
+  }, []);
   const [shiftTransfers, setShiftTransfers] = useState<any[]>([]);
 
   useEffect(() => {
@@ -447,28 +462,6 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       } catch { setShiftTransfers([]); }
     })();
   }, [year]);
-
-  useEffect(() => {
-    const loadCurrentUser = async () => {
-      try {
-        const user = await (window as any).api.authGetCurrentUser?.();
-        setCurrentUser(user || null);
-      } catch {
-        setCurrentUser(null);
-      }
-    };
-
-    loadCurrentUser();
-
-    const api = (window as any).api;
-    api?.onSettingsUpdated?.(loadCurrentUser);
-    api?.onPersonnelUpdated?.(loadCurrentUser);
-
-    return () => {
-      api?.offSettingsUpdated?.(loadCurrentUser);
-      api?.offPersonnelUpdated?.(loadCurrentUser);
-    };
-  }, []);
 
   // Reagiere auf Jahr-Änderungen von DutyRoster
   useEffect(() => {
@@ -568,6 +561,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const perPersonPresence = useMemo(() => {
     const countsByPerson: Record<number, number[]> = {};
     const ensure = (pid: number) => (countsByPerson[pid] ||= Array(12).fill(0));
+    const personnelById = new Map((personnel || []).map(p => [p.id, p]));
     for (const row of (roster || [])) {
       try {
         if (String(row.personType) !== 'person') continue;
@@ -578,6 +572,8 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         if ((auswertungByType[code] || 'off') === 'off') continue;
         const iso = String(row.date);
         const month = new Date(iso + 'T00:00:00Z').getUTCMonth();
+        const person = personnelById.get(pid);
+        if (!person || !isEligibleForStatsMonth(person, month)) continue;
         ensure(pid)[month] += 1;
       } catch { }
     }
@@ -586,18 +582,21 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     const ue50ById: Record<number, boolean> = {};
     const ue50MonthlyById: Record<number, boolean[]> = {};
     const rettungsdienstMonthlyById: Record<number, boolean[]> = {};
+    const deptActiveMonthlyById: Record<number, boolean[]> = {};
     for (const p of (personnel || [])) {
       byId[p.id] = !!(p as any).fahrzeugfuehrerHLFB;
       monthlyById[p.id] = (p as any).hlfbMonthly || Array(12).fill(false);
       ue50ById[p.id] = !!(p as any).ue50;
       ue50MonthlyById[p.id] = (p as any).ue50Monthly || Array(12).fill(false);
       rettungsdienstMonthlyById[p.id] = (p as any).rettungsdienstMonthly || Array(12).fill(false);
+      deptActiveMonthlyById[p.id] = (p as any).deptActiveMonthly || Array(12).fill(true);
     }
-    // WICHTIG: Nur Personen MIT Rettungsdienst-Qualifikation in mindestens einem Monat anzeigen
     const rows = (personnel || [])
       .filter(p => {
-        const rdMonthly = rettungsdienstMonthlyById[p.id];
-        return rdMonthly && rdMonthly.some(has => has); // Hat in mind. einem Monat Rettungsdienst
+        for (let m = 0; m < 12; m++) {
+          if (isEligibleForStatsMonth(p, m)) return true;
+        }
+        return false;
       })
       .map(p => ({
         id: p.id,
@@ -613,6 +612,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
 
   // Gewichtete Präsenz je Person/Monat für Anzeige & Berechnung (HLF‑B = round(0,75 × Ai,m))
   const perPersonPresenceWeighted = useMemo(() => {
+    const personnelById = new Map((personnel || []).map(p => [p.id, p]));
     const rows = (perPersonPresence || []).map(r => ({
       id: r.id,
       name: r.name,
@@ -621,12 +621,14 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       ue50: r.ue50,
       ue50Monthly: r.ue50Monthly,
       counts: (r.counts || []).map((v: number, i: number) => {
+        const p = personnelById.get(r.id);
+        if (!p || !isEligibleForStatsMonth(p, i)) return 0;
         const isHlfbMonth = r.hlfbMonthly ? r.hlfbMonthly[i] : r.hlfb;
         return isHlfbMonth ? Math.round(Number(v || 0) * 0.75) : Number(v || 0);
       })
     }));
     return rows;
-  }, [perPersonPresence]);
+  }, [perPersonPresence, personnel]);
 
   const perAzubiMaschinist = useMemo(() => {
     const countsByAzubi: Record<number, number[]> = {};
@@ -717,6 +719,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
 
   // Soll-Berechnung pro Person/Monat via Hamilton (größtes Rest-Verfahren) auf Basis gewichteter Präsenz
   const calculationDetails = useMemo(() => {
+    const personnelById = new Map((personnel || []).map(p => [p.id, p]));
     const byId: Record<number, number[]> = {};
     for (const r of (perPersonPresenceWeighted || [])) byId[r.id] = r.counts.slice();
     const idList = (perPersonPresenceWeighted || []).map(r => r.id);
@@ -761,12 +764,16 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         const excludedIds = new Set<number>();
 
         for (const t of monthTransfers) {
+          const toId = Number(t.to_person_id);
+          const toPerson = personnelById.get(toId);
+          if (!toPerson || !isEligibleForStatsMonth(toPerson, m)) continue;
+
           totalTransferred += t.shift_count;
           if (t.from_person_id) excludedIds.add(t.from_person_id);
-          excludedIds.add(t.to_person_id);
+          excludedIds.add(toId);
 
-          parts[t.to_person_id] = (parts[t.to_person_id] || 0) + t.shift_count;
-          transfersByPerson[t.to_person_id] = (transfersByPerson[t.to_person_id] || 0) + t.shift_count;
+          parts[toId] = (parts[toId] || 0) + t.shift_count;
+          transfersByPerson[toId] = (transfersByPerson[toId] || 0) + t.shift_count;
         }
 
         const pool = active.filter(a => !excludedIds.has(a.id));
@@ -832,7 +839,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       });
     }
     return detailsById;
-  }, [perPersonPresenceWeighted, row1Adj, shiftTransfers, year]);
+  }, [perPersonPresenceWeighted, row1Adj, shiftTransfers, year, personnel]);
 
   const perPersonTargets = useMemo(() => {
     return Object.entries(calculationDetails).map(([idStr, details]) => ({
@@ -857,7 +864,9 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
 
   const [selectedPersonId, setSelectedPersonId] = useState<number | null>(null);
 
-  const wertePermission: 'none' | 'read' | 'read_all' | 'write' = (currentUser?.permissions?.werte as any) || 'none';
+  const wertePermission: 'none' | 'read' | 'read_all' | 'write' =
+    (currentUser?.permissions?.werte as any) || 'none';
+  /** Alle Namen: Werte „alle lesen“ (read_all) oder Schreiben; „nur lesen“ (read) = nur eigene Zeile. */
   const canReadAllWerte = wertePermission === 'read_all' || wertePermission === 'write';
   const visiblePresenceRows = useMemo(() => {
     if (canReadAllWerte) return perPersonPresenceWeighted;
@@ -1002,7 +1011,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     <div className="page-container">
       {renderCalculationPopup()}
       {/* Überschrift - ROT */}
-      <h2 className="page-header">Werte – {year}</h2>
+      <h2 className="page-header">Werte – {year}{departmentName ? ` – ${departmentName}` : ''}</h2>
       {/* Content - GRAU */}
       <div className="page-content" style={{ overflow: 'auto', maxHeight: '70vh', border: '1px solid #d6e4ff', borderRadius: 10, position: 'relative', paddingTop: 0 }}>
         <table style={styles.table}>

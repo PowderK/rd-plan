@@ -940,7 +940,7 @@ export const getPersonnel = async (db: AsyncDB, includeInactive: boolean = false
                     [p.id]
                 );
                 const currentDept = period?.department || p.department;
-                if (currentDept !== department) continue;
+                if (normalizeDepartment(currentDept) !== normalizeDepartment(department)) continue;
             }
             
             // Check active (unless including inactive)
@@ -1029,7 +1029,7 @@ export const getPersonnel = async (db: AsyncDB, includeInactive: boolean = false
                 [p.id, deptStartLimit, deptEndLimit]
             );
             const currentDept = period?.department || p.department;
-            if (currentDept !== department) {
+            if (normalizeDepartment(currentDept) !== normalizeDepartment(department)) {
                 continue;
             }
         }
@@ -1809,7 +1809,7 @@ export const addQualificationPeriod = async (db: AsyncDB, period: {
     endYM?: string,
     active?: boolean
 }) => {
-    await db.run('INSERT INTO qualification_periods (personId, qualType, startYM, endYM, active) VALUES (?, ?, ?, ?, ?)',
+    await db.run('INSERT OR IGNORE INTO qualification_periods (personId, qualType, startYM, endYM, active) VALUES (?, ?, ?, ?, ?)',
         [period.personId, period.qualType, period.startYM, period.endYM || null, period.active ? 1 : 0]);
 };
 
@@ -2803,12 +2803,12 @@ export const initializeQualificationTypesTable = async (db: AsyncDB) => {
 
             if (hasExcludeFromStats) {
                 await db.run(
-                    'INSERT INTO qualification_types (name, description, category, active, sort, excludeFromStats) VALUES (?, ?, ?, 1, ?, ?)',
+                    'INSERT OR IGNORE INTO qualification_types (name, description, category, active, sort, excludeFromStats) VALUES (?, ?, ?, 1, ?, ?)',
                     [qual.name, qual.description, qual.category, qual.sort, qual.excludeFromStats ? 1 : 0]
                 );
             } else {
                 await db.run(
-                    'INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, 1, ?)',
+                    'INSERT OR IGNORE INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, 1, ?)',
                     [qual.name, qual.description, qual.category, qual.sort]
                 );
             }
@@ -2833,13 +2833,13 @@ export const addQualificationType = async (db: AsyncDB, qualType: Omit<Qualifica
 
     if (hasExcludeFromStats) {
         await db.run(
-            'INSERT INTO qualification_types (name, description, category, active, sort, excludeFromStats) VALUES (?, ?, ?, ?, ?, ?)',
+            'INSERT OR IGNORE INTO qualification_types (name, description, category, active, sort, excludeFromStats) VALUES (?, ?, ?, ?, ?, ?)',
             [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort, qualType.excludeFromStats ? 1 : 0]
         );
     } else {
         // Fallback ohne excludeFromStats (für alte Datenbanken)
         await db.run(
-            'INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, ?, ?)',
+            'INSERT OR IGNORE INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, ?, ?)',
             [qualType.name.trim(), qualType.description || null, qualType.category || null, qualType.active ? 1 : 0, qualType.sort]
         );
     }

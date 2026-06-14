@@ -2,7 +2,7 @@ import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { AsyncDB, initializeDatabase as initSQLiteDatabase, QualificationType } from './database';
+import { AsyncDB, initializeDatabase as initSQLiteDatabase, QualificationType, normalizeDepartment } from './database';
 import { initializePostgreSQLDatabase, initializeItwPlanningDatabase, PostgresConfig } from './database-postgres';
 
 export type DatabaseMode = 'sqlite' | 'central-sqlite' | 'postgresql';
@@ -1824,12 +1824,11 @@ export class DatabaseManager {
       );
     `);
 
-    // Migration: create personnel_department_periods if missing
-    const deptPeriodsTableExists = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='personnel_department_periods'");
-    if (!deptPeriodsTableExists) {
-      console.log('[DatabaseManager] Creating personnel_department_periods table');
+    // Migration: create personnel_department_periods and populate if missing
+    const deptPeriodsFlag = await db.get("SELECT value FROM settings WHERE key = 'migration_personnel_department_periods_v1'");
+    if (!deptPeriodsFlag?.value) {
       await db.exec(`
-        CREATE TABLE personnel_department_periods (
+        CREATE TABLE IF NOT EXISTS personnel_department_periods (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           person_id INTEGER NOT NULL,
           department TEXT NOT NULL,
@@ -1838,14 +1837,60 @@ export class DatabaseManager {
           FOREIGN KEY(person_id) REFERENCES personnel(id) ON DELETE CASCADE
         )
       `);
-      
-      // Initial migration: move current department to periods
-      const personnel = await db.all("SELECT id, department FROM personnel");
-      for (const p of personnel) {
-        await db.run("INSERT INTO personnel_department_periods (person_id, department, start_date) VALUES (?, ?, ?)", 
-          [p.id, p.department || '1. Abteilung', '2020-01-01']);
+
+      const rowCount = await db.get("SELECT COUNT(*) as count FROM personnel_department_periods");
+      if (rowCount?.count === 0) {
+        console.log('[DatabaseManager] Populating personnel_department_periods from settings');
+
+        const deptSetting = await db.get("SELECT value FROM settings WHERE key = 'department'");
+        const targetDept = normalizeDepartment(deptSetting?.value || '1. Abteilung');
+
+        const earliestYear = await db.get("SELECT MIN(year) as minYear FROM year_plannings");
+        const startDate = earliestYear?.minYear != null
+          ? `${earliestYear.minYear}-01-01`
+          : `${new Date().getFullYear()}-01-01`;
+
+        const personnel = await db.all("SELECT id FROM personnel");
+        for (const p of personnel) {
+          await db.run(
+            "INSERT INTO personnel_department_periods (person_id, department, start_date) VALUES (?, ?, ?)",
+            [p.id, targetDept, startDate]
+          );
+        }
+        console.log(`[DatabaseManager] Migrated ${personnel.length} personnel to department periods (department=${targetDept}, start=${startDate})`);
       }
-      console.log(`[DatabaseManager] Migrated ${personnel.length} personnel to department periods`);
+
+      await db.run(
+        "INSERT INTO settings (key, value) VALUES ('migration_personnel_department_periods_v1', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+      );
+    }
+
+    // Migration: deduplicate qualification_periods + create UNIQUE index
+    try {
+      const uniqueIndexExists = await db.get(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_qualification_periods_unique'"
+      );
+      if (!uniqueIndexExists) {
+        const dupCount = await db.get(`
+          SELECT COUNT(*) - COUNT(DISTINCT personId || '-' || qualType || '-' || startYM) as dupes
+          FROM qualification_periods
+        `);
+        if (dupCount && dupCount.dupes > 0) {
+          await db.exec(`
+            DELETE FROM qualification_periods WHERE id NOT IN (
+              SELECT MIN(id) FROM qualification_periods GROUP BY personId, qualType, startYM
+            )
+          `);
+          console.log(`[DatabaseManager] Deduplicated ${dupCount.dupes} rows in qualification_periods`);
+        }
+        await db.exec(`
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_qualification_periods_unique
+          ON qualification_periods (personId, qualType, startYM)
+        `);
+        console.log('[DatabaseManager] UNIQUE index on qualification_periods created');
+      }
+    } catch (e) {
+      console.warn('[DatabaseManager] Could not create UNIQUE index on qualification_periods:', e);
     }
   }
 
@@ -2139,6 +2184,7 @@ export class DatabaseManager {
       const count = await db.get('SELECT COUNT(*) as count FROM qualification_types');
       if (count && count.count === 0) {
         const defaultQualifications = [
+          { name: 'Rettungsdienst', description: 'Berechtigung zur Teilnahme am Rettungsdienst', category: 'Grundqualifikation', sort: 0 },
           { name: 'RTW Fahrzeugführer', description: 'Fahrzeugführer Rettungswagen', category: 'Fahrzeugführung', sort: 1 },
           { name: 'HLF-B Fahrzeugführer', description: 'Hilfeleistungslöschfahrzeug B', category: 'Fahrzeugführung', sort: 2 },
           { name: 'NEF Assistent', description: 'Notarzteinsatzfahrzeug Assistent', category: 'Notfall', sort: 3 },
@@ -2150,7 +2196,7 @@ export class DatabaseManager {
 
         for (const qual of defaultQualifications) {
           await db.run(
-            'INSERT INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, 1, ?)',
+            'INSERT OR IGNORE INTO qualification_types (name, description, category, active, sort) VALUES (?, ?, ?, 1, ?)',
             [qual.name, qual.description, qual.category, qual.sort]
           );
         }

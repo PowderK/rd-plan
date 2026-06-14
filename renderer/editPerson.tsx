@@ -23,7 +23,6 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
   const [qualType, setQualType] = useState(qualification?.qualType || '');
   const [startYM, setStartYM] = useState(qualification?.startYM || '');
   const [endYM, setEndYM] = useState(qualification?.endYM || '');
-  const [active, setActive] = useState(qualification?.active ?? true);
   const [isUnlimited, setIsUnlimited] = useState(!qualification?.endYM);
   const [qualificationTypes, setQualificationTypes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +69,7 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
       qualType: qualType,
       startYM: startYM,
       endYM: isUnlimited ? '' : endYM,
-      active
+      active: true
     };
 
     onSave(formData as any);
@@ -100,6 +99,9 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
         <h3 style={{ marginTop: 0, marginBottom: '20px' }}>{title}</h3>
 
         <form onSubmit={handleSubmit}>
+          <p style={{ margin: '0 0 16px', fontSize: 13, color: '#666' }}>
+            Gültigkeit richtet sich nur nach Start- und Endmonat. Nach dem Endmonat gilt die Qualifikation nicht mehr.
+          </p>
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>
               Qualifikation *
@@ -170,21 +172,6 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
                 />
               </>
             )}
-          </div>
-
-          <div style={{ marginBottom: '24px' }}>
-            <label style={{ display: 'flex', alignItems: 'center' }}>
-              <input
-                type="checkbox"
-                checked={active}
-                onChange={e => setActive(e.target.checked)}
-                style={{ marginRight: '8px' }}
-              />
-              <span style={{ fontWeight: 'bold' }}>Aktiv</span>
-            </label>
-            <small style={{ color: '#666', fontSize: '12px' }}>
-              Inaktive Qualifikationen werden bei der Dienstplanung nicht berücksichtigt
-            </small>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
@@ -444,10 +431,16 @@ const DepartmentPeriodForm: React.FC<DepartmentPeriodFormProps> = ({ onSave, onC
               Unbegrenzte Gültigkeit
             </label>
             {!isUnlimited && (
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ width: '100%', padding: '8px' }} />
+              <>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>End-Datum (letzter Tag in der Abteilung)</label>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ width: '100%', padding: '8px' }} />
+              </>
             )}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+          <p style={{ margin: 0, fontSize: 12, color: '#666' }}>
+            Nach dem Enddatum ist der Mitarbeiter in dieser Abteilung inaktiv (u. a. Werte-Berechnung).
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: 16 }}>
             <button type="button" onClick={onCancel} style={{ background: '#6c757d', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px' }}>Abbrechen</button>
             <button type="submit" style={{ background: '#007bff', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px' }}>Speichern</button>
           </div>
@@ -551,7 +544,7 @@ const EditPerson: React.FC = () => {
         }
 
         try {
-          const feat = await (window as any).api.getSetting('feature_shift_transfers');
+          const feat = await (window as any).api.getSetting(`feature_shift_transfers_${department}`);
           setShowShiftTransferFeature(feat === 'true' || feat === true);
         } catch { }
 
@@ -590,7 +583,7 @@ const EditPerson: React.FC = () => {
 
     try {
       // Nur noch Basisdaten speichern - Qualifikationen werden separat über Perioden verwaltet
-      await (window as any).api.updatePerson({ id, name, vorname, teilzeit, department, active, sort, personnelNumber: personnelNumber.trim(), roleId, oldRtwShifts });
+      await (window as any).api.updatePerson({ id, name, vorname, teilzeit, department, active: true, sort, personnelNumber: personnelNumber.trim(), roleId, oldRtwShifts });
       if (window.opener) window.opener.postMessage('personnel-updated', '*');
       window.close();
     } catch (e) {
@@ -639,7 +632,7 @@ const EditPerson: React.FC = () => {
         qualType: qualification.qualType,
         startYM: qualification.startYM,
         endYM: qualification.endYM || null,
-        active: qualification.active
+        active: true
       });
       await refreshQualificationPeriods();
       setShowAddQualification(false);
@@ -668,7 +661,7 @@ const EditPerson: React.FC = () => {
           qualType: qualification.qualType,
           startYM: qualification.startYM,
           endYM: qualification.endYM || null,
-          active: qualification.active
+          active: true
         });
       } else {
         // console.error('Versuche ein Update ohne ID durchzuführen');
@@ -1106,7 +1099,6 @@ const EditPerson: React.FC = () => {
                     <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #dbe7ff' }}>Qualifikation</th>
                     <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #dbe7ff' }}>Von</th>
                     <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #dbe7ff' }}>Bis</th>
-                    <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #dbe7ff' }}>Aktiv</th>
                     <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #dbe7ff' }}>Aktionen</th>
                   </tr>
                 </thead>
@@ -1116,11 +1108,6 @@ const EditPerson: React.FC = () => {
                       <td style={{ padding: '8px', borderBottom: '1px solid #e4edff' }}>{period.qualType}</td>
                       <td style={{ padding: '8px', borderBottom: '1px solid #e4edff' }}>{period.startYM}</td>
                       <td style={{ padding: '8px', borderBottom: '1px solid #e4edff' }}>{period.endYM || 'Unbegrenzt'}</td>
-                      <td style={{ padding: '8px', borderBottom: '1px solid #e4edff', textAlign: 'center' }}>
-                        <span style={{ color: period.active ? '#28a745' : '#dc3545' }}>
-                          {period.active ? '✓' : '✗'}
-                        </span>
-                      </td>
                       <td style={{ padding: '8px', borderBottom: '1px solid #e4edff', textAlign: 'center' }}>
                         <button
                           type="button"

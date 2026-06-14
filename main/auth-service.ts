@@ -27,10 +27,16 @@ export class AuthService {
   }
 
   private getPermissionsFromRoleRow(role: any): Record<string, 'none' | 'read' | 'read_all' | 'write'> {
+    const canViewReports = role.canViewReports === 1 || role.canViewReports === true;
+    const canExportData = role.canExportData === 1 || role.canExportData === true;
+    let werte: 'none' | 'read' | 'read_all' | 'write' = 'none';
+    if (canExportData) werte = 'read_all';
+    else if (canViewReports) werte = 'read';
+
     return {
       einteilung: role.canEditRoster ? 'write' : 'none',
       dienstplan: role.canEditRoster ? 'write' : 'none',
-      werte: role.canViewReports || role.canExportData ? 'read' : 'none',
+      werte,
       personal: role.canEditPersonnel ? 'write' : 'none',
       fahrzeuge: role.canEditVehicles ? 'write' : 'none',
       einstellungen: role.canEditSettings ? 'write' : 'none',
@@ -39,11 +45,44 @@ export class AuthService {
     };
   }
 
-  private mergeLegacyCommentPermissions(permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>, legacyPermissions: any) {
+  private mergeLegacyRolePermissions(
+    permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>,
+    legacyPermissions: any
+  ): Record<string, 'none' | 'read' | 'read_all' | 'write'> {
+    const merged = { ...permissions };
+    if (!legacyPermissions || typeof legacyPermissions !== 'object') return merged;
+    for (const [key, val] of Object.entries(legacyPermissions)) {
+      if (val === 'none' || val === 'read' || val === 'read_all' || val === 'write') {
+        merged[key] = val;
+      }
+    }
+    return merged;
+  }
+
+  private applyAdministratorGrants(
+    permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>,
+    roleName?: string,
+    role?: any
+  ): Record<string, 'none' | 'read' | 'read_all' | 'write'> {
+    const isAdmin =
+      roleName?.toLowerCase() === 'administrator' ||
+      role?.canManageUsers === 1 ||
+      role?.canManageUsers === true;
+    if (!isAdmin) return permissions;
+
+    const werte =
+      permissions.werte === 'write' || permissions.werte === 'read_all'
+        ? permissions.werte
+        : 'read_all';
+
     return {
       ...permissions,
-      kommentar_global: legacyPermissions?.kommentar_global || permissions.kommentar_global,
-      kommentar_individuell: legacyPermissions?.kommentar_individuell || permissions.kommentar_individuell
+      werte,
+      einstellungen: permissions.einstellungen === 'none' ? 'write' : permissions.einstellungen,
+      personal: permissions.personal === 'none' ? 'write' : permissions.personal,
+      fahrzeuge: permissions.fahrzeuge === 'none' ? 'write' : permissions.fahrzeuge,
+      einteilung: permissions.einteilung === 'none' ? 'write' : permissions.einteilung,
+      dienstplan: permissions.dienstplan === 'none' ? 'write' : permissions.dienstplan,
     };
   }
 
@@ -56,25 +95,22 @@ export class AuthService {
       if (Array.isArray(roles) && roles.length > 0) {
         const role = roles.find((r: any) => Number(r.id) === Number(roleId));
         if (role) {
-          const rolePermissions = { ...permissions, ...this.getPermissionsFromRoleRow(role) };
+          let rolePermissions = { ...permissions, ...this.getPermissionsFromRoleRow(role) };
           const rolesData = await this.dbAdapter.getSetting('roles');
           if (rolesData) {
             try {
               const legacyRoles = JSON.parse(rolesData);
               const legacyRole = Array.isArray(legacyRoles) ? legacyRoles.find((r: any) => Number(r.id) === Number(roleId)) : null;
               if (legacyRole) {
-                return {
-                  permissions: this.mergeLegacyCommentPermissions(rolePermissions, legacyRole.permissions),
-                  name: role.name || legacyRole.name
-                };
+                rolePermissions = this.mergeLegacyRolePermissions(rolePermissions, legacyRole.permissions);
               }
             } catch (e) {
-              console.error('[AuthService] Error parsing legacy roles for comment permissions:', e);
+              console.error('[AuthService] Error parsing legacy roles:', e);
             }
           }
 
           return {
-            permissions: rolePermissions,
+            permissions: this.applyAdministratorGrants(rolePermissions, role.name, role),
             name: role.name
           };
         }
@@ -90,8 +126,12 @@ export class AuthService {
       const roles = JSON.parse(rolesData);
       const role = roles.find((r: any) => r.id === roleId);
       if (role) {
+        const merged = this.mergeLegacyRolePermissions(
+          { ...permissions, ...(role.permissions || {}) },
+          role.permissions
+        );
         return {
-          permissions: { ...permissions, ...(role.permissions || {}) },
+          permissions: this.applyAdministratorGrants(merged, role.name),
           name: role.name
         };
       }

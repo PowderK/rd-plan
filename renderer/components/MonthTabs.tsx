@@ -4,6 +4,7 @@ import { buildVehicleActivationMap, calculateTargets } from '../utils/calculatio
 import { rosterReleasedSettingKey } from '../utils/rosterRelease';
 import styles from './MonthTabs.module.css';
 import { Kontrollkasten } from './Kontrollkasten';
+import { AzubiAutoAssignDialog, ShiftSummary, ProposedAssignment, ConflictAzubi } from './AzubiAutoAssignDialog';
 
 /** Abteilungsnummer aus Anzeigenamen (z. B. „2. Abteilung“ → 2). */
 export function departmentNameToId(departmentName?: string): number {
@@ -74,6 +75,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [holidays, setHolidays] = useState<Set<string>>(new Set());
     // Hervorgehobene Person aus Kontrollkasten
     const [highlightedPersonKey, setHighlightedPersonKey] = useState<string | null>(null);
+    // Hervorgehobenes Datum für Verfügbarkeitsanzeige im Kontrollkasten
+    const [selectedAvailDate, setSelectedAvailDate] = useState<string | null>(null);
     // Ü50-IDs für korrekte Berechnung (analog ValuesPage)
     const [ue50Ids, setUe50Ids] = useState<Set<number>>(new Set());
     // LPAL-IDs (Leitender Praxisanleiter) - wie Ü50, aber orange
@@ -105,6 +108,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [featureOldRtwShifts, setFeatureOldRtwShifts] = useState(false);
     // Schichtübernahmen
     const [shiftTransfers, setShiftTransfers] = useState<any[]>([]);
+    const [azubiAutoState, setAzubiAutoState] = useState<ShiftSummary[] | null>(null);
     const [availableYears, setAvailableYears] = useState<number[]>([]);
 
     useEffect(() => {
@@ -346,7 +350,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             } catch { }
             // Feature Toggle laden
             try {
-                const feat = await (window as any).api.getSetting('feature_old_rtw_shifts');
+                const feat = await (window as any).api.getSetting(`feature_old_rtw_shifts_${departmentName}`);
                 setFeatureOldRtwShifts(feat === 'true' || feat === true);
             } catch { }
             // Neue Fahrzeug-Zeiträume laden
@@ -1073,6 +1077,159 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         }
     }, [canWrite, undoStack, getAssignedValueFor, onRosterChanged]);
 
+    const handleAutoAssignAzubis = () => {
+        if (!canWrite) return;
+        const summaries: ShiftSummary[] = [];
+
+        const DateStrs: string[] = days.map(d => d.date);
+
+        const isSlotTakenGlobally = (dateStr: string, slotId: string) => {
+            return !!getAssignedValueFor(dateStr, slotId);
+        };
+
+        const isAzubiAssigned = (key: string, dateStr: string) => {
+           const type = String((localRoster as any)?.[key]?.[dateStr]?.type ?? (roster as any)?.[key]?.[dateStr]?.type ?? '');
+           return type.startsWith('rtw') || type.startsWith('nef') || type.startsWith('itw');
+        };
+
+        DateStrs.forEach(DateStr => {
+            const dailyAzubisTag: typeof azubis = [];
+            const dailyAzubisNacht: typeof azubis = [];
+            
+            azubis.forEach(a => {
+                const key = `a_${a.id}`;
+                if (isAzubiAssigned(key, DateStr)) return;
+                
+                const dutyCode = getDutyCodeForDate(key, DateStr);
+                if (dutyCode && dutyCode.trim() !== '') {
+                    const evalMode = auswertungByType[dutyCode];
+                    if (evalMode === 'tag' || evalMode === '24h') dailyAzubisTag.push(a);
+                    if (evalMode === 'nacht' || evalMode === '24h') dailyAzubisNacht.push(a);
+                }
+            });
+
+            const processShift = (shift: 'tag' | 'nacht', candidates: typeof azubis) => {
+                if (candidates.length === 0) return;
+                
+                const availableMaSlots: string[] = [];
+                const availableAzSlots: string[] = [];
+                const allAvailableFallbackSlots: { id: string; label: string }[] = [];
+
+                (rtwVehicles || []).forEach((v, rIdx) => {
+                    const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
+                    if (!enabled) return;
+
+                    const slot2 = shift === 'tag' ? `rtw${rIdx+1}_tag_2` : `rtw${rIdx+1}_nacht_2`;
+                    const slot3 = shift === 'tag' ? `rtw${rIdx+1}_tag_3` : `rtw${rIdx+1}_nacht_3`;
+                    
+                    const taken2 = isSlotTakenGlobally(DateStr, slot2);
+                    const taken3 = isSlotTakenGlobally(DateStr, slot3);
+
+                    if (!taken2) availableMaSlots.push(slot2);
+                    if (!taken3) availableAzSlots.push(slot3);
+                    
+                    if (!taken2) allAvailableFallbackSlots.push({ id: slot2, label: `${v.name} Maschinist` });
+                    if (!taken3) allAvailableFallbackSlots.push({ id: slot3, label: `${v.name} Azubi` });
+                });
+
+                (nefVehicles || []).forEach((v, nIdx) => {
+                    const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
+                    if (!enabled) return;
+                    const slotId = nIdx === 0 ? 'nef_azubi' : `nef${nIdx+1}_azubi`;
+                    if (!isSlotTakenGlobally(DateStr, slotId)) allAvailableFallbackSlots.push({ id: slotId, label: `${v.name} Azubi` });
+                });
+
+                const assignments: ProposedAssignment[] = [];
+                const conflicts: ConflictAzubi[] = [];
+
+                candidates.forEach(a => {
+                    if (a.lehrjahr >= 2) {
+                        if (availableMaSlots.length > 0) {
+                            assignments.push({ azubiId: a.id, azubiName: `${a.name} ${a.vorname}`, lehrjahr: a.lehrjahr, proposedSlot: availableMaSlots.shift()! });
+                        } else {
+                            conflicts.push({ azubiId: a.id, azubiName: `${a.name} ${a.vorname}`, lehrjahr: a.lehrjahr, reason: 'Keine Maschinisten-Plätze mehr frei.' });
+                        }
+                    } else {
+                        if (availableAzSlots.length > 0) {
+                            assignments.push({ azubiId: a.id, azubiName: `${a.name} ${a.vorname}`, lehrjahr: a.lehrjahr, proposedSlot: availableAzSlots.shift()! });
+                        } else {
+                            conflicts.push({ azubiId: a.id, azubiName: `${a.name} ${a.vorname}`, lehrjahr: a.lehrjahr, reason: 'Keine regulären Azubi-Plätze mehr frei.' });
+                        }
+                    }
+                });
+
+                if (assignments.length > 0 || conflicts.length > 0) {
+                    const usedSlots = assignments.map(x => x.proposedSlot);
+                    const safeFallbacks = allAvailableFallbackSlots.filter(fb => !usedSlots.includes(fb.id));
+                    summaries.push({
+                        date: DateStr,
+                        shift,
+                        assignments,
+                        conflicts,
+                        availableFallbackSlots: safeFallbacks
+                    });
+                }
+            };
+
+            processShift('tag', dailyAzubisTag);
+            processShift('nacht', dailyAzubisNacht);
+        });
+
+        if (summaries.length > 0) {
+            setAzubiAutoState(summaries);
+        } else {
+            alert('Keine ungeplanten Azubis mit gültigen Dienstcodes für diesen Monat gefunden.');
+        }
+    };
+
+    const handleConfirmAutoAssign = async (finalAssignments: { azubiId: number; date: string; slotId: string }[]) => {
+        setAzubiAutoState(null);
+        if (finalAssignments.length === 0) return;
+
+        setIsUpdating(true);
+
+        setLocalRoster(prev => {
+            const newState = { ...prev };
+
+            finalAssignments.forEach(assignment => {
+                const key = `a_${assignment.azubiId}`;
+                const date = assignment.date;
+                const slotId = assignment.slotId;
+
+                Object.keys(newState).forEach(personKey => {
+                    if (personKey !== key && newState[personKey][date]?.type === slotId) {
+                         newState[personKey] = {
+                             ...newState[personKey],
+                             [date]: { ...(newState[personKey][date] || {}), type: '' }
+                         };
+                    }
+                });
+
+                const currentPersonState = newState[key] || {};
+                const dayEntry = { ...(currentPersonState[date] || {}), type: slotId };
+                newState[key] = { ...currentPersonState, [date]: dayEntry };
+            });
+
+            return newState;
+        });
+
+        setForceUpdateCounter(prev => prev + 1);
+
+        try {
+            await Promise.all(finalAssignments.map(assignment => 
+                (window as any).api.assignSlot({
+                    personId: assignment.azubiId,
+                    personType: 'azubi',
+                    date: assignment.date,
+                    slotType: assignment.slotId
+                })
+            ));
+        } catch(e) { console.error('Bulk auto-assign failed', e); }
+
+        if (onRosterChanged) onRosterChanged();
+        setTimeout(() => setIsUpdating(false), 100);
+    };
+
     const redoLastAssignmentChange = useCallback(async () => {
         if (!canWrite) return;
         if (redoStack.length === 0) return;
@@ -1298,6 +1455,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 // Verwende die gleiche Logik wie bei der monatlichen Zählung (RTW/NEF nur an Abteilungstagen)
                 let cumDriven = 0;
                 for (let mIdx = 0; mIdx <= currentMonth; mIdx++) {
+                    const rd = (p as any).rettungsdienstMonthly;
+                    const dept = (p as any).deptActiveMonthly;
+                    if (rd && !rd[mIdx]) continue;
+                    if (dept && !dept[mIdx]) continue;
+
                     const dim = new Date(year, mIdx + 1, 0).getDate();
 
                     // Ermittle Abteilungstage für diesen Monat
@@ -1345,6 +1507,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 let nachtCntY = 0;
                 let weekendCntY = 0;
                 for (let mIdx = 0; mIdx < 12; mIdx++) {
+                    const rd = (p as any).rettungsdienstMonthly;
+                    const dept = (p as any).deptActiveMonthly;
+                    if (rd && !rd[mIdx]) continue;
+                    if (dept && !dept[mIdx]) continue;
+
                     const dim = new Date(year, mIdx + 1, 0).getDate();
                     for (let i = 1; i <= dim; i++) {
                         const iso = new Date(Date.UTC(year, mIdx, i)).toISOString().slice(0, 10);
@@ -1472,6 +1639,33 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         rtwVehicles, nefVehicles, rtwActivations, nefActivations, department,
         deptPatternSeqs, hlfbPeriodsByPerson, shiftTransfers, currentMonth]);
 
+    const availablePersonKeys = React.useMemo(() => {
+        if (!selectedAvailDate) return undefined;
+        const keys = new Set<string>();
+
+        const DateStr = selectedAvailDate;
+        
+        const isAssigned = (key: string) => {
+           const type = String((localRoster as any)?.[key]?.[DateStr]?.type ?? (roster as any)?.[key]?.[DateStr]?.type ?? '');
+           return type.startsWith('rtw') || type.startsWith('nef') || type.startsWith('itw');
+        };
+
+        (personnel || []).forEach(p => {
+            const key = `p_${p.id}`;
+            if (isAssigned(key)) return; 
+            
+            const dutyCode = getDutyCodeForDate(key, DateStr);
+            if (dutyCode && dutyCode.trim() !== '') {
+                const evalMode = auswertungByType[dutyCode];
+                if (evalMode && evalMode !== 'off') {
+                    keys.add(key);
+                }
+            }
+        });
+        
+        return keys;
+    }, [selectedAvailDate, roster, localRoster, personnel, auswertungByType, getDutyCodeForDate]);
+
     return (
         <div key={forceUpdateCounter}>
             {/* Gemeinsamer Fixed Header Container */}
@@ -1583,6 +1777,27 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         })()}
                     </label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button
+                            type="button"
+                            onClick={handleAutoAssignAzubis}
+                            disabled={!canWrite}
+                            style={{
+                                padding: '6px 12px',
+                                background: canWrite ? '#fff' : '#f9fafb',
+                                color: canWrite ? '#4b5563' : '#9ca3af',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '6px',
+                                fontSize: '0.85rem',
+                                fontWeight: 500,
+                                cursor: canWrite ? 'pointer' : 'not-allowed',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                            }}
+                            title="Azubis automatisch auf freie Plätze verteilen"
+                        >
+                            <span>Azubis Automatik</span>
+                        </button>
                         <button
                             type="button"
                             onClick={undoLastAssignmentChange}
@@ -1922,7 +2137,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                                     // Prüfe ob hervorgehobene Person an diesem Tag eingeteilt oder verfügbar ist
                                     let dayHighlightColor: string | undefined = undefined;
-                                    if (highlightedPersonKey) {
+                                    if (selectedAvailDate === d.date) {
+                                        dayHighlightColor = '#e8f5e9';
+                                    } else if (highlightedPersonKey) {
                                         const personId = highlightedPersonKey.replace('p_', '');
                                         const personValue = `p:${personId}`;
 
@@ -1987,7 +2204,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 const tooltipText = tooltipParts.join('\n');
 
                                                 return (
-                                                    <div style={{
+                                                    <div
+                                                        onClick={() => setSelectedAvailDate(selectedAvailDate === d.date ? null : d.date)}
+                                                        style={{
                                                         position: 'sticky',
                                                         top: 0,
                                                         background: dayHighlightColor || 'var(--bg)',
@@ -2001,7 +2220,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                         paddingRight: dayHighlightColor ? 6 : 0,
                                                         display: 'flex',
                                                         alignItems: 'center',
-                                                        gap: '6px'
+                                                        gap: '6px',
+                                                        cursor: 'pointer'
                                                     }}>
                                                         <span>{label} <small style={{ fontWeight: 400 }}>({d.weekday})</small></span>
                                                         {commentCount > 0 && (
@@ -2383,10 +2603,20 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         for (const p of (personnel || [])) {
                                             const key = `p_${p.id}`;
                                             let cnt = 0;
-                                            for (const iso of restYearIsos) {
-                                                const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                                const raw = String(cell?.value || '').trim();
-                                                if (raw && (auswertungByType[raw] || 'off') !== 'off') cnt++;
+                                            const rd = (p as any).rettungsdienstMonthly;
+                                            const dept = (p as any).deptActiveMonthly;
+
+                                            for (let mIdx = currentMonth; mIdx < 12; mIdx++) {
+                                                if (rd && !rd[mIdx]) continue;
+                                                if (dept && !dept[mIdx]) continue;
+
+                                                const dim = new Date(year, mIdx + 1, 0).getDate();
+                                                for (let d = 1; d <= dim; d++) {
+                                                    const iso = new Date(Date.UTC(year, mIdx, d)).toISOString().slice(0, 10);
+                                                    const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
+                                                    const raw = String(cell?.value || '').trim();
+                                                    if (raw && (auswertungByType[raw] || 'off') !== 'off') cnt++;
+                                                }
                                             }
                                             map[key] = cnt;
                                         }
@@ -2398,12 +2628,22 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         for (const p of (personnel || [])) {
                                             const key = `p_${p.id}`;
                                             let sum = 0;
-                                            for (const iso of restYearIsos) {
-                                                const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                                const t = String(cell?.type || '');
-                                                if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) sum += 1;
-                                                else if (itwEnabled && /^itw_row_[12]$/.test(t)) sum += 1;
-                                                else if (/^nef(\d+)?_assist$/.test(t)) sum += getNefAssistWeight(t);
+                                            const rd = (p as any).rettungsdienstMonthly;
+                                            const dept = (p as any).deptActiveMonthly;
+
+                                            for (let mIdx = currentMonth; mIdx < 12; mIdx++) {
+                                                if (rd && !rd[mIdx]) continue;
+                                                if (dept && !dept[mIdx]) continue;
+
+                                                const dim = new Date(year, mIdx + 1, 0).getDate();
+                                                for (let d = 1; d <= dim; d++) {
+                                                    const iso = new Date(Date.UTC(year, mIdx, d)).toISOString().slice(0, 10);
+                                                    const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
+                                                    const t = String(cell?.type || '');
+                                                    if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) sum += 1;
+                                                    else if (itwEnabled && /^itw_row_[12]$/.test(t)) sum += 1;
+                                                    else if (/^nef(\d+)?_assist$/.test(t)) sum += getNefAssistWeight(t);
+                                                }
                                             }
                                             map[key] = sum;
                                         }
@@ -2419,6 +2659,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 showOldRtwShifts={featureOldRtwShifts}
                                                 showWeekendShifts={showWeekendShifts}
                                                 showItw={itwEnabled}
+                                                availablePersonKeys={availablePersonKeys}
                                                 highlightedPersonKey={highlightedPersonKey}
                                                 setHighlightedPersonKey={setHighlightedPersonKey}
                                                 mixColor={mixColor}
@@ -2604,7 +2845,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                                                     // Prüfe ob hervorgehobene Person an diesem ITW-Tag eingeteilt oder verfügbar ist
                                                     let dayHighlightColor: string | undefined = undefined;
-                                                    if (highlightedPersonKey) {
+                                                    if (selectedAvailDate === d2.date) {
+                                                        dayHighlightColor = '#e8f5e9';
+                                                    } else if (highlightedPersonKey) {
                                                         const personId = highlightedPersonKey.replace('p_', '');
                                                         const personValue = `p:${personId}`;
 
@@ -2631,11 +2874,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                     return (
                                                         <div key={`itw_card_${d2.date}`} className={styles.itwCardWrap}>
                                                             {/* Datum (DD.MM) + Wochentag und gelbe Trennlinie über dem ITW-Kasten */}
-                                                            <div className={styles.itwCardHeader} style={{
+                                                            <div
+                                                                onClick={() => setSelectedAvailDate(selectedAvailDate === d2.date ? null : d2.date)}
+                                                                className={styles.itwCardHeader} style={{
                                                                 background: dayHighlightColor,
                                                                 borderRadius: dayHighlightColor ? 4 : 0,
                                                                 paddingLeft: dayHighlightColor ? 6 : undefined,
-                                                                paddingRight: dayHighlightColor ? 6 : undefined
+                                                                paddingRight: dayHighlightColor ? 6 : undefined,
+                                                                cursor: 'pointer'
                                                             }}>{label} <small style={{ fontWeight: 400, color: 'var(--muted)' }}>({d2.weekday})</small></div>
                                                             <div className={styles.itwDivider} />
                                                             <div className={styles.itwCard}>
@@ -2745,10 +2991,20 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         for (const p of (personnel || [])) {
                                             const key = `p_${p.id}`;
                                             let cnt = 0;
-                                            for (const iso of restYearIsos) {
-                                                const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                                const raw = String(cell?.value || '').trim();
-                                                if (raw && (auswertungByType[raw] || 'off') !== 'off') cnt++;
+                                            const rd = (p as any).rettungsdienstMonthly;
+                                            const dept = (p as any).deptActiveMonthly;
+
+                                            for (let mIdx = currentMonth; mIdx < 12; mIdx++) {
+                                                if (rd && !rd[mIdx]) continue;
+                                                if (dept && !dept[mIdx]) continue;
+
+                                                const dim = new Date(year, mIdx + 1, 0).getDate();
+                                                for (let d = 1; d <= dim; d++) {
+                                                    const iso = new Date(Date.UTC(year, mIdx, d)).toISOString().slice(0, 10);
+                                                    const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
+                                                    const raw = String(cell?.value || '').trim();
+                                                    if (raw && (auswertungByType[raw] || 'off') !== 'off') cnt++;
+                                                }
                                             }
                                             map[key] = cnt;
                                         }
@@ -2759,12 +3015,22 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         for (const p of (personnel || [])) {
                                             const key = `p_${p.id}`;
                                             let sum = 0;
-                                            for (const iso of restYearIsos) {
-                                                const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
-                                                const t = String(cell?.type || '');
-                                                if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) sum += 1;
-                                                else if (itwEnabled && /^itw_row_[12]$/.test(t)) sum += 1;
-                                                else if (/^nef(\d+)?_assist$/.test(t)) sum += getNefAssistWeight(t);
+                                            const rd = (p as any).rettungsdienstMonthly;
+                                            const dept = (p as any).deptActiveMonthly;
+
+                                            for (let mIdx = currentMonth; mIdx < 12; mIdx++) {
+                                                if (rd && !rd[mIdx]) continue;
+                                                if (dept && !dept[mIdx]) continue;
+
+                                                const dim = new Date(year, mIdx + 1, 0).getDate();
+                                                for (let d = 1; d <= dim; d++) {
+                                                    const iso = new Date(Date.UTC(year, mIdx, d)).toISOString().slice(0, 10);
+                                                    const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
+                                                    const t = String(cell?.type || '');
+                                                    if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) sum += 1;
+                                                    else if (itwEnabled && /^itw_row_[12]$/.test(t)) sum += 1;
+                                                    else if (/^nef(\d+)?_assist$/.test(t)) sum += getNefAssistWeight(t);
+                                                }
                                             }
                                             map[key] = sum;
                                         }
@@ -2888,6 +3154,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     </div>
                 </div>
             )}
+
+            <AzubiAutoAssignDialog
+                isOpen={azubiAutoState !== null}
+                onClose={() => setAzubiAutoState(null)}
+                onConfirm={handleConfirmAutoAssign}
+                summaries={azubiAutoState || []}
+            />
         </div>
     );
 };

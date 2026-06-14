@@ -20,7 +20,6 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
   const [qualType, setQualType] = useState(qualification?.qualType || '');
   const [startYM, setStartYM] = useState(qualification?.startYM || '');
   const [endYM, setEndYM] = useState(qualification?.endYM || '');
-  const [active, setActive] = useState(qualification?.active ?? true);
   const [isUnlimited, setIsUnlimited] = useState(!qualification?.endYM);
   const [qualificationTypes, setQualificationTypes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,7 +59,7 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
       qualType,
       startYM,
       endYM: isUnlimited ? '' : endYM,
-      active
+      active: true
     });
   };
 
@@ -158,18 +157,6 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
                 />
               </>
             )}
-          </div>
-
-          <div style={{ marginBottom: '24px' }}>
-            <label style={{ display: 'flex', alignItems: 'center' }}>
-              <input
-                type="checkbox"
-                checked={active}
-                onChange={e => setActive(e.target.checked)}
-                style={{ marginRight: '8px' }}
-              />
-              <span style={{ fontWeight: 'bold' }}>Aktiv</span>
-            </label>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>

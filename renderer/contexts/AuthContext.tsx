@@ -88,6 +88,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
     });
   }, []);
 
+  useEffect(() => {
+    if (isDevMode) return;
+    const refreshSession = async () => {
+      try {
+        const user = await (window as any).api.authGetCurrentUser?.();
+        if (user) {
+          setCurrentUser(user);
+          setIsAuthenticated(true);
+        }
+      } catch { /* ignore */ }
+    };
+    const api = (window as any).api;
+    api?.onSettingsUpdated?.(refreshSession);
+    api?.onPersonnelUpdated?.(refreshSession);
+    return () => {
+      api?.offSettingsUpdated?.(refreshSession);
+      api?.offPersonnelUpdated?.(refreshSession);
+    };
+  }, [isDevMode]);
+
   const login = async (personnelNumber: string): Promise<{ success: boolean; error?: string }> => {
     try {
       console.log('[AuthContext] Login-Versuch mit Personalnummer:', personnelNumber);
