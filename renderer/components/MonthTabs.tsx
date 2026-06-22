@@ -111,6 +111,28 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [azubiAutoState, setAzubiAutoState] = useState<ShiftSummary[] | null>(null);
     const [availableYears, setAvailableYears] = useState<number[]>([]);
 
+    const [guests, setGuests] = useState<any[]>([]);
+    const [showGuestModal, setShowGuestModal] = useState(false);
+    const [newGuestDate, setNewGuestDate] = useState('');
+    const [newGuestName, setNewGuestName] = useState('');
+    const [newGuestRemark, setNewGuestRemark] = useState('');
+
+    const loadGuests = useCallback(async () => {
+        try {
+            const list = await (window as any).api.getAllGuests?.();
+            setGuests(Array.isArray(list) ? list : []);
+        } catch(e) {}
+    }, []);
+
+    useEffect(() => {
+        loadGuests();
+        const guestsHandler = () => loadGuests();
+        (window as any).api?.onGuestsUpdated?.(guestsHandler);
+        return () => {
+            (window as any).api?.offGuestsUpdated?.(guestsHandler);
+        };
+    }, [loadGuests]);
+
     useEffect(() => {
         (window as any)[undoStackStorageKey] = undoStack;
     }, [undoStack]);
@@ -555,6 +577,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 foundMatch = true;
                 if (key.startsWith('p_')) return `p:${key.slice(2)}`;
                 if (key.startsWith('a_')) return `a:${key.slice(2)}`;
+                if (key.startsWith('g_')) return `g:${key.slice(2)}`;
+                if (key.startsWith('d_')) return `d:${key.slice(2)}`;
                 return `p:${key}`;
             }
         }
@@ -880,9 +904,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const d = itwDoctors.find(x => x.id === id);
                 return d ? `${d.name}` : `Arzt ${id}`;
             }
+            if (t === 'g') {
+                const g = guests.find(x => x.id === id);
+                return g ? `(Gast) ${g.name}` : `Gast ${id}`;
+            }
         } catch { /* ignore */ }
         return val;
-    }, [personNameById, personnel, azubis, itwDoctors]);
+    }, [personNameById, personnel, azubis, itwDoctors, guests]);
 
     const pushUndoEntry = useCallback((entry: AssignmentUndoEntry) => {
         if (!entry.slotId || entry.previousValue === entry.nextValue) return;
@@ -911,13 +939,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         }
         const [t, idStr] = value.split(':');
         const pid = Number(idStr);
-        const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : 'person');
+        const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : (t === 'g' ? 'guest' : 'person'));
         try {
             // 1. Blockiere Parent-Updates während unseres lokalen Updates
             setIsUpdating(true);
 
             // 2. Sofortiges optimistisches UI-Update (verhindert Flackern)
-            const key = ptype === 'person' ? `p_${pid}` : (ptype === 'azubi' ? `a_${pid}` : `d_${pid}`);
+            const key = ptype === 'person' ? `p_${pid}` : (ptype === 'azubi' ? `a_${pid}` : (ptype === 'guest' ? `g_${pid}` : `d_${pid}`));
 
             setLocalRoster(prev => {
                 const newState = { ...prev };
@@ -979,9 +1007,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             }
             const [t, idStr] = currentVal.split(':');
             const pid = Number(idStr);
-            const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : 'person');
+            const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : (t === 'g' ? 'guest' : 'person'));
             await (window as any).api.assignSlot({ personId: pid, personType: ptype, date, slotType: '' });
-            const key = ptype === 'person' ? `p_${pid}` : (ptype === 'azubi' ? `a_${pid}` : `d_${pid}`);
+            const key = ptype === 'person' ? `p_${pid}` : (ptype === 'azubi' ? `a_${pid}` : (ptype === 'guest' ? `g_${pid}` : `d_${pid}`));
             setLocalRoster(prev => {
                 const before = prev[key] || {} as any;
                 const dayEntry = { ...(before[date] || {}) } as any;
@@ -1015,8 +1043,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const [t, idStr] = val.split(':');
                 const pid = Number(idStr);
                 if (!Number.isFinite(pid)) return null;
-                const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : 'person');
-                const key = ptype === 'person' ? `p_${pid}` : (ptype === 'azubi' ? `a_${pid}` : `d_${pid}`);
+                const ptype = t === 'a' ? 'azubi' : (t === 'd' ? 'doctor' : (t === 'g' ? 'guest' : 'person'));
+                const key = ptype === 'person' ? `p_${pid}` : (ptype === 'azubi' ? `a_${pid}` : (ptype === 'guest' ? `g_${pid}` : `d_${pid}`));
                 return { pid, ptype, key };
             };
 
@@ -1313,21 +1341,33 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const vehicleHeaderRef = React.useRef<HTMLDivElement>(null);
     const contentRef = React.useRef<HTMLDivElement>(null);
     const fixedHeaderContainerRef = React.useRef<HTMLDivElement>(null);
+    const fullWidthHeaderRef = React.useRef<HTMLDivElement>(null);
     const [headerHeight, setHeaderHeight] = React.useState(280);
+    const [topHeight, setTopHeight] = React.useState(115);
 
     const [sidebarWidth, setSidebarWidth] = React.useState(512);
 
     // Messe die Höhe des Fixed Header Containers
     React.useEffect(() => {
         const measureHeader = () => {
-            if (fixedHeaderContainerRef.current) {
-                const height = fixedHeaderContainerRef.current.offsetHeight;
-                setHeaderHeight(height + 10); // +10px Sicherheitsabstand
+            let tHeight = topHeight;
+            if (fullWidthHeaderRef.current) {
+                tHeight = fullWidthHeaderRef.current.offsetHeight;
+                setTopHeight(tHeight);
             }
+
+            let fHeight = 0;
+            if (fixedHeaderContainerRef.current) {
+                fHeight = fixedHeaderContainerRef.current.offsetHeight;
+            }
+            
+            setHeaderHeight(tHeight + fHeight + 10); // +10px Sicherheitsabstand
 
             const sidebar = document.getElementById('einteilung-right-sidebar');
             if (sidebar) {
                 setSidebarWidth(sidebar.offsetWidth + 12);
+                sidebar.style.top = `calc(clamp(56px, 6.5vw, 90px) + ${tHeight}px + 12px)`;
+                sidebar.style.height = `calc(100vh - clamp(56px, 6.5vw, 90px) - ${tHeight}px - 32px)`;
             }
         };
 
@@ -1337,10 +1377,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         const resizeObserver = new ResizeObserver(measureHeader);
         if (fixedHeaderContainerRef.current) {
             resizeObserver.observe(fixedHeaderContainerRef.current);
+        }
+        if (fullWidthHeaderRef.current) {
+            resizeObserver.observe(fullWidthHeaderRef.current);
+        }
 
-            // Auch die Sidebar beobachten, falls sie sich durch Namen vergrößert
-            const sidebar = document.getElementById('einteilung-right-sidebar');
-            if (sidebar) resizeObserver.observe(sidebar);
+        const sidebar = document.getElementById('einteilung-right-sidebar');
+        if (sidebar) {
+            resizeObserver.observe(sidebar);
         }
 
         return () => {
@@ -1668,74 +1712,82 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
     return (
         <div key={forceUpdateCounter}>
-            {/* Gemeinsamer Fixed Header Container */}
+            {/* Top Full Width Header Container */}
             <div
-                ref={fixedHeaderContainerRef}
+                ref={fullWidthHeaderRef}
                 style={{
                     position: 'fixed',
                     top: 'clamp(56px, 6.5vw, 90px)',
                     left: sidebarCollapsed ? 56 : 200,
-                    right: sidebarWidth + 16,
-                    zIndex: 100,
+                    right: 24, // Full width above the right sidebar
+                    zIndex: 105,
                     background: 'var(--bg)',
                     paddingLeft: 24,
-                    paddingRight: 24,
+                    paddingRight: 0,
                     transition: 'left 0.15s'
                 }}
             >
                 <div style={{
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'flex-start',
-                    gap: 12,
+                    flexDirection: 'column',
+                    gap: 16,
                     paddingTop: 12,
-                    paddingBottom: 14
+                    paddingBottom: 16,
+                    width: '100%',
+                    boxSizing: 'border-box'
                 }}>
-                    <h2 style={{ margin: 0 }}>Einteilung</h2>
-                    <span style={{ fontSize: 22, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                        {viewMode === 'rtwnef' ? 'RTW Einteilung' : 'ITW Einteilung'} ({months[currentMonth]})
-                    </span>
                     <div style={{
-                        position: 'absolute',
-                        top: 8,
-                        right: `-${Math.max(0, sidebarWidth - 28)}px`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'flex-start',
+                        gap: 12
+                    }}>
+                        <h2 style={{ margin: 0 }}>Einteilung</h2>
+                        <span style={{ fontSize: 22, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            {viewMode === 'rtwnef' ? 'RTW Einteilung' : 'ITW Einteilung'} ({months[currentMonth]})
+                        </span>
+                    </div>
+                    <div style={{
                         display: 'flex',
                         flexDirection: 'row',
                         alignItems: 'center',
-                        gap: 16,
-                        zIndex: 103
+                        justifyContent: 'space-between',
+                        background: 'transparent',
+                        padding: '4px 0',
+                        borderBottom: '1px solid var(--line)',
+                        width: '100%',
+                        boxSizing: 'border-box'
                     }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 140, justifyContent: 'flex-end' }}>
-                            Jahr:
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 500 }}>Jahr:</span>
                             <select
                                 value={year}
                                 onChange={e => onYearChange?.(Number(e.target.value))}
                                 style={{
-                                    padding: '6px 10px',
-                                    fontSize: 14,
+                                    padding: '4px 8px',
+                                    fontSize: 13,
                                     borderRadius: 6,
-                                    border: '1px solid #bbb',
+                                    border: '1px solid #ddd',
                                     background: '#fff',
-                                    cursor: 'pointer'
+                                    cursor: 'pointer',
+                                    color: 'var(--text)'
                                 }}
                             >
                                 {(availableYears.length > 0 ? availableYears : [year]).map(y => (
                                     <option key={y} value={y}>{y}</option>
                                 ))}
                             </select>
-                        </label>
+                        </div>
                         <label style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        minWidth: 200,
-                        justifyContent: 'flex-end',
-                        cursor: 'pointer',
-                        userSelect: 'none',
-                        flexShrink: 0,
-                        zIndex: 103
-                    }}>
-                        <span style={{ fontSize: 14, color: '#666' }}>Status:</span>
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            flexShrink: 0
+                        }}>
+                        <span style={{ fontSize: 14, fontWeight: 500, color: '#4b5563' }}>Status:</span>
                         {(() => {
                             const isReleased = releasedMonths[currentMonth];
                             const hasGaps = isReleased && monthsWithEmptySlots[currentMonth];
@@ -1776,28 +1828,94 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                             );
                         })()}
                     </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const d = new Date();
+                                d.setFullYear(year, currentMonth, 1);
+                                setNewGuestDate(d.toISOString().slice(0, 10));
+                                setNewGuestName('');
+                                setNewGuestRemark('');
+                                setShowGuestModal(true);
+                            }}
+                            disabled={!canWrite}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                padding: '8px 16px',
+                                background: 'transparent',
+                                border: 'none',
+                                borderBottom: '3px solid transparent',
+                                fontSize: '14px',
+                                fontWeight: 500,
+                                color: canWrite ? '#6b7280' : '#9ca3af',
+                                cursor: canWrite ? 'pointer' : 'not-allowed',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                if (!canWrite) return;
+                                e.currentTarget.style.color = 'var(--text)';
+                                e.currentTarget.style.borderBottomColor = 'var(--accent)';
+                                e.currentTarget.style.background = '#f8f9fa';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.color = '#6b7280';
+                                e.currentTarget.style.borderBottomColor = 'transparent';
+                                e.currentTarget.style.background = 'transparent';
+                            }}
+                        >
+                            <svg aria-hidden width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                <circle cx="8.5" cy="7" r="4" />
+                                <line x1="20" y1="8" x2="20" y2="14" />
+                                <line x1="23" y1="11" x2="17" y2="11" />
+                            </svg>
+                            Gast hinzufügen
+                        </button>
                         <button
                             type="button"
                             onClick={handleAutoAssignAzubis}
                             disabled={!canWrite}
                             style={{
-                                padding: '6px 12px',
-                                background: canWrite ? '#fff' : '#f9fafb',
-                                color: canWrite ? '#4b5563' : '#9ca3af',
-                                border: '1px solid #d1d5db',
-                                borderRadius: '6px',
-                                fontSize: '0.85rem',
-                                fontWeight: 500,
-                                cursor: canWrite ? 'pointer' : 'not-allowed',
-                                display: 'flex',
+                                display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '4px'
+                                gap: 8,
+                                padding: '8px 16px',
+                                background: 'transparent',
+                                border: 'none',
+                                borderBottom: '3px solid transparent',
+                                fontSize: '14px',
+                                fontWeight: 500,
+                                color: canWrite ? '#6b7280' : '#9ca3af',
+                                cursor: canWrite ? 'pointer' : 'not-allowed',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                if (!canWrite) return;
+                                e.currentTarget.style.color = 'var(--text)';
+                                e.currentTarget.style.borderBottomColor = 'var(--accent)';
+                                e.currentTarget.style.background = '#f8f9fa';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.color = '#6b7280';
+                                e.currentTarget.style.borderBottomColor = 'transparent';
+                                e.currentTarget.style.background = 'transparent';
                             }}
                             title="Azubis automatisch auf freie Plätze verteilen"
                         >
-                            <span>Azubis Automatik</span>
+                            <svg aria-hidden width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                <circle cx="9" cy="7" r="4" />
+                                <polyline points="16 11 18 13 22 9" />
+                            </svg>
+                            Azubis Automatik
                         </button>
+                        
+                        <div style={{ width: '1px', height: '24px', background: 'var(--line)', margin: '0 4px' }} />
+                        
                         <button
                             type="button"
                             onClick={undoLastAssignmentChange}
@@ -1805,21 +1923,36 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                             title={undoStack.length > 0 ? `Zurück (${undoStack.length})` : 'Keine Änderung zum Rückgängigmachen'}
                             aria-label="Zurück"
                             style={{
-                                width: 30,
-                                height: 30,
-                                borderRadius: 6,
-                                border: '1px solid #d1d5db',
-                                background: (!canWrite || undoStack.length === 0) ? '#f9fafb' : '#fff',
-                                color: (!canWrite || undoStack.length === 0) ? '#9ca3af' : '#4b5563',
-                                cursor: (!canWrite || undoStack.length === 0) ? 'not-allowed' : 'pointer',
-                                fontSize: 16,
-                                lineHeight: 1,
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                justifyContent: 'center'
+                                gap: 6,
+                                padding: '8px 12px',
+                                background: 'transparent',
+                                border: 'none',
+                                borderBottom: '3px solid transparent',
+                                fontSize: '14px',
+                                fontWeight: 500,
+                                color: (!canWrite || undoStack.length === 0) ? '#9ca3af' : '#6b7280',
+                                cursor: (!canWrite || undoStack.length === 0) ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                if (!canWrite || undoStack.length === 0) return;
+                                e.currentTarget.style.color = 'var(--text)';
+                                e.currentTarget.style.borderBottomColor = 'var(--accent)';
+                                e.currentTarget.style.background = '#f8f9fa';
+                            }}
+                            onMouseLeave={(e) => {
+                                if (!canWrite || undoStack.length === 0) return;
+                                e.currentTarget.style.color = '#6b7280';
+                                e.currentTarget.style.borderBottomColor = 'transparent';
+                                e.currentTarget.style.background = 'transparent';
                             }}
                         >
-                            ↶
+                            <svg aria-hidden width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                <polyline points="9 14 4 9 9 4" />
+                                <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+                            </svg>
                         </button>
                         <button
                             type="button"
@@ -1828,25 +1961,57 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                             title={redoStack.length > 0 ? `Wiederherstellen (${redoStack.length})` : 'Keine Änderung zum Wiederherstellen'}
                             aria-label="Wiederherstellen"
                             style={{
-                                width: 30,
-                                height: 30,
-                                borderRadius: 6,
-                                border: '1px solid #d1d5db',
-                                background: (!canWrite || redoStack.length === 0) ? '#f9fafb' : '#fff',
-                                color: (!canWrite || redoStack.length === 0) ? '#9ca3af' : '#4b5563',
-                                cursor: (!canWrite || redoStack.length === 0) ? 'not-allowed' : 'pointer',
-                                fontSize: 16,
-                                lineHeight: 1,
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                justifyContent: 'center'
+                                gap: 6,
+                                padding: '8px 12px',
+                                background: 'transparent',
+                                border: 'none',
+                                borderBottom: '3px solid transparent',
+                                fontSize: '14px',
+                                fontWeight: 500,
+                                color: (!canWrite || redoStack.length === 0) ? '#9ca3af' : '#6b7280',
+                                cursor: (!canWrite || redoStack.length === 0) ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                if (!canWrite || redoStack.length === 0) return;
+                                e.currentTarget.style.color = 'var(--text)';
+                                e.currentTarget.style.borderBottomColor = 'var(--accent)';
+                                e.currentTarget.style.background = '#f8f9fa';
+                            }}
+                            onMouseLeave={(e) => {
+                                if (!canWrite || redoStack.length === 0) return;
+                                e.currentTarget.style.color = '#6b7280';
+                                e.currentTarget.style.borderBottomColor = 'transparent';
+                                e.currentTarget.style.background = 'transparent';
                             }}
                         >
-                            ↷
+                            <svg aria-hidden width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                <polyline points="15 14 20 9 15 4" />
+                                <path d="M4 20v-7a4 4 0 0 1 4-4h12" />
+                            </svg>
                         </button>
                     </div>
                     </div>
                 </div>
+            </div>
+
+            {/* Gemeinsamer Fixed Header Container für Monats-Tabs & Fahrzeug-Header */}
+            <div
+                ref={fixedHeaderContainerRef}
+                style={{
+                    position: 'fixed',
+                    top: `calc(clamp(56px, 6.5vw, 90px) + ${topHeight}px)`,
+                    left: sidebarCollapsed ? 56 : 200,
+                    right: sidebarWidth + 16,
+                    zIndex: 100,
+                    background: 'var(--bg)',
+                    paddingLeft: 24,
+                    paddingRight: 24,
+                    transition: 'left 0.15s'
+                }}
+            >
                 {/* Monats-Tabs */}
                 <div style={{
                     display: 'flex',
@@ -2278,8 +2443,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                             return allowed && hasQual;
                                                                         })
                                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
-                                                                    const renderOptions = value && !optionsP.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
+                                                                    const guestsForDate = guests.filter(g => g.date === d.date).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                    const allOptionsP = [...optionsP, ...guestsForDate];
+                                                                    const renderOptions = value && !allOptionsP.some(o => o.value === value)
+                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
 
                                                                     // Prüfe ob hervorgehobene Person eingeteilt ist (rot)
                                                                     const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
@@ -2312,8 +2479,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const optionsP = personnel
                                                                         .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && p.fahrzeugfuehrer)
                                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
-                                                                    const renderOptions = value && !optionsP.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
+                                                                    const guestsForDate = guests.filter(g => g.date === d.date).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                    const allOptionsP = [...optionsP, ...guestsForDate];
+                                                                    const renderOptions = value && !allOptionsP.some(o => o.value === value)
+                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
 
                                                                     // Prüfe ob hervorgehobene Person eingeteilt ist (blau)
                                                                     const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
@@ -2343,8 +2512,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'tag'))
                                                                         .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
                                                                     const options = [...optionsP, ...optionsA];
-                                                                    const renderOptions = value && !options.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...options] : options;
+                                                                    const guestsForDate = guests.filter(g => g.date === d.date).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                    const allOptions = [...options, ...guestsForDate];
+                                                                    const renderOptions = value && !allOptions.some(o => o.value === value)
+                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptions] : allOptions;
 
                                                                     const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
                                                                     const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
@@ -2370,8 +2541,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'nacht'))
                                                                         .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
                                                                     const options = [...optionsP, ...optionsA];
-                                                                    const renderOptions = value && !options.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...options] : options;
+                                                                    const guestsForDate = guests.filter(g => g.date === d.date).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                    const allOptions = [...options, ...guestsForDate];
+                                                                    const renderOptions = value && !allOptions.some(o => o.value === value)
+                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptions] : allOptions;
 
                                                                     const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
                                                                     const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
@@ -2394,8 +2567,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const optionsA = azubis
                                                                         .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'tag'))
                                                                         .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
-                                                                    const renderOptions = value && !optionsA.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...optionsA] : optionsA;
+                                                                    const guestsForDate = guests.filter(g => g.date === d.date).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                    const allOptionsA = [...optionsA, ...guestsForDate];
+                                                                    const renderOptions = value && !allOptionsA.some(o => o.value === value)
+                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
                                                                     return (
                                                                         <select className={styles.select} value={value}
                                                                             disabled={!canWrite}
@@ -2412,8 +2587,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const optionsA = azubis
                                                                         .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'nacht'))
                                                                         .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
-                                                                    const renderOptions = value && !optionsA.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...optionsA] : optionsA;
+                                                                    const guestsForDate = guests.filter(g => g.date === d.date).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                    const allOptionsA = [...optionsA, ...guestsForDate];
+                                                                    const renderOptions = value && !allOptionsA.some(o => o.value === value)
+                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
                                                                     return (
                                                                         <select className={styles.select} value={value}
                                                                             disabled={!canWrite}
@@ -2452,8 +2629,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                             return true;
                                                                         })
                                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
-                                                                    const renderOptions = value && !optionsP.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...optionsP] : optionsP;
+                                                                    const guestsForDate = guests.filter(g => g.date === d.date).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                    const allOptionsP = [...optionsP, ...guestsForDate];
+                                                                    const renderOptions = value && !allOptionsP.some(o => o.value === value)
+                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
 
                                                                     const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
                                                                     const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
@@ -2487,8 +2666,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                             return true;
                                                                         })
                                                                         .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
-                                                                    const renderOptions = value && !optionsA.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...optionsA] : optionsA;
+                                                                    const guestsForDate = guests.filter(g => g.date === d.date).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                    const allOptionsA = [...optionsA, ...guestsForDate];
+                                                                    const renderOptions = value && !allOptionsA.some(o => o.value === value)
+                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
                                                                     return (
                                                                         <select className={styles.select} value={value}
                                                                             disabled={!canWrite}
@@ -3161,6 +3342,40 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 onConfirm={handleConfirmAutoAssign}
                 summaries={azubiAutoState || []}
             />
+            {showGuestModal && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ background: '#fff', padding: 24, borderRadius: 8, width: 400 }}>
+                        <h3 style={{ marginTop: 0 }}>Gast hinzufügen</h3>
+                        <label style={{ display: 'block', marginBottom: 12 }}>
+                            Datum:
+                            <input type="date" value={newGuestDate} onChange={e => setNewGuestDate(e.target.value)} style={{ width: '100%', padding: 8, marginTop: 4, boxSizing: 'border-box' }} />
+                        </label>
+                        <label style={{ display: 'block', marginBottom: 12 }}>
+                            Name:
+                            <input type="text" value={newGuestName} onChange={e => setNewGuestName(e.target.value)} style={{ width: '100%', padding: 8, marginTop: 4, boxSizing: 'border-box' }} />
+                        </label>
+                        <label style={{ display: 'block', marginBottom: 12 }}>
+                            Bemerkung:
+                            <input type="text" value={newGuestRemark} onChange={e => setNewGuestRemark(e.target.value)} style={{ width: '100%', padding: 8, marginTop: 4, boxSizing: 'border-box' }} />
+                        </label>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+                            <button onClick={() => setShowGuestModal(false)} style={{ padding: '8px 16px', borderRadius: 4, border: '1px solid #ccc', background: '#fff', cursor: 'pointer' }}>Abbrechen</button>
+                            <button onClick={async () => {
+                                if (!newGuestDate || !newGuestName) { alert('Bitte Datum und Name eingeben'); return; }
+                                try {
+                                    if (!(window as any).api.addGuest) {
+                                        throw new Error("api.addGuest ist nicht definiert. Bitte starte die App komplett neu (nicht nur Reload), da preload.ts aktualisiert wurde.");
+                                    }
+                                    await (window as any).api.addGuest({ date: newGuestDate, name: newGuestName, remark: newGuestRemark });
+                                    setShowGuestModal(false);
+                                } catch (err: any) {
+                                    alert('Fehler beim Speichern: ' + (err.message || err.toString()));
+                                }
+                            }} style={{ padding: '8px 16px', borderRadius: 4, border: 'none', background: '#007bff', color: '#fff', cursor: 'pointer' }}>Speichern</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

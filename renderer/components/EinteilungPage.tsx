@@ -289,7 +289,12 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
       const map: RosterState = {};
       (entries || []).forEach((e: any) => {
         if (!e || !e.date) return;
-        const key = `${e.personType === 'azubi' ? 'a_' : 'p_'}${e.personId}`;
+        let prefix = 'p_';
+        if (e.personType === 'azubi') prefix = 'a_';
+        else if (e.personType === 'guest') prefix = 'g_';
+        else if (e.personType === 'doctor') prefix = 'd_';
+        
+        const key = `${prefix}${e.personId}`;
         if (!map[key]) map[key] = {};
         map[key][String(e.date)] = { value: e.value, type: e.type };
       });

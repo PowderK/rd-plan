@@ -477,6 +477,10 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
             key = `p_${entry.personId}`;
           } else if (entry.personType === 'azubi' && azubiIds.has(entry.personId)) {
             key = `a_${entry.personId}`;
+          } else if (entry.personType === 'guest') {
+            key = `g_${entry.personId}`;
+          } else if (entry.personType === 'doctor') {
+            key = `d_${entry.personId}`;
           } else {
             key = String(entry.personId);
           }

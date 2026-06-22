@@ -300,7 +300,7 @@ interface PersonnelOverviewProps {
 }
 
 const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: string }> = ({ setFooterActions, departmentName }) => {
-  const [activeTab, setActiveTab] = useState<'stammpersonal' | 'azubis' | 'ärzte'>('stammpersonal');
+  const [activeTab, setActiveTab] = useState<'stammpersonal' | 'azubis' | 'ärzte' | 'gäste'>('stammpersonal');
   const [itwEnabled, setItwEnabled] = useState<boolean>(false);
   const [personnel, setPersonnel] = useState<Person[]>([]);
   const [azubis, setAzubis] = useState<Azubi[]>([]);
@@ -311,6 +311,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
   const [activePeriods, setActivePeriods] = useState<Record<number, ActivePeriod[]>>({});
   const [departmentPeriods, setDepartmentPeriods] = useState<Record<number, any[]>>({});
   const [itws, setItws] = useState<ItwDoctor[]>([]);
+  const [guests, setGuests] = useState<any[]>([]);
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [draggedAzubiId, setDraggedAzubiId] = useState<number | null>(null);
   const [draggedItwId, setDraggedItwId] = useState<number | null>(null);
@@ -428,6 +429,13 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
     setItws(list);
   }, []);
 
+  const loadGuests = useCallback(async () => {
+    try {
+      const list = await (window as any).api.getAllGuests();
+      setGuests(list || []);
+    } catch(e) {}
+  }, []);
+
   const loadRoles = useCallback(async () => {
     try {
       let list: any[] = [];
@@ -501,6 +509,8 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
       loadItws();
     };
     (window as any).api.onItwUpdated?.(itwHandler);
+    const guestsHandler = () => loadGuests();
+    (window as any).api.onGuestsUpdated?.(guestsHandler);
     const settingsHandler = async () => {
       await loadItwFeature();
       loadPersonnel();
@@ -520,14 +530,16 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
       }
     };
     window.addEventListener('message', messageHandler);
+    loadGuests(); // Initial load for guests
     return () => {
       (window as any).api.offPersonnelUpdated?.(handler);
       (window as any).api.offAzubisUpdated?.(azubiHandler);
       (window as any).api.offItwUpdated?.(itwHandler);
+      (window as any).api.offGuestsUpdated?.(guestsHandler);
       (window as any).api.offSettingsUpdated?.(settingsHandler);
       window.removeEventListener('message', messageHandler);
     };
-  }, [loadPersonnel, loadAzubis, departmentName]);
+  }, [loadPersonnel, loadAzubis, departmentName, loadGuests]);
 
   const onDragStart = (id: number) => setDraggedId(id);
   const onDragOver = (e: React.DragEvent<HTMLTableRowElement>, overId: number, ctx: 'person' | 'azubi' | 'itw') => {
@@ -747,6 +759,20 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                   Ärzte
                 </button>
               )}
+              <button
+                onClick={() => setActiveTab('gäste')}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderBottom: activeTab === 'gäste' ? '3px solid #0ea5e9' : '3px solid transparent',
+                  background: activeTab === 'gäste' ? '#f8f9fa' : 'transparent',
+                  fontWeight: activeTab === 'gäste' ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Gäste
+              </button>
             </div>
           </div>
           {/* Ende Sticky Container */}
@@ -1111,6 +1137,49 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                     <button onClick={cancelEditingItw}>Abbrechen</button>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Gäste Tab */}
+            {activeTab === 'gäste' && (
+              <div>
+                <table className={styles.table}>
+                  <thead>
+                    <tr className={styles.thead}>
+                      <th>Datum</th>
+                      <th>Name</th>
+                      <th>Bemerkung</th>
+                      <th className={styles.center} style={{ width: 100 }}>Aktionen</th>
+                    </tr>
+                  </thead>
+                  <tbody className={styles.tbody}>
+                    {guests.map(g => (
+                      <tr key={g.id} className={styles.row}>
+                        <td>{new Date(g.date).toLocaleDateString('de-DE')}</td>
+                        <td>{g.name}</td>
+                        <td>{g.remark || '—'}</td>
+                        <td className={styles.center}>
+                          <button
+                            onClick={async () => {
+                              if (confirm('Gast wirklich löschen?')) {
+                                await (window as any).api.deleteGuest(g.id);
+                              }
+                            }}
+                            style={{
+                              background: '#dc3545', color: 'white', border: 'none',
+                              padding: '4px 8px', borderRadius: '3px', cursor: 'pointer', fontSize: '11px'
+                            }}
+                          >
+                            Löschen
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {guests.length === 0 && (
+                      <tr><td colSpan={4} style={{textAlign: 'center', padding: '16px', color: '#666'}}>Keine Gäste angelegt</td></tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             )}
 

@@ -194,6 +194,12 @@ export interface DatabaseAdapter {
   deleteGlobalComment(date: string): Promise<void>;
   getGlobalCommentsForMonth(year: number, month: number): Promise<any[]>;
 
+  // Guests
+  getGuestsForDate(date: string): Promise<any[]>;
+  getAllGuests(): Promise<any[]>;
+  addGuest(guest: { date: string; name: string; remark: string }): Promise<void>;
+  deleteGuest(id: number): Promise<void>;
+
   // Audit Logs
   getAuditLogs(filters?: { year?: number; month?: number }): Promise<any[]>;
   cleanupAuditLogs(): Promise<void>;
@@ -1029,6 +1035,27 @@ class SQLiteAdapter implements DatabaseAdapter {
     return getGlobalCommentsForMonth(this.db, year, month);
   }
 
+  // Guests
+  async getGuestsForDate(date: string) {
+    const { getGuestsForDate } = await import('./database');
+    return getGuestsForDate(this.db, date);
+  }
+
+  async getAllGuests() {
+    const { getAllGuests } = await import('./database');
+    return getAllGuests(this.db);
+  }
+
+  async addGuest(guest: { date: string; name: string; remark: string }) {
+    const { addGuest } = await import('./database');
+    return addGuest(this.db, guest);
+  }
+
+  async deleteGuest(id: number) {
+    const { deleteGuest } = await import('./database');
+    return deleteGuest(this.db, id);
+  }
+
   // Audit Logs
   async getAuditLogs(filters?: { year?: number; month?: number }) {
     const { getAuditLogs } = await import('./database');
@@ -1619,6 +1646,36 @@ export class DatabaseManager {
       }
     }
 
+    // Migration: fix wrong role IDs in personnel table after roles migration
+    const roleIdRemapFlag = await db.get("SELECT value FROM settings WHERE key = 'migration_role_id_remap_v1'");
+    if (roleIdRemapFlag?.value !== '1') {
+      const rolesSetting = await db.get("SELECT value FROM settings WHERE key='roles'");
+      if (rolesSetting && rolesSetting.value) {
+        try {
+          const oldRoles = JSON.parse(rolesSetting.value);
+          const oldIdToNewId = new Map<number, number>();
+          for (const oldRole of oldRoles) {
+            const newRole = await db.get("SELECT id FROM roles WHERE name = ?", [oldRole.name]);
+            if (newRole && newRole.id !== oldRole.id) {
+                oldIdToNewId.set(oldRole.id, newRole.id);
+            }
+          }
+          if (oldIdToNewId.size > 0) {
+              const personnelRows = await db.all("SELECT id, roleId FROM personnel");
+              for (const p of personnelRows) {
+                  if (p.roleId && oldIdToNewId.has(p.roleId)) {
+                      await db.run("UPDATE personnel SET roleId = ? WHERE id = ?", [oldIdToNewId.get(p.roleId), p.id]);
+                      console.log(`[DatabaseManager] Remapped roleId for personnel ID ${p.id}: ${p.roleId} -> ${oldIdToNewId.get(p.roleId)}`);
+                  }
+              }
+          }
+        } catch (e) {
+          console.error('[DatabaseManager] Error during role ID remap migration:', e);
+        }
+      }
+      await db.run("INSERT INTO settings (key, value) VALUES ('migration_role_id_remap_v1', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    }
+
     // Migration: create shift_transfers table if missing (Issue #21)
     const shiftTransfersTableExists = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='shift_transfers'");
     if (!shiftTransfersTableExists) {
@@ -2177,6 +2234,13 @@ export class DatabaseManager {
             details TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp);
+        CREATE TABLE IF NOT EXISTS guests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            date TEXT NOT NULL,
+            remark TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_guests_date ON guests(date);
     `);
 
     // Initialize default qualification types if empty

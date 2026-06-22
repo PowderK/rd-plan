@@ -902,6 +902,16 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
     `);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_roster_comments_global_date ON roster_comments_global(date)`);
 
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS guests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            date TEXT NOT NULL,
+            remark TEXT
+        )
+    `);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_guests_date ON guests(date)`);
+
     return db;
 };
 
@@ -1224,6 +1234,10 @@ export const cleanupAuditLogs = async (db: AsyncDB) => {
 };
 
 export const getPersonName = async (db: AsyncDB, pid: number, ptype: string) => {
+    if (ptype === 'guest') {
+        const row = await db.get('SELECT name FROM guests WHERE id = ?', [pid]);
+        return row ? row.name : `Gast ID: ${pid}`;
+    }
     const row = await db.get(
         (ptype === 'person' || !ptype) ? 'SELECT name, vorname FROM personnel WHERE id = ?' : 'SELECT name, vorname FROM azubis WHERE id = ?',
         [pid]
@@ -3394,5 +3408,25 @@ export const setItwDutyRosterEntry = async (db: AsyncDB, entry: { personId: numb
          VALUES (?, ?, ?, ?, ?, ?)`,
         [entry.personId, personType, entry.date, entry.value, entry.type, entry.manual_edit || 0]
     );
+};
+
+// --- Guests Management ---
+export const getGuestsForDate = async (db: AsyncDB, date: string) => {
+    return await db.all('SELECT * FROM guests WHERE date = ? ORDER BY id ASC', [date]);
+};
+
+export const addGuest = async (db: AsyncDB, guest: { name: string, date: string, remark?: string }) => {
+    return await db.run(
+        'INSERT INTO guests (name, date, remark) VALUES (?, ?, ?)',
+        [guest.name, guest.date, guest.remark || '']
+    );
+};
+
+export const getAllGuests = async (db: AsyncDB) => {
+    return await db.all('SELECT * FROM guests ORDER BY date DESC, id DESC');
+};
+
+export const deleteGuest = async (db: AsyncDB, id: number) => {
+    await db.run('DELETE FROM guests WHERE id = ?', [id]);
 };
 

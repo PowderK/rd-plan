@@ -189,6 +189,19 @@ function useAzubis(departmentName?: string) {
   return list;
 }
 
+function useGuests(year: number) {
+  const [list, setList] = useState<{ id: number; name: string; date: string }[]>([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await (window as any).api.getAllGuests?.(year);
+        setList(Array.isArray(r) ? r : []);
+      } catch { setList([]); }
+    })();
+  }, [year]);
+  return list;
+}
+
 function useUe50PersonnelIds(year: number, departmentName?: string) {
   const [ue50Ids, setUe50Ids] = useState<Set<number>>(new Set());
   useEffect(() => {
@@ -434,6 +447,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const roster = useRoster(year, departmentName);
   const personnel = usePersonnel(year, departmentName);
   const azubis = useAzubis(departmentName);
+  const guests = useGuests(year);
   const { currentUser } = useAuth();
   const ue50Ids = useUe50PersonnelIds(year, departmentName);
   const auswertungByType = useAuswertungByType();
@@ -661,6 +675,37 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     return sums;
   }, [perAzubiMaschinist]);
 
+  const perGuestPositions = useMemo(() => {
+    const countsByGuest: Record<number, number[]> = {};
+    const ensure = (id: number) => (countsByGuest[id] ||= Array(12).fill(0));
+    const reSlot = /^(rtw\d+_(tag|nacht)_[12]|nef(\d+)?_assist)$/;
+    for (const row of (roster || [])) {
+      try {
+        if (String(row.personType) !== 'guest') continue;
+        const t = String(row.type || '');
+        if (!reSlot.test(t)) continue;
+        const iso = String(row.date);
+        const m = new Date(iso + 'T00:00:00Z');
+        const month = m.getUTCMonth();
+        ensure(Number(row.personId))[month] += 1;
+      } catch { }
+    }
+    const rows = (guests || []).map(g => ({
+      id: g.id,
+      name: `${g.name} (Gast)`.trim(),
+      counts: countsByGuest[g.id] || Array(12).fill(0)
+    }));
+    return rows.filter(r => r.counts.some(c => c > 0)); // Only show guests with shifts
+  }, [roster, guests]);
+
+  const rowGuests = useMemo(() => {
+    const sums = Array(12).fill(0);
+    for (const r of (perGuestPositions || [])) {
+      r.counts.forEach((v, i) => { sums[i] += v; });
+    }
+    return sums;
+  }, [perGuestPositions]);
+
   // Ü50-Schichten pro Monat (alle Positionen)
   const rowUe50 = useMemo(() => {
     const sums = Array(12).fill(0);
@@ -700,7 +745,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     return sums;
   }, [roster, ue50Ids, nef]);
 
-  const row1Adj = useMemo(() => row1.map((v, i) => Math.max(0, v - (rowAzubis[i] || 0) - (rowUe50[i] || 0))), [row1, rowAzubis, rowUe50]);
+  const row1Adj = useMemo(() => row1.map((v, i) => Math.max(0, v - (rowAzubis[i] || 0) - (rowGuests[i] || 0) - (rowUe50[i] || 0))), [row1, rowAzubis, rowGuests, rowUe50]);
   const row3 = useMemo(() => computeShiftsPerPerson(row1Adj, row2), [row1Adj, row2]);
 
   const rowAvgCombined = useMemo(() => {
@@ -1028,7 +1073,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600 }}>Positionen gesamt (netto)</div>
-                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Abteilungsschichten × (RTW×4 + NEF×2) + ITW − Azubis (Maschinist) − Ü50</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Abteilungsschichten × (RTW×4 + NEF×2) + ITW − Gast/Azubis − Ü50</div>
               </td>
               {row1Adj.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }}>{fmt(sumPositionsYear)}</td>
@@ -1043,10 +1088,10 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
             </tr>
             <tr>
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
-                <div style={{ fontWeight: 600 }}>Anzahl Azubis (Maschinist)</div>
-                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Summe der Azubi‑Maschinist‑Einsätze je Monat</div>
+                <div style={{ fontWeight: 600 }}>Anzahl Gast / Azubis</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Summe der Gast- und Azubi-Maschinist-Einsätze je Monat</div>
               </td>
-              {rowAzubis.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
+              {rowAzubis.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v + (rowGuests[i] || 0))}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
             </tr>
             <tr>
@@ -1182,12 +1227,12 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
             {canReadAllWerte && (
               <>
                 <tr>
-                  <td colSpan={monthNames.length + 2} style={{ ...styles.tdLeft, background: '#eef5ff', fontWeight: 600 }}>Azubis</td>
+                  <td colSpan={monthNames.length + 2} style={{ ...styles.tdLeft, background: '#eef5ff', fontWeight: 600 }}>Gast / Azubis</td>
                 </tr>
-                {perAzubiMaschinist.map(row => {
+                {[...perGuestPositions, ...perAzubiMaschinist].map((row, idx) => {
                   const sum = row.counts.reduce((a, b) => a + b, 0);
                   return (
-                    <tr key={`az_${row.id}`} style={Number(row.id) % 2 === 0 ? styles.zebra1 : styles.zebra2}>
+                    <tr key={`ga_${idx}_${row.id}`} style={idx % 2 === 0 ? styles.zebra1 : styles.zebra2}>
                       <td style={styles.nameSticky as any}>{row.name}</td>
                       {row.counts.map((v, i) => (
                         <td key={i} style={styles.td}>{v ? fmt(v) : ''}</td>

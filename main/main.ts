@@ -839,6 +839,35 @@ ipcMain.handle('get-person', async (_event, id: number) => {
     }
 });
 
+// Guest handlers
+ipcMain.handle('get-guests-for-date', async (_event, date: string) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getGuestsForDate(date);
+});
+
+ipcMain.handle('get-all-guests', async () => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getAllGuests();
+});
+
+ipcMain.handle('add-guest', async (_event, guest: { date: string; name: string; remark: string }) => {
+    const auth = getAuthService();
+    auth.requirePermission('einteilung', 'write'); // or personal, but einteilung makes sense for guests on roster
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addGuest(guest);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('guests-updated'); w.webContents.send('duty-roster-updated'); } catch { } });
+    return true;
+});
+
+ipcMain.handle('delete-guest', async (_event, id: number) => {
+    const auth = getAuthService();
+    auth.requirePermission('einteilung', 'write');
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteGuest(id);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('guests-updated'); w.webContents.send('duty-roster-updated'); } catch { } });
+    return true;
+});
+
 // Shift type handlers
 ipcMain.handle('get-shift-types', async () => {
     const adapter = await ensureDatabaseAdapter();
@@ -955,8 +984,16 @@ ipcMain.handle('assign-slot', async (_event, entry: { personId: number, personTy
 
 // Azubi handlers
 ipcMain.handle('get-azubi-list', async (_event, department?: string) => {
+    const auth = getAuthService();
+    const user = auth.getCurrentUser();
     const adapter = await ensureDatabaseAdapter();
-    return await adapter.getAzubiList(department);
+
+    let targetDept = user?.assignedDepartment;
+    if (targetDept === 'all' && department) {
+        targetDept = department;
+    }
+
+    return await adapter.getAzubiList(targetDept);
 });
 
 ipcMain.handle('add-azubi', async (_event, azubi: any) => {

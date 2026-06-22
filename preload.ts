@@ -77,6 +77,13 @@ contextBridge.exposeInMainWorld('api', {
     offBulkImportProgress: (cb: (ev: any, data: { processed: number; total: number }) => void) => ipcRenderer.removeListener('bulk-import-progress', cb),
     onDutyRosterUpdated: (callback: (...args: any[]) => void) => ipcRenderer.on('duty-roster-updated', callback),
     offDutyRosterUpdated: (callback: (...args: any[]) => void) => ipcRenderer.removeListener('duty-roster-updated', callback),
+    // Guests
+    getGuestsForDate: (date: string) => ipcRenderer.invoke('get-guests-for-date', date),
+    getAllGuests: () => ipcRenderer.invoke('get-all-guests'),
+    addGuest: (guest: { date: string; name: string; remark: string }) => ipcRenderer.invoke('add-guest', guest),
+    deleteGuest: (id: number) => ipcRenderer.invoke('delete-guest', id),
+    onGuestsUpdated: (callback: () => void) => ipcRenderer.on('guests-updated', callback),
+    offGuestsUpdated: (callback: () => void) => ipcRenderer.removeListener('guests-updated', callback),
     // System Info
     getSystemUsername: () => ipcRenderer.invoke('get-system-username'),
     openAzubiWindow: () => ipcRenderer.send('open-azubi-window'),
