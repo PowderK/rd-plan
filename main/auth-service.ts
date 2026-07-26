@@ -33,15 +33,24 @@ export class AuthService {
     if (canExportData) werte = 'read_all';
     else if (canViewReports) werte = 'read';
 
+    let einteilung: 'none' | 'read' | 'write' = 'none';
+    if (role.canEditRoster === 1 || role.canEditRoster === true) einteilung = 'write';
+    else if (role.canViewRoster === 1 || role.canViewRoster === true) einteilung = 'read';
+
+    let dienstplan: 'none' | 'read' | 'read_all' | 'write' = 'none';
+    if (role.canEditDienstplan === 1 || role.canEditDienstplan === true) dienstplan = 'write';
+    else if (role.canViewDienstplanAll === 1 || role.canViewDienstplanAll === true) dienstplan = 'read_all';
+    else if (role.canViewDienstplan === 1 || role.canViewDienstplan === true) dienstplan = 'read';
+
     return {
-      einteilung: role.canEditRoster ? 'write' : 'none',
-      dienstplan: role.canEditRoster ? 'write' : 'none',
+      einteilung,
+      dienstplan,
       werte,
       personal: role.canEditPersonnel ? 'write' : 'none',
       fahrzeuge: role.canEditVehicles ? 'write' : 'none',
       einstellungen: role.canEditSettings ? 'write' : 'none',
-      kommentar_global: 'none',
-      kommentar_individuell: 'none'
+      kommentar_global: role.canEditGlobalComments ? 'write' : 'none',
+      kommentar_individuell: role.canEditPersonalComments ? 'write' : 'none'
     };
   }
 

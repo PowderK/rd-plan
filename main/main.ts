@@ -850,7 +850,7 @@ ipcMain.handle('get-all-guests', async () => {
     return await adapter.getAllGuests();
 });
 
-ipcMain.handle('add-guest', async (_event, guest: { date: string; name: string; remark: string }) => {
+ipcMain.handle('add-guest', async (_event, guest: { date: string; end_date?: string; endDate?: string; name: string; remark: string }) => {
     const auth = getAuthService();
     auth.requirePermission('einteilung', 'write'); // or personal, but einteilung makes sense for guests on roster
     const adapter = await ensureDatabaseAdapter();

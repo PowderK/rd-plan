@@ -268,9 +268,15 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
                     canEditVehicles INTEGER DEFAULT 0,
                     canEditSettings INTEGER DEFAULT 0,
                     canEditRoster INTEGER DEFAULT 0,
+                    canEditDienstplan INTEGER DEFAULT 0,
                     canViewReports INTEGER DEFAULT 0,
                     canExportData INTEGER DEFAULT 0,
                     canManageUsers INTEGER DEFAULT 0,
+                    canEditGlobalComments INTEGER DEFAULT 0,
+                    canEditPersonalComments INTEGER DEFAULT 0,
+                    canViewRoster INTEGER DEFAULT 0,
+                    canViewDienstplan INTEGER DEFAULT 0,
+                    canViewDienstplanAll INTEGER DEFAULT 0,
                     sort INTEGER DEFAULT 0
                 )
             `);
@@ -907,10 +913,16 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             date TEXT NOT NULL,
+            end_date TEXT,
             remark TEXT
         )
     `);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_guests_date ON guests(date)`);
+    try {
+        await db.exec(`ALTER TABLE guests ADD COLUMN end_date TEXT`);
+    } catch (e) {
+        // column already exists
+    }
 
     return db;
 };
@@ -3412,13 +3424,14 @@ export const setItwDutyRosterEntry = async (db: AsyncDB, entry: { personId: numb
 
 // --- Guests Management ---
 export const getGuestsForDate = async (db: AsyncDB, date: string) => {
-    return await db.all('SELECT * FROM guests WHERE date = ? ORDER BY id ASC', [date]);
+    return await db.all('SELECT * FROM guests WHERE date = ? OR (end_date IS NOT NULL AND end_date != \'\' AND date <= ? AND ? <= end_date) ORDER BY id ASC', [date, date, date]);
 };
 
-export const addGuest = async (db: AsyncDB, guest: { name: string, date: string, remark?: string }) => {
+export const addGuest = async (db: AsyncDB, guest: { name: string, date: string, end_date?: string, endDate?: string, remark?: string }) => {
+    const end = guest.end_date || guest.endDate || null;
     return await db.run(
-        'INSERT INTO guests (name, date, remark) VALUES (?, ?, ?)',
-        [guest.name, guest.date, guest.remark || '']
+        'INSERT INTO guests (name, date, end_date, remark) VALUES (?, ?, ?, ?)',
+        [guest.name, guest.date, end, guest.remark || '']
     );
 };
 

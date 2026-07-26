@@ -201,6 +201,14 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const [personalComments, setPersonalComments] = useState<Map<string, { id: number; comment: string }>>(new Map());
   const [commentMenu, setCommentMenu] = useState<CommentMenuState | null>(null);
   const [commentEditor, setCommentEditor] = useState<CommentEditorState | null>(null);
+  const [undoStack, setUndoStack] = useState<any[]>([]);
+  const [redoStack, setRedoStack] = useState<any[]>([]);
+  const isApplyingUndoRef = useRef(false);
+
+  useEffect(() => {
+    setUndoStack([]);
+    setRedoStack([]);
+  }, [year, currentMonth, departmentName]);
 
   const getPersonalCommentKey = (personId: number, dateIso: string) => `${personId}_${dateIso}`;
 
@@ -1338,6 +1346,17 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     }
     // ISO-Datum aus der Monatsansicht
     const date = days[dayIdx]?.iso;
+
+    const oldVal = roster[personId]?.[date] || { value: '', type: '' };
+    if (!isApplyingUndoRef.current) {
+      setUndoStack(prev => [...prev, {
+        personId,
+        dayIdx,
+        oldVal: { ...oldVal },
+        newVal: { value, type }
+      }]);
+      setRedoStack([]);
+    }
     if (dayIdx === 0) {
       // console.log('[DEBUG] 1.1. Eintrag:', { personId, origId, personType, date, value, type });
     }
@@ -1395,6 +1414,78 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     }
   };
 
+  const undoLastChange = async () => {
+    if (undoStack.length === 0) return;
+    const lastEntry = undoStack[undoStack.length - 1];
+    setUndoStack(prev => prev.slice(0, -1));
+
+    isApplyingUndoRef.current = true;
+    try {
+      let origId: number | null = null;
+      let personType = 'person';
+      if (lastEntry.personId.startsWith('p_')) {
+        origId = parseInt(lastEntry.personId.slice(2), 10);
+        personType = 'person';
+      } else if (lastEntry.personId.startsWith('a_')) {
+        origId = parseInt(lastEntry.personId.slice(2), 10);
+        personType = 'azubi';
+      }
+      const date = days[lastEntry.dayIdx]?.iso;
+      const entry = {
+        personId: origId,
+        personType,
+        date,
+        value: lastEntry.oldVal.value,
+        type: lastEntry.oldVal.type,
+        department: departmentName || '1. Abteilung'
+      };
+      await (window as any).api.setDutyRosterEntry(entry);
+      await reloadRoster();
+      
+      setRedoStack(prev => [...prev, lastEntry]);
+    } catch (err) {
+      console.error('Failed to undo:', err);
+    } finally {
+      isApplyingUndoRef.current = false;
+    }
+  };
+
+  const redoLastChange = async () => {
+    if (redoStack.length === 0) return;
+    const lastEntry = redoStack[redoStack.length - 1];
+    setRedoStack(prev => prev.slice(0, -1));
+
+    isApplyingUndoRef.current = true;
+    try {
+      let origId: number | null = null;
+      let personType = 'person';
+      if (lastEntry.personId.startsWith('p_')) {
+        origId = parseInt(lastEntry.personId.slice(2), 10);
+        personType = 'person';
+      } else if (lastEntry.personId.startsWith('a_')) {
+        origId = parseInt(lastEntry.personId.slice(2), 10);
+        personType = 'azubi';
+      }
+      const date = days[lastEntry.dayIdx]?.iso;
+      const entry = {
+        personId: origId,
+        personType,
+        date,
+        value: lastEntry.newVal.value,
+        type: lastEntry.newVal.type,
+        department: departmentName || '1. Abteilung'
+      };
+      await (window as any).api.setDutyRosterEntry(entry);
+      await reloadRoster();
+      
+      setUndoStack(prev => [...prev, lastEntry]);
+    } catch (err) {
+      console.error('Failed to redo:', err);
+    } finally {
+      isApplyingUndoRef.current = false;
+    }
+  };
+
   // Auto-scroll zum aktiven Monat beim Laden
   useEffect(() => {
     if (monthButtonsRef.current[currentMonth]) {
@@ -1408,23 +1499,19 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     <div className="page-container" style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxSizing: 'border-box' }}>
       {/* Header-Bereich mit fester Größe */}
       <div style={{ flexShrink: 0 }}>
-        {/* Überschrift - ROT */}
-        <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <h2 style={{ margin: 0, marginRight: 'auto' }}>Dienstplan</h2>
-        </div>
-        {/* Monats-Tabs - GRÜN */}
-        <div style={{ 
-          display: 'flex', 
-          gap: 24, 
-          alignItems: 'center', 
-          marginTop: 8,
-          marginBottom: 0, 
-          paddingTop: 4,
-          paddingBottom: 4,
-          flexWrap: 'wrap',
-          borderBottom: '1px solid var(--line)'
+        {/* Überschrift */}
+        <div className="page-header" style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            gap: 16,
+            paddingTop: 12,
+            paddingBottom: 4
         }}>
-          {/* Jahresumschalter direkt bei den Buttons */}
+          <h2 style={{ margin: 0 }}>Dienstplan</h2>
+          <span style={{ fontSize: 22, fontWeight: 700, whiteSpace: 'nowrap', marginRight: 8 }}>
+             ({months[currentMonth]})
+          </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 500 }}>Jahr:</span>
             <select
@@ -1450,7 +1537,21 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               )}
             </select>
           </div>
+        </div>
 
+        {/* Steuerelemente */}
+        <div style={{ 
+          display: 'flex', 
+          gap: 16, 
+          alignItems: 'center', 
+          marginTop: 8,
+          marginBottom: 0, 
+          paddingTop: 4,
+          paddingBottom: 4,
+          flexWrap: 'wrap',
+          borderBottom: '1px solid var(--line)',
+          justifyContent: 'flex-start'
+        }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
             <button 
               onClick={handleImport} 
@@ -1527,6 +1628,86 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                 <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
               </svg>
               Sync (Monat zurück + Rest-Jahr)
+            </button>
+
+            <div style={{ width: '1px', height: '24px', background: 'var(--line)', margin: '0 4px' }} />
+
+            <button
+                type="button"
+                onClick={undoLastChange}
+                disabled={!canWrite || undoStack.length === 0}
+                title={undoStack.length > 0 ? `Zurück (${undoStack.length})` : 'Keine Änderung zum Rückgängigmachen'}
+                aria-label="Zurück"
+                style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '8px 12px',
+                    background: 'transparent',
+                    border: 'none',
+                    borderBottom: '3px solid transparent',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    color: (!canWrite || undoStack.length === 0) ? '#9ca3af' : '#6b7280',
+                    cursor: (!canWrite || undoStack.length === 0) ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                    if (!canWrite || undoStack.length === 0) return;
+                    e.currentTarget.style.color = 'var(--text)';
+                    e.currentTarget.style.borderBottomColor = 'var(--accent)';
+                    e.currentTarget.style.background = '#f8f9fa';
+                }}
+                onMouseLeave={(e) => {
+                    if (!canWrite || undoStack.length === 0) return;
+                    e.currentTarget.style.color = '#6b7280';
+                    e.currentTarget.style.borderBottomColor = 'transparent';
+                    e.currentTarget.style.background = 'transparent';
+                }}
+            >
+                <svg aria-hidden width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    <polyline points="9 14 4 9 9 4" />
+                    <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+                </svg>
+            </button>
+
+            <button
+                type="button"
+                onClick={redoLastChange}
+                disabled={!canWrite || redoStack.length === 0}
+                title={redoStack.length > 0 ? `Wiederherstellen (${redoStack.length})` : 'Keine Änderung zum Wiederherstellen'}
+                aria-label="Wiederholen"
+                style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '8px 12px',
+                    background: 'transparent',
+                    border: 'none',
+                    borderBottom: '3px solid transparent',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    color: (!canWrite || redoStack.length === 0) ? '#9ca3af' : '#6b7280',
+                    cursor: (!canWrite || redoStack.length === 0) ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                    if (!canWrite || redoStack.length === 0) return;
+                    e.currentTarget.style.color = 'var(--text)';
+                    e.currentTarget.style.borderBottomColor = 'var(--accent)';
+                    e.currentTarget.style.background = '#f8f9fa';
+                }}
+                onMouseLeave={(e) => {
+                    if (!canWrite || redoStack.length === 0) return;
+                    e.currentTarget.style.color = '#6b7280';
+                    e.currentTarget.style.borderBottomColor = 'transparent';
+                    e.currentTarget.style.background = 'transparent';
+                }}
+            >
+                <svg aria-hidden width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    <polyline points="15 14 20 9 15 4" />
+                    <path d="M4 20v-7a4 4 0 0 1 4-4h12" />
+                </svg>
             </button>
           </div>
         </div>

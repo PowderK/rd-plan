@@ -101,6 +101,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
   const [yearImportUnknownShiftTypes, setYearImportUnknownShiftTypes] = useState<string[]>([]);
   const [yearImportPendingYear, setYearImportPendingYear] = useState<number>(0);
   const [showWeekendShifts, setShowWeekendShifts] = useState<boolean>(false);
+  const [weekendFridayDay, setWeekendFridayDay] = useState<boolean>(false);
+  const [weekendFridayNight, setWeekendFridayNight] = useState<boolean>(false);
+  const [weekendSaturdayDay, setWeekendSaturdayDay] = useState<boolean>(true);
+  const [weekendSaturdayNight, setWeekendSaturdayNight] = useState<boolean>(true);
+  const [weekendSundayDay, setWeekendSundayDay] = useState<boolean>(true);
+  const [weekendSundayNight, setWeekendSundayNight] = useState<boolean>(true);
+
 
   const [showYearImportAzubiDialog, setShowYearImportAzubiDialog] = useState(false);
   const [yearImportUnknownAzubiNames, setYearImportUnknownAzubiNames] = useState<string[]>([]);
@@ -162,6 +169,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       lpalQualificationType,
       rettungsdienstQualificationType,
       showWeekendShifts,
+      weekendFridayDay,
+      weekendFridayNight,
+      weekendSaturdayDay,
+      weekendSaturdayNight,
+      weekendSundayDay,
+      weekendSundayNight,
       featureOldRtwShifts,
       featureShiftTransfers,
       itwFeatureEnabled,
@@ -180,6 +193,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
     lpalQualificationType,
     rettungsdienstQualificationType,
     showWeekendShifts,
+    weekendFridayDay,
+    weekendFridayNight,
+    weekendSaturdayDay,
+    weekendSaturdayNight,
+    weekendSundayDay,
+    weekendSundayNight,
     featureOldRtwShifts,
     featureShiftTransfers,
     itwFeatureEnabled,
@@ -350,6 +369,26 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
         // console.error('Failed to load show_weekend_shifts:', e);
       }
 
+      // Load weekend definitions settings
+      try {
+        const frDay = await (window as any).api.getSetting('weekend_friday_day');
+        setWeekendFridayDay(frDay === 'true');
+        const frNight = await (window as any).api.getSetting('weekend_friday_night');
+        setWeekendFridayNight(frNight === 'true');
+        
+        const saDay = await (window as any).api.getSetting('weekend_saturday_day');
+        setWeekendSaturdayDay(saDay !== 'false');
+        const saNight = await (window as any).api.getSetting('weekend_saturday_night');
+        setWeekendSaturdayNight(saNight !== 'false');
+        
+        const suDay = await (window as any).api.getSetting('weekend_sunday_day');
+        setWeekendSundayDay(suDay !== 'false');
+        const suNight = await (window as any).api.getSetting('weekend_sunday_night');
+        setWeekendSundayNight(suNight !== 'false');
+      } catch (e) {
+        // console.error('Failed to load weekend definitions settings:', e);
+      }
+
       // Load ITW feature toggle (global)
       try {
         const val = await (window as any).api.getSetting('itw');
@@ -404,6 +443,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       // Anzahl RTW/NEF leitet sich aus den Einträgen ab – keine separaten Settings mehr
       // ITW wird im Fahrzeuge-Menü gesetzt
       await (window as any).api.setSetting('show_weekend_shifts', showWeekendShifts ? 'true' : 'false');
+      await (window as any).api.setSetting('weekend_friday_day', weekendFridayDay ? 'true' : 'false');
+      await (window as any).api.setSetting('weekend_friday_night', weekendFridayNight ? 'true' : 'false');
+      await (window as any).api.setSetting('weekend_saturday_day', weekendSaturdayDay ? 'true' : 'false');
+      await (window as any).api.setSetting('weekend_saturday_night', weekendSaturdayNight ? 'true' : 'false');
+      await (window as any).api.setSetting('weekend_sunday_day', weekendSundayDay ? 'true' : 'false');
+      await (window as any).api.setSetting('weekend_sunday_night', weekendSundayNight ? 'true' : 'false');
       // Feature toggles pro Abteilung speichern
       await (window as any).api.setSetting(`feature_old_rtw_shifts_${selectedDepartment}`, featureOldRtwShifts ? 'true' : 'false');
       await (window as any).api.setSetting(`feature_shift_transfers_${selectedDepartment}`, featureShiftTransfers ? 'true' : 'false');
@@ -545,32 +590,22 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       try {
         // Rollen aus der neuen roles-Tabelle laden
         const dbRoles = await (window as any).api.getRoles();
-        let legacyRoles: any[] = [];
-        try {
-          const legacyData = await (window as any).api.getSetting('roles');
-          if (legacyData) {
-            const parsedLegacy = JSON.parse(legacyData);
-            if (Array.isArray(parsedLegacy)) legacyRoles = parsedLegacy;
-          }
-        } catch { }
-
         if (Array.isArray(dbRoles) && dbRoles.length > 0) {
           const mappedRoles = dbRoles.map((role: any) => {
-            const legacyRole = legacyRoles.find((lr: any) => Number(lr?.id) === Number(role.id) || String(lr?.name || '').trim() === String(role.name || '').trim());
-            const wertePermission = legacyRole?.permissions?.werte ?? (role.canExportData ? 'read_all' : role.canViewReports ? 'read' : 'none');
+            const wertePermission = role.canExportData ? 'read_all' : role.canViewReports ? 'read' : 'none';
             return {
               id: role.id,
               name: role.name || '',
               description: role.description || '',
               permissions: {
-                einteilung: role.canEditRoster ? 'write' : 'none',
-                dienstplan: role.canEditRoster ? 'write' : 'none',
-                werte: wertePermission,
-                personal: role.canEditPersonnel ? 'write' : 'none',
-                fahrzeuge: role.canEditVehicles ? 'write' : 'none',
-                einstellungen: role.canEditSettings ? 'write' : 'none',
-                kommentar_global: legacyRole?.permissions?.kommentar_global || 'none',
-                kommentar_individuell: legacyRole?.permissions?.kommentar_individuell || 'none'
+                einteilung: (role.canEditRoster ? 'write' : role.canViewRoster ? 'read' : 'none') as 'none' | 'read' | 'write',
+                dienstplan: (role.canEditDienstplan ? 'write' : role.canViewDienstplanAll ? 'read_all' : role.canViewDienstplan ? 'read' : 'none') as 'none' | 'read' | 'read_all' | 'write',
+                werte: wertePermission as 'none' | 'read' | 'read_all' | 'write',
+                personal: (role.canEditPersonnel ? 'write' : 'none') as 'none' | 'write',
+                fahrzeuge: (role.canEditVehicles ? 'write' : 'none') as 'none' | 'write',
+                einstellungen: (role.canEditSettings ? 'write' : 'none') as 'none' | 'write',
+                kommentar_global: (role.canEditGlobalComments ? 'write' : 'none') as 'none' | 'write',
+                kommentar_individuell: (role.canEditPersonalComments ? 'write' : 'none') as 'none' | 'write'
               }
             };
           });
@@ -882,25 +917,21 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
 
       const savedRoles = await (window as any).api.saveRoles(roles);
       if (Array.isArray(savedRoles)) {
-        const legacyById = new Map<number, any>(roles.filter(r => typeof r.id === 'number').map(r => [r.id, r]));
-        const legacyByName = new Map<string, any>(roles.map((r: any) => [String(r.name || ''), r]));
-
         setRoles(savedRoles.map((role: any) => {
-          const legacyRole = legacyById.get(role.id) || legacyByName.get(String(role.name || ''));
-          const wertePermission = legacyRole?.permissions?.werte ?? (role.canExportData ? 'read_all' : role.canViewReports ? 'read' : 'none');
+          const wertePermission = role.canExportData ? 'read_all' : role.canViewReports ? 'read' : 'none';
           return {
             id: role.id,
             name: role.name || '',
             description: role.description || '',
             permissions: {
-              einteilung: role.canEditRoster ? 'write' : 'none',
-              dienstplan: role.canEditRoster ? 'write' : 'none',
-              werte: wertePermission,
-              personal: role.canEditPersonnel ? 'write' : 'none',
-              fahrzeuge: role.canEditVehicles ? 'write' : 'none',
-              einstellungen: role.canEditSettings ? 'write' : 'none',
-              kommentar_global: legacyRole?.permissions?.kommentar_global || 'none',
-              kommentar_individuell: legacyRole?.permissions?.kommentar_individuell || 'none'
+              einteilung: (role.canEditRoster ? 'write' : role.canViewRoster ? 'read' : 'none') as 'none' | 'read' | 'write',
+              dienstplan: (role.canEditDienstplan ? 'write' : role.canViewDienstplanAll ? 'read_all' : role.canViewDienstplan ? 'read' : 'none') as 'none' | 'read' | 'read_all' | 'write',
+              werte: wertePermission as 'none' | 'read' | 'read_all' | 'write',
+              personal: (role.canEditPersonnel ? 'write' : 'none') as 'none' | 'write',
+              fahrzeuge: (role.canEditVehicles ? 'write' : 'none') as 'none' | 'write',
+              einstellungen: (role.canEditSettings ? 'write' : 'none') as 'none' | 'write',
+              kommentar_global: (role.canEditGlobalComments ? 'write' : 'none') as 'none' | 'write',
+              kommentar_individuell: (role.canEditPersonalComments ? 'write' : 'none') as 'none' | 'write'
             }
           };
         }));
@@ -1793,8 +1824,48 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                 <div>
                   <strong>Wochenend-Schichten anzeigen</strong>
                   <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
-                    Wochenend-Schichten (Sa/So) im Kontrollkasten zählen und farblich (Ampel) anzeigen.
+                    Wochenend-Schichten im Kontrollkasten zählen und farblich (Ampel) anzeigen.
                   </div>
+                  {showWeekendShifts && (
+                    <div style={{ marginTop: 12, padding: 12, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, maxWidth: 450 }}>
+                      <strong style={{ fontSize: '0.9em', display: 'block', marginBottom: 8 }}>Wochenend-Definition (Schichten aktivieren):</strong>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '0.85em', marginBottom: 6 }}>Freitag</div>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer', marginBottom: 4 }}>
+                            <input type="checkbox" checked={weekendFridayDay} onChange={e => setWeekendFridayDay(e.target.checked)} />
+                            Tag
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={weekendFridayNight} onChange={e => setWeekendFridayNight(e.target.checked)} />
+                            Nacht
+                          </label>
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '0.85em', marginBottom: 6 }}>Samstag</div>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer', marginBottom: 4 }}>
+                            <input type="checkbox" checked={weekendSaturdayDay} onChange={e => setWeekendSaturdayDay(e.target.checked)} />
+                            Tag
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={weekendSaturdayNight} onChange={e => setWeekendSaturdayNight(e.target.checked)} />
+                            Nacht
+                          </label>
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '0.85em', marginBottom: 6 }}>Sonntag</div>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer', marginBottom: 4 }}>
+                            <input type="checkbox" checked={weekendSundayDay} onChange={e => setWeekendSundayDay(e.target.checked)} />
+                            Tag
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={weekendSundayNight} onChange={e => setWeekendSundayNight(e.target.checked)} />
+                            Nacht
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

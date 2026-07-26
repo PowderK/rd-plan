@@ -18,7 +18,7 @@ export interface SettingsExportData {
   nefVehicles: Array<{ id: number; name: string; sort: number; archived_year?: number; occupancy_mode: string }>;
   itwVehicles: Array<{ id: number; name: string; sort: number; archived_year?: number }>;
   itwDoctors: Array<{ id: number; name: string; vorname: string; sort: number }>;
-  roles: Array<{ id: number; name: string; description?: string; canEditPersonnel: boolean; canEditVehicles: boolean; canEditSettings: boolean; canEditRoster: boolean; canViewReports: boolean; canExportData: boolean; canManageUsers: boolean; sort: number }>;
+  roles: Array<{ id: number; name: string; description?: string; canEditPersonnel: boolean; canEditVehicles: boolean; canEditSettings: boolean; canEditRoster: boolean; canEditDienstplan: boolean; canViewReports: boolean; canExportData: boolean; canManageUsers: boolean; canEditGlobalComments: boolean; canEditPersonalComments: boolean; canViewRoster: boolean; canViewDienstplan: boolean; canViewDienstplanAll: boolean; sort: number }>;
   qualificationTypes: Array<{ id: number; name: string; description?: string; category: string; active: boolean; sort: number }>;
   vehiclePositions: Array<{ id: number; vehicleType: string; vehicleId: number; positionName: string; qualificationTypeId: number | null; sort: number }>;
   rtwVehiclePeriods: Array<{ id: number; vehicleId: number; startYM: string; endYM: string | null; active: boolean }>;
@@ -85,7 +85,7 @@ export class SettingsImporter {
       const nefVehicles = await this.db.all('SELECT id, name, sort, archived_year, occupancy_mode FROM nef_vehicles ORDER by sort');
       const itwVehicles = await this.db.all('SELECT id, name, sort, archived_year FROM itw_vehicles ORDER BY sort');
       const itwDoctors = await this.db.all('SELECT id, name, vorname, sort FROM itw_doctors ORDER BY sort, name');
-      const roles = await this.db.all('SELECT id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort FROM roles ORDER BY sort, name');
+      const roles = await this.db.all('SELECT id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, sort FROM roles ORDER BY sort, name');
       const qualificationTypes = await this.db.all('SELECT id, name, description, category, active, sort FROM qualification_types ORDER BY sort, name');
       const vehiclePositions = await this.db.all('SELECT id, vehicleType, vehicleId, positionName, qualificationTypeId, sort FROM vehicle_positions ORDER BY vehicleType, vehicleId, sort');
       const rtwVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM rtw_vehicle_periods ORDER BY vehicleId, startYM');
@@ -149,7 +149,7 @@ export class SettingsImporter {
       const nefVehicles = await this.db.all('SELECT id, name, sort, archived_year, occupancy_mode FROM nef_vehicles ORDER BY sort');
       const itwVehicles = await this.db.all('SELECT id, name, sort, archived_year FROM itw_vehicles ORDER BY sort');
       const itwDoctors = await this.db.all('SELECT id, name, vorname, sort FROM itw_doctors ORDER BY sort, name');
-      const roles = await this.db.all('SELECT id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort FROM roles ORDER BY sort, name');
+      const roles = await this.db.all('SELECT id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, sort FROM roles ORDER BY sort, name');
       const qualificationTypes = await this.db.all('SELECT id, name, description, category, active, sort FROM qualification_types ORDER BY sort, name');
       const vehiclePositions = await this.db.all('SELECT id, vehicleType, vehicleId, positionName, qualificationTypeId, sort FROM vehicle_positions ORDER BY vehicleType, vehicleId, sort');
       const rtwVehiclePeriods = await this.db.all('SELECT id, vehicleId, startYM, endYM, active FROM rtw_vehicle_periods ORDER BY vehicleId, startYM');
@@ -276,8 +276,8 @@ export class SettingsImporter {
       // Roles-Sheet
       if (roles && roles.length > 0) {
         const rolesData = [
-          ['ID', 'Name', 'Beschreibung', 'Personal bearbeiten', 'Fahrzeuge bearbeiten', 'Einstellungen bearbeiten', 'Dienstplan bearbeiten', 'Berichte ansehen', 'Daten exportieren', 'Benutzer verwalten', 'Sortierung'],
-          ...roles.map(r => [r.id, r.name, r.description || '', r.canEditPersonnel ? 'Ja' : 'Nein', r.canEditVehicles ? 'Ja' : 'Nein', r.canEditSettings ? 'Ja' : 'Nein', r.canEditRoster ? 'Ja' : 'Nein', r.canViewReports ? 'Ja' : 'Nein', r.canExportData ? 'Ja' : 'Nein', r.canManageUsers ? 'Ja' : 'Nein', r.sort])
+          ['ID', 'Name', 'Beschreibung', 'Personal bearbeiten', 'Fahrzeuge bearbeiten', 'Einstellungen bearbeiten', 'Einteilung bearbeiten', 'Dienstplan bearbeiten', 'Berichte ansehen', 'Daten exportieren', 'Benutzer verwalten', 'Globale Kommentare', 'Individuelle Kommentare', 'Einteilung lesen', 'Dienstplan lesen', 'Dienstplan alle lesen', 'Sortierung'],
+          ...roles.map(r => [r.id, r.name, r.description || '', r.canEditPersonnel ? 'Ja' : 'Nein', r.canEditVehicles ? 'Ja' : 'Nein', r.canEditSettings ? 'Ja' : 'Nein', r.canEditRoster ? 'Ja' : 'Nein', r.canEditDienstplan ? 'Ja' : 'Nein', r.canViewReports ? 'Ja' : 'Nein', r.canExportData ? 'Ja' : 'Nein', r.canManageUsers ? 'Ja' : 'Nein', r.canEditGlobalComments ? 'Ja' : 'Nein', r.canEditPersonalComments ? 'Ja' : 'Nein', r.canViewRoster ? 'Ja' : 'Nein', r.canViewDienstplan ? 'Ja' : 'Nein', r.canViewDienstplanAll ? 'Ja' : 'Nein', r.sort])
         ];
         const rolesWs = XLSX.utils.aoa_to_sheet(rolesData);
         XLSX.utils.book_append_sheet(wb, rolesWs, 'Rollen');
@@ -673,8 +673,8 @@ export class SettingsImporter {
             if (role.name) {
               if (replaceExisting) {
                 await this.db.run(`
-                  INSERT INTO roles (name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort) 
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  INSERT INTO roles (name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, sort) 
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `, [
                   role.name, 
                   role.description || '', 
@@ -682,9 +682,15 @@ export class SettingsImporter {
                   role.canEditVehicles ? 1 : 0,
                   role.canEditSettings ? 1 : 0,
                   role.canEditRoster ? 1 : 0,
+                  role.canEditDienstplan ? 1 : 0,
                   role.canViewReports ? 1 : 0,
                   role.canExportData ? 1 : 0,
                   role.canManageUsers ? 1 : 0,
+                  role.canEditGlobalComments ? 1 : 0,
+                  role.canEditPersonalComments ? 1 : 0,
+                  role.canViewRoster ? 1 : 0,
+                  role.canViewDienstplan ? 1 : 0,
+                  role.canViewDienstplanAll ? 1 : 0,
                   role.sort || 0
                 ]);
                 result.imported.roles++;
@@ -692,8 +698,8 @@ export class SettingsImporter {
                 const existing = await this.db.get('SELECT id FROM roles WHERE name = ?', [role.name]);
                 if (!existing) {
                   await this.db.run(`
-                    INSERT INTO roles (name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO roles (name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, sort) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                   `, [
                     role.name, 
                     role.description || '', 
@@ -701,9 +707,15 @@ export class SettingsImporter {
                     role.canEditVehicles ? 1 : 0,
                     role.canEditSettings ? 1 : 0,
                     role.canEditRoster ? 1 : 0,
+                    role.canEditDienstplan ? 1 : 0,
                     role.canViewReports ? 1 : 0,
                     role.canExportData ? 1 : 0,
                     role.canManageUsers ? 1 : 0,
+                    role.canEditGlobalComments ? 1 : 0,
+                    role.canEditPersonalComments ? 1 : 0,
+                    role.canViewRoster ? 1 : 0,
+                    role.canViewDienstplan ? 1 : 0,
+                    role.canViewDienstplanAll ? 1 : 0,
                     role.sort || 0
                   ]);
                   result.imported.roles++;
@@ -1002,8 +1014,8 @@ export class SettingsImporter {
           { id: 1, name: 'Mustermann', vorname: 'Max', sort: 0 }
         ],
         roles: [
-          { id: 1, name: 'Administrator', description: 'Vollzugriff auf alle Funktionen', canEditPersonnel: true, canEditVehicles: true, canEditSettings: true, canEditRoster: true, canViewReports: true, canExportData: true, canManageUsers: true, sort: 1 },
-          { id: 2, name: 'Benutzer', description: 'Standardbenutzer mit Lesezugriff', canEditPersonnel: false, canEditVehicles: false, canEditSettings: false, canEditRoster: false, canViewReports: true, canExportData: false, canManageUsers: false, sort: 2 }
+          { id: 1, name: 'Administrator', description: 'Volle Rechte für alle Bereiche', canEditPersonnel: true, canEditVehicles: true, canEditSettings: true, canEditRoster: true, canEditDienstplan: true, canViewReports: true, canExportData: true, canManageUsers: true, canEditGlobalComments: true, canEditPersonalComments: true, canViewRoster: true, canViewDienstplan: true, canViewDienstplanAll: true, sort: 1 },
+          { id: 2, name: 'User', description: 'nur Leserechte', canEditPersonnel: false, canEditVehicles: false, canEditSettings: false, canEditRoster: false, canEditDienstplan: false, canViewReports: true, canExportData: false, canManageUsers: false, canEditGlobalComments: false, canEditPersonalComments: false, canViewRoster: true, canViewDienstplan: true, canViewDienstplanAll: false, sort: 2 }
         ],
         qualificationTypes: [
           { id: 1, name: 'Rettungssanitäter', description: 'Rettungssanitäter Ausbildung', category: 'Medizin', active: true, sort: 1 },

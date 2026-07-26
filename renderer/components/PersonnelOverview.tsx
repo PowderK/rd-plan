@@ -1155,7 +1155,13 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                   <tbody className={styles.tbody}>
                     {guests.map(g => (
                       <tr key={g.id} className={styles.row}>
-                        <td>{new Date(g.date).toLocaleDateString('de-DE')}</td>
+                        <td>
+                          {g.end_date || g.endDate ? (
+                            `${new Date(g.date).toLocaleDateString('de-DE')} – ${new Date(g.end_date || g.endDate).toLocaleDateString('de-DE')}`
+                          ) : (
+                            new Date(g.date).toLocaleDateString('de-DE')
+                          )}
+                        </td>
                         <td>{g.name}</td>
                         <td>{g.remark || '—'}</td>
                         <td className={styles.center}>

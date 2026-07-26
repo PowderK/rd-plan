@@ -80,7 +80,7 @@ contextBridge.exposeInMainWorld('api', {
     // Guests
     getGuestsForDate: (date: string) => ipcRenderer.invoke('get-guests-for-date', date),
     getAllGuests: () => ipcRenderer.invoke('get-all-guests'),
-    addGuest: (guest: { date: string; name: string; remark: string }) => ipcRenderer.invoke('add-guest', guest),
+    addGuest: (guest: { date: string; end_date?: string; endDate?: string; name: string; remark: string }) => ipcRenderer.invoke('add-guest', guest),
     deleteGuest: (id: number) => ipcRenderer.invoke('delete-guest', id),
     onGuestsUpdated: (callback: () => void) => ipcRenderer.on('guests-updated', callback),
     offGuestsUpdated: (callback: () => void) => ipcRenderer.removeListener('guests-updated', callback),

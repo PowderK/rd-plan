@@ -6,6 +6,13 @@ import styles from './MonthTabs.module.css';
 import { Kontrollkasten } from './Kontrollkasten';
 import { AzubiAutoAssignDialog, ShiftSummary, ProposedAssignment, ConflictAzubi } from './AzubiAutoAssignDialog';
 
+export function isGuestActiveOnDate(g: any, dateStr: string): boolean {
+    if (g.date === dateStr) return true;
+    const end = g.end_date || g.endDate;
+    if (end && g.date <= dateStr && dateStr <= end) return true;
+    return false;
+}
+
 /** Abteilungsnummer aus Anzeigenamen (z. B. „2. Abteilung“ → 2). */
 export function departmentNameToId(departmentName?: string): number {
     const d = String(departmentName || '');
@@ -98,6 +105,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     });
 
     const [showWeekendShifts, setShowWeekendShifts] = useState<boolean>(false);
+    const [weekendFridayDay, setWeekendFridayDay] = useState<boolean>(false);
+    const [weekendFridayNight, setWeekendFridayNight] = useState<boolean>(false);
+    const [weekendSaturdayDay, setWeekendSaturdayDay] = useState<boolean>(true);
+    const [weekendSaturdayNight, setWeekendSaturdayNight] = useState<boolean>(true);
+    const [weekendSundayDay, setWeekendSundayDay] = useState<boolean>(true);
+    const [weekendSundayNight, setWeekendSundayNight] = useState<boolean>(true);
     // Freigabe-Status pro Monat
     const [releasedMonths, setReleasedMonths] = useState<boolean[]>(Array(12).fill(false));
     /** Monate mit unbesetzten Pflichtpositionen (für gelbe Markierung bei Freigabe). */
@@ -116,6 +129,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [newGuestDate, setNewGuestDate] = useState('');
     const [newGuestName, setNewGuestName] = useState('');
     const [newGuestRemark, setNewGuestRemark] = useState('');
+    const [newGuestEndDate, setNewGuestEndDate] = useState('');
 
     const loadGuests = useCallback(async () => {
         try {
@@ -320,6 +334,22 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             try {
                 const sws = await (window as any).api.getSetting('show_weekend_shifts');
                 setShowWeekendShifts(sws === 'true');
+            } catch { }
+            try {
+                const frDay = await (window as any).api.getSetting('weekend_friday_day');
+                setWeekendFridayDay(frDay === 'true');
+                const frNight = await (window as any).api.getSetting('weekend_friday_night');
+                setWeekendFridayNight(frNight === 'true');
+                
+                const saDay = await (window as any).api.getSetting('weekend_saturday_day');
+                setWeekendSaturdayDay(saDay !== 'false');
+                const saNight = await (window as any).api.getSetting('weekend_saturday_night');
+                setWeekendSaturdayNight(saNight !== 'false');
+                
+                const suDay = await (window as any).api.getSetting('weekend_sunday_day');
+                setWeekendSundayDay(suDay !== 'false');
+                const suNight = await (window as any).api.getSetting('weekend_sunday_night');
+                setWeekendSundayNight(suNight !== 'false');
             } catch { }
             try { const r = await (window as any).api.getRtwVehicles?.(year); if (Array.isArray(r)) setRtwVehicles(r); } catch { }
             try { const n = await (window as any).api.getNefVehicles?.(year); if (Array.isArray(n)) setNefVehicles(n); } catch { }
@@ -1571,7 +1601,44 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                         if (isShift) {
                             const dow = new Date(iso).getDay();
-                            if (dow === 0 || dow === 6) weekendCntY += 1;
+                            let isTag = false;
+                            let isNacht = false;
+                            if (t.includes('_tag_')) {
+                                isTag = true;
+                            } else if (t.includes('_nacht_')) {
+                                isNacht = true;
+                            } else if (t.startsWith('itw_row_')) {
+                                isTag = true;
+                            } else if (/^nef(\d+)?_assist$/.test(t)) {
+                                const nefMatch = t.match(/^nef(\d+)?_assist$/);
+                                const idx = nefMatch && nefMatch[1] ? Math.max(0, Number(nefMatch[1]) - 1) : 0;
+                                const mode = nefVehicles[idx]?.occupancy_mode || '24h';
+                                if (mode === 'tag') {
+                                    isTag = true;
+                                } else {
+                                    isTag = true;
+                                    isNacht = true;
+                                }
+                            }
+
+                            let matchesWeekend = false;
+                            if (dow === 5) { // Freitag
+                                if ((isTag && weekendFridayDay) || (isNacht && weekendFridayNight)) {
+                                    matchesWeekend = true;
+                                }
+                            } else if (dow === 6) { // Samstag
+                                if ((isTag && weekendSaturdayDay) || (isNacht && weekendSaturdayNight)) {
+                                    matchesWeekend = true;
+                                }
+                            } else if (dow === 0) { // Sonntag
+                                if ((isTag && weekendSundayDay) || (isNacht && weekendSundayNight)) {
+                                    matchesWeekend = true;
+                                }
+                            }
+
+                            if (matchesWeekend) {
+                                weekendCntY += 1;
+                            }
                         }
                     }
                 }
@@ -1836,6 +1903,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 const d = new Date();
                                 d.setFullYear(year, currentMonth, 1);
                                 setNewGuestDate(d.toISOString().slice(0, 10));
+                                setNewGuestEndDate('');
                                 setNewGuestName('');
                                 setNewGuestRemark('');
                                 setShowGuestModal(true);
@@ -2443,7 +2511,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                             return allowed && hasQual;
                                                                         })
                                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
-                                                                    const guestsForDate = guests.filter(g => g.date === d.date).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
                                                                     const allOptionsP = [...optionsP, ...guestsForDate];
                                                                     const renderOptions = value && !allOptionsP.some(o => o.value === value)
                                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
@@ -2479,7 +2547,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const optionsP = personnel
                                                                         .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && p.fahrzeugfuehrer)
                                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
-                                                                    const guestsForDate = guests.filter(g => g.date === d.date).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
                                                                     const allOptionsP = [...optionsP, ...guestsForDate];
                                                                     const renderOptions = value && !allOptionsP.some(o => o.value === value)
                                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
@@ -2512,7 +2580,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'tag'))
                                                                         .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
                                                                     const options = [...optionsP, ...optionsA];
-                                                                    const guestsForDate = guests.filter(g => g.date === d.date).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
                                                                     const allOptions = [...options, ...guestsForDate];
                                                                     const renderOptions = value && !allOptions.some(o => o.value === value)
                                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...allOptions] : allOptions;
@@ -2541,7 +2609,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'nacht'))
                                                                         .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
                                                                     const options = [...optionsP, ...optionsA];
-                                                                    const guestsForDate = guests.filter(g => g.date === d.date).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
                                                                     const allOptions = [...options, ...guestsForDate];
                                                                     const renderOptions = value && !allOptions.some(o => o.value === value)
                                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...allOptions] : allOptions;
@@ -2567,7 +2635,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const optionsA = azubis
                                                                         .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'tag'))
                                                                         .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
-                                                                    const guestsForDate = guests.filter(g => g.date === d.date).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
                                                                     const allOptionsA = [...optionsA, ...guestsForDate];
                                                                     const renderOptions = value && !allOptionsA.some(o => o.value === value)
                                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
@@ -2587,7 +2655,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     const optionsA = azubis
                                                                         .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'nacht'))
                                                                         .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
-                                                                    const guestsForDate = guests.filter(g => g.date === d.date).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
                                                                     const allOptionsA = [...optionsA, ...guestsForDate];
                                                                     const renderOptions = value && !allOptionsA.some(o => o.value === value)
                                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
@@ -2629,7 +2697,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                             return true;
                                                                         })
                                                                         .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
-                                                                    const guestsForDate = guests.filter(g => g.date === d.date).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
                                                                     const allOptionsP = [...optionsP, ...guestsForDate];
                                                                     const renderOptions = value && !allOptionsP.some(o => o.value === value)
                                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
@@ -2666,7 +2734,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                             return true;
                                                                         })
                                                                         .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
-                                                                    const guestsForDate = guests.filter(g => g.date === d.date).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
                                                                     const allOptionsA = [...optionsA, ...guestsForDate];
                                                                     const renderOptions = value && !allOptionsA.some(o => o.value === value)
                                                                         ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
@@ -3347,8 +3415,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     <div style={{ background: '#fff', padding: 24, borderRadius: 8, width: 400 }}>
                         <h3 style={{ marginTop: 0 }}>Gast hinzufügen</h3>
                         <label style={{ display: 'block', marginBottom: 12 }}>
-                            Datum:
+                            Startdatum:
                             <input type="date" value={newGuestDate} onChange={e => setNewGuestDate(e.target.value)} style={{ width: '100%', padding: 8, marginTop: 4, boxSizing: 'border-box' }} />
+                        </label>
+                        <label style={{ display: 'block', marginBottom: 12 }}>
+                            Enddatum (optional für Zeitraum):
+                            <input type="date" value={newGuestEndDate} onChange={e => setNewGuestEndDate(e.target.value)} style={{ width: '100%', padding: 8, marginTop: 4, boxSizing: 'border-box' }} />
                         </label>
                         <label style={{ display: 'block', marginBottom: 12 }}>
                             Name:
@@ -3366,7 +3438,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                     if (!(window as any).api.addGuest) {
                                         throw new Error("api.addGuest ist nicht definiert. Bitte starte die App komplett neu (nicht nur Reload), da preload.ts aktualisiert wurde.");
                                     }
-                                    await (window as any).api.addGuest({ date: newGuestDate, name: newGuestName, remark: newGuestRemark });
+                                    await (window as any).api.addGuest({ date: newGuestDate, endDate: newGuestEndDate, name: newGuestName, remark: newGuestRemark });
                                     setShowGuestModal(false);
                                 } catch (err: any) {
                                     alert('Fehler beim Speichern: ' + (err.message || err.toString()));

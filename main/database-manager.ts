@@ -197,7 +197,7 @@ export interface DatabaseAdapter {
   // Guests
   getGuestsForDate(date: string): Promise<any[]>;
   getAllGuests(): Promise<any[]>;
-  addGuest(guest: { date: string; name: string; remark: string }): Promise<void>;
+  addGuest(guest: { date: string; end_date?: string; endDate?: string; name: string; remark: string }): Promise<void>;
   deleteGuest(id: number): Promise<void>;
 
   // Audit Logs
@@ -754,14 +754,14 @@ class SQLiteAdapter implements DatabaseAdapter {
   }
 
   async getRoles() {
-    const rows = await this.db.all('SELECT id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort FROM roles ORDER BY sort ASC, id ASC');
+    const rows = await this.db.all('SELECT id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, sort FROM roles ORDER BY sort ASC, id ASC');
     return rows;
   }
 
   async addRole(role: any) {
     await this.db.run(
-      `INSERT OR IGNORE INTO roles (id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR IGNORE INTO roles (id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, sort)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         role.id || null,
         role.name,
@@ -770,16 +770,22 @@ class SQLiteAdapter implements DatabaseAdapter {
         role.canEditVehicles ? 1 : 0,
         role.canEditSettings ? 1 : 0,
         role.canEditRoster ? 1 : 0,
+        role.canEditDienstplan ? 1 : 0,
         role.canViewReports ? 1 : 0,
         role.canExportData ? 1 : 0,
         role.canManageUsers ? 1 : 0,
+        role.canEditGlobalComments ? 1 : 0,
+        role.canEditPersonalComments ? 1 : 0,
+        role.canViewRoster ? 1 : 0,
+        role.canViewDienstplan ? 1 : 0,
+        role.canViewDienstplanAll ? 1 : 0,
         role.sort || 0
       ]
     );
   }
 
   async saveRoles(roles: any[]) {
-    const existingRoles = await this.db.all('SELECT id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort FROM roles');
+    const existingRoles = await this.db.all('SELECT id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, sort FROM roles');
     const existingById = new Map<number, any>(existingRoles.map((r: any) => [Number(r.id), r]));
     const existingByName = new Map<string, any>(existingRoles.map((r: any) => [String(r.name || ''), r]));
     const keptIds: number[] = [];
@@ -800,15 +806,21 @@ class SQLiteAdapter implements DatabaseAdapter {
         const canEditPersonnel = role.permissions?.personal === 'write' ? 1 : 0;
         const canEditVehicles = role.permissions?.fahrzeuge === 'write' ? 1 : 0;
         const canEditSettings = role.permissions?.einstellungen === 'write' ? 1 : 0;
-        const canEditRoster = role.permissions?.einteilung === 'write' || role.permissions?.dienstplan === 'write' ? 1 : 0;
-        const canViewReports = role.permissions?.werte === 'read' || role.permissions?.werte === 'read_all' ? 1 : 0;
-        const canExportData = role.permissions?.werte === 'read_all' ? 1 : 0;
-        const canManageUsers = existingRow ? existingRow.canManageUsers : 0;
+        const canEditRoster = role.permissions?.einteilung === 'write' ? 1 : 0;
+        const canEditDienstplan = role.permissions?.dienstplan === 'write' ? 1 : 0;
+        const canViewReports = role.permissions?.werte === 'read' || role.permissions?.werte === 'read_all' || role.permissions?.werte === 'write' ? 1 : 0;
+        const canExportData = role.permissions?.werte === 'read_all' || role.permissions?.werte === 'write' ? 1 : 0;
+        const canManageUsers = role.permissions?.einstellungen === 'write' || role.permissions?.personal === 'write' ? 1 : 0;
+        const canEditGlobalComments = role.permissions?.kommentar_global === 'write' ? 1 : 0;
+        const canEditPersonalComments = role.permissions?.kommentar_individuell === 'write' ? 1 : 0;
+        const canViewRoster = role.permissions?.einteilung === 'read' ? 1 : 0;
+        const canViewDienstplan = role.permissions?.dienstplan === 'read' ? 1 : 0;
+        const canViewDienstplanAll = role.permissions?.dienstplan === 'read_all' ? 1 : 0;
         const sort = typeof role.sort === 'number' ? role.sort : index;
 
         if (existingRow) {
           await this.db.run(
-            `UPDATE roles SET name = ?, description = ?, canEditPersonnel = ?, canEditVehicles = ?, canEditSettings = ?, canEditRoster = ?, canViewReports = ?, canExportData = ?, canManageUsers = ?, sort = ? WHERE id = ?`,
+            `UPDATE roles SET name = ?, description = ?, canEditPersonnel = ?, canEditVehicles = ?, canEditSettings = ?, canEditRoster = ?, canEditDienstplan = ?, canViewReports = ?, canExportData = ?, canManageUsers = ?, canEditGlobalComments = ?, canEditPersonalComments = ?, canViewRoster = ?, canViewDienstplan = ?, canViewDienstplanAll = ?, sort = ? WHERE id = ?`,
             [
               role.name,
               role.description || '',
@@ -816,9 +828,15 @@ class SQLiteAdapter implements DatabaseAdapter {
               canEditVehicles,
               canEditSettings,
               canEditRoster,
+              canEditDienstplan,
               canViewReports,
               canExportData,
               canManageUsers,
+              canEditGlobalComments,
+              canEditPersonalComments,
+              canViewRoster,
+              canViewDienstplan,
+              canViewDienstplanAll,
               sort,
               existingRow.id
             ]
@@ -826,8 +844,8 @@ class SQLiteAdapter implements DatabaseAdapter {
           keptIds.push(existingRow.id);
         } else {
           const result = await this.db.run(
-            `INSERT INTO roles (name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO roles (name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, sort)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
             [
               role.name,
               role.description || '',
@@ -835,9 +853,15 @@ class SQLiteAdapter implements DatabaseAdapter {
               canEditVehicles,
               canEditSettings,
               canEditRoster,
+              canEditDienstplan,
               canViewReports,
               canExportData,
               canManageUsers,
+              canEditGlobalComments,
+              canEditPersonalComments,
+              canViewRoster,
+              canViewDienstplan,
+              canViewDienstplanAll,
               sort
             ]
           );
@@ -1046,7 +1070,7 @@ class SQLiteAdapter implements DatabaseAdapter {
     return getAllGuests(this.db);
   }
 
-  async addGuest(guest: { date: string; name: string; remark: string }) {
+  async addGuest(guest: { date: string; end_date?: string; endDate?: string; name: string; remark: string }) {
     const { addGuest } = await import('./database');
     return addGuest(this.db, guest);
   }
@@ -1601,13 +1625,76 @@ export class DatabaseManager {
                 canEditVehicles INTEGER DEFAULT 0,
                 canEditSettings INTEGER DEFAULT 0,
                 canEditRoster INTEGER DEFAULT 0,
+                canEditDienstplan INTEGER DEFAULT 0,
                 canViewReports INTEGER DEFAULT 0,
                 canExportData INTEGER DEFAULT 0,
                 canManageUsers INTEGER DEFAULT 0,
+                canEditGlobalComments INTEGER DEFAULT 0,
+                canEditPersonalComments INTEGER DEFAULT 0,
+                canViewRoster INTEGER DEFAULT 0,
+                canViewDienstplan INTEGER DEFAULT 0,
+                canViewDienstplanAll INTEGER DEFAULT 0,
                 sort INTEGER DEFAULT 0
             )
         `);
       console.log('[DatabaseManager] Roles table created successfully');
+    }
+
+    // Migration: Add comment columns if they are missing (for databases that were created in v1.5.0 but without them)
+    const tableInfo = await db.all("PRAGMA table_info(roles)");
+    const hasGlobalComments = tableInfo.some((c: any) => c.name === 'canEditGlobalComments');
+    const hasPersonalComments = tableInfo.some((c: any) => c.name === 'canEditPersonalComments');
+    const hasViewRoster = tableInfo.some((c: any) => c.name === 'canViewRoster');
+    const hasViewDienstplan = tableInfo.some((c: any) => c.name === 'canViewDienstplan');
+    const hasViewDienstplanAll = tableInfo.some((c: any) => c.name === 'canViewDienstplanAll');
+    const hasEditDienstplan = tableInfo.some((c: any) => c.name === 'canEditDienstplan');
+
+    if (!hasGlobalComments) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canEditGlobalComments INTEGER DEFAULT 0");
+    }
+    if (!hasPersonalComments) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canEditPersonalComments INTEGER DEFAULT 0");
+    }
+    if (!hasViewRoster) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canViewRoster INTEGER DEFAULT 0");
+    }
+    if (!hasViewDienstplan) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canViewDienstplan INTEGER DEFAULT 0");
+    }
+    if (!hasViewDienstplanAll) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canViewDienstplanAll INTEGER DEFAULT 0");
+    }
+    if (!hasEditDienstplan) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canEditDienstplan INTEGER DEFAULT 0");
+    }
+
+    // Wenn die Spalten gerade erst hinzugefügt wurden (oder schon da waren aber wir migrieren json), 
+    // dann können wir versuchen, die alten Settings noch mal zu lesen:
+    if (!hasGlobalComments || !hasPersonalComments || !hasViewRoster || !hasViewDienstplan || !hasViewDienstplanAll || !hasEditDienstplan) {
+      const rolesSetting = await db.get("SELECT value FROM settings WHERE key='roles'");
+      if (rolesSetting && rolesSetting.value) {
+        try {
+          const oldRoles = JSON.parse(rolesSetting.value);
+          for (const role of oldRoles) {
+            const perms = role.permissions || {};
+            await db.run(
+              "UPDATE roles SET canEditGlobalComments = ?, canEditPersonalComments = ?, canViewRoster = ?, canViewDienstplan = ?, canViewDienstplanAll = ?, canEditDienstplan = ? WHERE id = ? OR name = ?",
+              [
+                perms.kommentar_global === 'write' ? 1 : 0,
+                perms.kommentar_individuell === 'write' ? 1 : 0,
+                perms.einteilung === 'read' ? 1 : 0,
+                perms.dienstplan === 'read' ? 1 : 0,
+                perms.dienstplan === 'read_all' ? 1 : 0,
+                perms.dienstplan === 'write' ? 1 : 0,
+                role.id,
+                role.name
+              ]
+            );
+          }
+        } catch (e) {
+          console.error('[DatabaseManager] Error migrating legacy comments/roster permissions to roles:', e);
+        }
+      }
     }
 
     // Migration: migrate roles from settings JSON to roles table
@@ -1622,8 +1709,8 @@ export class DatabaseManager {
             // Mapping der alten permissions zu neuen Feldern
             const perms = role.permissions || {};
             await db.run(`
-                        INSERT OR IGNORE INTO roles (id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canViewReports, canExportData, canManageUsers, sort)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT OR IGNORE INTO roles (id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, sort)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     `, [
               role.id,
               role.name,
@@ -1631,10 +1718,16 @@ export class DatabaseManager {
               perms.personal === 'write' ? 1 : 0,
               perms.fahrzeuge === 'write' ? 1 : 0,
               perms.einstellungen === 'write' ? 1 : 0,
-              perms.einteilung === 'write' || perms.dienstplan === 'write' ? 1 : 0,
+              perms.einteilung === 'write' ? 1 : 0,
+              perms.dienstplan === 'write' ? 1 : 0,
               perms.werte === 'read' || perms.werte === 'read_all' || perms.werte === 'write' ? 1 : 0,
               perms.werte === 'write' || perms.personal === 'write' || perms.fahrzeuge === 'write' ? 1 : 0,
               perms.personal === 'write' || perms.einstellungen === 'write' ? 1 : 0,
+              perms.kommentar_global === 'write' ? 1 : 0,
+              perms.kommentar_individuell === 'write' ? 1 : 0,
+              perms.einteilung === 'read' ? 1 : 0,
+              perms.dienstplan === 'read' ? 1 : 0,
+              perms.dienstplan === 'read_all' ? 1 : 0,
               role.id
             ]);
             console.log(`[DatabaseManager] ✓ Migrated role: ${role.name} (ID: ${role.id})`);
@@ -1674,6 +1767,23 @@ export class DatabaseManager {
         }
       }
       await db.run("INSERT INTO settings (key, value) VALUES ('migration_role_id_remap_v1', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    }
+
+    // Fix invalid role IDs that don't exist in roles table
+    const invalidPersonnelRows = await db.all("SELECT id, roleId FROM personnel WHERE roleId IS NOT NULL AND roleId NOT IN (SELECT id FROM roles)");
+    if (invalidPersonnelRows.length > 0) {
+      console.log(`[DatabaseManager] Found ${invalidPersonnelRows.length} personnel with invalid roleId`);
+      const adminRole = await db.get("SELECT id FROM roles WHERE name = 'Administrator'");
+      const defaultRole = await db.get("SELECT id FROM roles ORDER BY sort ASC LIMIT 1");
+      
+      for (const p of invalidPersonnelRows) {
+        // As a heuristic, if their old roleId was 1, they were likely an Admin
+        const fallbackRoleId = (p.roleId === 1 && adminRole) ? adminRole.id : (defaultRole ? defaultRole.id : null);
+        if (fallbackRoleId) {
+          await db.run("UPDATE personnel SET roleId = ? WHERE id = ?", [fallbackRoleId, p.id]);
+          console.log(`[DatabaseManager] Reassigned personnel ID ${p.id} from invalid roleId ${p.roleId} to roleId ${fallbackRoleId}`);
+        }
+      }
     }
 
     // Migration: create shift_transfers table if missing (Issue #21)
@@ -2238,10 +2348,16 @@ export class DatabaseManager {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             date TEXT NOT NULL,
+            end_date TEXT,
             remark TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_guests_date ON guests(date);
     `);
+    try {
+        await db.exec(`ALTER TABLE guests ADD COLUMN end_date TEXT`);
+    } catch (e) {
+        // Ignore if column already exists
+    }
 
     // Initialize default qualification types if empty
     try {
