@@ -397,9 +397,10 @@ function computeActivePersonnelPerMonth(
   ue50Ids: Set<number>
 ) {
   // Ermittelt Anwesenheit pro Monat und zählt UNGEWICHTET: jede Person mit >0 Präsenz zählt 1
-  // Ü50-Personen werden ausgeschlossen (wie Azubis)
+  // Ü50-Personen werden monatsweise ausgeschlossen (wie Azubis)
   // NEU: Nur Personal MIT Rettungsdienst-Qualifikation wird gezählt!
   const activeIds = new Set(personnel.map(p => p.id));
+  const personnelById = new Map(personnel.map(p => [p.id, p]));
   const presentByMonth: Array<Set<number>> = Array.from({ length: 12 }, () => new Set());
 
   for (const row of (roster || [])) {
@@ -409,8 +410,6 @@ function computeActivePersonnelPerMonth(
 
       // Filter: Person muss im aktuellen Personalstamm sein
       if (!activeIds.has(pid)) continue;
-
-      if (ue50Ids.has(pid)) continue; // Ü50 ausschließen
 
       const val = String(row.value || '').trim();
       if (!val) continue;
@@ -422,8 +421,13 @@ function computeActivePersonnelPerMonth(
       const month = m.getUTCMonth();
 
       // NEU: Prüfe ob Person in diesem Monat Rettungsdienst-Qualifikation hat
-      const person = personnel.find(p => p.id === pid);
+      const person = personnelById.get(pid);
       if (!person || !isEligibleForStatsMonth(person, month)) {
+        continue;
+      }
+
+      // Ü50 / LPAL in diesem Monat ausschließen
+      if (person.ue50Monthly?.[month] || person.lpalMonthly?.[month]) {
         continue;
       }
 
@@ -431,9 +435,6 @@ function computeActivePersonnelPerMonth(
     } catch { }
   }
 
-  // Falls "gewichtet" gewünscht ist (HLF-B = 0.75), müsste man hier summieren.
-  // Laut Tabellen-Beschreibung "HLF-B ungewichtet gezählt" -> also count 1.
-  // Wir geben hier die Anzahl der Köpfe zurück.
   return presentByMonth.map(set => set.size);
 }
 
@@ -524,17 +525,19 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const perPerson24h = useMemo(() => {
     const countsByPerson: Record<number, number[]> = {};
     const ensure = (pid: number) => (countsByPerson[pid] ||= Array(12).fill(0));
+    const personnelById = new Map((personnel || []).map(p => [p.id, p]));
     for (const row of (roster || [])) {
       try {
         if (String(row.personType) !== 'person') continue;
         const pid = Number(row.personId);
-        if (ue50Ids.has(pid)) continue; // Ü50 ausschließen
-        const code = String(row.value || '').trim();
-        if (!code) continue;
-        if (auswertungByType[code] !== '24h') continue;
         const iso = String(row.date);
         const m = new Date(iso + 'T00:00:00Z');
         const month = m.getUTCMonth();
+        const p = personnelById.get(pid);
+        if (p?.ue50Monthly?.[month] || p?.lpalMonthly?.[month]) continue; // Ü50 in diesem Monat ausschließen
+        const code = String(row.value || '').trim();
+        if (!code) continue;
+        if (auswertungByType[code] !== '24h') continue;
         ensure(pid)[month] += 1;
       } catch { }
     }
@@ -549,13 +552,15 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const perPersonITW = useMemo(() => {
     const countsByPerson: Record<number, number[]> = {};
     const ensure = (pid: number) => (countsByPerson[pid] ||= Array(12).fill(0));
+    const personnelById = new Map((personnel || []).map(p => [p.id, p]));
     for (const row of (roster || [])) {
       try {
         if (String(row.personType) !== 'person') continue;
         const pid = Number(row.personId);
-        if (ue50Ids.has(pid)) continue; // Ü50 ausschließen
         const iso = String(row.date);
         const m = new Date(iso + 'T00:00:00Z').getUTCMonth();
+        const p = personnelById.get(pid);
+        if (p?.ue50Monthly?.[m] || p?.lpalMonthly?.[m]) continue; // Ü50 in diesem Monat ausschließen
         const t = String(row.type || '');
         const code = String(row.value || '').trim();
         if (t.startsWith('itw_') || (code && auswertungByType[code] === 'itw')) {
@@ -580,14 +585,14 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       try {
         if (String(row.personType) !== 'person') continue;
         const pid = Number(row.personId);
-        if (ue50Ids.has(pid)) continue; // Ü50 ausschließen
-        const code = String(row.value || '').trim();
-        if (!code) continue;
-        if ((auswertungByType[code] || 'off') === 'off') continue;
         const iso = String(row.date);
         const month = new Date(iso + 'T00:00:00Z').getUTCMonth();
         const person = personnelById.get(pid);
         if (!person || !isEligibleForStatsMonth(person, month)) continue;
+        if (person.ue50Monthly?.[month] || person.lpalMonthly?.[month]) continue; // Ü50 in diesem Monat ausschließen
+        const code = String(row.value || '').trim();
+        if (!code) continue;
+        if ((auswertungByType[code] || 'off') === 'off') continue;
         ensure(pid)[month] += 1;
       } catch { }
     }
@@ -622,7 +627,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         counts: countsByPerson[p.id] || Array(12).fill(0)
       }));
     return rows;
-  }, [roster, personnel, auswertungByType, ue50Ids]);
+  }, [roster, personnel, auswertungByType]);
 
   // Gewichtete Präsenz je Person/Monat für Anzeige & Berechnung (HLF‑B = round(0,75 × Ai,m))
   const perPersonPresenceWeighted = useMemo(() => {
@@ -710,6 +715,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const rowUe50 = useMemo(() => {
     const sums = Array(12).fill(0);
     const reSlot = /^(rtw\d+_(tag|nacht)_[12]|nef(\d+)?_(arzt|assist|azubi)|itw_row_[123])$/;
+    const personnelById = new Map((personnel || []).map(p => [p.id, p]));
 
     const getNefMode = (idStr?: string) => {
       if (!idStr) {
@@ -725,11 +731,12 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       try {
         if (String(row.personType) !== 'person') continue;
         const pid = Number(row.personId);
-        if (!ue50Ids.has(pid)) continue;
-        const t = String(row.type || '');
-        if (!reSlot.test(t)) continue; // Nur echte Schicht-Slots zählen
         const iso = String(row.date);
         const m = new Date(iso + 'T00:00:00Z').getUTCMonth();
+        const p = personnelById.get(pid);
+        if (!p?.ue50Monthly?.[m] && !p?.lpalMonthly?.[m]) continue;
+        const t = String(row.type || '');
+        if (!reSlot.test(t)) continue; // Nur echte Schicht-Slots zählen
 
         // NEF Assistenz zählt doppelt bei 24h-Besetzung
         const nefMatch = t.match(/^nef(\d+)?_assist$/);
@@ -743,7 +750,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       } catch { }
     }
     return sums;
-  }, [roster, ue50Ids, nef]);
+  }, [roster, personnel, nef]);
 
   const row1Adj = useMemo(() => row1.map((v, i) => Math.max(0, v - (rowAzubis[i] || 0) - (rowGuests[i] || 0) - (rowUe50[i] || 0))), [row1, rowAzubis, rowGuests, rowUe50]);
   const row3 = useMemo(() => computeShiftsPerPerson(row1Adj, row2), [row1Adj, row2]);

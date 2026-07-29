@@ -88,6 +88,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [ue50Ids, setUe50Ids] = useState<Set<number>>(new Set());
     // LPAL-IDs (Leitender Praxisanleiter) - wie Ü50, aber orange
     const [lpalIds, setLpalIds] = useState<Set<number>>(new Set());
+    const [ue50MonthlyMap, setUe50MonthlyMap] = useState<Record<number, boolean[]>>({});
+    const [lpalMonthlyMap, setLpalMonthlyMap] = useState<Record<number, boolean[]>>({});
     // HLF-B Perioden für korrekte Berechnung
     const [hlfbPeriodsByPerson, setHlfbPeriodsByPerson] = useState<Record<number, Array<{ startYM: string; endYM?: string }>>>({});
     // Performance: Debouncing für Roster-Updates
@@ -295,11 +297,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const lpalSetting = await (window as any).api.getSetting('lpal_qualification_type');
                 if (lpalSetting) lpalQualName = String(lpalSetting);
 
+                const ue50Map: Record<number, boolean[]> = {};
+                const lpalMap: Record<number, boolean[]> = {};
                 const combinedIds = new Set<number>();
                 const lpalOnlyIds = new Set<number>();
                 for (const p of personnel) {
                     try {
                         const periods = await (window as any).api.getQualificationPeriods?.(p.id) || [];
+                        const ue50Arr = Array(12).fill(false);
+                        const lpalArr = Array(12).fill(false);
                         for (let month = 0; month < 12; month++) {
                             const yearMonth = `${year}-${String(month + 1).padStart(2, '0')}`;
                             const hasUe50 = periods.some((per: any) =>
@@ -314,17 +320,24 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 per.startYM <= yearMonth &&
                                 (!per.endYM || per.endYM >= yearMonth)
                             );
+                            if (hasUe50) ue50Arr[month] = true;
+                            if (hasLpal) lpalArr[month] = true;
                             if (hasUe50 || hasLpal) {
                                 combinedIds.add(p.id);
                                 if (hasLpal) lpalOnlyIds.add(p.id);
-                                break;
                             }
                         }
+                        ue50Map[p.id] = ue50Arr;
+                        lpalMap[p.id] = lpalArr;
+                        (p as any).ue50Monthly = (p as any).ue50Monthly || ue50Arr;
+                        (p as any).lpalMonthly = (p as any).lpalMonthly || lpalArr;
                     } catch { }
                 }
+                setUe50MonthlyMap(ue50Map);
+                setLpalMonthlyMap(lpalMap);
                 setUe50Ids(combinedIds);
                 setLpalIds(lpalOnlyIds);
-            } catch { setUe50Ids(new Set()); setLpalIds(new Set()); }
+            } catch { setUe50Ids(new Set()); setLpalIds(new Set()); setUe50MonthlyMap({}); setLpalMonthlyMap({}); }
         };
         loadUe50();
     }, [year, personnel]);
@@ -1468,7 +1481,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 flattenedRoster,
                 personnel,
                 azubis,
-                ue50Ids,
+                ue50MonthlyMap,
                 auswertungByType,
                 {
                     rtw: rtwVehicles,
@@ -2790,8 +2803,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         const cumDiff = cumTarget - cumDriven;
                                         const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
                                         const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
-                                        const ue50 = (p as any).ue50 === 1;
-                                        const lpal = lpalIds.has(p.id);
+                                        const ue50 = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[currentMonth] : !!ue50MonthlyMap[p.id]?.[currentMonth];
+                                        const lpal = (p as any).lpalMonthly ? !!(p as any).lpalMonthly[currentMonth] : !!lpalMonthlyMap[p.id]?.[currentMonth];
                                         const total = tn.tag + tn.nacht + nef + itw;
                                         const oldRtwShifts = (p as any).old_rtw_shifts || 0;
                                         const weekend = perPersonWeekendInYear[key] || 0;
@@ -3188,8 +3201,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         const cumDiff = cumTarget - cumDriven;
                                         const teilzeit = Number((p as any).teilzeit ?? 100) || 100;
                                         const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
-                                        const ue50 = (p as any).ue50 === 1;
-                                        const lpal = lpalIds.has(p.id);
+                                        const ue50 = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[currentMonth] : !!ue50MonthlyMap[p.id]?.[currentMonth];
+                                        const lpal = (p as any).lpalMonthly ? !!(p as any).lpalMonthly[currentMonth] : !!lpalMonthlyMap[p.id]?.[currentMonth];
                                         const oldRtwShifts = (p as any).oldRtwShifts || 0;
                                         const weekend = perPersonWeekendInYear[key] || 0;
                                         const total = tn.tag + tn.nacht + nef + itw;

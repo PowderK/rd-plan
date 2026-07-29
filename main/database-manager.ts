@@ -1797,8 +1797,7 @@ export class DatabaseManager {
           to_person_id INTEGER NOT NULL,
           shift_count REAL NOT NULL,
           position_type TEXT NOT NULL,
-          valid_from TEXT NOT NULL,
-          valid_until TEXT,
+          month TEXT NOT NULL,
           reason TEXT,
           created_at TEXT DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY(from_person_id) REFERENCES personnel(id) ON DELETE CASCADE,
@@ -1807,7 +1806,7 @@ export class DatabaseManager {
       `);
       await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_from ON shift_transfers(from_person_id)`);
       await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_to ON shift_transfers(to_person_id)`);
-      await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_month ON shift_transfers(valid_from)`);
+      await db.exec(`CREATE INDEX IF NOT EXISTS idx_shift_transfers_month ON shift_transfers(month)`);
       console.log('[DatabaseManager] shift_transfers table created successfully');
 
       // Add default setting

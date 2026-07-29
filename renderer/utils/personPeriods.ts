@@ -13,9 +13,10 @@ export function normalizeDepartmentName(dept?: string): string {
 
 /** Qualifikation gilt im Monat YYYY-MM (Endmonat inklusive). */
 export function qualificationAppliesInMonth(
-  period: { startYM?: string; endYM?: string | null },
+  period: { startYM?: string; endYM?: string | null; active?: boolean | number },
   ym: string
 ): boolean {
+  if (period.active === false || (period.active as any) === 0 || (period.active as any) === '0') return false;
   const start = String(period.startYM || '').trim();
   if (!start) return false;
   const end = period.endYM != null ? String(period.endYM).trim() : '';
