@@ -11,11 +11,18 @@ interface AzubiPeriod {
 const AddAzubi: React.FC = () => {
   useEffect(() => {
     try { console.log('[AddAzubi] mounted. api keys:', Object.keys((window as any).api || {})); } catch {}
+    (async () => {
+      try {
+        const d = await (window as any).api.getSetting('department');
+        if (d && String(d).trim()) setDepartment(String(d).trim());
+      } catch { /* ignore */ }
+    })();
   }, []);
   
   const [name, setName] = useState('');
   const [vorname, setVorname] = useState('');
   const [lehrjahr, setLehrjahr] = useState(1);
+  const [department, setDepartment] = useState('1. Abteilung');
   const [periods, setPeriods] = useState<AzubiPeriod[]>([]);
   const [newPeriod, setNewPeriod] = useState<AzubiPeriod>({ start_date: '', end_date: '', description: '', lehrjahr: 1 });
   const [showAddPeriod, setShowAddPeriod] = useState(false);
@@ -70,7 +77,7 @@ const AddAzubi: React.FC = () => {
         return;
       }
       
-      await api.addAzubi({ name, vorname, lehrjahr, periods });
+      await api.addAzubi({ name, vorname, lehrjahr, department, periods });
       // console.log('[AddAzubi] saved successfully');
       
       try { 

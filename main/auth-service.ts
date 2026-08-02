@@ -6,7 +6,9 @@ export interface AuthSession {
   name: string;
   vorname: string;
   roleId: number | null;
+  roleName?: string;
   permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>;
+  assignedDepartment: string | 'all';
 }
 
 export class AuthService {
@@ -24,24 +26,129 @@ export class AuthService {
     };
   }
 
-  private async resolvePermissions(roleId: number | null | undefined): Promise<Record<string, 'none' | 'read' | 'read_all' | 'write'>> {
+  private getPermissionsFromRoleRow(role: any): Record<string, 'none' | 'read' | 'read_all' | 'write'> {
+    const canViewReports = role.canViewReports === 1 || role.canViewReports === true;
+    const canExportData = role.canExportData === 1 || role.canExportData === true;
+    let werte: 'none' | 'read' | 'read_all' | 'write' = 'none';
+    if (canExportData) werte = 'read_all';
+    else if (canViewReports) werte = 'read';
+
+    let einteilung: 'none' | 'read' | 'write' = 'none';
+    if (role.canEditRoster === 1 || role.canEditRoster === true) einteilung = 'write';
+    else if (role.canViewRoster === 1 || role.canViewRoster === true) einteilung = 'read';
+
+    let dienstplan: 'none' | 'read' | 'read_all' | 'write' = 'none';
+    if (role.canEditDienstplan === 1 || role.canEditDienstplan === true) dienstplan = 'write';
+    else if (role.canViewDienstplanAll === 1 || role.canViewDienstplanAll === true) dienstplan = 'read_all';
+    else if (role.canViewDienstplan === 1 || role.canViewDienstplan === true) dienstplan = 'read';
+
+    return {
+      einteilung,
+      dienstplan,
+      werte,
+      personal: role.canEditPersonnel ? 'write' : 'none',
+      fahrzeuge: role.canEditVehicles ? 'write' : 'none',
+      einstellungen: role.canEditSettings ? 'write' : 'none',
+      kommentar_global: role.canEditGlobalComments ? 'write' : 'none',
+      kommentar_individuell: role.canEditPersonalComments ? 'write' : 'none'
+    };
+  }
+
+  private mergeLegacyRolePermissions(
+    permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>,
+    legacyPermissions: any
+  ): Record<string, 'none' | 'read' | 'read_all' | 'write'> {
+    const merged = { ...permissions };
+    if (!legacyPermissions || typeof legacyPermissions !== 'object') return merged;
+    for (const [key, val] of Object.entries(legacyPermissions)) {
+      if (val === 'none' || val === 'read' || val === 'read_all' || val === 'write') {
+        merged[key] = val;
+      }
+    }
+    return merged;
+  }
+
+  private applyAdministratorGrants(
+    permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>,
+    roleName?: string,
+    role?: any
+  ): Record<string, 'none' | 'read' | 'read_all' | 'write'> {
+    const isAdmin =
+      roleName?.toLowerCase() === 'administrator' ||
+      role?.canManageUsers === 1 ||
+      role?.canManageUsers === true;
+    if (!isAdmin) return permissions;
+
+    const werte =
+      permissions.werte === 'write' || permissions.werte === 'read_all'
+        ? permissions.werte
+        : 'read_all';
+
+    return {
+      ...permissions,
+      werte,
+      einstellungen: permissions.einstellungen === 'none' ? 'write' : permissions.einstellungen,
+      personal: permissions.personal === 'none' ? 'write' : permissions.personal,
+      fahrzeuge: permissions.fahrzeuge === 'none' ? 'write' : permissions.fahrzeuge,
+      einteilung: permissions.einteilung === 'none' ? 'write' : permissions.einteilung,
+      dienstplan: permissions.dienstplan === 'none' ? 'write' : permissions.dienstplan,
+    };
+  }
+
+  private async resolveRoleInfo(roleId: number | null | undefined): Promise<{ permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>, name?: string }> {
     const permissions = this.getDefaultPermissions();
-    if (!roleId) return permissions;
+    if (!roleId) return { permissions };
+
+    try {
+      const roles = await this.dbAdapter.getRoles();
+      if (Array.isArray(roles) && roles.length > 0) {
+        const role = roles.find((r: any) => Number(r.id) === Number(roleId));
+        if (role) {
+          let rolePermissions = { ...permissions, ...this.getPermissionsFromRoleRow(role) };
+          const rolesData = await this.dbAdapter.getSetting('roles');
+          if (rolesData) {
+            try {
+              const legacyRoles = JSON.parse(rolesData);
+              const legacyRole = Array.isArray(legacyRoles) ? legacyRoles.find((r: any) => Number(r.id) === Number(roleId)) : null;
+              if (legacyRole) {
+                rolePermissions = this.mergeLegacyRolePermissions(rolePermissions, legacyRole.permissions);
+              }
+            } catch (e) {
+              console.error('[AuthService] Error parsing legacy roles:', e);
+            }
+          }
+
+          return {
+            permissions: this.applyAdministratorGrants(rolePermissions, role.name, role),
+            name: role.name
+          };
+        }
+      }
+    } catch (e) {
+      console.error('[AuthService] Error reading roles from table:', e);
+    }
 
     const rolesData = await this.dbAdapter.getSetting('roles');
-    if (!rolesData) return permissions;
+    if (!rolesData) return { permissions };
 
     try {
       const roles = JSON.parse(rolesData);
       const role = roles.find((r: any) => r.id === roleId);
-      if (role && role.permissions) {
-        return { ...permissions, ...role.permissions };
+      if (role) {
+        const merged = this.mergeLegacyRolePermissions(
+          { ...permissions, ...(role.permissions || {}) },
+          role.permissions
+        );
+        return {
+          permissions: this.applyAdministratorGrants(merged, role.name),
+          name: role.name
+        };
       }
     } catch (e) {
       console.error('[AuthService] Error parsing roles:', e);
     }
 
-    return permissions;
+    return { permissions };
   }
 
   private normalizePersonnelNumber(value: unknown): string {
@@ -65,7 +172,15 @@ export class AuthService {
         return { success: false, error: 'Personalnummer nicht gefunden' };
       }
 
-      const permissions = await this.resolvePermissions(person.roleId || null);
+      const { permissions, name: roleName } = await this.resolveRoleInfo(person.roleId || null);
+      
+      let assignedDepartment: string | 'all' = '1. Abteilung';
+      if (roleName?.toLowerCase() === 'administrator') {
+        assignedDepartment = 'all';
+      } else {
+        const dept = await this.dbAdapter.getCurrentDepartmentForPerson(person.id);
+        if (dept) assignedDepartment = dept;
+      }
 
       this.currentSession = {
         userId: person.id,
@@ -73,7 +188,9 @@ export class AuthService {
         name: person.name,
         vorname: person.vorname,
         roleId: person.roleId || null,
-        permissions
+        roleName,
+        permissions,
+        assignedDepartment
       };
 
       return { success: true, session: this.currentSession };
@@ -102,14 +219,25 @@ export class AuthService {
         return null;
       }
 
-      const permissions = await this.resolvePermissions(person.roleId || null);
+      const { permissions, name: roleName } = await this.resolveRoleInfo(person.roleId || null);
+      
+      let assignedDepartment: string | 'all' = 'Rettungsdienst';
+      if (roleName?.toLowerCase() === 'administrator') {
+        assignedDepartment = 'all';
+      } else {
+        const dept = await this.dbAdapter.getCurrentDepartmentForPerson(person.id);
+        if (dept) assignedDepartment = dept;
+      }
+
       this.currentSession = {
         userId: person.id,
         personnelNumber: person.personnelNumber || '',
         name: person.name,
         vorname: person.vorname,
         roleId: person.roleId || null,
-        permissions
+        roleName,
+        permissions,
+        assignedDepartment
       };
 
       return this.currentSession;

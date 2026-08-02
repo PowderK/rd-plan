@@ -1,0 +1,9 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/usr/bin/sqlite3": true,
+        "/^cd /Users/benni/RD-Plan && python3 - <<'PY'\nimport sqlite3, os\nfor db in \\[os\\.path\\.expanduser\\('~/Library/Application Support/rd-plan/DB/rd-plan\\.db'\\), os\\.path\\.expanduser\\('~/Library/Application Support/rd-plan/rd-plan\\.db'\\)\\]:\n    if not os\\.path\\.exists\\(db\\):\n        continue\n    print\\('DB:', db\\)\n    con = sqlite3\\.connect\\(db\\)\n    cur = con\\.cursor\\(\\)\n    for q in \\[\n        \"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name\",\n        \"SELECT count\\(\\*\\) FROM sqlite_master WHERE type='table' AND name='roles'\",\n        \"SELECT count\\(\\*\\) FROM sqlite_master WHERE type='table' AND name='personnel'\",\n        \"SELECT count\\(\\*\\) FROM roles\",\n        \"SELECT id,name,description,sort FROM roles ORDER BY sort,id LIMIT 20\",\n        \"SELECT count\\(\\*\\) FROM personnel\",\n        \"SELECT id,name,vorname,roleId,department,active FROM personnel ORDER BY id LIMIT 20\",\n        \"SELECT value FROM settings WHERE key='roles' LIMIT 1\",\n        \"SELECT key FROM settings WHERE key LIKE 'roles_%' LIMIT 20\"\n    \\]:\n        try:\n            cur\\.execute\\(q\\)\n            rows = cur\\.fetchall\\(\\)\n            print\\(q\\)\n            for row in rows:\n                print\\(' ', row\\)\n        except Exception as e:\n            print\\('  ERR', q, e\\)\n    print\\('-'\\*40\\)\n    con\\.close\\(\\)\nPY$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

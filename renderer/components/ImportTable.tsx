@@ -36,6 +36,11 @@ const ImportTable: React.FC<ImportTableProps> = ({ month, year, personnel, onCan
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const tableRef = useRef<HTMLTableElement>(null);
 
+  useEffect(() => {
+    setTable(personnel.map(() => Array(days.length).fill('')));
+    setSelectedCell(null);
+  }, [personnel.length, days.length]);
+
   // Copy&Paste-Handler
   useEffect(() => {
     const handler = (e: ClipboardEvent) => {

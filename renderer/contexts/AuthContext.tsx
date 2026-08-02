@@ -6,7 +6,9 @@ export interface AuthUser {
   name: string;
   vorname: string;
   roleId: number | null;
+  roleName?: string;
   permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>;
+  assignedDepartment: string | 'all';
 }
 
 interface AuthContextType {
@@ -55,6 +57,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           name: 'Developer',
           vorname: 'Mode',
           roleId: null,
+          roleName: 'Administrator',
           permissions: {
             einteilung: 'write',
             dienstplan: 'write',
@@ -64,7 +67,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
             einstellungen: 'write',
             kommentar_global: 'write',
             kommentar_individuell: 'write'
-          }
+          },
+          assignedDepartment: 'all'
         });
         setIsAuthenticated(true);
       } else {
@@ -83,6 +87,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.error('[AuthContext] Fehler beim Prüfen des Dev-Mode:', error);
     });
   }, []);
+
+  useEffect(() => {
+    if (isDevMode) return;
+    const refreshSession = async () => {
+      try {
+        const user = await (window as any).api.authGetCurrentUser?.();
+        if (user) {
+          setCurrentUser(user);
+          setIsAuthenticated(true);
+        }
+      } catch { /* ignore */ }
+    };
+    const api = (window as any).api;
+    api?.onSettingsUpdated?.(refreshSession);
+    api?.onPersonnelUpdated?.(refreshSession);
+    return () => {
+      api?.offSettingsUpdated?.(refreshSession);
+      api?.offPersonnelUpdated?.(refreshSession);
+    };
+  }, [isDevMode]);
 
   const login = async (personnelNumber: string): Promise<{ success: boolean; error?: string }> => {
     try {

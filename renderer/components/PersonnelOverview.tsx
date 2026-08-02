@@ -264,6 +264,7 @@ interface Person {
   email?: string;
   roleId?: number;
   personnelNumber?: string;
+  department?: string;
 }
 
 interface Azubi { id: number; name: string; vorname: string; lehrjahr: number }
@@ -298,8 +299,8 @@ interface PersonnelOverviewProps {
   setFooterActions?: (actions: React.ReactNode) => void;
 }
 
-const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions }) => {
-  const [activeTab, setActiveTab] = useState<'stammpersonal' | 'azubis' | 'ärzte'>('stammpersonal');
+const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: string }> = ({ setFooterActions, departmentName }) => {
+  const [activeTab, setActiveTab] = useState<'stammpersonal' | 'azubis' | 'ärzte' | 'gäste'>('stammpersonal');
   const [itwEnabled, setItwEnabled] = useState<boolean>(false);
   const [personnel, setPersonnel] = useState<Person[]>([]);
   const [azubis, setAzubis] = useState<Azubi[]>([]);
@@ -308,7 +309,9 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
   const [selectedAzubiForPeriods, setSelectedAzubiForPeriods] = useState<Azubi | null>(null);
   const [qualificationPeriods, setQualificationPeriods] = useState<Record<number, QualificationPeriod[]>>({});
   const [activePeriods, setActivePeriods] = useState<Record<number, ActivePeriod[]>>({});
+  const [departmentPeriods, setDepartmentPeriods] = useState<Record<number, any[]>>({});
   const [itws, setItws] = useState<ItwDoctor[]>([]);
+  const [guests, setGuests] = useState<any[]>([]);
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [draggedAzubiId, setDraggedAzubiId] = useState<number | null>(null);
   const [draggedItwId, setDraggedItwId] = useState<number | null>(null);
@@ -357,10 +360,10 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
     // Wenn inaktive angezeigt werden sollen: includeInactive=true, date egal
     // Wenn inaktive ausgeblendet werden sollen: includeInactive=false, date=Aktuelles Jahr
     const currentYear = new Date().getFullYear().toString();
-    const list = await (window as any).api.getPersonnelList(showInactive, showInactive ? undefined : currentYear);
+    const list = await (window as any).api.getPersonnelList(showInactive, showInactive ? undefined : currentYear, departmentName);
     setPersonnel(list);
     setLoading(false);
-  }, [showInactive]);
+  }, [showInactive, departmentName]);
 
   const loadActivePeriods = useCallback(async () => {
     try {
@@ -373,13 +376,25 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
         periodsByPerson[period.personId].push(period);
       });
       setActivePeriods(periodsByPerson);
-    } catch (error) {
-      // console.error('Fehler beim Laden der Aktivitätsperioden:', error);
-    }
+    } catch (error) {}
+  }, []);
+
+  const loadAllDepartmentPeriods = useCallback(async () => {
+    try {
+      const allPeriods = await (window as any).api.getAllPersonnelDepartmentPeriods();
+      const periodsByPerson: Record<number, any[]> = {};
+      allPeriods.forEach((period: any) => {
+        if (!periodsByPerson[period.personId]) {
+          periodsByPerson[period.personId] = [];
+        }
+        periodsByPerson[period.personId].push(period);
+      });
+      setDepartmentPeriods(periodsByPerson);
+    } catch (error) {}
   }, []);
 
   const loadAzubis = useCallback(async () => {
-    const list = await (window as any).api.getAzubiList();
+    const list = await (window as any).api.getAzubiList(departmentName);
     setAzubis(list);
     // Lade Zeiträume für alle Azubis
     const allPeriods = await (window as any).api.getAllAzubiPeriods();
@@ -391,7 +406,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
       periodsByAzubi[period.azubi_id].push(period);
     });
     setAzubiPeriods(periodsByAzubi);
-  }, []);
+  }, [departmentName]);
 
   const loadQualificationPeriods = useCallback(async () => {
     try {
@@ -414,15 +429,42 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
     setItws(list);
   }, []);
 
+  const loadGuests = useCallback(async () => {
+    try {
+      const list = await (window as any).api.getAllGuests();
+      setGuests(list || []);
+    } catch(e) {}
+  }, []);
+
   const loadRoles = useCallback(async () => {
     try {
-      const rolesData = await (window as any).api.getSetting('roles');
-      if (rolesData) {
-        const parsedRoles = JSON.parse(rolesData);
-        setRoles(Array.isArray(parsedRoles) ? parsedRoles.map((r: any) => ({ id: r.id, name: r.name })) : []);
+      let list: any[] = [];
+      try {
+        const fetchedRoles = await (window as any).api.getRoles?.();
+        if (Array.isArray(fetchedRoles) && fetchedRoles.length > 0) {
+          list = fetchedRoles;
+        }
+      } catch (error) {
+        console.warn('Failed to load roles from table:', error);
+        list = [];
       }
-    } catch (e) {
-      // console.error('Fehler beim Laden der Rollen:', e);
+
+      if (list.length === 0) {
+        try {
+          const rolesData = await (window as any).api.getSetting('roles');
+          if (rolesData) {
+            const parsedRoles = JSON.parse(String(rolesData));
+            list = Array.isArray(parsedRoles) ? parsedRoles : [];
+          }
+        } catch (error) {
+          console.warn('Failed to load legacy roles from settings:', error);
+          list = [];
+        }
+      }
+
+      setRoles(Array.isArray(list) ? list.map((r: any) => ({ id: Number(r.id), name: String(r.name || r.id) })) : []);
+    } catch (error) {
+      console.warn('Unexpected error loading roles:', error);
     }
   }, []);
 
@@ -443,6 +485,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
     loadItws();
     loadQualificationPeriods();
     loadActivePeriods();
+    loadAllDepartmentPeriods();
     loadRoles();
     loadItwFeature();
     const handler = (_event: any) => {
@@ -466,8 +509,11 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
       loadItws();
     };
     (window as any).api.onItwUpdated?.(itwHandler);
+    const guestsHandler = () => loadGuests();
+    (window as any).api.onGuestsUpdated?.(guestsHandler);
     const settingsHandler = async () => {
       await loadItwFeature();
+      loadPersonnel();
     };
     (window as any).api.onSettingsUpdated?.(settingsHandler);
     // postMessage-Listener für Popups
@@ -484,14 +530,16 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
       }
     };
     window.addEventListener('message', messageHandler);
+    loadGuests(); // Initial load for guests
     return () => {
       (window as any).api.offPersonnelUpdated?.(handler);
       (window as any).api.offAzubisUpdated?.(azubiHandler);
       (window as any).api.offItwUpdated?.(itwHandler);
+      (window as any).api.offGuestsUpdated?.(guestsHandler);
       (window as any).api.offSettingsUpdated?.(settingsHandler);
       window.removeEventListener('message', messageHandler);
     };
-  }, [loadPersonnel, loadAzubis]);
+  }, [loadPersonnel, loadAzubis, departmentName, loadGuests]);
 
   const onDragStart = (id: number) => setDraggedId(id);
   const onDragOver = (e: React.DragEvent<HTMLTableRowElement>, overId: number, ctx: 'person' | 'azubi' | 'itw') => {
@@ -614,15 +662,41 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
   const handleDeleteSelectedItw = () => { if (selectedItwId == null) return; (window as any).api.openConfirmDeleteWindow(selectedItwId, 'itw'); };
 
   const isPersonActive = (p: Person) => {
+    // If we are NOT showing inactives, then by definition anyone in the 'personnel' list is active
+    // because the backend already filtered them for us.
+    if (!showInactive) return true;
+
+    const currentYM = new Date().toISOString().slice(0, 7);
+    const currentDate = new Date().toISOString().slice(0, 10);
+    
+    // 1. Check department periods
+    // In 'all' view, we don't filter by department activity
+    if (departmentName && departmentName !== 'all') {
+      const dPeriods = departmentPeriods[p.id] || [];
+      if (dPeriods.length > 0) {
+        const inDept = dPeriods.some((per: any) => 
+          per.department === departmentName &&
+          per.startDate <= currentDate &&
+          (!per.endDate || per.endDate >= currentDate)
+        );
+        if (!inDept) return false;
+      } else {
+        // Fallback to legacy department flag if no periods exist
+        if (p.department !== departmentName) return false;
+      }
+    }
+
+    // 2. Check active periods (fitness for duty)
     const periods = activePeriods[p.id];
     if (periods && periods.length > 0) {
-      const currentYM = new Date().toISOString().slice(0, 7);
       return periods.some(per =>
         per.active &&
         per.startYM <= currentYM &&
         (!per.endYM || per.endYM >= currentYM)
       );
     }
+    
+    // 3. Fallback to legacy active flag
     return !!(p.active ?? 1);
   };
 
@@ -685,6 +759,20 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
                   Ärzte
                 </button>
               )}
+              <button
+                onClick={() => setActiveTab('gäste')}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderBottom: activeTab === 'gäste' ? '3px solid #0ea5e9' : '3px solid transparent',
+                  background: activeTab === 'gäste' ? '#f8f9fa' : 'transparent',
+                  fontWeight: activeTab === 'gäste' ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Gäste
+              </button>
             </div>
           </div>
           {/* Ende Sticky Container */}
@@ -729,6 +817,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
                           onClick={() => handleRowClick(person.id)}
                           className={rowClass}
                           style={{ cursor: 'move' }}
+                          title={`Status: ${isPersonActive(person) ? 'Aktiv' : 'Inaktiv'}\nAbteilung: ${departmentName || 'all'}\nID: ${person.id}`}
                         >
                           <td>
                             {person.name}
@@ -1048,6 +1137,55 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps> = ({ setFooterActions 
                     <button onClick={cancelEditingItw}>Abbrechen</button>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Gäste Tab */}
+            {activeTab === 'gäste' && (
+              <div>
+                <table className={styles.table}>
+                  <thead>
+                    <tr className={styles.thead}>
+                      <th>Datum</th>
+                      <th>Name</th>
+                      <th>Bemerkung</th>
+                      <th className={styles.center} style={{ width: 100 }}>Aktionen</th>
+                    </tr>
+                  </thead>
+                  <tbody className={styles.tbody}>
+                    {guests.map(g => (
+                      <tr key={g.id} className={styles.row}>
+                        <td>
+                          {g.end_date || g.endDate ? (
+                            `${new Date(g.date).toLocaleDateString('de-DE')} – ${new Date(g.end_date || g.endDate).toLocaleDateString('de-DE')}`
+                          ) : (
+                            new Date(g.date).toLocaleDateString('de-DE')
+                          )}
+                        </td>
+                        <td>{g.name}</td>
+                        <td>{g.remark || '—'}</td>
+                        <td className={styles.center}>
+                          <button
+                            onClick={async () => {
+                              if (confirm('Gast wirklich löschen?')) {
+                                await (window as any).api.deleteGuest(g.id);
+                              }
+                            }}
+                            style={{
+                              background: '#dc3545', color: 'white', border: 'none',
+                              padding: '4px 8px', borderRadius: '3px', cursor: 'pointer', fontSize: '11px'
+                            }}
+                          >
+                            Löschen
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {guests.length === 0 && (
+                      <tr><td colSpan={4} style={{textAlign: 'center', padding: '16px', color: '#666'}}>Keine Gäste angelegt</td></tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             )}
 

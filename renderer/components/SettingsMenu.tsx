@@ -11,9 +11,10 @@ import styles from './PersonnelOverview.module.css';
 interface SettingsMenuProps {
   onClose: () => void;
   setFooterActions?: (actions: React.ReactNode) => void;
+  departmentName?: string;
 }
 
-const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }) => {
+const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, departmentName }) => {
   const defaultQualificationCategories = ['Fahrzeugführung', 'Notfall', 'Transport', 'Ausbildung', 'Sonstiges'];
   const [rescueStation, setRescueStation] = useState('1');
   const [year, setYear] = useState(new Date().getFullYear());
@@ -29,13 +30,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
   const [originalShiftTypes, setOriginalShiftTypes] = useState<{ id: number, code: string, description: string }[] | null>(null);
   // Fahrzeuge wurden in einen separaten Menüpunkt ausgelagert
   // ITW-Option ins Fahrzeuge-Fenster verlagert
-  const [department, setDepartment] = useState<number>(1);
+  const [departments, setDepartments] = useState<string[]>(['1. Abteilung', '2. Abteilung', '3. Abteilung']);
+  const [selectedDepartment, setSelectedDepartment] = useState<string>(departmentName || '1. Abteilung');
   const [auswertungByType, setAuswertungByType] = useState<Record<string, 'off' | 'tag' | 'nacht' | '24h' | 'itw'>>({});
   const [colorByType, setColorByType] = useState<Record<string, string>>({});
-  // ITW Schichtfolgen mit Gültig-ab
-  const [itwPatternSeqs, setItwPatternSeqs] = useState<{ startDate: string, pattern: string[] }[]>([]);
+  // ITW Schichtfolgen mit Gültig-ab (department-spezifisch)
+  const [itwPatternSeqs, setItwPatternSeqs] = useState<{ startDate: string, department: string, pattern: string[] }[]>([]);
   const [editingItwPatterns, setEditingItwPatterns] = useState(false);
-  const [originalItwPatterns, setOriginalItwPatterns] = useState<{ startDate: string, pattern: string[] }[] | null>(null);
+  const [originalItwPatterns, setOriginalItwPatterns] = useState<{ startDate: string, department: string, pattern: string[] }[] | null>(null);
   const [selectedItwPatternIndex, setSelectedItwPatternIndex] = useState<number | null>(null);
   // Department (1/2/3) Schichtfolgen mit Gültig-ab
   const [deptPatternSeqs, setDeptPatternSeqs] = useState<{ startDate: string, pattern: string[] }[]>([]);
@@ -52,11 +54,10 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
   const [showSettingsImportExport, setShowSettingsImportExport] = useState(false);
   const [rosterImportPath, setRosterImportPath] = useState('');
   // Jahresspezifische Vorplanungsdateien
-  const [yearPlannings, setYearPlannings] = useState<{ year: number; filePath: string }[]>([]);
+  const [yearPlannings, setYearPlannings] = useState<{ year: number; filePath: string; department?: string }[]>([]);
   const [editingYearPlannings, setEditingYearPlannings] = useState(false);
-  const [originalYearPlannings, setOriginalYearPlannings] = useState<{ year: number; filePath: string }[] | null>(null);
+  const [originalYearPlannings, setOriginalYearPlannings] = useState<{ year: number; filePath: string; department?: string }[] | null>(null);
   const [selectedYearPlanningIndex, setSelectedYearPlanningIndex] = useState<number | null>(null);
-  const [yearImportSelectedYear, setYearImportSelectedYear] = useState<number>(year); // Jahr für Excel-Import
   const [currentImportPath, setCurrentImportPath] = useState<string | null>(null); // Aktueller Import-Pfad für Retry-Logik
   const [showRestore, setShowRestore] = useState<boolean>(false);
   const [backups, setBackups] = useState<Array<{ path: string; year: string; ym: string; timestamp: string; label: string }>>([]);
@@ -100,6 +101,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
   const [yearImportUnknownShiftTypes, setYearImportUnknownShiftTypes] = useState<string[]>([]);
   const [yearImportPendingYear, setYearImportPendingYear] = useState<number>(0);
   const [showWeekendShifts, setShowWeekendShifts] = useState<boolean>(false);
+  const [weekendFridayDay, setWeekendFridayDay] = useState<boolean>(false);
+  const [weekendFridayNight, setWeekendFridayNight] = useState<boolean>(false);
+  const [weekendSaturdayDay, setWeekendSaturdayDay] = useState<boolean>(true);
+  const [weekendSaturdayNight, setWeekendSaturdayNight] = useState<boolean>(true);
+  const [weekendSundayDay, setWeekendSundayDay] = useState<boolean>(true);
+  const [weekendSundayNight, setWeekendSundayNight] = useState<boolean>(true);
+
 
   const [showYearImportAzubiDialog, setShowYearImportAzubiDialog] = useState(false);
   const [yearImportUnknownAzubiNames, setYearImportUnknownAzubiNames] = useState<string[]>([]);
@@ -110,6 +118,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
   const [featureShiftTransfers, setFeatureShiftTransfers] = useState(false);
   const [itwFeatureEnabled, setItwFeatureEnabled] = useState(false);
   const [activeCategory, setActiveCategory] = useState<'general' | 'roster' | 'features' | 'itw' | 'qualifications' | 'roles' | 'audit'>('general');
+  // ITW Vorplanungen
+  const [itwPlanningYear, setItwPlanningYear] = useState<number>(new Date().getFullYear());
   // System Info
   const [systemUsername, setSystemUsername] = useState<string>('Lädt...');
   const [initialSaveSnapshot, setInitialSaveSnapshot] = useState<string>('');
@@ -154,12 +164,17 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
     return JSON.stringify({
       rescueStation,
       year,
-      department,
       hlfbQualificationType,
       ue50QualificationType,
       lpalQualificationType,
       rettungsdienstQualificationType,
       showWeekendShifts,
+      weekendFridayDay,
+      weekendFridayNight,
+      weekendSaturdayDay,
+      weekendSaturdayNight,
+      weekendSundayDay,
+      weekendSundayNight,
       featureOldRtwShifts,
       featureShiftTransfers,
       itwFeatureEnabled,
@@ -173,12 +188,17 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
   }, [
     rescueStation,
     year,
-    department,
     hlfbQualificationType,
     ue50QualificationType,
     lpalQualificationType,
     rettungsdienstQualificationType,
     showWeekendShifts,
+    weekendFridayDay,
+    weekendFridayNight,
+    weekendSaturdayDay,
+    weekendSaturdayNight,
+    weekendSundayDay,
+    weekendSundayNight,
     featureOldRtwShifts,
     featureShiftTransfers,
     itwFeatureEnabled,
@@ -187,7 +207,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
     colorByType,
     itwPatternSeqs,
     deptPatternSeqs,
-    holidays
+    holidays,
+    selectedDepartment
   ]);
 
   useEffect(() => {
@@ -210,11 +231,27 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
         setSystemUsername('Fehler beim Laden');
       }
 
+      // Abteilungen laden, aber mindestens 1./2./3. Abteilung sichtbar halten
+      try {
+        const apiDepts = await (window as any).api.getUniqueDepartments?.();
+        if (apiDepts && Array.isArray(apiDepts)) {
+          const defaultDepts = ['1. Abteilung', '2. Abteilung', '3. Abteilung'];
+          const merged = [...defaultDepts, ...apiDepts.filter((d: string) => !defaultDepts.includes(d))];
+          const finalDepartments = Array.from(new Set(merged));
+          setDepartments(finalDepartments);
+          setSelectedDepartment(prev => {
+            if (finalDepartments.includes(prev)) return prev;
+            if (departmentName && finalDepartments.includes(departmentName)) return departmentName;
+            return finalDepartments[0] || prev;
+          });
+        }
+      } catch { }
+
       // Lade jahresspezifische Vorplanungen
       try {
         const plannings = await (window as any).api.getYearPlannings?.();
         if (plannings && Array.isArray(plannings)) {
-          setYearPlannings(plannings.map((p: any) => ({ year: Number(p.year), filePath: String(p.filePath) })));
+          setYearPlannings(plannings.map((p: any) => ({ year: Number(p.year), filePath: String(p.filePath), department: p.department })));
         }
       } catch (e) {
         // console.error('Failed to load year plannings:', e);
@@ -243,14 +280,16 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
       }
       setAuswertungByType(map);
       setColorByType(colorMap);
-      const dep = await (window as any).api.getSetting('department');
-      if (dep) setDepartment(Number(dep));
       // Sequenzen laden
       try {
         const seqs = await (window as any).api.getItwPatterns?.();
-        const norm = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(len).fill('')).slice(0, len).map(v => (v === 'IW' ? 'IW' : ''));
+        const norm = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(len).fill('')).slice(0, len).map(v => (v === '1' || v === '2' || v === '3' || v === 'IW') ? v : '');
         if (Array.isArray(seqs) && seqs.length > 0) {
-          const parsed = seqs.map((s: any) => ({ startDate: String(s.startDate), pattern: norm(String(s.pattern).split(',').map((x: string) => x.trim()), 21) }));
+          const parsed = seqs.map((s: any) => ({ 
+            startDate: String(s.startDate), 
+            department: s.department || '1. Abteilung',
+            pattern: norm(String(s.pattern).split(',').map((x: string) => x.trim()), 21) 
+          }));
           parsed.sort((a, b) => a.startDate.localeCompare(b.startDate));
           setItwPatternSeqs(parsed);
         }
@@ -330,28 +369,27 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
         // console.error('Failed to load show_weekend_shifts:', e);
       }
 
-      // Load roles
+      // Load weekend definitions settings
       try {
-        const rolesData = await (window as any).api.getSetting('roles');
-        if (rolesData) {
-          const parsedRoles = JSON.parse(rolesData);
-          setRoles(Array.isArray(parsedRoles) ? parsedRoles : []);
-        }
+        const frDay = await (window as any).api.getSetting('weekend_friday_day');
+        setWeekendFridayDay(frDay === 'true');
+        const frNight = await (window as any).api.getSetting('weekend_friday_night');
+        setWeekendFridayNight(frNight === 'true');
+        
+        const saDay = await (window as any).api.getSetting('weekend_saturday_day');
+        setWeekendSaturdayDay(saDay !== 'false');
+        const saNight = await (window as any).api.getSetting('weekend_saturday_night');
+        setWeekendSaturdayNight(saNight !== 'false');
+        
+        const suDay = await (window as any).api.getSetting('weekend_sunday_day');
+        setWeekendSundayDay(suDay !== 'false');
+        const suNight = await (window as any).api.getSetting('weekend_sunday_night');
+        setWeekendSundayNight(suNight !== 'false');
       } catch (e) {
-        // console.error('Failed to load roles:', e);
+        // console.error('Failed to load weekend definitions settings:', e);
       }
 
-      // Load feature toggles
-      try {
-        const val = await (window as any).api.getSetting('feature_old_rtw_shifts');
-        setFeatureOldRtwShifts(val === 'true');
-      } catch { }
-
-      try {
-        const val = await (window as any).api.getSetting('feature_shift_transfers');
-        setFeatureShiftTransfers(val === 'true');
-      } catch { }
-
+      // Load ITW feature toggle (global)
       try {
         const val = await (window as any).api.getSetting('itw');
         setItwFeatureEnabled(val === 'true' || val === '1');
@@ -404,11 +442,19 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
       await (window as any).api.setSetting('rettungsdienst_qualification_type', rettungsdienstQualificationType);
       // Anzahl RTW/NEF leitet sich aus den Einträgen ab – keine separaten Settings mehr
       // ITW wird im Fahrzeuge-Menü gesetzt
-      await (window as any).api.setSetting('department', String(department));
       await (window as any).api.setSetting('show_weekend_shifts', showWeekendShifts ? 'true' : 'false');
-      await (window as any).api.setSetting('feature_old_rtw_shifts', featureOldRtwShifts ? 'true' : 'false');
-      await (window as any).api.setSetting('feature_shift_transfers', featureShiftTransfers ? 'true' : 'false');
+      await (window as any).api.setSetting('weekend_friday_day', weekendFridayDay ? 'true' : 'false');
+      await (window as any).api.setSetting('weekend_friday_night', weekendFridayNight ? 'true' : 'false');
+      await (window as any).api.setSetting('weekend_saturday_day', weekendSaturdayDay ? 'true' : 'false');
+      await (window as any).api.setSetting('weekend_saturday_night', weekendSaturdayNight ? 'true' : 'false');
+      await (window as any).api.setSetting('weekend_sunday_day', weekendSundayDay ? 'true' : 'false');
+      await (window as any).api.setSetting('weekend_sunday_night', weekendSundayNight ? 'true' : 'false');
+      // Feature toggles pro Abteilung speichern
+      await (window as any).api.setSetting(`feature_old_rtw_shifts_${selectedDepartment}`, featureOldRtwShifts ? 'true' : 'false');
+      await (window as any).api.setSetting(`feature_shift_transfers_${selectedDepartment}`, featureShiftTransfers ? 'true' : 'false');
+      // ITW global speichern
       await (window as any).api.setSetting('itw', itwFeatureEnabled ? 'true' : 'false');
+      // Rollen pro Abteilung speichern
       await saveRoles(true);
       setAddedRoleIds([]);
       // save per-shift-type auswertung settings
@@ -423,7 +469,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
       }
       // Sequenzen speichern
       try {
-        const payload = (itwPatternSeqs || []).map(s => ({ startDate: s.startDate, pattern: (s.pattern || []).map(v => (v === 'IW' ? 'IW' : '')).join(',') }));
+        const payload = (itwPatternSeqs || []).map(s => ({ startDate: s.startDate, pattern: (s.pattern || []).map(v => (['1', '2', '3', 'IW'].includes(v) ? v : '')).join(',') }));
         await (window as any).api.setItwPatterns?.(payload);
       } catch { }
       // Dept Sequenzen speichern
@@ -495,6 +541,30 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
     }
   }, [itwFeatureEnabled, activeCategory]);
 
+  useEffect(() => {
+    if (departmentName && departments.includes(departmentName)) {
+      setSelectedDepartment(departmentName);
+    }
+  }, [departmentName, departments]);
+
+  useEffect(() => {
+    if (selectedYearPlanningIndex != null) {
+      const selected = yearPlannings[selectedYearPlanningIndex];
+      if (!selected || (selected.department || '1. Abteilung') !== selectedDepartment) {
+        setSelectedYearPlanningIndex(null);
+      }
+    }
+  }, [selectedDepartment, yearPlannings, selectedYearPlanningIndex]);
+
+  useEffect(() => {
+    if (selectedItwPatternIndex != null) {
+      const selected = itwPatternSeqs[selectedItwPatternIndex];
+      if (!selected || (selected.department || '1. Abteilung') !== selectedDepartment) {
+        setSelectedItwPatternIndex(null);
+      }
+    }
+  }, [selectedDepartment, itwPatternSeqs, selectedItwPatternIndex]);
+
   // Wenn die Jahreszahl im Settings-Menü geändert wird, die Feiertage dieses Jahres anzeigen
   useEffect(() => {
     (async () => {
@@ -505,17 +575,161 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
     })();
   }, [year]);
 
-  // Wenn Vorplanungen geladen/geändert werden und yearImportSelectedYear nicht in der Liste ist,
-  // setze es auf das erste verfügbare Jahr oder das aktuelle Jahr
+  // Lade Features und Rollen pro Abteilung wenn sich selectedDepartment ändert
   useEffect(() => {
-    if (yearPlannings.length > 0) {
-      const hasSelectedYear = yearPlannings.some(yp => yp.year === yearImportSelectedYear);
-      if (!hasSelectedYear) {
-        // Setze auf das erste Jahr in der Liste (meist das aktuellste)
-        setYearImportSelectedYear(yearPlannings[0].year);
+    (async () => {
+      try {
+        // Feature toggles pro Abteilung laden
+        const oldRtw = await (window as any).api.getSetting(`feature_old_rtw_shifts_${selectedDepartment}`);
+        setFeatureOldRtwShifts(oldRtw === 'true');
+      } catch { }
+      try {
+        const shiftTransfers = await (window as any).api.getSetting(`feature_shift_transfers_${selectedDepartment}`);
+        setFeatureShiftTransfers(shiftTransfers === 'true');
+      } catch { }
+      try {
+        // Rollen aus der neuen roles-Tabelle laden
+        const dbRoles = await (window as any).api.getRoles();
+        if (Array.isArray(dbRoles) && dbRoles.length > 0) {
+          const mappedRoles = dbRoles.map((role: any) => {
+            const wertePermission = role.canExportData ? 'read_all' : role.canViewReports ? 'read' : 'none';
+            return {
+              id: role.id,
+              name: role.name || '',
+              description: role.description || '',
+              permissions: {
+                einteilung: (role.canEditRoster ? 'write' : role.canViewRoster ? 'read' : 'none') as 'none' | 'read' | 'write',
+                dienstplan: (role.canEditDienstplan ? 'write' : role.canViewDienstplanAll ? 'read_all' : role.canViewDienstplan ? 'read' : 'none') as 'none' | 'read' | 'read_all' | 'write',
+                werte: wertePermission as 'none' | 'read' | 'read_all' | 'write',
+                personal: (role.canEditPersonnel ? 'write' : 'none') as 'none' | 'write',
+                fahrzeuge: (role.canEditVehicles ? 'write' : 'none') as 'none' | 'write',
+                einstellungen: (role.canEditSettings ? 'write' : 'none') as 'none' | 'write',
+                kommentar_global: (role.canEditGlobalComments ? 'write' : 'none') as 'none' | 'write',
+                kommentar_individuell: (role.canEditPersonalComments ? 'write' : 'none') as 'none' | 'write'
+              }
+            };
+          });
+          setRoles(mappedRoles);
+        } else {
+          const rolesData = await (window as any).api.getSetting(`roles_${selectedDepartment}`);
+          if (rolesData) {
+            const parsedRoles = JSON.parse(rolesData);
+            setRoles(Array.isArray(parsedRoles) ? parsedRoles : []);
+          } else {
+            const rolesDataGlobal = await (window as any).api.getSetting('roles');
+            if (rolesDataGlobal) {
+              const parsedRoles = JSON.parse(rolesDataGlobal);
+              setRoles(Array.isArray(parsedRoles) ? parsedRoles : []);
+            } else {
+              setRoles([]);
+            }
+          }
+        }
+      } catch { 
+        setRoles([]);
       }
+      // Snapshot zurücksetzen, um Unsaved-Changes-Warnung zu vermeiden
+      setInitialSaveSnapshot('');
+    })();
+  }, [selectedDepartment]);
+
+  // Wenn Vorplanungen geladen/geändert werden und die ausgewählte Jahr/Abteilung-Kombination nicht mehr verfügbar ist,
+  // setze sie auf den ersten verfügbaren Eintrag
+  const addYearPlanningForDepartment = (dept: string) => {
+    if (!editingYearPlannings) {
+      setOriginalYearPlannings(JSON.parse(JSON.stringify(yearPlannings)));
+      setEditingYearPlannings(true);
     }
-  }, [yearPlannings]);
+    const currentYear = new Date().getFullYear();
+    const existingYears = yearPlannings.filter(x => (x.department || '1. Abteilung') === dept).map(yp => yp.year).sort((a, b) => b - a);
+    let newYear = (existingYears.length > 0) ? Math.max(...existingYears) + 1 : currentYear;
+    while (yearPlannings.some(yp => yp.year === newYear && (yp.department || '1. Abteilung') === dept)) {
+      newYear++;
+    }
+    setYearPlannings([...yearPlannings, { year: newYear, filePath: '', department: dept }]);
+  };
+
+  const importYearPlanning = async (planning: { year: number; filePath: string; department?: string }) => {
+    if (!planning?.filePath) {
+      alert(`Bitte zuerst eine Vorplanungsdatei für Jahr ${planning.year} für ${planning.department || '1. Abteilung'} hinterlegen.`);
+      return;
+    }
+
+    const importPath = planning.filePath;
+    const importYear = planning.year;
+    const importDepartment = planning.department || '1. Abteilung';
+    setCurrentImportPath(importPath);
+
+    let proceed = true;
+    try {
+      const prev = await (window as any).api.getDatabaseSummary?.(importYear);
+      const prevCount = prev?.success ? prev.counts?.dutyRoster : undefined;
+      const detail = `Vorhandene Einträge für ${importYear}: ${prevCount ?? 'n/v'}\n` +
+        `Backup wird unter backups/${importYear}/${importYear}-ALL/... erstellt.`;
+      const box = await (window as any).api.showMessageBox?.({
+        type: 'warning',
+        buttons: ['Import starten', 'Abbrechen'],
+        defaultId: 0,
+        cancelId: 1,
+        title: 'Dienstplan überschreiben',
+        message: `Achtung: Der Dienstplan für ${importYear} wird vollständig überschrieben. Fortfahren?`,
+        detail
+      });
+      proceed = !box || typeof box.response !== 'number' ? true : (box.response === 0);
+    } catch { }
+    if (!proceed) return;
+
+    try {
+      const backupResult = await (window as any).api.createDatabaseBackup?.({ year: importYear });
+      if (!backupResult?.success) console.warn('[SettingsMenu] Backup fehlgeschlagen:', backupResult?.message);
+      else console.log('[SettingsMenu] Backup erstellt unter:', backupResult.dir);
+    } catch (e) {
+      console.warn('[SettingsMenu] Backup Fehler', e);
+    }
+
+    try {
+      const res = await (window as any).api.importDutyRoster(importPath, importYear, undefined, { department: importDepartment });
+      if (res && res.success) {
+        if (res.unknownShiftTypes && res.unknownShiftTypes.length > 0) {
+          const createNewShiftTypes = window.confirm(
+            `Folgende unbekannte Dienstarten wurden gefunden:\n${res.unknownShiftTypes.join('\n')}\n\nMöchten Sie diese als neue Dienstarten anlegen?`
+          );
+          if (createNewShiftTypes) {
+            setShowYearImportShiftTypeDialog(true);
+            setYearImportUnknownShiftTypes(res.unknownShiftTypes);
+            setYearImportPendingYear(importYear);
+          }
+          return;
+        }
+
+        if (res.unknownAzubis && res.unknownAzubis.length > 0) {
+          const createNewAzubis = window.confirm(
+            `Folgende unbekannte Azubi-Namen wurden gefunden:\n${res.unknownAzubis.join('\n')}\n\nMöchten Sie diese als neue Azubis anlegen?`
+          );
+          if (createNewAzubis) {
+            setShowYearImportAzubiDialog(true);
+            setYearImportUnknownAzubiNames(res.unknownAzubis);
+            setYearImportPendingYear(importYear);
+          }
+          return;
+        }
+
+        if (res.azubisWithoutPeriod && res.azubisWithoutPeriod.length > 0) {
+          setShowYearImportAzubiPeriodDialog(true);
+          setYearImportAzubisWithoutPeriod(res.azubisWithoutPeriod);
+          setYearImportPendingYear(importYear);
+          return;
+        }
+
+        alert(`Dienstplan für ${importYear} erfolgreich importiert. Einträge: ${res.importedCount ?? 'n/v'}`);
+        try { (window as any).api.onDutyRosterUpdated?.(() => { }); } catch { }
+      } else {
+        alert(`Import fehlgeschlagen: ${res?.message || 'Unbekannter Fehler'}`);
+      }
+    } catch (e: any) {
+      alert(`Fehler beim Import: ${e?.message || String(e)}`);
+    }
+  };
 
   // ShiftTypes: Verhalten wie bei Personal/Fahrzeuge (Auswahl, Ändern, Speichern/Abbrechen, Hinzufügen als leere Zeile)
   const startEditingShiftTypes = () => {
@@ -701,8 +915,29 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
         return;
       }
 
-      // Speichere Rollen als JSON in Settings
-      await (window as any).api.setSetting('roles', JSON.stringify(roles));
+      const savedRoles = await (window as any).api.saveRoles(roles);
+      if (Array.isArray(savedRoles)) {
+        setRoles(savedRoles.map((role: any) => {
+          const wertePermission = role.canExportData ? 'read_all' : role.canViewReports ? 'read' : 'none';
+          return {
+            id: role.id,
+            name: role.name || '',
+            description: role.description || '',
+            permissions: {
+              einteilung: (role.canEditRoster ? 'write' : role.canViewRoster ? 'read' : 'none') as 'none' | 'read' | 'write',
+              dienstplan: (role.canEditDienstplan ? 'write' : role.canViewDienstplanAll ? 'read_all' : role.canViewDienstplan ? 'read' : 'none') as 'none' | 'read' | 'read_all' | 'write',
+              werte: wertePermission as 'none' | 'read' | 'read_all' | 'write',
+              personal: (role.canEditPersonnel ? 'write' : 'none') as 'none' | 'write',
+              fahrzeuge: (role.canEditVehicles ? 'write' : 'none') as 'none' | 'write',
+              einstellungen: (role.canEditSettings ? 'write' : 'none') as 'none' | 'write',
+              kommentar_global: (role.canEditGlobalComments ? 'write' : 'none') as 'none' | 'write',
+              kommentar_individuell: (role.canEditPersonalComments ? 'write' : 'none') as 'none' | 'write'
+            }
+          };
+        }));
+
+        setAddedRoleIds([]);
+      }
 
       if (!silent) alert('Rollen gespeichert!');
     } catch (err) {
@@ -761,7 +996,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
       setShowYearImportShiftTypeDialog(false);
 
       // Retry import with new shift types
-      const retryResult = await (window as any).api.importDutyRoster(currentImportPath || rosterImportPath, yearImportPendingYear, undefined, { newShiftTypes });
+      const selectedPlanning = yearPlannings.find(yp => yp.year === yearImportPendingYear);
+      const retryResult = await (window as any).api.importDutyRoster(currentImportPath || rosterImportPath, yearImportPendingYear, undefined, { newShiftTypes, department: selectedPlanning?.department });
 
       if (retryResult && retryResult.success) {
         // Check if there are still unknown azubis
@@ -817,7 +1053,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
   const handleYearImportAzubiConfirm = async (newAzubis: Array<{ name: string, vorname: string, lehrjahr: number }>) => {
     setShowYearImportAzubiDialog(false);
 
-    const retryResult = await (window as any).api.importDutyRoster(currentImportPath || rosterImportPath, yearImportPendingYear, undefined, { newAzubis });
+    const selectedPlanning = yearPlannings.find(yp => yp.year === yearImportPendingYear);
+    const retryResult = await (window as any).api.importDutyRoster(currentImportPath || rosterImportPath, yearImportPendingYear, undefined, { newAzubis, department: selectedPlanning?.department });
 
     if (retryResult && retryResult.success) {
       // Check if there are still unknown shift types
@@ -868,7 +1105,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
         currentImportPath || rosterImportPath,
         yearImportPendingYear,
         undefined,
-        { azubiPeriodAdjustments: adjustments }
+        { azubiPeriodAdjustments: adjustments, department: yearPlannings.find(yp => yp.year === yearImportPendingYear)?.department }
       );
 
       if (retryResult && retryResult.success) {
@@ -1083,10 +1320,10 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
               </div>
             </div>
 
-            {/* Rettungswache und Abteilung */}
+            {/* Rettungswache */}
             <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
-              <h3>Rettungswache und Abteilung</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(280px, 1fr)', gap: 12, maxWidth: 760 }}>
+              <h3>Rettungswache</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr)', gap: 12, maxWidth: 380 }}>
                 <label style={{ display: 'grid', gridTemplateColumns: '170px 1fr', alignItems: 'center', gap: 8 }}>
                   <span>Feuer- und Rettungswache:</span>
                   <select value={rescueStation} onChange={e => setRescueStation(e.target.value)}>
@@ -1097,14 +1334,108 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                     <option value="5">5</option>
                   </select>
                 </label>
-                <label style={{ display: 'grid', gridTemplateColumns: '170px 1fr', alignItems: 'center', gap: 8 }}>
-                  <span>Abteilung:</span>
-                  <select value={department} onChange={e => setDepartment(Number(e.target.value))}>
-                    <option value={1}>1</option>
-                    <option value={2}>2</option>
-                    <option value={3}>3</option>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
+              <h3>Abteilungsauswahl</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr)', gap: 12, maxWidth: 420 }}>
+                <label style={{ display: 'grid', gridTemplateColumns: '140px 1fr', alignItems: 'center', gap: 8 }}>
+                  <span>Aktuelle Abteilung:</span>
+                  <select value={selectedDepartment} onChange={e => setSelectedDepartment(e.target.value)}>
+                    {departments.map(dept => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
                   </select>
                 </label>
+              </div>
+              <p style={{ marginTop: 8, color: '#666', fontSize: '0.9em' }}>
+                ITW-Vorplanungen und jahresspezifische Vorplanungen werden pro Abteilung gepflegt. Die regulären Abteilungs-Schichtfolgen gelten gemeinsam für alle Abteilungen.
+              </p>
+            </div>
+
+            {/* ITW-Aktivierung (global) */}
+            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
+              <h3>Allgemeine Funktionen</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr', columnGap: 12, alignItems: 'start' }}>
+                <input
+                  type="checkbox"
+                  id="featureItw"
+                  checked={itwFeatureEnabled}
+                  onChange={(e) => setItwFeatureEnabled(e.target.checked)}
+                  style={{ marginTop: 2 }}
+                />
+                <label htmlFor="featureItw" style={{ cursor: 'pointer', margin: 0 }}>
+                  <strong>ITW (Integrierter Behandlungs- und Wirkstoffplan) aktivieren</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                    Blendet alle ITW-Bereiche in Dienstplan, Fahrzeuge und Personal ein oder aus.
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
+              <h3>Gemeinsame Schichtfolge für alle Abteilungen</h3>
+              <p style={{ marginTop: 0, color: '#666' }}>
+                Die 21‑Tage‑Folgen werden für alle Abteilungen gleich verwendet.
+              </p>
+              <div>
+                <h4>Schichtfolgenwechsel (gültig ab)</h4>
+                <table className={styles.table}>
+                  <thead>
+                    <tr className={styles.thead}>
+                      <th style={{ width: 180, position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>Gültig ab (YYYY-MM-DD)</th>
+                      <th>Muster (21 Felder, 1/2/3)</th>
+                    </tr>
+                  </thead>
+                  <tbody className={styles.tbody}>
+                    {(deptPatternSeqs || []).map((s, idx) => (
+                      <tr key={`${s.startDate}_${idx}`} className={[styles.row, selectedDeptPatternIndex === idx ? styles.selected : ''].filter(Boolean).join(' ')} onClick={() => setSelectedDeptPatternIndex(prev => prev === idx ? null : idx)}>
+                        <td>
+                          <input type="date" value={s.startDate} disabled={!editingDeptPatterns}
+                            onChange={e => {
+                              if (!editingDeptPatterns) return;
+                              const v = e.target.value;
+                              setDeptPatternSeqs(prev => prev.map((x, i) => i === idx ? { ...x, startDate: v } : x).sort((a, b) => a.startDate.localeCompare(b.startDate)));
+                            }} />
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {Array.from({ length: 21 }).map((_, i) => (
+                              <select key={i} value={s.pattern[i] || ''} disabled={!editingDeptPatterns}
+                                onChange={e => {
+                                  if (!editingDeptPatterns) return;
+                                  const v = ['1', '2', '3'].includes(e.target.value) ? e.target.value : '';
+                                  setDeptPatternSeqs(prev => prev.map((x, j) => {
+                                    if (j !== idx) return x;
+                                    const next = [...x.pattern];
+                                    next[i] = v as any;
+                                    return { ...x, pattern: next };
+                                  }));
+                                }}>
+                                <option value=""></option>
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                              </select>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!editingDeptPatterns ? (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button onClick={() => { setEditingDeptPatterns(true); setOriginalDeptPatterns(JSON.parse(JSON.stringify(deptPatternSeqs))); setDeptPatternSeqs(prev => [...prev, { startDate: new Date().toISOString().slice(0, 10), pattern: Array(21).fill('') }].sort((a, b) => a.startDate.localeCompare(b.startDate))); setSelectedDeptPatternIndex((deptPatternSeqs?.length ?? 0)); }}>Hinzufügen</button>
+                    <button onClick={() => { setEditingDeptPatterns(true); setOriginalDeptPatterns(JSON.parse(JSON.stringify(deptPatternSeqs))); }} disabled={(deptPatternSeqs || []).length === 0}>Ändern</button>
+                    <button onClick={() => { if (selectedDeptPatternIndex != null) setDeptPatternSeqs(prev => prev.filter((_, i) => i !== selectedDeptPatternIndex)); setSelectedDeptPatternIndex(null); }} disabled={selectedDeptPatternIndex == null}>Löschen</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button onClick={() => { if (originalDeptPatterns) setDeptPatternSeqs(originalDeptPatterns); setOriginalDeptPatterns(null); setEditingDeptPatterns(false); setSelectedDeptPatternIndex(null); }}>Abbrechen</button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1213,370 +1544,171 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                 Hinterlegen Sie für jedes Jahr eine Excel-Datei mit der Vorausplanung.
               </p>
 
-              {!editingYearPlannings && (
-                <div>
-                  {yearPlannings.length === 0 && (
-                    <p style={{ fontStyle: 'italic', color: '#999' }}>Keine Vorplanungen hinterlegt.</p>
-                  )}
-                  {yearPlannings.length > 0 && (
-                    <div style={{ marginBottom: 12 }}>
-                      {yearPlannings.map((yp, idx) => (
-                        <div key={idx} style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          padding: '8px 12px',
-                          marginBottom: 4,
-                          background: '#f8f9fa',
-                          borderRadius: 4,
-                          border: '1px solid #dee2e6'
-                        }}>
-                          <div style={{ flex: 1 }}>
-                            <strong>Jahr {yp.year}:</strong> <span style={{ fontSize: 13, color: '#555' }}>{yp.filePath}</span>
+              <div style={{ marginBottom: 16, display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr)', gap: 12 }}>
+                <label style={{ display: 'grid', gridTemplateColumns: '140px 1fr', alignItems: 'center', gap: 8 }}>
+                  <span>Abteilung:</span>
+                  <select value={selectedDepartment} onChange={e => setSelectedDepartment(e.target.value)}>
+                    {departments.map(dept => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div style={{ padding: 12, border: '1px solid #ddd', borderRadius: 4, background: editingYearPlannings ? '#fff' : '#fdfdfd' }}>
+                <h4 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: 4, marginBottom: 12 }}>{selectedDepartment}</h4>
+                {yearPlannings.filter(yp => (yp.department || '1. Abteilung') === selectedDepartment).length === 0 && (
+                  <p style={{ fontStyle: 'italic', color: '#999', fontSize: '0.9em' }}>Keine Vorplanungen für {selectedDepartment}.</p>
+                )}
+
+                {yearPlannings.filter(yp => (yp.department || '1. Abteilung') === selectedDepartment).map((yp) => {
+                  const mainIdx = yearPlannings.findIndex(x => x === yp);
+                  return (
+                    <div key={mainIdx} style={{
+                      display: 'flex',
+                      gap: 8,
+                      alignItems: 'center',
+                      marginBottom: 8,
+                      padding: 8,
+                      background: editingYearPlannings && selectedYearPlanningIndex === mainIdx ? '#e3f2fd' : 'white',
+                      borderRadius: 4,
+                      border: '1px solid #ccc',
+                      cursor: editingYearPlannings ? 'pointer' : 'default'
+                    }}
+                      onClick={() => editingYearPlannings && setSelectedYearPlanningIndex(mainIdx)}
+                    >
+                      {!editingYearPlannings ? (
+                        <>
+                          <div style={{ flex: 1, fontSize: 13 }}>
+                            <strong>Jahr {yp.year}:</strong> <span style={{ color: '#666' }}>{yp.filePath}</span>
                           </div>
-                        </div>
-                      ))}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              importYearPlanning(yp);
+                            }}
+                            style={{ padding: '4px 10px', fontSize: 12, background: 'var(--primary)', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                            disabled={!yp.filePath}
+                          >
+                            Jahr importieren
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <input
+                            type="number"
+                            value={yp.year}
+                            onChange={e => {
+                              const updated = [...yearPlannings];
+                              updated[mainIdx].year = Number(e.target.value) || new Date().getFullYear();
+                              setYearPlannings(updated);
+                            }}
+                            onClick={e => e.stopPropagation()}
+                            style={{ width: 80 }}
+                          />
+                          <input
+                            type="text"
+                            value={yp.filePath}
+                            readOnly
+                            placeholder="Pfad zur Excel-Datei"
+                            style={{ flex: 1 }}
+                            onClick={e => e.stopPropagation()}
+                          />
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const result = await (window as any).api.showOpenDialog({
+                                properties: ['openFile'],
+                                filters: [{ name: 'Excel-Dateien', extensions: ['xlsx', 'xls', 'xlsm'] }]
+                              });
+                              if (!result.canceled && result.filePaths.length > 0) {
+                                const updated = [...yearPlannings];
+                                updated[mainIdx].filePath = result.filePaths[0];
+                                setYearPlannings(updated);
+                              }
+                            }}
+                            style={{ padding: '4px 8px', fontSize: 12 }}
+                          >
+                            Datei wählen
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Jahr ${yp.year} (${selectedDepartment}) wirklich löschen?`)) {
+                                setYearPlannings(yearPlannings.filter((_, i) => i !== mainIdx));
+                                if (selectedYearPlanningIndex === mainIdx) setSelectedYearPlanningIndex(null);
+                              }
+                            }}
+                            style={{ padding: '4px 8px', fontSize: 12, background: '#dc3545', color: 'white', border: 'none', borderRadius: 4 }}
+                          >
+                            Löschen
+                          </button>
+                        </>
+                      )}
                     </div>
-                  )}
+                  );
+                })}
+
+                <button
+                  onClick={() => addYearPlanningForDepartment(selectedDepartment)}
+                  style={{ padding: '4px 10px', fontSize: '0.85em', background: editingYearPlannings ? '#eee' : '#dbeafe', border: '1px solid #ccc', borderRadius: 4, cursor: 'pointer' }}
+                >
+                  + Jahr für {selectedDepartment} hinzufügen
+                </button>
+              </div>
+
+              {!editingYearPlannings ? (
+                <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
                   <button
                     onClick={() => {
                       setEditingYearPlannings(true);
                       setOriginalYearPlannings(JSON.parse(JSON.stringify(yearPlannings)));
-                      setSelectedYearPlanningIndex(null);
                     }}
-                    style={{ padding: '6px 12px' }}
+                    style={{ padding: '8px 16px', fontWeight: 'bold' }}
                   >
-                    Bearbeiten / Jahr hinzufügen
+                    Bearbeiten
                   </button>
                 </div>
-              )}
-
-              {editingYearPlannings && (
-                <div style={{ border: '1px solid #ddd', padding: 12, borderRadius: 4, background: '#f9f9f9' }}>
-                  <h4 style={{ marginTop: 0 }}>Vorplanungen bearbeiten</h4>
-
-                  <div style={{ marginBottom: 12 }}>
-                    {yearPlannings.map((yp, idx) => (
-                      <div key={idx} style={{
-                        display: 'flex',
-                        gap: 8,
-                        alignItems: 'center',
-                        marginBottom: 8,
-                        padding: 8,
-                        background: selectedYearPlanningIndex === idx ? '#e3f2fd' : 'white',
-                        borderRadius: 4,
-                        border: '1px solid #ccc',
-                        cursor: 'pointer'
-                      }}
-                        onClick={() => setSelectedYearPlanningIndex(idx)}
-                      >
-                        <input
-                          type="number"
-                          value={yp.year}
-                          onChange={e => {
-                            const updated = [...yearPlannings];
-                            updated[idx].year = Number(e.target.value) || new Date().getFullYear();
-                            setYearPlannings(updated);
-                          }}
-                          onClick={e => e.stopPropagation()}
-                          style={{ width: 80 }}
-                        />
-                        <input
-                          type="text"
-                          value={yp.filePath}
-                          readOnly
-                          placeholder="Pfad zur Excel-Datei"
-                          style={{ flex: 1 }}
-                          onClick={e => e.stopPropagation()}
-                        />
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            const result = await (window as any).api.showOpenDialog({
-                              properties: ['openFile'],
-                              filters: [{ name: 'Excel-Dateien', extensions: ['xlsx', 'xls', 'xlsm'] }]
-                            });
-                            if (!result.canceled && result.filePaths.length > 0) {
-                              const updated = [...yearPlannings];
-                              updated[idx].filePath = result.filePaths[0];
-                              setYearPlannings(updated);
-                            }
-                          }}
-                          style={{ padding: '4px 8px', fontSize: 12 }}
-                        >
-                          Datei wählen
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (window.confirm(`Jahr ${yp.year} wirklich löschen?`)) {
-                              setYearPlannings(yearPlannings.filter((_, i) => i !== idx));
-                              if (selectedYearPlanningIndex === idx) setSelectedYearPlanningIndex(null);
-                            }
-                          }}
-                          style={{ padding: '4px 8px', fontSize: 12, background: '#dc3545', color: 'white', border: 'none', borderRadius: 4 }}
-                        >
-                          Löschen
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      // Finde das nächste freie Jahr
-                      const currentYear = new Date().getFullYear();
-                      const existingYears = yearPlannings.map(yp => yp.year).sort((a, b) => b - a);
-
-                      let newYear = currentYear;
-
-                      // Wenn es bereits Jahre gibt, nimm das höchste Jahr + 1
-                      if (existingYears.length > 0) {
-                        const maxYear = Math.max(...existingYears);
-                        // Wenn das aktuelle Jahr oder höher schon existiert, nimm das Maximum + 1
-                        if (maxYear >= currentYear) {
-                          newYear = maxYear + 1;
-                        }
-                      }
-
-                      // Sicherheitsprüfung: Falls das Jahr trotzdem existiert, suche das nächste freie
-                      while (yearPlannings.some(yp => yp.year === newYear)) {
-                        newYear++;
-                      }
-
-                      setYearPlannings([...yearPlannings, { year: newYear, filePath: '' }]);
-                    }}
-                    style={{ padding: '6px 12px', marginRight: 8 }}
-                  >
-                    + Jahr hinzufügen
-                  </button>
-
-                  <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #ddd', display: 'flex', gap: 8 }}>
-                    <button
-                      onClick={() => {
-                        if (originalYearPlannings) {
-                          setYearPlannings(originalYearPlannings);
-                        }
+              ) : (
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <button 
+                    onClick={async () => {
+                      try {
+                        await (window as any).api.saveYearPlannings?.(yearPlannings);
                         setEditingYearPlannings(false);
                         setOriginalYearPlannings(null);
                         setSelectedYearPlanningIndex(null);
-                      }}
-                      style={{ padding: '6px 12px' }}
-                    >
-                      Abbrechen
-                    </button>
-                  </div>
+                      } catch (e) {
+                        console.error("Fehler beim Speichern der Vorplanungen:", e);
+                        alert("Fehler beim Speichern der Vorplanungen.");
+                      }
+                    }}
+                    style={{ padding: '8px 16px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: 4, fontWeight: 'bold' }}
+                  >
+                    Speichern
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (originalYearPlannings) {
+                        setYearPlannings(originalYearPlannings);
+                      }
+                      setEditingYearPlannings(false);
+                      setOriginalYearPlannings(null);
+                      setSelectedYearPlanningIndex(null);
+                    }}
+                    style={{ padding: '8px 16px' }}
+                  >
+                    Abbrechen
+                  </button>
                 </div>
               )}
             </div>
 
             {/* Import Dienstplan (Excel) - Monatsimport aus Settings entfernt */}
-            <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                Jahr für Import:
-                <select
-                  value={yearImportSelectedYear}
-                  onChange={e => setYearImportSelectedYear(Number(e.target.value))}
-                  style={{ marginLeft: 6, padding: '4px 8px' }}
-                >
-                  {yearPlannings.map(yp => (
-                    <option key={yp.year} value={yp.year}>{yp.year}</option>
-                  ))}
-                  {/* Fallback falls keine Jahr-Planungen definiert */}
-                  {yearPlannings.length === 0 && <option value={year}>{year}</option>}
-                </select>
-              </label>
-            </div>
-            <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button
-                onClick={async () => {
-                  try {
-                    // Versuche jahresspezifische Vorplanungsdatei zu laden
-                    let importPath = null;
-                    try {
-                      // console.log('[Import] Lade Vorplanung für Jahr:', yearImportSelectedYear);
-                      const yearPlanning = await (window as any).api.getYearPlanningForYear?.(yearImportSelectedYear);
-                      // console.log('[Import] Geladene Vorplanung:', yearPlanning);
-                      if (yearPlanning?.filePath) {
-                        importPath = yearPlanning.filePath;
-                        // console.log('[Import] Verwende jahresspezifische Datei:', importPath);
-                      }
-                    } catch (e) {
-                      // console.warn('Fehler beim Laden der jahresspezifischen Vorplanung:', e);
-                    }
-
-                    // Fallback: alte rosterImportPath Einstellung
-                    if (!importPath) {
-                      importPath = rosterImportPath;
-                      // console.log('[Import] Fallback auf rosterImportPath:', importPath);
-                    }
-
-                    if (!importPath) {
-                      alert('Bitte zuerst eine Vorplanungsdatei für das Jahr ' + yearImportSelectedYear + ' hinterlegen.');
-                      return;
-                    }
-
-                    // Speichere Import-Pfad für Retry-Logik
-                    setCurrentImportPath(importPath);
-
-                    // Warnung anzeigen: Überschreiben bestätigen
-                    let proceed = true;
-                    try {
-                      const prev = await (window as any).api.getDatabaseSummary?.(yearImportSelectedYear);
-                      const prevCount = prev?.success ? prev.counts?.dutyRoster : undefined;
-                      const detail = `Vorhandene Einträge für ${yearImportSelectedYear}: ${prevCount ?? 'n/v'}\n` +
-                        `Backup wird unter backups/${yearImportSelectedYear}/${yearImportSelectedYear}-ALL/... erstellt.`;
-                      const box = await (window as any).api.showMessageBox?.({
-                        type: 'warning',
-                        buttons: ['Import starten', 'Abbrechen'],
-                        defaultId: 0,
-                        cancelId: 1,
-                        title: 'Dienstplan überschreiben',
-                        message: `Achtung: Der Dienstplan für ${yearImportSelectedYear} wird vollständig überschrieben. Fortfahren?`,
-                        detail
-                      });
-                      proceed = !box || typeof box.response !== 'number' ? true : (box.response === 0);
-                    } catch { }
-                    if (!proceed) return;
-
-                    // Backup immer vor Import erstellen
-                    try {
-                      const r = await (window as any).api.createDatabaseBackup?.({ year: yearImportSelectedYear });
-                      if (!r?.success) console.warn('[SettingsMenu] Backup fehlgeschlagen:', r?.message);
-                      else console.log('[SettingsMenu] Backup erstellt unter:', r.dir);
-                    } catch (e) {
-                      // console.warn('[SettingsMenu] Backup Fehler', e);
-                    }
-
-                    // Browser-Confirm Fallback ist bereits im obigen try/catch abgedeckt
-
-                    // Altdaten für das Jahr NICHT löschen, damit Einteilungen erhalten bleiben
-                    // Die Import-Funktion kümmert sich um das Überschreiben der Dienste
-                    /*
-                    try {
-                      await (window as any).api.clearDutyRosterYear?.(yearImportSelectedYear);
-                    } catch (e) {
-                      // console.warn('[SettingsMenu] clearDutyRosterYear Fehler', e);
-                    }
-                    */
-
-                    const res = await (window as any).api.importDutyRoster(importPath, yearImportSelectedYear);
-                    if (res && res.success) {
-                      // Check if unknown shift types were found
-                      if (res.unknownShiftTypes && res.unknownShiftTypes.length > 0) {
-                        const createNewShiftTypes = window.confirm(
-                          `Folgende unbekannte Dienstarten wurden gefunden:\n${res.unknownShiftTypes.join('\n')}\n\nMöchten Sie diese als neue Dienstarten anlegen?`
-                        );
-
-                        if (createNewShiftTypes) {
-                          // Show new shift type dialog
-                          setShowYearImportShiftTypeDialog(true);
-                          setYearImportUnknownShiftTypes(res.unknownShiftTypes);
-                          setYearImportPendingYear(yearImportSelectedYear);
-                        }
-                        return;
-                      }
-
-                      // Check if azubis were found  
-                      if (res.unknownAzubis && res.unknownAzubis.length > 0) {
-                        const createNewAzubis = window.confirm(
-                          `Folgende unbekannte Azubi-Namen wurden gefunden:\n${res.unknownAzubis.join('\n')}\n\nMöchten Sie diese als neue Azubis anlegen?`
-                        );
-
-                        if (createNewAzubis) {
-                          setShowYearImportAzubiDialog(true);
-                          setYearImportUnknownAzubiNames(res.unknownAzubis);
-                          setYearImportPendingYear(yearImportSelectedYear);
-                        }
-                        return;
-                      }
-
-                      // Check if azubis without valid periods were found
-                      if (res.azubisWithoutPeriod && res.azubisWithoutPeriod.length > 0) {
-                        setShowYearImportAzubiPeriodDialog(true);
-                        setYearImportAzubisWithoutPeriod(res.azubisWithoutPeriod);
-                        setYearImportPendingYear(yearImportSelectedYear);
-                        return;
-                      }
-
-                      alert(`Dienstplan für ${yearImportSelectedYear} erfolgreich importiert. Einträge: ${res.importedCount ?? 'n/v'}`);
-                      setCurrentImportPath(null); // Reset nach erfolgreichem Import
-                      try { (window as any).api.onDutyRosterUpdated?.(() => { }); } catch { }
-                    } else {
-                      alert(`Import fehlgeschlagen: ${res?.message || 'Unbekannter Fehler'}`);
-                    }
-                  } catch (e: any) {
-                    alert(`Fehler beim Import: ${e?.message || String(e)}`);
-                  }
-                }}
-              >Jahr importieren</button>
-            </div>
+            {/* Der Jahresimport wird jetzt direkt an der jeweiligen Vorplanungsdatei gestartet. */}
             {/* Buttons werden ans Seitenende verschoben */}
             {/* per-shift-type auswertung selector will be rendered as a column in the Dienstarten table below */}
 
-            {/* Department Schichtfolgen */}
-            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
-              <h3>Reguläre Schichtfolgen (Abteilungen 1/2/3)</h3>
-              <p style={{ marginTop: 0, color: '#666' }}>Pflege hier die 21‑Tage‑Schichtfolgen mit Gültig-ab; Werte sind 1, 2 oder 3.</p>
-              <div>
-                <h4>Schichtfolgenwechsel (gültig ab)</h4>
-                <table className={styles.table}>
-                  <thead>
-                    <tr className={styles.thead}>
-                      <th style={{ width: 180, position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>Gültig ab (YYYY-MM-DD)</th>
-                      <th>Muster (21 Felder, 1/2/3)</th>
-                    </tr>
-                  </thead>
-                  <tbody className={styles.tbody}>
-                    {(deptPatternSeqs || []).map((s, idx) => (
-                      <tr key={`${s.startDate}_${idx}`} className={[styles.row, selectedDeptPatternIndex === idx ? styles.selected : ''].filter(Boolean).join(' ')} onClick={() => setSelectedDeptPatternIndex(prev => prev === idx ? null : idx)}>
-                        <td>
-                          <input type="date" value={s.startDate} disabled={!editingDeptPatterns}
-                            onChange={e => {
-                              if (!editingDeptPatterns) return;
-                              const v = e.target.value;
-                              setDeptPatternSeqs(prev => prev.map((x, i) => i === idx ? { ...x, startDate: v } : x).sort((a, b) => a.startDate.localeCompare(b.startDate)));
-                            }} />
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            {Array.from({ length: 21 }).map((_, i) => (
-                              <select key={i} value={s.pattern[i] || ''} disabled={!editingDeptPatterns}
-                                onChange={e => {
-                                  if (!editingDeptPatterns) return;
-                                  const v = ['1', '2', '3'].includes(e.target.value) ? e.target.value : '';
-                                  setDeptPatternSeqs(prev => prev.map((x, j) => {
-                                    if (j !== idx) return x;
-                                    const next = [...x.pattern];
-                                    next[i] = v as any;
-                                    return { ...x, pattern: next };
-                                  }));
-                                }}>
-                                <option value=""></option>
-                                <option value="1">1</option>
-                                <option value="2">2</option>
-                                <option value="3">3</option>
-                              </select>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {!editingDeptPatterns ? (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    <button onClick={() => { setEditingDeptPatterns(true); setOriginalDeptPatterns(JSON.parse(JSON.stringify(deptPatternSeqs))); setDeptPatternSeqs(prev => [...prev, { startDate: new Date().toISOString().slice(0, 10), pattern: Array(21).fill('') }].sort((a, b) => a.startDate.localeCompare(b.startDate))); setSelectedDeptPatternIndex((deptPatternSeqs?.length ?? 0)); }}>Hinzufügen</button>
-                    <button onClick={() => { setEditingDeptPatterns(true); setOriginalDeptPatterns(JSON.parse(JSON.stringify(deptPatternSeqs))); }} disabled={(deptPatternSeqs || []).length === 0}>Ändern</button>
-                    <button onClick={() => { if (selectedDeptPatternIndex != null) setDeptPatternSeqs(prev => prev.filter((_, i) => i !== selectedDeptPatternIndex)); setSelectedDeptPatternIndex(null); }} disabled={selectedDeptPatternIndex == null}>Löschen</button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    <button onClick={() => { if (originalDeptPatterns) setDeptPatternSeqs(originalDeptPatterns); setOriginalDeptPatterns(null); setEditingDeptPatterns(false); setSelectedDeptPatternIndex(null); }}>Abbrechen</button>
-                  </div>
-                )}
-              </div>
-            </div>
 
             {/* Dienstarten */}
             <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
@@ -1692,8 +1824,48 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                 <div>
                   <strong>Wochenend-Schichten anzeigen</strong>
                   <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
-                    Wochenend-Schichten (Sa/So) im Kontrollkasten zählen und farblich (Ampel) anzeigen.
+                    Wochenend-Schichten im Kontrollkasten zählen und farblich (Ampel) anzeigen.
                   </div>
+                  {showWeekendShifts && (
+                    <div style={{ marginTop: 12, padding: 12, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, maxWidth: 450 }}>
+                      <strong style={{ fontSize: '0.9em', display: 'block', marginBottom: 8 }}>Wochenend-Definition (Schichten aktivieren):</strong>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '0.85em', marginBottom: 6 }}>Freitag</div>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer', marginBottom: 4 }}>
+                            <input type="checkbox" checked={weekendFridayDay} onChange={e => setWeekendFridayDay(e.target.checked)} />
+                            Tag
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={weekendFridayNight} onChange={e => setWeekendFridayNight(e.target.checked)} />
+                            Nacht
+                          </label>
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '0.85em', marginBottom: 6 }}>Samstag</div>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer', marginBottom: 4 }}>
+                            <input type="checkbox" checked={weekendSaturdayDay} onChange={e => setWeekendSaturdayDay(e.target.checked)} />
+                            Tag
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={weekendSaturdayNight} onChange={e => setWeekendSaturdayNight(e.target.checked)} />
+                            Nacht
+                          </label>
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '0.85em', marginBottom: 6 }}>Sonntag</div>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer', marginBottom: 4 }}>
+                            <input type="checkbox" checked={weekendSundayDay} onChange={e => setWeekendSundayDay(e.target.checked)} />
+                            Tag
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={weekendSundayNight} onChange={e => setWeekendSundayNight(e.target.checked)} />
+                            Nacht
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1709,22 +1881,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                   <strong>Alte RTW-Schichten Tracking aktivieren</strong>
                   <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
                     Ermöglicht die Erfassung von Schichten aus einem Altsystem in den Personaleinstellungen und zeigt diese im Dienstplan an.
-                  </div>
-                </label>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr', columnGap: 12, alignItems: 'start' }}>
-                <input
-                  type="checkbox"
-                  id="featureItw"
-                  checked={itwFeatureEnabled}
-                  onChange={(e) => setItwFeatureEnabled(e.target.checked)}
-                  style={{ marginTop: 2 }}
-                />
-                <label htmlFor="featureItw" style={{ cursor: 'pointer', margin: 0 }}>
-                  <strong>ITW aktivieren</strong>
-                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
-                    Blendet alle ITW-Bereiche in Dienstplan, Fahrzeuge und Personal ein oder aus.
                   </div>
                 </label>
               </div>
@@ -1760,62 +1916,130 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
               <p style={{ marginTop: 0, color: '#666' }}>Pflege hier beliebig viele 21‑Tage‑Schichtfolgen, die ab einem Datum gelten. Die Folge setzt sich jahresübergreifend fort, bis eine neuere Folge beginnt.</p>
               <div>
                 <h4>Schichtfolgenwechsel (gültig ab)</h4>
-                <table className={styles.table}>
-                  <thead>
-                    <tr className={styles.thead}>
-                      <th style={{ width: 180, position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>Gültig ab (YYYY-MM-DD)</th>
-                      <th>Muster (21 Felder, "IW" oder leer)</th>
-                    </tr>
-                  </thead>
-                  <tbody className={styles.tbody}>
-                    {(itwPatternSeqs || []).map((s, idx) => (
-                      <tr key={`${s.startDate}_${idx}`} className={[styles.row, selectedItwPatternIndex === idx ? styles.selected : ''].filter(Boolean).join(' ')} onClick={() => setSelectedItwPatternIndex(prev => prev === idx ? null : idx)}>
-                        <td>
-                          <input type="date" value={s.startDate} disabled={!editingItwPatterns}
-                            onChange={e => {
-                              if (!editingItwPatterns) return;
-                              const v = e.target.value;
-                              setItwPatternSeqs(prev => prev.map((x, i) => i === idx ? { ...x, startDate: v } : x).sort((a, b) => a.startDate.localeCompare(b.startDate)));
-                            }} />
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            {Array.from({ length: 21 }).map((_, i) => (
-                              <select key={i} value={s.pattern[i] || ''} disabled={!editingItwPatterns}
-                                onChange={e => {
-                                  if (!editingItwPatterns) return;
-                                  const v = e.target.value === 'IW' ? 'IW' : '';
-                                  setItwPatternSeqs(prev => prev.map((x, j) => {
-                                    if (j !== idx) return x;
-                                    const next = [...x.pattern];
-                                    next[i] = v;
-                                    return { ...x, pattern: next };
-                                  }));
-                                }}>
-                                <option value=""></option>
-                                <option value="IW">IW</option>
-                              </select>
-                            ))}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+                  {(() => {
+                    const selectedDeptPatterns = (itwPatternSeqs || []).filter(s => (s.department || '1. Abteilung') === selectedDepartment);
+                    return (
+                      <div style={{ padding: 16, border: '1px solid #eee', borderRadius: 8, background: '#fdfdfd' }}>
+                        <h4 style={{ marginTop: 0, marginBottom: 12, color: 'var(--primary)', borderBottom: '2px solid #eee', paddingBottom: 6 }}>{selectedDepartment}</h4>
+                        <table className={styles.table} style={{ marginBottom: 12 }}>
+                          <thead>
+                            <tr className={styles.thead}>
+                              <th style={{ width: 180, position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>Gültig ab (YYYY-MM-DD)</th>
+                              <th>Muster (21 Felder, "IW" oder leer)</th>
+                            </tr>
+                          </thead>
+                          <tbody className={styles.tbody}>
+                            {selectedDeptPatterns.length === 0 && (
+                              <tr>
+                                <td colSpan={2} style={{ textAlign: 'center', padding: 20, color: '#999', fontStyle: 'italic' }}>
+                                  Keine Schichtfolgen für {selectedDepartment} definiert.
+                                </td>
+                              </tr>
+                            )}
+                            {selectedDeptPatterns.map((s) => {
+                              const mainIdx = itwPatternSeqs.findIndex(x => x === s);
+                              return (
+                                <tr key={`${s.startDate}_${mainIdx}`} className={[styles.row, selectedItwPatternIndex === mainIdx ? styles.selected : ''].filter(Boolean).join(' ')} onClick={() => setSelectedItwPatternIndex(prev => prev === mainIdx ? null : mainIdx)}>
+                                  <td>
+                                    <input type="date" value={s.startDate} disabled={!editingItwPatterns}
+                                      style={{ width: '100%' }}
+                                      onChange={e => {
+                                        if (!editingItwPatterns) return;
+                                        const v = e.target.value;
+                                        setItwPatternSeqs(prev => prev.map((x, i) => i === mainIdx ? { ...x, startDate: v } : x).sort((a, b) => a.startDate.localeCompare(b.startDate)));
+                                      }} />
+                                  </td>
+                                  <td>
+                                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                      {Array.from({ length: 21 }).map((_, i) => (
+                                        <select key={i} value={s.pattern[i] || ''} disabled={!editingItwPatterns}
+                                          style={{ width: 42, padding: '2px' }}
+                                          onChange={e => {
+                                            if (!editingItwPatterns) return;
+                                            const v = e.target.value === 'IW' ? 'IW' : '';
+                                            setItwPatternSeqs(prev => prev.map((x, j) => {
+                                              if (j !== mainIdx) return x;
+                                              const next = [...x.pattern];
+                                              next[i] = v;
+                                              return { ...x, pattern: next };
+                                            }));
+                                          }}>
+                                          <option value=""></option>
+                                          <option value="IW">IW</option>
+                                        </select>
+                                      ))}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        {editingItwPatterns && (
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button
+                              onClick={() => {
+                                setItwPatternSeqs(prev => [...prev, {
+                                  startDate: new Date().toISOString().slice(0, 10),
+                                  department: selectedDepartment,
+                                  pattern: Array(21).fill('')
+                                }].sort((a, b) => a.startDate.localeCompare(b.startDate)));
+                                setSelectedItwPatternIndex(itwPatternSeqs.length);
+                              }}
+                              style={{ padding: '4px 10px', fontSize: '0.85em' }}
+                            >
+                              + Folge für {selectedDepartment}
+                            </button>
+                            <button
+                              disabled={selectedItwPatternIndex === null || itwPatternSeqs[selectedItwPatternIndex]?.department !== selectedDepartment}
+                              onClick={() => {
+                                if (selectedItwPatternIndex !== null) {
+                                  setItwPatternSeqs(prev => prev.filter((_, i) => i !== selectedItwPatternIndex));
+                                  setSelectedItwPatternIndex(null);
+                                }
+                              }}
+                              style={{ padding: '4px 10px', fontSize: '0.85em', background: '#dc3545', color: 'white', border: 'none', borderRadius: 4 }}
+                            >
+                              Löschen
+                            </button>
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {!editingItwPatterns ? (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    <button onClick={() => { setEditingItwPatterns(true); setOriginalItwPatterns(JSON.parse(JSON.stringify(itwPatternSeqs))); setItwPatternSeqs(prev => [...prev, { startDate: new Date().toISOString().slice(0, 10), pattern: Array(21).fill('') }].sort((a, b) => a.startDate.localeCompare(b.startDate))); setSelectedItwPatternIndex((itwPatternSeqs?.length ?? 0)); }}>Hinzufügen</button>
-                    <button onClick={() => { setEditingItwPatterns(true); setOriginalItwPatterns(JSON.parse(JSON.stringify(itwPatternSeqs))); }} disabled={(itwPatternSeqs || []).length === 0}>Ändern</button>
-                    <button onClick={() => { if (selectedItwPatternIndex != null) setItwPatternSeqs(prev => prev.filter((_, i) => i !== selectedItwPatternIndex)); setSelectedItwPatternIndex(null); }} disabled={selectedItwPatternIndex == null}>Löschen</button>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
+                    <button 
+                      onClick={() => { 
+                        setEditingItwPatterns(true); 
+                        setOriginalItwPatterns(JSON.parse(JSON.stringify(itwPatternSeqs))); 
+                      }} 
+                      style={{ padding: '8px 16px', fontWeight: 'bold' }}
+                    >
+                      Bearbeiten
+                    </button>
                   </div>
-                ) : (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    <button onClick={async () => { try { const payload = (itwPatternSeqs || []).map(s => ({ startDate: s.startDate, pattern: (s.pattern || []).map(v => (v === 'IW' ? 'IW' : '')).join(',') })); await (window as any).api.setItwPatterns?.(payload); } catch { } finally { setEditingItwPatterns(false); setOriginalItwPatterns(null); } }}>Speichern</button>
-                    <button onClick={() => { if (originalItwPatterns) setItwPatternSeqs(originalItwPatterns); setOriginalItwPatterns(null); setEditingItwPatterns(false); setSelectedItwPatternIndex(null); }}>Abbrechen</button>
-                  </div>
-                )}
+                  {editingItwPatterns && (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                      <button onClick={async () => { 
+                        try { 
+                          const payload = (itwPatternSeqs || []).map(s => ({ 
+                            startDate: s.startDate, 
+                            department: s.department,
+                            pattern: (s.pattern || []).map(v => (['1', '2', '3', 'IW'].includes(v) ? v : '')).join(',') 
+                          })); 
+                          await (window as any).api.setItwPatterns?.(payload); 
+                        } catch { } finally { 
+                          setEditingItwPatterns(false); 
+                          setOriginalItwPatterns(null); 
+                        } 
+                      }}>Speichern</button>
+                      <button onClick={() => { if (originalItwPatterns) setItwPatternSeqs(originalItwPatterns); setOriginalItwPatterns(null); setEditingItwPatterns(false); setSelectedItwPatternIndex(null); }}>Abbrechen</button>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
 
             {/* Feiertage (ITW-relevant) */}
             <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
@@ -1893,6 +2117,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                 </div>
               )}
             </div>
+
           </div>
         )}
 
@@ -2435,6 +2660,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
               <SettingsImportExport
                 onImportComplete={handleSettingsImportComplete}
                 onClose={() => setShowSettingsImportExport(false)}
+                departmentName={departmentName}
               />
             </div>
           </div>
@@ -2525,7 +2751,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions }
                         if (!proceed) return;
                         try { await (window as any).api.createDatabaseBackup?.({ year: Number(year) }); } catch { }
                         try { await (window as any).api.clearDutyRosterYear?.(Number(year)); } catch { }
-                        const res = await (window as any).api.importDutyRoster(currentImportPath || rosterImportPath, Number(year), undefined, { mappings: nameMappings });
+                        const res = await (window as any).api.importDutyRoster(currentImportPath || rosterImportPath, Number(year), undefined, { mappings: nameMappings, department: departmentName });
                         if (res?.success) {
                           alert(`Import erfolgreich. Einträge: ${res.importedCount ?? 'n/v'}`);
                           setShowImportPreview(false);

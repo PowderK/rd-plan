@@ -8,6 +8,7 @@ import Vehicles from './components/Vehicles';
 import SettingsMenu from './components/SettingsMenu';
 import ValuesPage from './components/ValuesPage';
 import EinteilungPage from './components/EinteilungPage';
+import ItwPage from './components/ItwPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './login';
 import './global-layout.css';
@@ -18,12 +19,12 @@ const monthNames = [
 ];
 
 const AppContent: React.FC = () => {
-    const { isAuthenticated, login, isDevMode } = useAuth();
+    const { isAuthenticated, login, isDevMode, currentUser } = useAuth();
     const [currentMonth] = useState<number>(new Date().getMonth());
     const [rescueStation, setRescueStation] = useState<string>('');
-    const [department, setDepartment] = useState<number>(1);
+    const [departmentName, setDepartmentName] = useState<string>('Rettungsdienst');
     const [year, setYear] = useState<number>(new Date().getFullYear());
-    const [activeView, setActiveView] = useState<'einteilung'|'dienstplan'|'werte'|'personal'|'fahrzeuge'|'einstellungen'>('einteilung');
+    const [activeView, setActiveView] = useState<'einteilung'|'dienstplan'|'werte'|'personal'|'fahrzeuge'|'einstellungen'|'itw'>('einteilung');
     const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
     const [footerActions, setFooterActions] = useState<React.ReactNode>(null);
 
@@ -33,8 +34,23 @@ const AppContent: React.FC = () => {
             if (rs != null) setRescueStation(String(rs));
         } catch {}
         try {
-            const dep = await (window as any).api.getSetting('department');
-            if (dep != null) setDepartment(Number(dep));
+            if (currentUser?.assignedDepartment && currentUser.assignedDepartment !== 'all') {
+                setDepartmentName(currentUser.assignedDepartment);
+            } else {
+                // Admin mode or "all" access
+                const adminDept = await (window as any).api.getSetting('admin_selected_department');
+                if (adminDept) {
+                    setDepartmentName(String(adminDept));
+                } else {
+                    const currentDepts = await (window as any).api.getUniqueDepartments?.();
+                    if (Array.isArray(currentDepts) && currentDepts.length > 0) {
+                        setDepartmentName(currentDepts[0]);
+                        await (window as any).api.setSetting('admin_selected_department', currentDepts[0]);
+                    } else {
+                        setDepartmentName('1. Abteilung');
+                    }
+                }
+            }
         } catch {}
         // Jahr wird nicht mehr aus Settings geladen - wird von DutyRoster/Values gesteuert
         // Setze initial auf aktuelles Jahr oder bereits gesetztes window.rdPlanYear
@@ -55,26 +71,49 @@ const AppContent: React.FC = () => {
                 }
             };
             window.addEventListener('rdplan-year-changed', handleYearChange);
+
+            // Reagiere auf Abteilungs-Änderungen
+            const handleDepartmentChange = (e: any) => {
+                if (e.detail?.department) {
+                    setDepartmentName(e.detail.department);
+                }
+            };
+            window.addEventListener('rdplan-department-changed', handleDepartmentChange);
             
-            return () => window.removeEventListener('rdplan-year-changed', handleYearChange);
+            return () => {
+                window.removeEventListener('rdplan-year-changed', handleYearChange);
+                window.removeEventListener('rdplan-department-changed', handleDepartmentChange);
+            };
         }
+    }, [isAuthenticated, currentUser]);
+
+    useEffect(() => {
+        if (!isAuthenticated) return;
+        const handler = async () => {
+            try { await loadHeaderInfo(); } catch {}
+        };
+        (window as any).api?.onSettingsUpdated?.(handler);
+        window.addEventListener('settings-updated', handler);
+        return () => {
+            (window as any).api?.offSettingsUpdated?.(handler);
+            window.removeEventListener('settings-updated', handler);
+        };
     }, [isAuthenticated]);
 
-    // Navigation via CustomEvent 'navigate' und via API (falls Main etwas triggert)
     useEffect(() => {
       if (!isAuthenticated) return;
       
       const handler = (e: Event) => {
         const ce = e as CustomEvent;
         const view = (ce.detail?.view || '') as string;
-                if (['einteilung','dienstplan','werte','personal','fahrzeuge','einstellungen'].includes(view)) {
+                if (['einteilung','dienstplan','werte','personal','fahrzeuge','einstellungen','itw'].includes(view)) {
           setActiveView(view as any);
         }
       };
       window.addEventListener('navigate', handler as EventListener);
                     (window as any).api?.onNavigate?.((v: any) => {
-                        if (typeof v === 'string' && ['einteilung','dienstplan','werte','personal','fahrzeuge','einstellungen'].includes(v)) setActiveView(v as any);
-                        else if (v && typeof v.view === 'string' && ['einteilung','dienstplan','werte','personal','fahrzeuge','einstellungen'].includes(v.view)) setActiveView(v.view as any);
+                        if (typeof v === 'string' && ['einteilung','dienstplan','werte','personal','fahrzeuge','einstellungen','itw'].includes(v)) setActiveView(v as any);
+                        else if (v && typeof v.view === 'string' && ['einteilung','dienstplan','werte','personal','fahrzeuge','einstellungen','itw'].includes(v.view)) setActiveView(v.view as any);
             });
       return () => {
         (window as any).api?.offNavigate?.();
@@ -98,13 +137,13 @@ const AppContent: React.FC = () => {
         const content = useMemo(() => {
                     switch (activeView) {
                         case 'einteilung':
-                                    return <EinteilungPage />;
+                                    return <EinteilungPage departmentName={departmentName} />;
                 case 'dienstplan':
-                    return <DutyRoster />;
+                    return <DutyRoster departmentName={departmentName} />;
                 case 'werte':
-                    return <ValuesPage />;
+                    return <ValuesPage departmentName={departmentName} />;
                 case 'personal':
-                    return <PersonnelOverview setFooterActions={setFooterActions} />;
+                    return <PersonnelOverview setFooterActions={setFooterActions} departmentName={departmentName} />;
                 case 'fahrzeuge':
                     return <Vehicles setFooterActions={setFooterActions} />;
                 case 'einstellungen':
@@ -112,12 +151,15 @@ const AppContent: React.FC = () => {
                                             <SettingsMenu
                                                 onClose={() => setActiveView('dienstplan')}
                                                 setFooterActions={setFooterActions}
+                                                departmentName={departmentName}
                                             />
                                         );
+                case 'itw':
+                    return <ItwPage />;
                 default:
                     return null;
             }
-                }, [activeView]);
+                }, [activeView, departmentName]);
 
                 useEffect(() => {
                     if (activeView !== 'einstellungen' && activeView !== 'personal' && activeView !== 'fahrzeuge') setFooterActions(null);
@@ -152,7 +194,11 @@ const AppContent: React.FC = () => {
                 ['--sidebar-offset' as any]: sidebarCollapsed ? '56px' : '200px'
             }}>
                 <div style={{ gridRow: 1, gridColumn: '1 / span 2' }}>
-                    <Header rescueStation={rescueStation} department={department} year={year} />
+                    <Header 
+                        rescueStation={rescueStation} 
+                        department={departmentName} 
+                        year={year} 
+                    />
                 </div>
                 <div style={{ gridRow: '2 / span 2', gridColumn: 1 }}>
                     <Sidebar active={activeView} />

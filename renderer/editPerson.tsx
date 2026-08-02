@@ -23,7 +23,6 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
   const [qualType, setQualType] = useState(qualification?.qualType || '');
   const [startYM, setStartYM] = useState(qualification?.startYM || '');
   const [endYM, setEndYM] = useState(qualification?.endYM || '');
-  const [active, setActive] = useState(qualification?.active ?? true);
   const [isUnlimited, setIsUnlimited] = useState(!qualification?.endYM);
   const [qualificationTypes, setQualificationTypes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +69,7 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
       qualType: qualType,
       startYM: startYM,
       endYM: isUnlimited ? '' : endYM,
-      active
+      active: true
     };
 
     onSave(formData as any);
@@ -100,6 +99,9 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
         <h3 style={{ marginTop: 0, marginBottom: '20px' }}>{title}</h3>
 
         <form onSubmit={handleSubmit}>
+          <p style={{ margin: '0 0 16px', fontSize: 13, color: '#666' }}>
+            Gültigkeit richtet sich nur nach Start- und Endmonat. Nach dem Endmonat gilt die Qualifikation nicht mehr.
+          </p>
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>
               Qualifikation *
@@ -170,21 +172,6 @@ const QualificationForm: React.FC<QualificationFormProps> = ({ qualification, on
                 />
               </>
             )}
-          </div>
-
-          <div style={{ marginBottom: '24px' }}>
-            <label style={{ display: 'flex', alignItems: 'center' }}>
-              <input
-                type="checkbox"
-                checked={active}
-                onChange={e => setActive(e.target.checked)}
-                style={{ marginRight: '8px' }}
-              />
-              <span style={{ fontWeight: 'bold' }}>Aktiv</span>
-            </label>
-            <small style={{ color: '#666', fontSize: '12px' }}>
-              Inaktive Qualifikationen werden bei der Dienstplanung nicht berücksichtigt
-            </small>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
@@ -396,12 +383,80 @@ const ActivePeriodForm: React.FC<ActivePeriodFormProps> = ({ period, onSave, onC
   );
 };
 
+interface DepartmentPeriodFormProps {
+  onSave: (period: { department: string; startDate: string; endDate?: string }) => Promise<void>;
+  onCancel: () => void;
+  title: string;
+}
+
+const DepartmentPeriodForm: React.FC<DepartmentPeriodFormProps> = ({ onSave, onCancel, title }) => {
+  const [department, setDepartment] = useState('1. Abteilung');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [isUnlimited, setIsUnlimited] = useState(true);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!startDate) {
+      alert('Bitte Start-Datum angeben.');
+      return;
+    }
+    onSave({
+      department,
+      startDate,
+      endDate: isUnlimited ? undefined : endDate
+    });
+  };
+
+  return (
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+      <div style={{ background: 'white', padding: '24px', borderRadius: '8px', width: '480px' }}>
+        <h3 style={{ marginTop: 0, marginBottom: '20px' }}>{title}</h3>
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>Abteilung *</label>
+            <select value={department} onChange={e => setDepartment(e.target.value)} required style={{ width: '100%', padding: '8px' }}>
+              <option value="1. Abteilung">1. Abteilung</option>
+              <option value="2. Abteilung">2. Abteilung</option>
+              <option value="3. Abteilung">3. Abteilung</option>
+            </select>
+          </div>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>Start-Datum (YYYY-MM-DD) *</label>
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required style={{ width: '100%', padding: '8px' }} />
+          </div>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', marginBottom: '6px' }}>
+              <input type="checkbox" checked={isUnlimited} onChange={e => setIsUnlimited(e.target.checked)} style={{ marginRight: '8px' }} />
+              Unbegrenzte Gültigkeit
+            </label>
+            {!isUnlimited && (
+              <>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>End-Datum (letzter Tag in der Abteilung)</label>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ width: '100%', padding: '8px' }} />
+              </>
+            )}
+          </div>
+          <p style={{ margin: 0, fontSize: 12, color: '#666' }}>
+            Nach dem Enddatum ist der Mitarbeiter in dieser Abteilung inaktiv (u. a. Werte-Berechnung).
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: 16 }}>
+            <button type="button" onClick={onCancel} style={{ background: '#6c757d', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px' }}>Abbrechen</button>
+            <button type="submit" style={{ background: '#007bff', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px' }}>Speichern</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 const EditPerson: React.FC = () => {
   // ID aus URL-Query lesen
   const id = Number(new URLSearchParams(window.location.search).get('id'));
   const [name, setName] = useState('');
   const [vorname, setVorname] = useState('');
   const [teilzeit, setTeilzeit] = useState(100);
+  const [department, setDepartment] = useState('1. Abteilung');
   const [sort, setSort] = useState(0);
   const [personnelNumber, setPersonnelNumber] = useState('');
   const [roleId, setRoleId] = useState<number | null>(null);
@@ -421,7 +476,11 @@ const EditPerson: React.FC = () => {
   const [showAddActivePeriod, setShowAddActivePeriod] = useState(false);
 
   const [active, setActive] = useState(true);
-  const [activeTab, setActiveTab] = useState<'stammdaten' | 'qualifikationen' | 'zeitraeume'>('stammdaten');
+  const [activeTab, setActiveTab] = useState<'stammdaten' | 'qualifikationen' | 'zeitraeume' | 'abteilungen'>('stammdaten');
+
+  // Department Periods State
+  const [departmentPeriods, setDepartmentPeriods] = useState<any[]>([]);
+  const [showAddDepartmentPeriod, setShowAddDepartmentPeriod] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -442,6 +501,7 @@ const EditPerson: React.FC = () => {
           setName(person.name || '');
           setVorname(person.vorname || '');
           setTeilzeit(person.teilzeit ?? 100);
+          setDepartment(person.department || '1. Abteilung');
           setSort(person.sort ?? 0);
           setSort(person.sort ?? 0);
           setPersonnelNumber(person.personnelNumber || '');
@@ -454,23 +514,37 @@ const EditPerson: React.FC = () => {
 
         // Lade Rollen
         try {
-          const rolesData = await (window as any).api.getSetting('roles');
-          if (rolesData) {
-            const parsedRoles = JSON.parse(rolesData);
-            setRoles(Array.isArray(parsedRoles) ? parsedRoles.map((r: any) => ({ id: r.id, name: r.name })) : []);
+          let list: any[] = [];
+          try {
+            const fetchedRoles = await (window as any).api.getRoles?.();
+            if (Array.isArray(fetchedRoles) && fetchedRoles.length > 0) {
+              list = fetchedRoles;
+            }
+          } catch (error) {
+            console.warn('Failed to load roles from table:', error);
+            list = [];
           }
-        } catch (e) {
-          // console.error('Fehler beim Laden der Rollen:', e);
+
+          if (list.length === 0) {
+            try {
+              const rolesData = await (window as any).api.getSetting('roles');
+              if (rolesData) {
+                const parsedRoles = JSON.parse(String(rolesData));
+                list = Array.isArray(parsedRoles) ? parsedRoles : [];
+              }
+            } catch (error) {
+              console.warn('Failed to load legacy roles from settings:', error);
+              list = [];
+            }
+          }
+
+          setRoles(list.map((r: any) => ({ id: Number(r.id), name: String(r.name || r.id) })));
+        } catch (error) {
+          console.warn('Unexpected error loading roles:', error);
         }
 
-        // Feature-Toggle laden
         try {
-          const feat = await (window as any).api.getSetting('feature_old_rtw_shifts');
-          setShowOldRtwShiftsFeature(feat === 'true' || feat === true);
-        } catch { }
-
-        try {
-          const feat = await (window as any).api.getSetting('feature_shift_transfers');
+          const feat = await (window as any).api.getSetting(`feature_shift_transfers_${department}`);
           setShowShiftTransferFeature(feat === 'true' || feat === true);
         } catch { }
 
@@ -481,10 +555,12 @@ const EditPerson: React.FC = () => {
         setQualificationPeriods(periods || []);
 
         // Lade Aktivitätsperioden
-        // console.log('Loading active periods for person ID:', id);
         const actPeriods = await (window as any).api.getPersonnelActivePeriods(id);
-        // console.log('Loaded active periods:', actPeriods);
         setActivePeriods(actPeriods || []);
+
+        // Lade Abteilungsperioden
+        const depPeriods = await (window as any).api.getPersonnelDepartmentPeriods(id);
+        setDepartmentPeriods(depPeriods || []);
 
         // console.log('editPerson data loading completed for ID:', id);
       } catch (error) {
@@ -507,7 +583,7 @@ const EditPerson: React.FC = () => {
 
     try {
       // Nur noch Basisdaten speichern - Qualifikationen werden separat über Perioden verwaltet
-      await (window as any).api.updatePerson({ id, name, vorname, teilzeit, active, sort, personnelNumber: personnelNumber.trim(), roleId, oldRtwShifts });
+      await (window as any).api.updatePerson({ id, name, vorname, teilzeit, department, active: true, sort, personnelNumber: personnelNumber.trim(), roleId, oldRtwShifts });
       if (window.opener) window.opener.postMessage('personnel-updated', '*');
       window.close();
     } catch (e) {
@@ -556,7 +632,7 @@ const EditPerson: React.FC = () => {
         qualType: qualification.qualType,
         startYM: qualification.startYM,
         endYM: qualification.endYM || null,
-        active: qualification.active
+        active: true
       });
       await refreshQualificationPeriods();
       setShowAddQualification(false);
@@ -585,7 +661,7 @@ const EditPerson: React.FC = () => {
           qualType: qualification.qualType,
           startYM: qualification.startYM,
           endYM: qualification.endYM || null,
-          active: qualification.active
+          active: true
         });
       } else {
         // console.error('Versuche ein Update ohne ID durchzuführen');
@@ -672,6 +748,40 @@ const EditPerson: React.FC = () => {
     }
   };
 
+  // Department Periods Handlers
+  const refreshDepartmentPeriods = async () => {
+    try {
+      const periods = await (window as any).api.getPersonnelDepartmentPeriods(id);
+      setDepartmentPeriods(periods || []);
+    } catch (error) {}
+  };
+
+  const handleAddDepartmentPeriod = async (period: any) => {
+    try {
+      await (window as any).api.addPersonnelDepartmentPeriod({
+        personId: id,
+        department: period.department,
+        startDate: period.startDate,
+        endDate: period.endDate || null
+      });
+      await refreshDepartmentPeriods();
+      setShowAddDepartmentPeriod(false);
+    } catch (error) {
+      alert('Fehler beim Hinzufügen der Abteilungsperiode');
+    }
+  };
+
+  const handleDeleteDepartmentPeriod = async (periodId: number) => {
+    if (confirm('Sind Sie sicher, dass Sie diese Abteilungsperiode löschen möchten?')) {
+      try {
+        await (window as any).api.deletePersonnelDepartmentPeriod(periodId);
+        await refreshDepartmentPeriods();
+      } catch (error) {
+        alert('Fehler beim Löschen der Abteilungsperiode');
+      }
+    }
+  };
+
   return (
     <div style={{ padding: 24, height: '100vh', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
       <h2>Personal ändern</h2>
@@ -720,17 +830,17 @@ const EditPerson: React.FC = () => {
         </button>
         <button
           type="button"
-          onClick={() => setActiveTab('zeitraeume')}
+          onClick={() => setActiveTab('abteilungen')}
           style={{
             padding: '8px 16px',
             border: 'none',
-            borderBottom: activeTab === 'zeitraeume' ? '3px solid #0d6efd' : '3px solid transparent',
-            background: activeTab === 'zeitraeume' ? '#f8f9fa' : 'transparent',
-            fontWeight: activeTab === 'zeitraeume' ? 600 : 400,
+            borderBottom: activeTab === 'abteilungen' ? '3px solid #0d6efd' : '3px solid transparent',
+            background: activeTab === 'abteilungen' ? '#f8f9fa' : 'transparent',
+            fontWeight: activeTab === 'abteilungen' ? 600 : 400,
             cursor: 'pointer'
           }}
         >
-          Zeiträume
+          Abteilungen
         </button>
       </div>
 
@@ -989,7 +1099,6 @@ const EditPerson: React.FC = () => {
                     <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #dbe7ff' }}>Qualifikation</th>
                     <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #dbe7ff' }}>Von</th>
                     <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #dbe7ff' }}>Bis</th>
-                    <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #dbe7ff' }}>Aktiv</th>
                     <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #dbe7ff' }}>Aktionen</th>
                   </tr>
                 </thead>
@@ -999,11 +1108,6 @@ const EditPerson: React.FC = () => {
                       <td style={{ padding: '8px', borderBottom: '1px solid #e4edff' }}>{period.qualType}</td>
                       <td style={{ padding: '8px', borderBottom: '1px solid #e4edff' }}>{period.startYM}</td>
                       <td style={{ padding: '8px', borderBottom: '1px solid #e4edff' }}>{period.endYM || 'Unbegrenzt'}</td>
-                      <td style={{ padding: '8px', borderBottom: '1px solid #e4edff', textAlign: 'center' }}>
-                        <span style={{ color: period.active ? '#28a745' : '#dc3545' }}>
-                          {period.active ? '✓' : '✗'}
-                        </span>
-                      </td>
                       <td style={{ padding: '8px', borderBottom: '1px solid #e4edff', textAlign: 'center' }}>
                         <button
                           type="button"
@@ -1063,6 +1167,46 @@ const EditPerson: React.FC = () => {
             )}
           </div>
       </div>
+      )}
+
+      {activeTab === 'abteilungen' && (
+        <div style={{ padding: '10px 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h4 style={{ margin: 0 }}>Abteilungshistorie</h4>
+            <button type="button" onClick={() => setShowAddDepartmentPeriod(true)} style={{ background: '#28a745', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px' }}>
+              + Abteilung hinzufügen
+            </button>
+          </div>
+          <table className="qual-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #dee2e6' }}>
+                <th style={{ padding: '12px', textAlign: 'left' }}>Abteilung</th>
+                <th style={{ padding: '12px', textAlign: 'left' }}>Von</th>
+                <th style={{ padding: '12px', textAlign: 'left' }}>Bis</th>
+                <th style={{ padding: '12px', textAlign: 'center', width: '100px' }}>Aktionen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {departmentPeriods.length > 0 ? (
+                departmentPeriods.map(period => (
+                  <tr key={period.id} style={{ borderBottom: '1px solid #dee2e6' }}>
+                    <td style={{ padding: '12px' }}>{period.department}</td>
+                    <td style={{ padding: '12px' }}>{period.startDate}</td>
+                    <td style={{ padding: '12px' }}>{period.endDate || 'Laufend'}</td>
+                    <td style={{ padding: '12px', textAlign: 'center' }}>
+                      <button type="button" onClick={() => handleDeleteDepartmentPeriod(period.id)} style={{ background: '#dc3545', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '3px' }}>Löschen</button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr><td colSpan={4} style={{ padding: '20px', textAlign: 'center', color: '#6c757d' }}>Keine Abteilungen hinterlegt</td></tr>
+              )}
+            </tbody>
+          </table>
+          {showAddDepartmentPeriod && (
+            <DepartmentPeriodForm onSave={handleAddDepartmentPeriod} onCancel={() => setShowAddDepartmentPeriod(false)} title="Abteilung hinzufügen" />
+          )}
+        </div>
       )}
 
       </div>

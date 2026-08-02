@@ -1,9 +1,15 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import MonthTabs from './MonthTabs';
+import {
+  qualificationAppliesInMonth,
+  buildDepartmentActiveMonthly,
+  indexDepartmentPeriodsByPerson,
+  yearMonthKey
+} from '../utils/personPeriods';
 
 type RosterState = Record<string, Record<string, { value: string; type: string }>>;
 
-const EinteilungPage: React.FC = () => {
+const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName }) => {
   const [currentMonth, setCurrentMonth] = useState<number>(() => {
     // Restore from window if available
     if ((window as any).rdPlanMonth !== undefined) {
@@ -15,6 +21,8 @@ const EinteilungPage: React.FC = () => {
   });
   const [year, setYear] = useState<number>((window as any).rdPlanYear || new Date().getFullYear());
   const [personnel, setPersonnel] = useState<any[]>([]);
+  /** Alle Personen der Abteilung (ohne Monatsfilter) – für Namensauflösung in der Einteilung. */
+  const [personnelLookup, setPersonnelLookup] = useState<{ id: number; name: string; vorname?: string }[]>([]);
   const [azubis, setAzubis] = useState<any[]>([]);
   const [roster, setRoster] = useState<RosterState>({});
   const [deptPatternSeqs, setDeptPatternSeqs] = useState<{ startDate: string; pattern: string[] }[]>([]);
@@ -47,8 +55,25 @@ const EinteilungPage: React.FC = () => {
     try {
       // Pass current year/month to filter personnel by active periods
       const filterDate = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`;
-      const rawList = await (window as any).api.getPersonnelList(false, filterDate);
-      const allQualPeriods = await (window as any).api.getAllQualificationPeriods?.();
+      const rawList = await (window as any).api.getPersonnelList(false, filterDate, departmentName);
+      try {
+        const deptWide = await (window as any).api.getPersonnelList(false, undefined, departmentName);
+        setPersonnelLookup((deptWide || []).map((p: any) => ({
+          id: Number(p.id),
+          name: String(p.name || ''),
+          vorname: p.vorname ? String(p.vorname) : undefined
+        })));
+      } catch {
+        setPersonnelLookup([]);
+      }
+      const [allQualPeriods, allDeptPeriods] = await Promise.all([
+        (window as any).api.getAllQualificationPeriods?.(),
+        (window as any).api.getAllPersonnelDepartmentPeriods?.()
+      ]);
+
+      const deptPeriodsByPerson = indexDepartmentPeriodsByPerson(
+        Array.isArray(allDeptPeriods) ? allDeptPeriods : []
+      );
 
       // Filtere Personal: Nur Personen MIT Rettungsdienst-Qualifikation
       let rettungsdienstQualName = 'Rettungsdienst';
@@ -64,20 +89,15 @@ const EinteilungPage: React.FC = () => {
         });
       }
 
+      const yearMonth = `${year}-${String(currentMonth + 1).padStart(2, '0')}`;
+
       const list = (rawList || []).filter((p: any) => {
         const pPeriods = periodsByPerson[p.id] || [];
-        const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName && per.active);
-        const hasRD = rdPeriods.length > 0;
-        if (!hasRD) {
-          console.log('[EinteilungPage] Filtered out:', p.name, '- No Rettungsdienst qualification');
-        }
-        return hasRD;
+        const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
+        return rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
       });
 
       console.log('[EinteilungPage] Personnel before filter:', rawList.length, '| after filter:', list.length);
-
-      // Aktueller ausgewählter Monat im Format YYYY-MM
-      const yearMonth = `${year}-${String(currentMonth + 1).padStart(2, '0')}`;
 
       // Lade HLFB Qualifikationstyp aus Settings
       let hlfbQualName = 'FzF HLF B'; // Fallback
@@ -101,8 +121,8 @@ const EinteilungPage: React.FC = () => {
       } catch { }
 
       // Lade RTW und NEF Fahrzeuge um die konfigurierten Qualifikationen zu ermitteln
-      const rtwVehicles = await (window as any).api.getRtwVehicles?.() || [];
-      const nefVehicles = await (window as any).api.getNefVehicles?.() || [];
+      const rtwVehicles = await (window as any).api.getRtwVehicles?.(year) || [];
+      const nefVehicles = await (window as any).api.getNefVehicles?.(year) || [];
 
       // Ermittle Fahrzeugführer-Qualifikationen aus RTW-Positionen (Position 0 = FzF)
       const rtwQualifications = new Set<string>();
@@ -129,7 +149,9 @@ const EinteilungPage: React.FC = () => {
       // Fallbacks für alte hard-coded Qualifikationen
       rtwQualifications.add('FzF RTW');
       rtwQualifications.add('Fahrzeugführer');
+      rtwQualifications.add('Fahrzeugführer RTW');
       nefQualifications.add('NEF');
+      nefQualifications.add('NEF Assistent');
       nefQualifications.add('NA');
 
       // console.log('[EinteilungPage] Erkannte RTW-Qualifikationen:', Array.from(rtwQualifications));
@@ -137,51 +159,82 @@ const EinteilungPage: React.FC = () => {
       // console.log('[EinteilungPage] HLFB-Qualifikation:', hlfbQualName);
       // console.log('[EinteilungPage] Ü50-Qualifikation:', ue50QualName);
 
+      console.log('[DEBUG EinteilungPage] RTW Qualifications:', Array.from(rtwQualifications));
+      console.log('[DEBUG EinteilungPage] NEF Qualifications:', Array.from(nefQualifications));
       // Für jede Person die Qualifikationen aus qualification_periods laden
       const enrichedList = await Promise.all((list || []).map(async (person: any) => {
         try {
           // Lade Qualifikationsperioden (altes System mit qualType als String)
           const periods = await (window as any).api.getQualificationPeriods?.(person.id) || [];
 
-          // Prüfe, ob Person Fahrzeugführer-Qualifikation hat
           const hasFahrzeugfuehrer = periods.some((p: any) =>
-            p.active &&
             rtwQualifications.has(p.qualType) &&
-            p.startYM <= yearMonth &&
-            (!p.endYM || p.endYM >= yearMonth)
+            qualificationAppliesInMonth(p, yearMonth)
           );
 
           // Prüfe, ob Person NEF-Qualifikation hat
           const hasNef = periods.some((p: any) =>
-            p.active &&
             nefQualifications.has(p.qualType) &&
-            p.startYM <= yearMonth &&
-            (!p.endYM || p.endYM >= yearMonth)
+            qualificationAppliesInMonth(p, yearMonth)
           );
 
-          // Prüfe, ob Person HLFB-Qualifikation hat (für 75%-Regel) - verwendet konfigurierbare Qualifikation
           const hasHLFB = periods.some((p: any) =>
-            p.active &&
             p.qualType === hlfbQualName &&
-            p.startYM <= yearMonth &&
-            (!p.endYM || p.endYM >= yearMonth)
+            qualificationAppliesInMonth(p, yearMonth)
           );
 
-          // Prüfe, ob Person Ü50-Qualifikation hat (keine Soll/Ist-Berechnung, wie Azubi)
           const hasUe50 = periods.some((p: any) =>
-            p.active &&
             p.qualType === ue50QualName &&
-            p.startYM <= yearMonth &&
-            (!p.endYM || p.endYM >= yearMonth)
+            qualificationAppliesInMonth(p, yearMonth)
           );
 
-          // Prüfe, ob Person LPAL-Qualifikation hat (wie Ü50, aber orange)
           const hasLpal = periods.some((p: any) =>
-            p.active &&
             p.qualType === lpalQualName &&
-            p.startYM <= yearMonth &&
-            (!p.endYM || p.endYM >= yearMonth)
+            qualificationAppliesInMonth(p, yearMonth)
           );
+
+          const hlfbMonthly = Array(12).fill(false);
+          const ue50Monthly = Array(12).fill(false);
+          const lpalMonthly = Array(12).fill(false);
+          const rettungsdienstMonthly = Array(12).fill(false);
+
+          const hlfbPeriods = periods.filter((per: any) => per.qualType === hlfbQualName);
+          const hasHlfbPeriod = hlfbPeriods.length > 0;
+
+          const ue50Periods = periods.filter((per: any) => per.qualType === ue50QualName);
+          const hasUe50Period = ue50Periods.length > 0;
+
+          const lpalPeriods = periods.filter((per: any) => per.qualType === lpalQualName);
+          const hasLpalPeriod = lpalPeriods.length > 0;
+
+          const rettungsdienstPeriods = periods.filter((per: any) => per.qualType === rettungsdienstQualName);
+          const hasRettungsdienstPeriod = rettungsdienstPeriods.length > 0;
+
+          const qualApplies = (perList: any[], ym: string) =>
+            perList.some((per: any) => qualificationAppliesInMonth(per, ym));
+
+          for (let m = 0; m < 12; m++) {
+            const ym = yearMonthKey(year, m);
+            if (hasHlfbPeriod) hlfbMonthly[m] = qualApplies(hlfbPeriods, ym);
+            if (hasUe50Period) ue50Monthly[m] = qualApplies(ue50Periods, ym);
+            if (hasLpalPeriod) lpalMonthly[m] = qualApplies(lpalPeriods, ym);
+            if (hasRettungsdienstPeriod) rettungsdienstMonthly[m] = qualApplies(rettungsdienstPeriods, ym);
+          }
+
+          const deptActiveMonthly = buildDepartmentActiveMonthly(
+            person.id,
+            year,
+            deptPeriodsByPerson,
+            departmentName
+          );
+
+          // Statisches Flag als Fallback für HLF-B
+          const staticFlag = person.fahrzeugfuehrerHLFB === 1 || person.fahrzeugfuehrerHLFB === true || person.fahrzeugfuehrerHLFB === '1' ||
+            person.fahrzeugfuehrer_hlf_b === 1 || person.fahrzeugfuehrer_hlf_b === true || person.fahrzeugfuehrer_hlf_b === '1';
+
+          if (!hasHlfbPeriod && staticFlag) {
+            hlfbMonthly.fill(true);
+          }
 
           return {
             ...person,
@@ -190,7 +243,12 @@ const EinteilungPage: React.FC = () => {
             fahrzeugfuehrerHLFB: hasHLFB ? 1 : person.fahrzeugfuehrerHLFB,
             ue50: hasUe50 ? 1 : 0,  // Ü50-Status
             lpal: hasLpal ? 1 : 0,  // LPAL-Status
-            oldRtwShifts: person.old_rtw_shifts || 0 // Aus Altsystem
+            oldRtwShifts: person.old_rtw_shifts || 0, // Aus Altsystem
+            hlfbMonthly,
+            ue50Monthly,
+            lpalMonthly,
+            rettungsdienstMonthly,
+            deptActiveMonthly
           };
         } catch {
           return person;
@@ -199,7 +257,7 @@ const EinteilungPage: React.FC = () => {
 
       setPersonnel(enrichedList);
     } catch { }
-    try { const a = await (window as any).api.getAzubiList(); setAzubis(a || []); } catch { }
+    try { const a = await (window as any).api.getAzubiList(departmentName); setAzubis(a || []); } catch { }
     try {
       const seqs = await (window as any).api.getDeptPatterns?.();
       const norm = (arr: string[], len = 21) => (arr || [])
@@ -214,7 +272,7 @@ const EinteilungPage: React.FC = () => {
       parsed.sort((a: { startDate: string }, b: { startDate: string }) => a.startDate.localeCompare(b.startDate));
       setDeptPatternSeqs(parsed);
     } catch { }
-  }, [year, currentMonth]);
+  }, [year, currentMonth, departmentName]);
 
   useEffect(() => {
     loadBasics();
@@ -226,18 +284,25 @@ const EinteilungPage: React.FC = () => {
       // console.log('[DEBUG EinteilungPage] loadRoster called, targetYear:', targetYear, 'settingsYear:', settingsYear, 'state year:', year);
       const y = typeof targetYear === 'number' ? targetYear : Number(settingsYear || new Date().getFullYear());
       // console.log('[DEBUG EinteilungPage] Loading roster for year:', y);
-      const entries = await (window as any).api.getDutyRoster(y);
+      const entries = await (window as any).api.getDutyRoster(y, departmentName);
       // console.log('[DEBUG EinteilungPage] Loaded', entries?.length, 'roster entries for year', y);
       const map: RosterState = {};
       (entries || []).forEach((e: any) => {
         if (!e || !e.date) return;
-        const key = `${e.personType === 'azubi' ? 'a_' : 'p_'}${e.personId}`;
+        let prefix = 'p_';
+        if (e.personType === 'azubi') prefix = 'a_';
+        else if (e.personType === 'guest') prefix = 'g_';
+        else if (e.personType === 'doctor') prefix = 'd_';
+        
+        const key = `${prefix}${e.personId}`;
         if (!map[key]) map[key] = {};
         map[key][String(e.date)] = { value: e.value, type: e.type };
       });
       setRoster(map);
+
+      setRoster(map);
     } catch { }
-  }, []);
+  }, [departmentName]);
 
   useEffect(() => {
     loadBasics().then(() => loadRoster(year));
@@ -255,7 +320,7 @@ const EinteilungPage: React.FC = () => {
       (window as any).api?.offDutyRosterUpdated?.(onRoster);
       (window as any).api?.offPersonnelUpdated?.(onPersonnel);
     };
-  }, [loadBasics, loadRoster]);
+  }, [loadBasics, loadRoster, year, departmentName]);
 
   const handleMonthChange = (m: number) => setCurrentMonth(m);
 
@@ -295,6 +360,8 @@ const EinteilungPage: React.FC = () => {
           currentMonth={currentMonth}
           onMonthChange={handleMonthChange}
           onYearChange={handleYearChange}
+          departmentName={departmentName}
+          personnelLookup={personnelLookup}
           personnel={personnel}
           azubis={azubis}
           roster={roster}
