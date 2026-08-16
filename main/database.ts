@@ -1847,18 +1847,102 @@ export const getAzubiPeriods = async (db: AsyncDB, azubiId: number) => {
     return await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ? ORDER BY start_date ASC', [azubiId]);
 };
 
+export const consolidateAzubiPeriods = async (db: AsyncDB, azubiId: number) => {
+    try {
+        const periods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ? ORDER BY lehrjahr ASC, start_date ASC', [azubiId]) as any[];
+        if (!periods || periods.length < 2) return;
+
+        const ONE_DAY_MS = 24 * 60 * 60 * 1000 + 1000;
+
+        let current = periods[0];
+
+        for (let i = 1; i < periods.length; i++) {
+            const next = periods[i];
+
+            const sameLehrjahr = (current.lehrjahr || 1) === (next.lehrjahr || 1);
+
+            if (sameLehrjahr) {
+                const dEndCur = new Date(current.end_date + 'T00:00:00Z').getTime();
+                const dStartNext = new Date(next.start_date + 'T00:00:00Z').getTime();
+
+                // Check if contiguous or overlapping
+                if (dStartNext <= dEndCur + ONE_DAY_MS) {
+                    if (next.end_date > current.end_date) {
+                        current.end_date = next.end_date;
+                    }
+                    if (next.start_date < current.start_date) {
+                        current.start_date = next.start_date;
+                    }
+                    await db.run('UPDATE azubi_periods SET start_date = ?, end_date = ? WHERE id = ?', [current.start_date, current.end_date, current.id]);
+                    await db.run('DELETE FROM azubi_periods WHERE id = ?', [next.id]);
+                    continue;
+                }
+            }
+
+            current = next;
+        }
+    } catch (err) {
+        console.warn('[Database] Fehler bei consolidateAzubiPeriods:', err);
+    }
+};
+
+export const consolidateAllAzubiPeriods = async (db: AsyncDB) => {
+    try {
+        const azubis = await db.all('SELECT id FROM azubis') as Array<{ id: number }>;
+        for (const a of azubis) {
+            await consolidateAzubiPeriods(db, a.id);
+        }
+    } catch (err) {
+        console.warn('[Database] Fehler bei consolidateAllAzubiPeriods:', err);
+    }
+};
+
 export const getAllAzubiPeriods = async (db: AsyncDB) => {
+    await consolidateAllAzubiPeriods(db);
     return await db.all('SELECT * FROM azubi_periods ORDER BY azubi_id, start_date ASC');
 };
 
 export const addAzubiPeriod = async (db: AsyncDB, period: { azubi_id: number, start_date: string, end_date: string, description?: string, lehrjahr?: number }) => {
-    await db.run('INSERT INTO azubi_periods (azubi_id, start_date, end_date, description, lehrjahr) VALUES (?, ?, ?, ?, ?)',
-        [period.azubi_id, period.start_date, period.end_date, period.description || '', period.lehrjahr || 1]);
+    const lehrjahr = period.lehrjahr || 1;
+    const existing = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ? AND lehrjahr = ?', [period.azubi_id, lehrjahr]) as any[];
+    
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000 + 1000;
+    const dNewStart = new Date(period.start_date + 'T00:00:00Z').getTime();
+    const dNewEnd = new Date(period.end_date + 'T00:00:00Z').getTime();
+
+    const matching = (existing || []).filter(p => {
+        const dStart = new Date(p.start_date + 'T00:00:00Z').getTime();
+        const dEnd = new Date(p.end_date + 'T00:00:00Z').getTime();
+        return (dNewStart <= dEnd + ONE_DAY_MS && dNewEnd >= dStart - ONE_DAY_MS);
+    });
+
+    if (matching.length > 0) {
+        const target = matching[0];
+        let minStart = period.start_date;
+        let maxEnd = period.end_date;
+
+        for (const p of matching) {
+            if (p.start_date < minStart) minStart = p.start_date;
+            if (p.end_date > maxEnd) maxEnd = p.end_date;
+        }
+
+        await db.run('UPDATE azubi_periods SET start_date = ?, end_date = ? WHERE id = ?', [minStart, maxEnd, target.id]);
+
+        for (let i = 1; i < matching.length; i++) {
+            await db.run('DELETE FROM azubi_periods WHERE id = ?', [matching[i].id]);
+        }
+    } else {
+        await db.run('INSERT INTO azubi_periods (azubi_id, start_date, end_date, description, lehrjahr) VALUES (?, ?, ?, ?, ?)',
+            [period.azubi_id, period.start_date, period.end_date, period.description || '', lehrjahr]);
+    }
+
+    await consolidateAzubiPeriods(db, period.azubi_id);
 };
 
 export const updateAzubiPeriod = async (db: AsyncDB, period: { id: number, azubi_id: number, start_date: string, end_date: string, description?: string, lehrjahr?: number }) => {
     await db.run('UPDATE azubi_periods SET azubi_id = ?, start_date = ?, end_date = ?, description = ?, lehrjahr = ? WHERE id = ?',
         [period.azubi_id, period.start_date, period.end_date, period.description || '', period.lehrjahr || 1, period.id]);
+    await consolidateAzubiPeriods(db, period.azubi_id);
 };
 
 export const deleteAzubiPeriod = async (db: AsyncDB, id: number) => {

@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import fs from 'fs';
 import { DatabaseAdapter } from './database-manager';
 
 // Excel date serial numbers are days since 1900-01-01, but Excel incorrectly thinks 1900 was a leap year.
@@ -628,6 +629,14 @@ export class RosterImporter {
         azubisWithoutPeriod?: Array<{ azubiId: number; azubiName: string; importDateRange: { start: string; end: string } }>
     }> {
         try {
+            if (!filePath || !fs.existsSync(filePath)) {
+                console.warn(`[RosterImporter] Datei existiert nicht: "${filePath}"`);
+                return {
+                    success: false,
+                    message: `Die Datei "${filePath || ''}" wurde nicht gefunden. Bitte überprüfen Sie den Dateipfad.`,
+                    importedCount: 0
+                };
+            }
             const workbook = XLSX.readFile(filePath);
             const sheetNames = workbook.SheetNames;
             console.log('[RosterImporter] Excel-Datei geladen. Sheets:', sheetNames);
@@ -743,93 +752,130 @@ export class RosterImporter {
                 }
             }
 
-            if (entriesToImport.length > 0) {
+            if (entriesToImport.length > 0 || allUnknownAzubiNames.size > 0) {
                 console.log(`[RosterImporter] ${entriesToImport.length} Einträge gesammelt. Prüfe Dienstarten...`);
-                // Check for unknown shift types
-                const unknownShiftTypes = await this.collectUnknownShiftTypes(entriesToImport);
                 
+                // Unbekannte Dienstarten automatisch anlegen und Import NICHT abbrechen
+                const unknownShiftTypes = await this.collectUnknownShiftTypes(entriesToImport);
                 if (unknownShiftTypes.length > 0) {
-                    // If new shift types are provided in options, create them first
-                    if (options?.newShiftTypes && options.newShiftTypes.length > 0) {
-                        console.log('[RosterImporter] Erstelle neue Dienstarten:', options.newShiftTypes);
-                        for (const newShiftType of options.newShiftTypes) {
-                            await this.dbAdapter.addShiftType({ code: newShiftType.code, description: newShiftType.description });
-                            // Set color and auswertung in settings
-                            await this.dbAdapter.setSetting(`color_${newShiftType.code}`, newShiftType.color);
-                            await this.dbAdapter.setSetting(`auswertung_${newShiftType.code}`, newShiftType.auswertung);
+                    console.log('[RosterImporter] Erstelle unbekannte Dienstarten automatisch:', unknownShiftTypes);
+                    const providedMap = new Map((options?.newShiftTypes || []).map(s => [s.code, s]));
+                    for (const code of unknownShiftTypes) {
+                        const provided = providedMap.get(code);
+                        const desc = provided?.description || `Dienstart ${code}`;
+                        const color = provided?.color || '#0ea5e9';
+                        
+                        let auswertung = provided?.auswertung;
+                        if (!auswertung) {
+                            const upper = code.toUpperCase();
+                            if (/TAG|FZF|MA|^T\d*$/i.test(upper)) auswertung = 'tag';
+                            else if (/NACHT|^N\d*$/i.test(upper)) auswertung = 'nacht';
+                            else if (/24|24H/i.test(upper)) auswertung = '24h';
+                            else auswertung = 'off';
                         }
-                    } else {
-                        // Return unknown shift types for user dialog
-                        console.log('[RosterImporter] Gefundene unbekannte Dienstarten für Dialog:', unknownShiftTypes);
-                        return { 
-                            success: true, 
-                            message: `Unbekannte Dienstarten gefunden: ${unknownShiftTypes.join(', ')}`, 
-                            importedCount: 0,
-                            unknownShiftTypes: unknownShiftTypes 
-                        };
+                        
+                        try {
+                            await this.dbAdapter.addShiftType({ code, description: desc });
+                            await this.dbAdapter.setSetting(`color_${code}`, color);
+                            await this.dbAdapter.setSetting(`auswertung_${code}`, auswertung);
+                        } catch (stErr) {
+                            console.warn(`[RosterImporter] Fehler beim Erstellen der Dienstart ${code}:`, stErr);
+                        }
                     }
                 }
 
-                // Prüfe Azubi-Zeiträume
+                // Azubi-Zeiträume automatisch anpassen/erstellen
                 console.log(`[RosterImporter] Prüfe Azubi-Zeiträume...`);
                 const azubisWithoutPeriod = await this.checkAzubiPeriods(entriesToImport, year, month);
-                
                 if (azubisWithoutPeriod.length > 0) {
-                    // Wenn Azubis ohne gültigen Zeitraum gefunden wurden, Dialog anzeigen
-                    if (options?.azubiPeriodAdjustments) {
-                        // User hat bereits entschieden, Zeiträume anzupassen
-                        console.log('[RosterImporter] Passe Azubi-Zeiträume an:', options.azubiPeriodAdjustments);
-                        for (const adjustment of options.azubiPeriodAdjustments) {
+                    console.log('[RosterImporter] Erstelle fehlende Azubi-Zeiträume automatisch:', azubisWithoutPeriod);
+                    const providedMap = new Map((options?.azubiPeriodAdjustments || []).map(a => [a.azubiId, a]));
+                    for (const item of azubisWithoutPeriod) {
+                        const provided = providedMap.get(item.azubiId);
+                        const startDate = provided?.startDate || item.importDateRange?.start || `${year}-01-01`;
+                        const endDate = provided?.endDate || item.importDateRange?.end || `${year}-12-31`;
+                        const description = provided?.description || 'Automatisch durch Import hinzugefügt';
+                        const lehrjahr = provided?.lehrjahr || 1;
+                        
+                        try {
                             await this.dbAdapter.addAzubiPeriod({
-                                azubi_id: adjustment.azubiId,
-                                start_date: adjustment.startDate,
-                                end_date: adjustment.endDate,
-                                description: adjustment.description || 'Automatisch durch Import hinzugefügt',
-                                lehrjahr: adjustment.lehrjahr
+                                azubi_id: item.azubiId,
+                                start_date: startDate,
+                                end_date: endDate,
+                                description: description,
+                                lehrjahr: lehrjahr
                             });
+                        } catch (apErr) {
+                            console.warn(`[RosterImporter] Fehler beim Erstellen des Azubi-Zeitraums für ${item.azubiName}:`, apErr);
                         }
-                    } else {
-                        // Zeige Dialog mit Azubis ohne gültigen Zeitraum
-                        console.log('[RosterImporter] Gefundene Azubis ohne gültigen Zeitraum:', azubisWithoutPeriod);
-                        return {
-                            success: true,
-                            message: `Azubis ohne gültigen Zeitraum gefunden: ${azubisWithoutPeriod.map(a => a.azubiName).join(', ')}`,
-                            importedCount: 0,
-                            azubisWithoutPeriod: azubisWithoutPeriod
-                        };
+                    }
+                }
+
+                // Unbekannte Azubis automatisch anlegen (damit keine Einträge verloren gehen)
+                if (allUnknownAzubiNames.size > 0) {
+                    console.log('[RosterImporter] Erstelle unbekannte Azubis automatisch:', Array.from(allUnknownAzubiNames));
+                    const providedNewAzubis = options?.newAzubis || [];
+                    for (const rawName of allUnknownAzubiNames) {
+                        const prov = providedNewAzubis.find(a => `${a.vorname} ${a.name}`.trim() === rawName || `${a.name}, ${a.vorname}`.trim() === rawName || a.name === rawName);
+                        let surname = prov?.name;
+                        let firstname = prov?.vorname;
+                        let lj = prov?.lehrjahr || 1;
+                        
+                        if (!surname) {
+                            if (rawName.includes(',')) {
+                                const parts = rawName.split(',').map(s => s.trim());
+                                surname = parts[0];
+                                firstname = parts[1] || '';
+                            } else {
+                                const parts = rawName.trim().split(' ');
+                                firstname = parts.slice(0, -1).join(' ') || parts[0];
+                                surname = parts.slice(-1)[0] || '';
+                            }
+                        }
+                        
+                        try {
+                            const newAz = await this.dbAdapter.addAzubi({
+                                name: surname,
+                                vorname: firstname,
+                                lehrjahr: lj,
+                                department: importDept
+                            });
+                            const newId = newAz?.lastInsertRowid || newAz?.lastID || newAz?.id;
+                            if (newId) {
+                                await this.dbAdapter.addAzubiPeriod({
+                                    azubi_id: newId,
+                                    start_date: `${year}-01-01`,
+                                    end_date: `${year}-12-31`,
+                                    description: 'Automatisch durch Import erstellt',
+                                    lehrjahr: lj
+                                });
+                            }
+                        } catch (azErr) {
+                            console.warn(`[RosterImporter] Fehler beim automatischen Erstellen von Azubi ${rawName}:`, azErr);
+                        }
                     }
                 }
 
                 console.log(`[RosterImporter] Schreibe ${entriesToImport.length} Einträge in duty_roster.`);
                 
-                // IMMER manuelle Bearbeitungen respektieren (sowohl bei Monats- als auch bei Jahresimport)
-                // Nur Excel-Einträge überschreiben, die nicht manuell geändert wurden
-                // Jahresimport (month undefined oder null) -> deleteEmpty = false (bestehende Einträge behalten)
-                // Monatsimport (month defined) -> deleteEmpty = true (Sync, leere Felder löschen)
                 const isYearlyImport = month == null;
                 const deleteEmpty = !isYearlyImport;
-                const respectManualEdits = !isYearlyImport; // Jahresimport überschreibt auch manuelle Änderungen
+                const respectManualEdits = !isYearlyImport;
                 
-                // Prüfe Verfügbarkeitskonflikte VOR dem Import
                 const availabilityConflicts = await this.checkAvailabilityConflicts(entriesToImport);
                 
                 const result = await this.dbAdapter.bulkImportDutyRosterEntries(entriesToImport, respectManualEdits, deleteEmpty);
-                console.log(`[RosterImporter] Import: ${result.imported} importiert, ${result.skipped} übersprungen (manuell bearbeitet oder existierend)`);
+                console.log(`[RosterImporter] Import: ${result.imported} importiert, ${result.skipped} übersprungen.`);
                 
-                // WICHTIG: Wenn deleteEmpty=true (Sync-Modus), lösche alle Einträge für Personen, 
-                // die im Import-Block NICHT vorkommen, aber in der DB existieren (Orphaned Entries).
                 if (deleteEmpty && seenPersons.size > 0) {
                     const seenList = Array.from(seenPersons);
                     const deletedOrphans = await this.dbAdapter.deleteOrphanedDutyRosterEntries(year, month, seenList, options?.department);
                     if (deletedOrphans > 0) {
-                        console.log(`[RosterImporter] Sync-Cleanup: ${deletedOrphans} verwaiste Einträge von nicht mehr im Excel gelisteten Personen wurden entfernt.`);
+                        console.log(`[RosterImporter] Sync-Cleanup: ${deletedOrphans} verwaiste Einträge wurden entfernt.`);
                     }
                 }
                 
                 const unknownAzubiList = allUnknownAzubiNames.size > 0 ? Array.from(allUnknownAzubiNames).sort() : undefined;
-                if (unknownAzubiList?.length) {
-                    console.log('[RosterImporter] Unbekannte Azubi-Namen (Import für bekannte Azubis abgeschlossen):', unknownAzubiList);
-                }
 
                 return {
                     success: true,
@@ -843,16 +889,8 @@ export class RosterImporter {
             }
 
             const unknownAzubiList = allUnknownAzubiNames.size > 0 ? Array.from(allUnknownAzubiNames).sort() : undefined;
-            if (unknownAzubiList?.length) {
-                return {
-                    success: true,
-                    message: `Unbekannte Azubi-Namen gefunden: ${unknownAzubiList.join(', ')}`,
-                    importedCount: 0,
-                    unknownAzubis: unknownAzubiList
-                };
-            }
 
-            return { success: true, message: `Keine Einträge zum Import gefunden.`, importedCount: 0 };
+            return { success: true, message: `Keine Einträge zum Import gefunden.`, importedCount: 0, unknownAzubis: unknownAzubiList };
 
         } catch (error) {
             console.error('Fehler beim Importieren des Dienstplans:', error);

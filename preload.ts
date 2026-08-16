@@ -278,6 +278,7 @@ contextBridge.exposeInMainWorld('api', {
     getSetupDefaults: () => ipcRenderer.invoke('get-setup-defaults'),
     testDirWritable: (dir: string) => ipcRenderer.invoke('test-dir-writable', dir),
     finalizeSetup: (dir: string) => ipcRenderer.invoke('finalize-setup', dir),
+    notifyAllUpdated: () => ipcRenderer.invoke('notify-all-updated'),
 });
 
 // Ergänze für Electron Dialog API
@@ -285,7 +286,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
     on: (channel: string, callback: (...args: any[]) => void) => {
         // Whitelist für erlaubte Channels
-        const validChannels = ['splash-status', 'splash-version', 'duty-roster-updated', 'personnel-updated'];
+        const validChannels = ['splash-status', 'splash-version', 'duty-roster-updated', 'personnel-updated', 'vehicles-updated', 'settings-updated', 'azubis-updated', 'itw-updated', 'guests-updated', 'holidays-updated'];
         if (validChannels.includes(channel)) {
             ipcRenderer.on(channel, (_event, ...args) => callback(...args));
         }

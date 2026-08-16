@@ -59,10 +59,8 @@ export function isVehicleActiveOnDate(
 
   // 2. Check regular activity period ranges
   if (!periods || periods.length === 0) {
-    // Reservefahrzeuge ohne expliziten aktiven Zeitraum oder Sondertag sind regulär inaktiv.
-    // Regelrettungsfahrzeuge ohne einschränkende Zeiträume sind regulär aktiv.
-    const active = !isReserve;
-    return { active, shiftMode: active ? 'default' : 'off', isSpecialDay: false };
+    // Wenn keine Grund-Zeiträume definiert sind, ist das Fahrzeug inaktiv (sofern kein Sondertag vorliegt).
+    return { active: false, shiftMode: 'off', isSpecialDay: false };
   }
 
   const activePeriod = periods.find(p => {

@@ -2327,8 +2327,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         width: 'var(--vehicle-card-width)',
                                         minWidth: 'var(--vehicle-card-width)',
                                         maxWidth: 'var(--vehicle-card-width)',
-                                        height: 54,
-                                        padding: '8px 8px 6px 8px',
+                                        height: 58,
+                                        padding: '6px 8px 4px 8px',
                                         boxSizing: 'border-box',
                                         background: '#ffffff',
                                         borderRadius: '8px 8px 0 0',
@@ -2346,18 +2346,19 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 gridColumn: '2 / span 2',
                                                 textAlign: 'center',
                                                 fontWeight: 700,
-                                                fontSize: 15,
+                                                fontSize: 14,
+                                                lineHeight: '1.2',
                                                 color: 'var(--text)',
                                                 whiteSpace: 'nowrap',
                                                 overflow: 'hidden',
                                                 textOverflow: 'ellipsis',
-                                                marginBottom: 6
+                                                marginBottom: 3
                                             }}>
                                                 {v.name || rtwNames[rIdx] || ''}
                                             </div>
                                             <div></div>
-                                            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>Tag</div>
-                                            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>Nacht</div>
+                                            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center', lineHeight: '1.2' }}>Tag</div>
+                                            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center', lineHeight: '1.2' }}>Nacht</div>
                                         </div>
                                         <div style={{
                                             position: 'absolute',
@@ -2383,8 +2384,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         width: 'var(--vehicle-card-width)',
                                         minWidth: 'var(--vehicle-card-width)',
                                         maxWidth: 'var(--vehicle-card-width)',
-                                        height: 54,
-                                        padding: '8px 8px 6px 8px',
+                                        height: 58,
+                                        padding: '6px 8px 4px 8px',
                                         boxSizing: 'border-box',
                                         background: '#ffffff',
                                         borderRadius: '8px 8px 0 0',
@@ -2402,17 +2403,18 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 gridColumn: '2 / span 1',
                                                 textAlign: 'center',
                                                 fontWeight: 700,
-                                                fontSize: 15,
+                                                fontSize: 14,
+                                                lineHeight: '1.2',
                                                 color: 'var(--text)',
                                                 whiteSpace: 'nowrap',
                                                 overflow: 'hidden',
                                                 textOverflow: 'ellipsis',
-                                                marginBottom: 6
+                                                marginBottom: 3
                                             }}>
                                                 {v.name || nefName || ''}
                                             </div>
                                             <div></div>
-                                            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>{nefLabel}</div>
+                                            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center', lineHeight: '1.2' }}>{nefLabel}</div>
                                         </div>
                                         <div style={{
                                             position: 'absolute',
@@ -2444,28 +2446,38 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         width: 'var(--vehicle-card-width)',
                                         minWidth: 'var(--vehicle-card-width)',
                                         maxWidth: 'var(--vehicle-card-width)',
-                                        height: 54,
-                                        padding: '0 8px 3px 8px',
+                                        height: 58,
+                                        padding: '6px 8px 4px 8px',
                                         boxSizing: 'border-box',
                                         background: '#ffffff',
                                         borderRadius: '8px 8px 0 0',
                                         border: '1px solid transparent',
                                         position: 'relative',
-                                        overflow: 'hidden',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center'
+                                        overflow: 'hidden'
                                     }}>
                                         <div style={{
-                                            textAlign: 'center',
-                                            fontWeight: 700,
-                                            fontSize: 15,
-                                            color: '#b91c1c',
-                                            whiteSpace: 'nowrap',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis'
+                                            display: 'grid',
+                                            gridTemplateColumns: '60px minmax(0, 1fr) minmax(0, 1fr)',
+                                            gap: '6px',
+                                            alignItems: 'center'
                                         }}>
-                                            {v.name || rtwNames[rIdx] || ''} <span style={{ fontSize: 11, fontWeight: 500, color: '#ef4444' }}>(Reserve)</span>
+                                            <div style={{
+                                                gridColumn: '2 / span 2',
+                                                textAlign: 'center',
+                                                fontWeight: 700,
+                                                fontSize: 14,
+                                                lineHeight: '1.2',
+                                                color: '#b91c1c',
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                marginBottom: 3
+                                            }}>
+                                                {v.name || rtwNames[rIdx] || ''} <span style={{ fontSize: 11, fontWeight: 500, color: '#ef4444' }}>(Reserve)</span>
+                                            </div>
+                                            <div></div>
+                                            <div style={{ fontSize: 11, color: '#b91c1c', fontWeight: 600, textAlign: 'center', lineHeight: '1.2' }}>Tag</div>
+                                            <div style={{ fontSize: 11, color: '#b91c1c', fontWeight: 600, textAlign: 'center', lineHeight: '1.2' }}>Nacht</div>
                                         </div>
                                         <div style={{
                                             position: 'absolute',
@@ -2490,6 +2502,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 const isActiveInMonth = monthDays.some(dateStr => isVehicleActiveOnDate(dateStr, periods, specialDays, true).active);
                                 if (!isActiveInMonth) return null;
 
+                                const nefLabel = v.occupancy_mode === '24h' ? '24h' : 'Tag';
+
                                 return (
                                     <div key={`nef_header_${nIdx}`} style={{
                                         marginRight: 8,
@@ -2497,28 +2511,37 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         width: 'var(--vehicle-card-width)',
                                         minWidth: 'var(--vehicle-card-width)',
                                         maxWidth: 'var(--vehicle-card-width)',
-                                        height: 54,
-                                        padding: '0 8px 3px 8px',
+                                        height: 58,
+                                        padding: '6px 8px 4px 8px',
                                         boxSizing: 'border-box',
                                         background: '#ffffff',
                                         borderRadius: '8px 8px 0 0',
                                         border: '1px solid transparent',
                                         position: 'relative',
-                                        overflow: 'hidden',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center'
+                                        overflow: 'hidden'
                                     }}>
                                         <div style={{
-                                            textAlign: 'center',
-                                            fontWeight: 700,
-                                            fontSize: 15,
-                                            color: '#b91c1c',
-                                            whiteSpace: 'nowrap',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis'
+                                            display: 'grid',
+                                            gridTemplateColumns: '60px minmax(0, 1fr)',
+                                            gap: '6px',
+                                            alignItems: 'center'
                                         }}>
-                                            {v.name || nefName || ''} <span style={{ fontSize: 11, fontWeight: 500, color: '#ef4444' }}>(Reserve)</span>
+                                            <div style={{
+                                                gridColumn: '2 / span 1',
+                                                textAlign: 'center',
+                                                fontWeight: 700,
+                                                fontSize: 14,
+                                                lineHeight: '1.2',
+                                                color: '#b91c1c',
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                marginBottom: 3
+                                            }}>
+                                                {v.name || nefName || ''} <span style={{ fontSize: 11, fontWeight: 500, color: '#ef4444' }}>(Reserve)</span>
+                                            </div>
+                                            <div></div>
+                                            <div style={{ fontSize: 11, color: '#b91c1c', fontWeight: 600, textAlign: 'center', lineHeight: '1.2' }}>{nefLabel}</div>
                                         </div>
                                         <div style={{
                                             position: 'absolute',
@@ -2731,13 +2754,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                                                             return (
                                                                 <div key={`rtw_${rIdx}`} className={styles.rtwTable} style={{ gridTemplateColumns: gridCols }}>
-                                                                    {isReserve && (
-                                                                        <>
-                                                                            <div></div>
-                                                                            {showTag && <div style={{ fontSize: 11, color: '#b91c1c', fontWeight: 600, textAlign: 'center' }}>Tag</div>}
-                                                                            {showNacht && <div style={{ fontSize: 11, color: '#b91c1c', fontWeight: 600, textAlign: 'center' }}>Nacht</div>}
-                                                                        </>
-                                                                    )}
                                                                     <div className={styles.rowLabel}>FzF</div>
                                                                     {showTag && (() => {
                                                                         const slotId = `rtw${rIdx + 1}_tag_1`;

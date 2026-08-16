@@ -94,7 +94,7 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
       const list = (rawList || []).filter((p: any) => {
         const pPeriods = periodsByPerson[p.id] || [];
         const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
-        if (rdPeriods.length === 0) return true;
+        if (rdPeriods.length === 0) return false;
         return rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
       });
 
@@ -220,7 +220,7 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
             if (hasUe50Period) ue50Monthly[m] = qualApplies(ue50Periods, ym);
             if (hasLpalPeriod) lpalMonthly[m] = qualApplies(lpalPeriods, ym);
             if (hasRettungsdienstPeriod) rettungsdienstMonthly[m] = qualApplies(rettungsdienstPeriods, ym);
-            else rettungsdienstMonthly[m] = true;
+            else rettungsdienstMonthly[m] = false;
           }
 
           const deptActiveMonthly = buildDepartmentActiveMonthly(

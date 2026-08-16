@@ -1813,6 +1813,28 @@ ipcMain.handle('get-backup-summary', async (_event, backupDir: string, year?: nu
     }
 });
 
+function broadcastAllDataUpdated() {
+    BrowserWindow.getAllWindows().forEach(w => {
+        try {
+            w.webContents.send('personnel-updated');
+            w.webContents.send('vehicles-updated');
+            w.webContents.send('duty-roster-updated');
+            w.webContents.send('settings-updated');
+            w.webContents.send('azubis-updated');
+            w.webContents.send('azubi-updated');
+            w.webContents.send('itw-doctors-updated');
+            w.webContents.send('itw-updated');
+            w.webContents.send('guests-updated');
+            w.webContents.send('holidays-updated');
+        } catch { }
+    });
+}
+
+ipcMain.handle('notify-all-updated', async () => {
+    broadcastAllDataUpdated();
+    return { success: true };
+});
+
 ipcMain.handle('restore-backup', async (_event, backupDir: string) => {
     try {
         await restoreDatabaseFromBackup(backupDir);
@@ -1829,6 +1851,7 @@ ipcMain.handle('restore-backup', async (_event, backupDir: string) => {
 ipcMain.handle('import-backup', async (_event, backupDbPath: string, options?: { personnel?: boolean; azubis?: boolean; assignments?: boolean; qualifications?: boolean; individualSettings?: boolean; dutyRoster?: boolean; replaceExisting?: boolean }) => {
     try {
         const res = await importFromBackup(backupDbPath, options);
+        broadcastAllDataUpdated();
         return { success: true, result: res };
     } catch (e: any) {
         return { success: false, message: e?.message || String(e) };
@@ -1892,9 +1915,7 @@ ipcMain.handle('import-settings-json', async (_event, filePath: string, replaceE
         const result = await adapter.importSettingsFromJson(filePath, replaceExisting);
 
         // Notify all windows about settings update
-        BrowserWindow.getAllWindows().forEach(w => {
-            try { w.webContents.send('settings-updated'); } catch { }
-        });
+        broadcastAllDataUpdated();
 
         return result;
     } catch (error) {
@@ -1939,10 +1960,7 @@ ipcMain.handle('import-duty-roster', async (_event, filePath: string, year: numb
         const result = await adapter.importDutyRoster(filePath, year, month, options);
 
         if (result.success) {
-            // Notify all windows about the update
-            BrowserWindow.getAllWindows().forEach(w => {
-                try { w.webContents.send('duty-roster-updated'); } catch { }
-            });
+            broadcastAllDataUpdated();
         }
 
         return result;
@@ -2340,15 +2358,15 @@ ipcMain.on('open-edit-itw-window', (_ev, id: number) => {
 });
 
 ipcMain.on('open-add-rtw-window', () => {
-    openWindow('addRtw.html', 'addRtwWindow', 680, 580);
+    openWindow('addRtw.html', 'addRtwWindow', 960, 680);
 });
 
 ipcMain.on('open-add-nef-window', () => {
-    openWindow('addNef.html', 'addNefWindow', 680, 580);
+    openWindow('addNef.html', 'addNefWindow', 960, 680);
 });
 
 ipcMain.on('open-add-itw-vehicle-window', () => {
-    openWindow('addItwVehicle.html', 'addItwVehicleWindow', 680, 580);
+    openWindow('addItwVehicle.html', 'addItwVehicleWindow', 960, 680);
 });
 
 // App quit handler

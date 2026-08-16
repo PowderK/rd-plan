@@ -1409,7 +1409,11 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
               marginBottom: '12px'
             }}>
               {/* Live-Suche Input */}
-              <div style={{ flex: '1', maxWidth: '320px' }}>
+              <div style={{ position: 'relative', flex: '1', maxWidth: '320px' }}>
+                <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
                 <input
                   type="text"
                   placeholder={`${activeTab === 'stammpersonal' ? 'Stammpersonal' : activeTab === 'azubis' ? 'Azubis' : activeTab === 'ärzte' ? 'Ärzte' : 'Gäste'} suchen...`}
@@ -1417,13 +1421,39 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                   onChange={e => setSearchQuery(e.target.value)}
                   style={{
                     width: '100%',
-                    padding: '6px 12px',
+                    padding: '6px 28px 6px 34px',
                     borderRadius: '6px',
                     border: '1px solid #cbd5e1',
                     fontSize: '13px',
-                    outline: 'none'
+                    outline: 'none',
+                    boxSizing: 'border-box'
                   }}
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    style={{
+                      position: 'absolute',
+                      right: 8,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: '#94a3b8',
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}
+                    title="Suche zurücksetzen"
+                  >
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                )}
               </div>
 
               {/* Action-Buttons Header */}
@@ -1438,6 +1468,9 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                 <button
                   onClick={handleFooterAdd}
                   style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
                     padding: '6px 14px',
                     borderRadius: '6px',
                     border: 'none',
@@ -1445,15 +1478,23 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                     color: '#ffffff',
                     fontSize: '13px',
                     fontWeight: 600,
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
                   }}
                 >
+                  <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
                   Hinzufügen
                 </button>
 
                 <button
                   onClick={() => setFormatModal({ action: 'import', category: activeTab })}
                   style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
                     padding: '6px 14px',
                     borderRadius: '6px',
                     border: '1px solid #cbd5e1',
@@ -1461,15 +1502,24 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                     color: '#334155',
                     fontSize: '13px',
                     fontWeight: 500,
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
                   }}
                 >
+                  <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
                   Import
                 </button>
 
                 <button
                   onClick={() => setFormatModal({ action: 'export', category: activeTab })}
                   style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
                     padding: '6px 14px',
                     borderRadius: '6px',
                     border: '1px solid #cbd5e1',
@@ -1477,9 +1527,15 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                     color: '#334155',
                     fontSize: '13px',
                     fontWeight: 500,
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
                   }}
                 >
+                  <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
                   Export
                 </button>
 
@@ -1487,6 +1543,9 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                   <button
                     onClick={saveEditingAzubis}
                     style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
                       padding: '6px 14px',
                       borderRadius: '6px',
                       border: 'none',
@@ -1497,6 +1556,9 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                       cursor: 'pointer'
                     }}
                   >
+                    <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
                     Speichern
                   </button>
                 )}
@@ -1504,6 +1566,9 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                   <button
                     onClick={cancelEditingAzubis}
                     style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
                       padding: '6px 14px',
                       borderRadius: '6px',
                       border: '1px solid #cbd5e1',
@@ -1513,6 +1578,10 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                       cursor: 'pointer'
                     }}
                   >
+                    <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
                     Abbrechen
                   </button>
                 )}

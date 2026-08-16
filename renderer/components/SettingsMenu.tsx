@@ -715,41 +715,18 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
     try {
       const res = await (window as any).api.importDutyRoster(importPath, importYear, undefined, { department: importDepartment });
       if (res && res.success) {
-        if (res.unknownShiftTypes && res.unknownShiftTypes.length > 0) {
-          const createNewShiftTypes = window.confirm(
-            `Folgende unbekannte Dienstarten wurden gefunden:\n${res.unknownShiftTypes.join('\n')}\n\nMöchten Sie diese als neue Dienstarten anlegen?`
-          );
-          if (createNewShiftTypes) {
-            setShowYearImportShiftTypeDialog(true);
-            setYearImportUnknownShiftTypes(res.unknownShiftTypes);
-            setYearImportPendingYear(importYear);
-          }
-          return;
-        }
-
-        if (res.unknownAzubis && res.unknownAzubis.length > 0) {
-          const createNewAzubis = window.confirm(
-            `Folgende unbekannte Azubi-Namen wurden gefunden:\n${res.unknownAzubis.join('\n')}\n\nMöchten Sie diese als neue Azubis anlegen?`
-          );
-          if (createNewAzubis) {
-            setShowYearImportAzubiDialog(true);
-            setYearImportUnknownAzubiNames(res.unknownAzubis);
-            setYearImportPendingYear(importYear);
-          }
-          return;
-        }
-
-        if (res.azubisWithoutPeriod && res.azubisWithoutPeriod.length > 0) {
-          setShowYearImportAzubiPeriodDialog(true);
-          setYearImportAzubisWithoutPeriod(res.azubisWithoutPeriod);
-          setYearImportPendingYear(importYear);
-          return;
+        try { (window as any).api?.notifyAllUpdated?.(); } catch { }
+        window.dispatchEvent(new CustomEvent('duty-roster-updated'));
+        window.dispatchEvent(new CustomEvent('settings-updated'));
+        window.dispatchEvent(new CustomEvent('personnel-updated'));
+        const plannings = await (window as any).api.getYearPlannings?.();
+        if (plannings && Array.isArray(plannings)) {
+          setYearPlannings(plannings.map((p: any) => ({ year: Number(p.year), filePath: String(p.filePath), department: p.department })));
         }
 
         alert(`Dienstplan für ${importYear} erfolgreich importiert. Einträge: ${res.importedCount ?? 'n/v'}`);
-        try { (window as any).api.onDutyRosterUpdated?.(() => { }); } catch { }
       } else {
-        alert(`Import fehlgeschlagen: ${res?.message || 'Unbekannter Fehler'}`);
+        alert(`Import-Hinweis: ${res?.message || 'Fehler beim Import'}`);
       }
     } catch (e: any) {
       alert(`Fehler beim Import: ${e?.message || String(e)}`);

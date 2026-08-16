@@ -1,25 +1,81 @@
-/* Globale moderne Optik */
+/* Globale moderne Optik & Einheitliche Farbpalette */
 :root {
   --header-height: 56px;
   --bg: #ffffff;
-  --text: #111827;     /* gray-900 */
-  --muted: #6b7280;    /* gray-500 */
-  --line: #e5e7eb;     /* gray-200 */
-  --hover: #f9fafb;    /* gray-50 */
-  --primary: #1d4ed8;  /* indigo-600 */
-  --accent: #2563eb;   /* blue-600 */
+  --bg-card: #ffffff;
+  --text: #0f172a;     /* slate-900 */
+  --muted: #64748b;    /* slate-500 */
+  --line: #e2e8f0;     /* slate-200 */
+  --hover: #f8fafc;    /* slate-50 */
+  --primary: #0ea5e9;  /* sky-500 */
+  --primary-hover: #0284c7; /* sky-600 */
+  --accent: #0284c7;   /* sky-600 */
+
+  /* Schichtarten & Dienste (Light) */
+  --duty-tag: #ea580c;        /* Tagdienst Orange */
+  --duty-tag-bg: #fff7ed;
+  --duty-nacht: #2563eb;      /* Nachtdienst Blau */
+  --duty-nacht-bg: #eff6ff;
+  --duty-24h: #7c3aed;        /* 24h Violett */
+  --duty-24h-bg: #f5f3ff;
+
+  /* Status-Farben */
+  --status-success: #15803d;  /* Grün */
+  --status-success-bg: #f0fdf4;
+  --status-error: #dc2626;    /* Rot */
+  --status-error-bg: #fef2f2;
+  --status-warning: #d97706;  /* Gelb/Amber */
+  --status-warning-bg: #fffbeb;
+  --status-neutral: #64748b;  /* Grau */
+  --status-neutral-bg: #f8fafc;
+
+  /* Fahrzeuge */
+  --vehicle-rtw: #dc2626;
+  --vehicle-rtw-bg: #fef2f2;
+  --vehicle-nef: #d97706;
+  --vehicle-nef-bg: #fffbeb;
+  --vehicle-itw: #7c3aed;
+  --vehicle-itw-bg: #f5f3ff;
 }
 :root { color-scheme: light; }
 
 /* Dark Mode Variablen über data-theme="dark" */
 :root[data-theme='dark'] {
   --bg: #0b1220;
-  --text: #e5e7eb;    /* gray-200 */
-  --muted: #9ca3af;   /* gray-400 */
-  --line: #1f2937;    /* gray-800 */
-  --hover: #111827;   /* gray-900 */
-  --primary: #60a5fa; /* blue-400 */
-  --accent: #3b82f6;  /* blue-500 */
+  --bg-card: #151e30;
+  --text: #f1f5f9;    /* slate-100 */
+  --muted: #94a3b8;   /* slate-400 */
+  --line: #1e2937;    /* slate-800 */
+  --hover: #111827;   /* slate-900 */
+  --primary: #38bdf8; /* sky-400 */
+  --primary-hover: #0ea5e9; /* sky-500 */
+  --accent: #38bdf8;  /* sky-400 */
+
+  /* Schichtarten & Dienste (Dark) */
+  --duty-tag: #fb923c;
+  --duty-tag-bg: #431407;
+  --duty-nacht: #60a5fa;
+  --duty-nacht-bg: #172554;
+  --duty-24h: #a78bfa;
+  --duty-24h-bg: #2e1065;
+
+  /* Status-Farben (Dark) */
+  --status-success: #4ade80;
+  --status-success-bg: #052e16;
+  --status-error: #f87171;
+  --status-error-bg: #450a0a;
+  --status-warning: #fbbf24;
+  --status-warning-bg: #451a03;
+  --status-neutral: #94a3b8;
+  --status-neutral-bg: #1e293b;
+
+  /* Fahrzeuge (Dark) */
+  --vehicle-rtw: #f87171;
+  --vehicle-rtw-bg: #450a0a;
+  --vehicle-nef: #fbbf24;
+  --vehicle-nef-bg: #451a03;
+  --vehicle-itw: #a78bfa;
+  --vehicle-itw-bg: #2e1065;
 }
 :root[data-theme='dark'] { color-scheme: dark; }
 

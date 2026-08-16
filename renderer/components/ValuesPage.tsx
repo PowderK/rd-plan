@@ -132,7 +132,7 @@ function usePersonnel(year: number, departmentName?: string) {
             rettungsdienstMonthly[m] = qualApplies(rettungsdienstPeriods, yearMonthKey(year, m));
           }
         } else {
-          rettungsdienstMonthly.fill(true);
+          rettungsdienstMonthly.fill(false);
         }
 
         const deptActiveMonthly = buildDepartmentActiveMonthly(
@@ -980,25 +980,41 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const fmt = (v: number) => new Intl.NumberFormat('de-DE').format(Number(v || 0));
   const fmtDec = (v: number) => new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(Number(v || 0));
 
+  const InfoIcon = ({ color = 'var(--primary)' }: { color?: string }) => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ minWidth: 14, cursor: 'help' }}>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="16" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12.01" y2="8" />
+    </svg>
+  );
+
+  const AlertIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--status-warning)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ minWidth: 16 }}>
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
+
   const styles = {
-    table: { borderCollapse: 'separate', borderSpacing: 0, minWidth: 980, background: '#ffffff' } as React.CSSProperties,
-    thSticky: { position: 'sticky' as const, top: 0, background: '#f8fbff', zIndex: 2, borderBottom: '1px solid #dbe7ff', padding: '6px 8px', boxShadow: '0 1px 0 0 #dbe7ff' },
-    thStickyName: { position: 'sticky' as const, top: 0, left: 0, background: '#f8fbff', zIndex: 4, borderBottom: '1px solid #dbe7ff', borderRight: '1px solid #dbe7ff', padding: '6px 8px', boxShadow: '0 1px 0 0 #dbe7ff' },
-    th: { borderBottom: '1px solid #dbe7ff', padding: '6px 8px' },
-    nameSticky: { position: 'sticky' as const, left: 0, background: '#ffffff', zIndex: 3, borderBottom: '1px solid #e4edff', borderRight: '1px solid #dbe7ff', padding: '6px 8px', minWidth: 240, textAlign: 'left' },
-    td: { borderBottom: '1px solid #e4edff', padding: '6px 8px', textAlign: 'right' } as React.CSSProperties,
-    tdLeft: { borderBottom: '1px solid #e4edff', padding: '6px 8px', textAlign: 'left' } as React.CSSProperties,
-    kpiRow: { background: '#f5f9ff' } as React.CSSProperties,
-    zebra1: { background: '#ffffff' } as React.CSSProperties,
-    zebra2: { background: '#f5f9ff' } as React.CSSProperties,
-    sectionSep: { height: 8, background: '#e4edff' } as React.CSSProperties,
+    table: { borderCollapse: 'separate', borderSpacing: 0, minWidth: 980, background: 'var(--bg-card)' } as React.CSSProperties,
+    thSticky: { position: 'sticky' as const, top: 0, background: 'var(--hover)', color: 'var(--text)', zIndex: 2, borderBottom: '1px solid var(--line)', padding: '8px 10px', boxShadow: '0 1px 0 0 var(--line)' },
+    thStickyName: { position: 'sticky' as const, top: 0, left: 0, background: 'var(--hover)', color: 'var(--text)', zIndex: 4, borderBottom: '1px solid var(--line)', borderRight: '1px solid var(--line)', padding: '8px 10px', boxShadow: '0 1px 0 0 var(--line)' },
+    th: { borderBottom: '1px solid var(--line)', padding: '8px 10px', color: 'var(--text)' },
+    nameSticky: { position: 'sticky' as const, left: 0, background: 'var(--bg-card)', color: 'var(--text)', zIndex: 3, borderBottom: '1px solid var(--line)', borderRight: '1px solid var(--line)', padding: '8px 10px', minWidth: 240, textAlign: 'left' },
+    td: { borderBottom: '1px solid var(--line)', padding: '8px 10px', textAlign: 'right', color: 'var(--text)' } as React.CSSProperties,
+    tdLeft: { borderBottom: '1px solid var(--line)', padding: '8px 10px', textAlign: 'left', color: 'var(--text)' } as React.CSSProperties,
+    kpiRow: { background: 'var(--hover)' } as React.CSSProperties,
+    zebra1: { background: 'var(--bg-card)' } as React.CSSProperties,
+    zebra2: { background: 'var(--hover)' } as React.CSSProperties,
+    sectionSep: { height: 8, background: 'var(--line)' } as React.CSSProperties,
     popupOverlay: {
       position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0,
       background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center'
     },
     popupContent: {
-      background: 'var(--bg)', color: 'var(--text)', padding: 20, borderRadius: 8, maxWidth: '90vw', maxHeight: '90vh', overflow: 'auto',
-      boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+      background: 'var(--bg-card)', color: 'var(--text)', padding: 20, borderRadius: 8, maxWidth: '90vw', maxHeight: '90vh', overflow: 'auto',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.15)', border: '1px solid var(--line)'
     },
     closeBtn: {
       float: 'right' as const, cursor: 'pointer', fontSize: 20, fontWeight: 'bold', color: 'var(--muted)'
@@ -1015,12 +1031,12 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       <div style={styles.popupOverlay} onClick={() => setSelectedPersonId(null)}>
         <div style={styles.popupContent} onClick={e => e.stopPropagation()}>
           <div style={styles.closeBtn} onClick={() => setSelectedPersonId(null)}>×</div>
-          <h3>Soll-Berechnung für {person.name}</h3>
+          <h3 style={{ margin: '0 0 12px', color: 'var(--text)' }}>Soll-Berechnung für {person.name}</h3>
           {person.ue50 && (
             <div style={{
               marginBottom: 15,
-              padding: '10px',
-              backgroundColor: 'var(--hover)',
+              padding: '10px 12px',
+              backgroundColor: 'var(--status-warning-bg)',
               color: 'var(--text)',
               border: '1px solid var(--line)',
               borderRadius: 6,
@@ -1029,14 +1045,14 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               alignItems: 'center',
               gap: '8px'
             }}>
-              <span style={{ fontSize: '1.2em' }}>⚠️</span>
+              <AlertIcon />
               <span>Ü50-Qualifikation: Wird von der Soll-Berechnung ausgeschlossen.</span>
             </div>
           )}
           {!person.ue50 && person.hlfb && (
             <div style={{
               marginBottom: 15,
-              padding: '10px',
+              padding: '10px 12px',
               backgroundColor: 'var(--hover)',
               color: 'var(--text)',
               border: '1px solid var(--line)',
@@ -1046,7 +1062,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               alignItems: 'center',
               gap: '8px'
             }}>
-              <span style={{ fontSize: '1.2em' }}>ℹ️</span>
+              <InfoIcon />
               <span>HLF-B Fahrzeugführer: Persönliches Gewicht wird mit 0,75 multipliziert.</span>
             </div>
           )}
@@ -1088,18 +1104,18 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
           </table>
 
           <div style={{ marginTop: 20, padding: 12, background: 'var(--hover)', border: '1px solid var(--line)', borderRadius: 6, fontSize: 13, lineHeight: 1.5, color: 'var(--text)' }}>
-            <h4 style={{ marginTop: 0, marginBottom: 8 }}>Erklärung der Berechnung</h4>
-            <ul style={{ paddingLeft: 20, margin: 0 }}>
-              <li><strong>Pos. (Netto):</strong> Gesamtzahl der zu besetzenden Schichten im Monat. <br />
+            <h4 style={{ marginTop: 0, marginBottom: 8, color: 'var(--text)' }}>Erklärung der Berechnung</h4>
+            <ul style={{ paddingLeft: 20, margin: 0, color: 'var(--muted)' }}>
+              <li><strong style={{ color: 'var(--text)' }}>Pos. (Netto):</strong> Gesamtzahl der zu besetzenden Schichten im Monat. <br />
                 <em>Formel: (Abteilungsschichten × (RTW×4 + NEF×Besetzung)) + ITW − Azubi-Maschinisten − Ü50-Schichten.</em></li>
-              <li><strong>Pers. Gewicht:</strong> Anzahl der Dienste, die die Person in diesem Monat tatsächlich geleistet hat (Anwesenheit). <br />
+              <li><strong style={{ color: 'var(--text)' }}>Pers. Gewicht:</strong> Anzahl der Dienste, die die Person in diesem Monat tatsächlich geleistet hat (Anwesenheit). <br />
                 <em>Bei HLF-B Fahrzeugführern wird dieser Wert mit 0,75 multipliziert.</em></li>
-              <li><strong>Gesamt-Gewicht:</strong> Summe der Gewichte aller aktiven Mitarbeiter in diesem Monat.</li>
-              <li><strong>Anteil (Exakt):</strong> Der rechnerische Anteil an den Soll-Schichten. <br />
+              <li><strong style={{ color: 'var(--text)' }}>Gesamt-Gewicht:</strong> Summe der Gewichte aller aktiven Mitarbeiter in diesem Monat.</li>
+              <li><strong style={{ color: 'var(--text)' }}>Anteil (Exakt):</strong> Der rechnerische Anteil an den Soll-Schichten. <br />
                 <em>Formel: (Pos. Netto × Pers. Gewicht) ÷ Gesamt-Gewicht.</em></li>
-              <li><strong>Anteil (Floor):</strong> Der abgerundete ganzzahlige Anteil (Basis-Soll).</li>
-              <li><strong>Bonus:</strong> Verteilung der Rest-Schichten nach dem Hamilton-Verfahren (größte Nachkommastellen erhalten +1), bis die Summe der Soll-Schichten exakt den Netto-Positionen entspricht.</li>
-              <li><strong>Final:</strong> Das endgültige Soll für diesen Monat (Floor + Bonus).</li>
+              <li><strong style={{ color: 'var(--text)' }}>Anteil (Floor):</strong> Der abgerundete ganzzahlige Anteil (Basis-Soll).</li>
+              <li><strong style={{ color: 'var(--text)' }}>Bonus:</strong> Verteilung der Rest-Schichten nach dem Hamilton-Verfahren (größte Nachkommastellen erhalten +1), bis die Summe der Soll-Schichten exakt den Netto-Positionen entspricht.</li>
+              <li><strong style={{ color: 'var(--text)' }}>Final:</strong> Das endgültige Soll für diesen Monat (Floor + Bonus).</li>
             </ul>
           </div>
         </div>
@@ -1110,10 +1126,10 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   return (
     <div className="page-container">
       {renderCalculationPopup()}
-      {/* Überschrift - ROT */}
+      {/* Überschrift */}
       <h2 className="page-header">Werte – {year}{departmentName ? ` – ${departmentName}` : ''}</h2>
-      {/* Content - GRAU */}
-      <div className="page-content" style={{ overflow: 'auto', maxHeight: '70vh', border: '1px solid #d6e4ff', borderRadius: 10, position: 'relative', paddingTop: 0 }}>
+      {/* Content */}
+      <div className="page-content" style={{ overflow: 'auto', maxHeight: '74vh', border: '1px solid var(--line)', borderRadius: 10, position: 'relative', paddingTop: 0 }}>
         <table style={styles.table}>
           <thead>
             <tr>
@@ -1130,7 +1146,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               <td
                 colSpan={monthNames.length + 2}
                 style={{
-                  background: 'linear-gradient(90deg, #1e40af 0%, #3b82f6 100%)',
+                  background: 'linear-gradient(90deg, #0284c7 0%, #0ea5e9 100%)',
                   color: '#ffffff',
                   padding: '10px 14px',
                   fontWeight: 700,
@@ -1139,7 +1155,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                   boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
                 }}
               >
-                📊 GESAMTWERTE & STATIONSÜBERSICHT
+                GESAMTWERTE & STATIONSÜBERSICHT
               </td>
             </tr>
 
@@ -1147,7 +1163,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span>Positionen gesamt (netto)</span>
-                  <span style={{ fontSize: '12px', color: '#2563eb', cursor: 'help' }} title="Gesamtzahl aller zu besetzenden Schichten im Monat (RTW, NEF, ITW) abzüglich der von Azubis, Gästen und Ü50-Personal besetzten Schichten.">ℹ️</span>
+                  <InfoIcon />
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Abteilungsschichten × (RTW×4 + NEF×2) + ITW − Gast/Azubis − Ü50</div>
               </td>
@@ -1159,7 +1175,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span>Anzahl Personal (gewichtet)</span>
-                  <span style={{ fontSize: '12px', color: '#2563eb', cursor: 'help' }} title="Anzahl der aktiven Mitarbeiter, die in diesem Monat mindestens eine Schicht leisten (ohne Ü50/LPAL).">ℹ️</span>
+                  <InfoIcon />
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Stammpersonal mit mind. einer Schicht (Auswertung ≠ off); HLF‑B ungewichtet gezählt</div>
               </td>
@@ -1171,7 +1187,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span>Anzahl Gast / Azubis</span>
-                  <span style={{ fontSize: '12px', color: '#2563eb', cursor: 'help' }} title="Summe aller Einsätze von Gästen sowie Azubis auf Maschinist-Positionen in diesem Monat.">ℹ️</span>
+                  <InfoIcon />
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Summe der Gast- und Azubi-Maschinist-Einsätze je Monat</div>
               </td>
@@ -1183,7 +1199,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span>Anzahl Ü50-Schichten</span>
-                  <span style={{ fontSize: '12px', color: '#2563eb', cursor: 'help' }} title="Summe aller Schichten von Kolleginnen und Kollegen mit Ü50- oder LPAL-Qualifikation in diesem Monat.">ℹ️</span>
+                  <InfoIcon />
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Summe aller Ü50-Personen-Einsätze je Monat (alle Positionen)</div>
               </td>
@@ -1195,7 +1211,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span>ITW‑Schichten</span>
-                  <span style={{ fontSize: '12px', color: '#2563eb', cursor: 'help' }} title="Anzahl aller im Dienstplan geplanten Schichten auf dem ITW (Integrierter Behandlungs- und Wirkstoffplan).">ℹ️</span>
+                  <InfoIcon />
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Summe aller ITW‑Einsätze (Slot oder Auswertung = ITW)</div>
               </td>
@@ -1207,7 +1223,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span>Mittelwert (24h + ITW)</span>
-                  <span style={{ fontSize: '12px', color: '#2563eb', cursor: 'help' }} title="Durchschnittliche Schichtanzahl (24h- und ITW-Dienste) pro aktiver Person in diesem Monat.">ℹ️</span>
+                  <InfoIcon />
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Durchschnitt pro Monat über Personen mit {'>'} 0 (gerundet)</div>
               </td>
@@ -1219,7 +1235,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span>Schichten je Person</span>
-                  <span style={{ fontSize: '12px', color: '#2563eb', cursor: 'help' }} title="Rechnerischer Richtwert: Netto-Positionen dividiert durch die Anzahl des aktiven Personals.">ℹ️</span>
+                  <InfoIcon />
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Positionen gesamt ÷ Anzahl Personal</div>
               </td>
@@ -1232,35 +1248,35 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
                 <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span>Kontrolle: Positionen vs. Soll</span>
-                  <span style={{ fontSize: '12px', color: '#2563eb', cursor: 'help' }} title="Vergleich zwischen den tatsächlich benötigten Netto-Schichtpositionen (links) und der Summe aller vergebenen Personen-Soll-Schichten (rechts). Grüner Hintergrund zeigt exakte Übereinstimmung.">ℹ️</span>
+                  <InfoIcon />
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Markiert = Vergleich Positionen zu Soll</div>
               </td>
               {row1Adj.map((pos, i) => {
                 const soll = totalTargetsPerMonth[i] || 0;
                 const ok = Number(pos || 0) === Number(soll || 0);
-                const bg = ok ? 'var(--hover)' : 'var(--bg)';
+                const bg = ok ? 'var(--status-success-bg)' : 'var(--bg-card)';
                 const border = '1px solid var(--line)';
                 return (
                   <td key={i} style={{ ...styles.td, ...styles.kpiRow, background: bg, border }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                       <span>{fmt(pos)}</span>
                       <span style={{ color: 'var(--muted)' }}>|</span>
-                      <span style={{ color: ok ? 'var(--accent)' : 'var(--text)', fontWeight: ok ? 600 : 400 }}>{fmt(soll)}</span>
+                      <span style={{ color: ok ? 'var(--status-success)' : 'var(--text)', fontWeight: ok ? 600 : 400 }}>{fmt(soll)}</span>
                     </div>
                   </td>
                 );
               })}
               {(() => {
                 const ok = Number(sumPositionsYear || 0) === Number(sumTargetsYear || 0);
-                const bg = ok ? 'var(--hover)' : 'var(--bg)';
+                const bg = ok ? 'var(--status-success-bg)' : 'var(--bg-card)';
                 const border = '1px solid var(--line)';
                 return (
                   <td style={{ ...styles.td, ...styles.kpiRow, background: bg, border }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                       <span>{fmt(sumPositionsYear)}</span>
                       <span style={{ color: 'var(--muted)' }}>|</span>
-                      <span style={{ color: ok ? 'var(--accent)' : 'var(--text)', fontWeight: ok ? 600 : 400 }}>{fmt(sumTargetsYear)}</span>
+                      <span style={{ color: ok ? 'var(--status-success)' : 'var(--text)', fontWeight: ok ? 600 : 400 }}>{fmt(sumTargetsYear)}</span>
                     </div>
                   </td>
                 );
@@ -1281,7 +1297,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                   boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
                 }}
               >
-                👤 PERSÖNLICHE WERTE — STAMMPERSONAL & EINSATZKRÄFTE (Ist | Soll)
+                PERSÖNLICHE WERTE — STAMMPERSONAL & EINSATZKRÄFTE (Ist | Soll)
               </td>
             </tr>
 
@@ -1308,7 +1324,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span>{row.name}</span>
-                      <span style={{ fontSize: '11px', color: '#16a34a', cursor: 'pointer' }} title={`Klicken für Details zur Soll-Berechnung von ${row.name}`}>ℹ️</span>
+                      <InfoIcon color="var(--status-success)" />
                     </div>
                   </td>
                   {row.counts.map((v, i) => {
@@ -1356,7 +1372,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                   <td
                     colSpan={monthNames.length + 2}
                     style={{
-                      background: 'linear-gradient(90deg, #d97706 0%, #f59e0b 100%)',
+                      background: 'linear-gradient(90deg, #b45309 0%, #d97706 100%)',
                       color: '#ffffff',
                       padding: '10px 14px',
                       fontWeight: 700,
@@ -1365,7 +1381,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                       boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
                     }}
                   >
-                    🎓 GAST-EINSÄTZE & AZUBI-MASCHINISTEN
+                    GAST-EINSÄTZE & AZUBI-MASCHINISTEN
                   </td>
                 </tr>
                 {[...perGuestPositions, ...perAzubiMaschinist].map((row, idx) => {
@@ -1376,7 +1392,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                       <td style={styles.nameSticky as any} title={guestQuicktip}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span>{row.name}</span>
-                          <span style={{ fontSize: '11px', color: '#d97706', cursor: 'help' }} title={guestQuicktip}>ℹ️</span>
+                          <InfoIcon color="var(--status-warning)" />
                         </div>
                       </td>
                       {row.counts.map((v, i) => (

@@ -129,11 +129,11 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
 
   const content = (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* ABSCHNITT 1: REGEL-ZEITRÄUME */}
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <h4 style={{ margin: 0, fontSize: '15px', color: '#1e40af', fontWeight: 600 }}>
-            1. Regelmäßige Aktivitäts-Zeiträume
+      {/* ABSCHNITT 1: REGULÄRE GRUND-ZEITRÄUME */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: 8 }}>
+          <h4 style={{ margin: 0, fontSize: '15px', color: '#1e293b', fontWeight: 600 }}>
+            1. Reguläre Grund-Zeiträume (Standard-Aktivität)
           </h4>
           <button
             type="button"
@@ -142,11 +142,12 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
               background: '#28a745',
               color: 'white',
               border: 'none',
-              padding: '5px 10px',
+              padding: '5px 12px',
               borderRadius: '4px',
               cursor: 'pointer',
               fontSize: '12px',
-              fontWeight: 500
+              fontWeight: 500,
+              whiteSpace: 'nowrap'
             }}
           >
             + Zeitraum hinzufügen
@@ -154,14 +155,14 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
         </div>
 
         {periods.length > 0 ? (
-          <div style={{ border: '1px solid #ddd', borderRadius: '4px', overflow: 'hidden' }}>
+          <div style={{ border: '1px solid #ddd', borderRadius: '4px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
                 <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #ddd' }}>
-                  <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600 }}>Gültig ab</th>
-                  <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600 }}>Gültig bis</th>
+                  <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600, width: '140px' }}>Gültig ab</th>
+                  <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600, width: '200px' }}>Gültig bis</th>
                   <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600 }}>Bemerkung</th>
-                  <th style={{ textAlign: 'center', padding: '8px 10px', fontWeight: 600, width: '60px' }}>Aktion</th>
+                  <th style={{ textAlign: 'center', padding: '8px 10px', fontWeight: 600, width: '70px' }}>Aktion</th>
                 </tr>
               </thead>
               <tbody>
@@ -172,12 +173,12 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
                         type="date"
                         value={p.startDate || p.startYM || ''}
                         onChange={(e) => updatePeriod(p.id, 'startDate', e.target.value)}
-                        style={{ padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
                       />
                     </td>
                     <td style={{ padding: '6px 10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '12px', cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                           <input
                             type="checkbox"
                             checked={!p.endDate && !p.endYM}
@@ -201,7 +202,7 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
                         placeholder="z.B. Sommer-RTW"
                         value={p.note || ''}
                         onChange={(e) => updatePeriod(p.id, 'note', e.target.value)}
-                        style={{ width: '90%', padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
                       />
                     </td>
                     <td style={{ textAlign: 'center', padding: '6px 10px' }}>
@@ -227,15 +228,15 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
             </table>
           </div>
         ) : (
-          <div style={{ padding: '12px', background: '#f8f9fa', border: '1px dashed #ddd', borderRadius: '4px', textAlign: 'center', color: '#6c757d', fontSize: '13px' }}>
-            Keine Grund-Zeiträume definiert (Fahrzeug gilt als durchgehend aktiv).
+          <div style={{ padding: '12px', background: '#fff5f5', border: '1px dashed #fecaca', borderRadius: '4px', textAlign: 'center', color: '#991b1b', fontSize: '13px', fontWeight: 500 }}>
+            Keine Grund-Zeiträume definiert (Fahrzeug ist inaktiv).
           </div>
         )}
       </div>
 
       {/* ABSCHNITT 2: SPITZENABDECKUNG & SONDERLAGEN (EINZEL-TAGE) */}
       <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: 8 }}>
           <h4 style={{ margin: 0, fontSize: '15px', color: '#b45309', fontWeight: 600 }}>
             2. Taggenaue Sonderlagen & Spitzenabdeckung (Einzel-Tage)
           </h4>
@@ -246,11 +247,12 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
               background: '#d97706',
               color: 'white',
               border: 'none',
-              padding: '5px 10px',
+              padding: '5px 12px',
               borderRadius: '4px',
               cursor: 'pointer',
               fontSize: '12px',
-              fontWeight: 500
+              fontWeight: 500,
+              whiteSpace: 'nowrap'
             }}
           >
             + Sondertag hinzufügen
@@ -258,15 +260,15 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
         </div>
 
         {specialDays.length > 0 ? (
-          <div style={{ border: '1px solid #ddd', borderRadius: '4px', overflow: 'hidden' }}>
+          <div style={{ border: '1px solid #ddd', borderRadius: '4px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
                 <tr style={{ background: '#fffbe6', borderBottom: '2px solid #ffe58f' }}>
-                  <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600, width: '140px' }}>Datum</th>
+                  <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600, width: '130px' }}>Datum</th>
                   <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600 }}>Anlass / Sonderlage</th>
-                  <th style={{ textAlign: 'center', padding: '8px 10px', fontWeight: 600, width: '100px' }}>Schicht-Modus</th>
-                  <th style={{ textAlign: 'center', padding: '8px 10px', fontWeight: 600, width: '120px' }}>Aktivierung</th>
-                  <th style={{ textAlign: 'center', padding: '8px 10px', fontWeight: 600, width: '60px' }}>Aktion</th>
+                  <th style={{ textAlign: 'center', padding: '8px 10px', fontWeight: 600, width: '120px' }}>Schicht-Modus</th>
+                  <th style={{ textAlign: 'center', padding: '8px 10px', fontWeight: 600, width: '140px' }}>Aktivierung</th>
+                  <th style={{ textAlign: 'center', padding: '8px 10px', fontWeight: 600, width: '70px' }}>Aktion</th>
                 </tr>
               </thead>
               <tbody>
@@ -277,23 +279,23 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
                         type="date"
                         value={s.date || ''}
                         onChange={(e) => updateSpecialDay(s.id, 'date', e.target.value)}
-                        style={{ padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
                       />
                     </td>
                     <td style={{ padding: '6px 10px' }}>
                       <input
                         type="text"
-                        placeholder="z.B. Spitzenabdeckung, Marathon"
+                        placeholder="z.B. Spitzenabdeckung"
                         value={s.reason || ''}
                         onChange={(e) => updateSpecialDay(s.id, 'reason', e.target.value)}
-                        style={{ width: '90%', padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
                       />
                     </td>
                     <td style={{ textAlign: 'center', padding: '6px 10px' }}>
                       <select
                         value={s.shiftMode || '24h'}
                         onChange={(e) => updateSpecialDay(s.id, 'shiftMode', e.target.value)}
-                        style={{ padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
                       >
                         <option value="24h">24h (Ganztags)</option>
                         <option value="tag">Nur Tag</option>
@@ -305,6 +307,8 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
                         value={s.action || 'add'}
                         onChange={(e) => updateSpecialDay(s.id, 'action', e.target.value)}
                         style={{
+                          width: '100%',
+                          boxSizing: 'border-box',
                           padding: '4px 6px',
                           border: '1px solid #ccc',
                           borderRadius: '4px',
@@ -313,8 +317,8 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
                           color: s.action === 'remove' ? '#c5221f' : '#137333'
                         }}
                       >
-                        <option value="add">Zusätzlich Aktiv</option>
-                        <option value="remove">Außerordentlich Inaktiv</option>
+                        <option value="add">Zusätzlich aktiv</option>
+                        <option value="remove">Inaktiv</option>
                       </select>
                     </td>
                     <td style={{ textAlign: 'center', padding: '6px 10px' }}>
@@ -365,7 +369,7 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
       alignItems: 'center',
       zIndex: 999
     }}>
-      <div style={{ background: 'white', padding: 24, borderRadius: 8, width: 720, maxHeight: '90vh', overflowY: 'auto' }}>
+      <div style={{ background: 'white', padding: 24, borderRadius: 8, width: 960, maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto' }}>
         {content}
         <div style={{ marginTop: 20, textAlign: 'right' }}>
           <button type="button" onClick={onClose} style={{ padding: '8px 16px', border: '1px solid #ccc', borderRadius: 4, cursor: 'pointer' }}>

@@ -115,18 +115,24 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 		{ key: 'einteilung' as NavKey, icon: icons.einteilung, label: 'Einteilung', area: 'einteilung' },
 		{ key: 'dienstplan' as NavKey, icon: icons.dienstplan, label: 'Dienstplan', area: 'dienstplan' },
 		{ key: 'werte' as NavKey, icon: icons.werte, label: 'Werte', area: 'werte' },
-		{ key: 'personal' as NavKey, icon: icons.personal, label: 'Personal', area: 'personal' },
-		{ key: 'fahrzeuge' as NavKey, icon: icons.fahrzeuge, label: 'Fahrzeuge', area: 'fahrzeuge' },
 		...((itwFeatureEnabled ? [{ key: 'itw' as NavKey, icon: icons.itw, label: 'ITW', area: 'itw' }] : []))
 	].filter(item => hasPermission(item.area, 'read') || hasPermission(item.area, 'write'));
-	const Item = ({ keyName, icon, label, onClick }: { keyName: NavKey; icon: React.ReactNode; label: string; onClick: () => void }) => (
+
+	const settingsSubItems = [
+		{ key: 'personal' as NavKey, icon: icons.personal, label: 'Personal', area: 'personal' },
+		{ key: 'fahrzeuge' as NavKey, icon: icons.fahrzeuge, label: 'Fahrzeuge', area: 'fahrzeuge' }
+	].filter(item => hasPermission(item.area, 'read') || hasPermission(item.area, 'write'));
+
+	const Item = ({ keyName, icon, label, onClick, isSubItem }: { keyName: NavKey; icon: React.ReactNode; label: string; onClick: () => void; isSubItem?: boolean }) => (
 		<button
 			onClick={onClick}
-			title={collapsed ? label : undefined}
+			title={collapsed ? (isSubItem ? `Einstellungen: ${label}` : label) : undefined}
 			style={{
 				...itemStyle,
+				padding: isSubItem && !collapsed ? '6px 8px' : '8px 10px',
+				fontSize: isSubItem && !collapsed ? '13px' : '14px',
 				background: active === keyName ? '#f8f9fa' : 'transparent',
-				color: active === keyName ? '#0ea5e9' : 'var(--text)',
+				color: active === keyName ? '#0ea5e9' : (isSubItem && !collapsed ? '#64748b' : 'var(--text)'),
 				fontWeight: active === keyName ? 600 : 400,
 				borderLeft: active === keyName ? '3px solid #0ea5e9' : '3px solid transparent',
 				transition: 'all 0.2s'
@@ -218,9 +224,31 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 						</select>
 					</div>
 				)}
-				<div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+				<div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
 					{hasPermission('einstellungen', 'read') && (
-						<Item keyName="einstellungen" icon={<Icon path={icons.einstellungen} />} label="Einstellungen" onClick={() => emitNavigate('einstellungen')} />
+						<div>
+							<Item keyName="einstellungen" icon={<Icon path={icons.einstellungen} />} label="Einstellungen" onClick={() => emitNavigate('einstellungen')} />
+							<div style={{
+								display: 'flex',
+								flexDirection: 'column',
+								gap: 2,
+								paddingLeft: collapsed ? 0 : 12,
+								borderLeft: collapsed ? 'none' : '2px solid var(--line)',
+								marginLeft: collapsed ? 0 : 12,
+								marginTop: 4
+							}}>
+								{settingsSubItems.map(subItem => (
+									<Item 
+										key={subItem.key}
+										keyName={subItem.key} 
+										icon={<Icon path={subItem.icon} />} 
+										label={subItem.label} 
+										isSubItem={!collapsed}
+										onClick={() => emitNavigate(subItem.key)} 
+									/>
+								))}
+							</div>
+						</div>
 					)}
 				</div>
 			</div>
