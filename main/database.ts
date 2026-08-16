@@ -2038,7 +2038,7 @@ export const getRtwVehicles = async (db: AsyncDB, year?: number) => {
     }
     return await db.all("SELECT id, name, sort, archived_year, COALESCE(category, 'regular') as category FROM rtw_vehicles WHERE archived_year IS NULL ORDER BY CASE WHEN COALESCE(category, 'regular') = 'reserve' THEN 1 ELSE 0 END ASC, sort ASC, id ASC");
 };
-export const addRtwVehicle = async (db: AsyncDB, v: { name: string, category?: string }) => {
+export const addRtwVehicle = async (db: AsyncDB, v: { name: string, category?: string, periods?: any[] }) => {
     await ensureVehicleCategoryColumns(db);
     let vehicleId: number | undefined;
     const cat = v.category === 'reserve' ? 'reserve' : 'regular';
@@ -2059,11 +2059,13 @@ export const addRtwVehicle = async (db: AsyncDB, v: { name: string, category?: s
     // Initialisiere Standard-Positionen
     await initializeDefaultVehiclePositions(db, 'rtw', vehicleId);
 
-    // Erstelle automatisch eine Periode ab aktuellem Monat (unbegrenzt)
-    const now = new Date();
-    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    await db.run('INSERT INTO rtw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, NULL, 1)',
-        [vehicleId, currentYM]);
+    // Nur Zeiträume anlegen, wenn diese explizit übergeben wurden
+    if (v.periods && Array.isArray(v.periods)) {
+        for (const p of v.periods) {
+            await db.run('INSERT INTO rtw_vehicle_periods (vehicleId, startYM, endYM, active, note) VALUES (?, ?, ?, ?, ?)',
+                [vehicleId, p.startYM || p.startDate, p.endYM || p.endDate || null, p.active !== false ? 1 : 0, p.note || '']);
+        }
+    }
 
     return vehicleId;
 };
@@ -2100,7 +2102,7 @@ export const getItwVehicles = async (db: AsyncDB, year?: number) => {
     }
     return await db.all("SELECT id, name, sort, archived_year, COALESCE(category, 'regular') as category FROM itw_vehicles WHERE archived_year IS NULL ORDER BY CASE WHEN COALESCE(category, 'regular') = 'reserve' THEN 1 ELSE 0 END ASC, sort ASC, id ASC");
 };
-export const addItwVehicle = async (db: AsyncDB, v: { name: string, category?: string }) => {
+export const addItwVehicle = async (db: AsyncDB, v: { name: string, category?: string, periods?: any[] }) => {
     await ensureVehicleCategoryColumns(db);
     let vehicleId: number | undefined;
     const cat = v.category === 'reserve' ? 'reserve' : 'regular';
@@ -2121,11 +2123,13 @@ export const addItwVehicle = async (db: AsyncDB, v: { name: string, category?: s
     // Initialisiere Standard-Positionen
     await initializeDefaultVehiclePositions(db, 'itw', vehicleId);
 
-    // Erstelle automatisch eine Periode ab aktuellem Monat (unbegrenzt)
-    const now = new Date();
-    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    await db.run('INSERT INTO itw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, NULL, 1)',
-        [vehicleId, currentYM]);
+    // Nur Zeiträume anlegen, wenn diese explizit übergeben wurden
+    if (v.periods && Array.isArray(v.periods)) {
+        for (const p of v.periods) {
+            await db.run('INSERT INTO itw_vehicle_periods (vehicleId, startYM, endYM, active, note) VALUES (?, ?, ?, ?, ?)',
+                [vehicleId, p.startYM || p.startDate, p.endYM || p.endDate || null, p.active !== false ? 1 : 0, p.note || '']);
+        }
+    }
 
     return vehicleId;
 };
@@ -2144,7 +2148,7 @@ export const updateItwVehicleOrder = async (db: AsyncDB, order: number[]) => {
     }
 };
 
-export const addNefVehicle = async (db: AsyncDB, v: { name: string, occupancyMode?: '24h' | 'tag', category?: string }) => {
+export const addNefVehicle = async (db: AsyncDB, v: { name: string, occupancyMode?: '24h' | 'tag', category?: string, periods?: any[] }) => {
     await ensureVehicleCategoryColumns(db);
     let vehicleId: number | undefined;
     const cat = v.category === 'reserve' ? 'reserve' : 'regular';
@@ -2167,11 +2171,13 @@ export const addNefVehicle = async (db: AsyncDB, v: { name: string, occupancyMod
     // Initialisiere Standard-Positionen
     await initializeDefaultVehiclePositions(db, 'nef', vehicleId);
 
-    // Erstelle automatisch eine Periode ab aktuellem Monat (unbegrenzt)
-    const now = new Date();
-    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    await db.run('INSERT INTO nef_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, NULL, 1)',
-        [vehicleId, currentYM]);
+    // Nur Zeiträume anlegen, wenn diese explizit übergeben wurden
+    if (v.periods && Array.isArray(v.periods)) {
+        for (const p of v.periods) {
+            await db.run('INSERT INTO nef_vehicle_periods (vehicleId, startYM, endYM, active, note) VALUES (?, ?, ?, ?, ?)',
+                [vehicleId, p.startYM || p.startDate, p.endYM || p.endDate || null, p.active !== false ? 1 : 0, p.note || '']);
+        }
+    }
 
     return vehicleId;
 };
