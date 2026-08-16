@@ -7,7 +7,7 @@ export interface AuthUser {
   vorname: string;
   roleId: number | null;
   roleName?: string;
-  permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>;
+  permissions: Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'>;
   assignedDepartment: string | 'all';
 }
 
@@ -66,7 +66,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
             fahrzeuge: 'write',
             einstellungen: 'write',
             kommentar_global: 'write',
-            kommentar_individuell: 'write'
+            kommentar_individuell: 'write',
+            itw: 'write_all'
           },
           assignedDepartment: 'all'
         });
@@ -141,8 +142,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const userLevel = currentUser.permissions[area] || 'none';
     
     if (userLevel === 'none') return false;
-    if (level === 'read') return userLevel === 'read' || userLevel === 'read_all' || userLevel === 'write';
-    if (level === 'write') return userLevel === 'write';
+    if (level === 'read') return userLevel === 'read' || userLevel === 'read_all' || userLevel === 'write' || userLevel === 'write_all';
+    if (level === 'write') return userLevel === 'write' || userLevel === 'write_all';
     
     return false;
   };

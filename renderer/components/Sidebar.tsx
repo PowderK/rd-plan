@@ -60,11 +60,16 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 			loadDepts();
 			loadItwSetting();
 		};
+		const onPersonnelUpdated = () => {
+			loadDepts();
+		};
 		(window as any).api?.onSettingsUpdated?.(onSettingsUpdated);
+		(window as any).api?.onPersonnelUpdated?.(onPersonnelUpdated);
 
 		return () => { 
 			cancelled = true; 
 			(window as any).api?.offSettingsUpdated?.(onSettingsUpdated);
+			(window as any).api?.offPersonnelUpdated?.(onPersonnelUpdated);
 		};
 	}, [currentUser?.roleId]);
 
@@ -84,6 +89,7 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 	const toggleCollapse = () => {
 		const newState = !collapsed;
 		setCollapsed(newState);
+		(window as any).sidebarCollapsed = newState;
 		window.dispatchEvent(new CustomEvent('sidebar-collapsed', { detail: { collapsed: newState } }));
 	};
 	const Icon = ({ path, viewBox = '0 0 24 24' }: { path: string; viewBox?: string }) => (
@@ -111,7 +117,7 @@ const Sidebar: React.FC<{ active?: NavKey }> = ({ active }) => {
 		{ key: 'werte' as NavKey, icon: icons.werte, label: 'Werte', area: 'werte' },
 		{ key: 'personal' as NavKey, icon: icons.personal, label: 'Personal', area: 'personal' },
 		{ key: 'fahrzeuge' as NavKey, icon: icons.fahrzeuge, label: 'Fahrzeuge', area: 'fahrzeuge' },
-		...((itwFeatureEnabled ? [{ key: 'itw' as NavKey, icon: icons.itw, label: 'ITW', area: 'dienstplan' }] : []))
+		...((itwFeatureEnabled ? [{ key: 'itw' as NavKey, icon: icons.itw, label: 'ITW', area: 'itw' }] : []))
 	].filter(item => hasPermission(item.area, 'read') || hasPermission(item.area, 'write'));
 	const Item = ({ keyName, icon, label, onClick }: { keyName: NavKey; icon: React.ReactNode; label: string; onClick: () => void }) => (
 		<button

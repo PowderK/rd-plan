@@ -336,6 +336,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       const filteredPersonnel = (list || []).filter((p: any) => {
         const pPeriods = periodsByPerson[p.id] || [];
         const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
+        if (rdPeriods.length === 0) return true;
         return rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
       });
 
@@ -579,12 +580,17 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
 
 
     };
+    const onPersonnelUpdated = async () => {
+      await reloadRoster();
+    };
     (window as any).api && (window as any).api.onDutyRosterUpdated && (window as any).api.onDutyRosterUpdated(onUpdated);
     (window as any).api?.onSettingsUpdated?.(onSettingsUpdated);
+    (window as any).api?.onPersonnelUpdated?.(onPersonnelUpdated);
     // Cleanup
     return () => {
       (window as any).api && (window as any).api.offDutyRosterUpdated && (window as any).api.offDutyRosterUpdated(onUpdated);
       (window as any).api?.offSettingsUpdated?.(onSettingsUpdated);
+      (window as any).api?.offPersonnelUpdated?.(onPersonnelUpdated);
     };
   }, [departmentName]);
 
@@ -1093,6 +1099,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     const filteredPersonnel = (list || []).filter((p: any) => {
       const pPeriods = periodsByPerson[p.id] || [];
       const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
+      if (rdPeriods.length === 0) return true;
       return rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
     });
 
@@ -1877,7 +1884,14 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                     {days.map((_, i) => {
                       const showIW = isIwDay(i);
                       return (
-                        <th key={`itw_${i}`} style={{ borderBottom: '1px solid #dbe7ff', fontWeight: 'normal', color: 'var(--muted)', fontSize: 13, background: '#f8fbff' }}>
+                        <th key={`itw_${i}`} style={{
+                          borderBottom: '1px solid #dbe7ff',
+                          fontWeight: showIW ? 'bold' : 'normal',
+                          color: showIW ? '#713f12' : 'var(--muted)',
+                          fontSize: 13,
+                          background: showIW ? '#fef08a' : '#f8fbff',
+                          textAlign: 'center'
+                        }}>
                           {showIW ? 'IW' : ''}
                         </th>
                       );

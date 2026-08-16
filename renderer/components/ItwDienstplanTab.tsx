@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import './SettingsMenuTables.css'; // Just using basic table styles from here if any
 
 const monthNames = [
@@ -15,6 +16,10 @@ interface RosterEntry {
 }
 
 const ItwDienstplanTab: React.FC = () => {
+    const { currentUser, isDevMode } = useAuth();
+    const isAppAdmin = isDevMode || currentUser?.roleName?.toLowerCase() === 'administrator';
+    const canEditDienstplan = isAppAdmin || currentUser?.permissions?.itw === 'write_all';
+
     const [year, setYear] = useState<number>(new Date().getFullYear());
     const [month, setMonth] = useState<number>(new Date().getMonth());
     
@@ -101,8 +106,11 @@ const ItwDienstplanTab: React.FC = () => {
             const assigns = await (window as any).api.getItwPhaseAssignments?.() || [];
             setAssignments(assigns);
 
-            const persInfo = await (window as any).api.getPersonnel?.() || [];
+            const persInfo = await (window as any).api.getPersonnel?.(false, 'all') || [];
             setPersonnel(persInfo);
+
+            const docs = await (window as any).api.getItwDoctors?.() || [];
+            setDoctors(docs);
 
             const hols = await (window as any).api.getHolidaysForYear?.(year) || [];
             setHolidays(hols.map((h: any) => h.date));
@@ -176,6 +184,22 @@ const ItwDienstplanTab: React.FC = () => {
         return days;
     }, [year, month]);
 
+    const groupedPersonnel = useMemo(() => {
+        const map = new Map<string, any[]>();
+        for (const p of personnel) {
+            const dept = p.department || '1. Abteilung';
+            if (!map.has(dept)) map.set(dept, []);
+            map.get(dept)!.push(p);
+        }
+        const sortedDepts = Array.from(map.keys()).sort((a, b) => {
+            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+        });
+        return sortedDepts.map(dept => ({
+            department: dept,
+            members: map.get(dept)!
+        }));
+    }, [personnel]);
+
 
 
     const handleCellChange = async (personId: number, personType: string, date: string, type: string) => {
@@ -215,7 +239,9 @@ const ItwDienstplanTab: React.FC = () => {
         return (
             <tr key={`${type}-${person.id}`}>
                 <td style={{ position: 'sticky', left: 0, background: '#fff', padding: '4px 8px', borderRight: '2px solid #ddd', minWidth: '150px' }}>
-                    {type === 'doctor' ? `Dr. ${person.name}, ${person.vorname}` : `${person.name}, ${person.vorname}`}
+                    {type === 'doctor' 
+                        ? `${person.title ? person.title + ' ' : ''}${person.name}, ${person.vorname}`.trim()
+                        : `${person.name}, ${person.vorname}`}
                     {type === 'person' && <div style={{ fontSize: '10px', color: '#666' }}>{person.department || 'Rettungsdienst'}</div>}
                 </td>
                 {daysInMonth.map(d => {
@@ -244,12 +270,21 @@ const ItwDienstplanTab: React.FC = () => {
                                 <input
                                     type="text"
                                     value={finalType}
+                                    disabled={!canEditDienstplan}
                                     onChange={(e) => {
+                                        if (!canEditDienstplan) return;
                                         const v = e.target.value.toUpperCase();
                                         if (v === 'IW') handleCellChange(person.id, type, dateStr, 'IW');
                                         else if (v === '') handleClearCell(person.id, type, dateStr);
                                     }}
-                                    style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'center', fontWeight: 'bold' }}
+                                    style={{
+                                        width: '100%',
+                                        border: 'none',
+                                        background: 'transparent',
+                                        textAlign: 'center',
+                                        fontWeight: 'bold',
+                                        cursor: canEditDienstplan ? 'text' : 'not-allowed'
+                                    }}
                                 />
                             )}
                         </td>
@@ -296,13 +331,49 @@ const ItwDienstplanTab: React.FC = () => {
                             })}
                         </tr>
                     </thead>
-                    <tbody>                        {/* Render Personnel */}
-                        <tr>
-                            <td colSpan={daysInMonth.length + 1} style={{ background: '#f1f5f9', fontWeight: 'bold', padding: '8px', marginTop: '10px' }}>
-                                Einsatzpersonal (ITW Vorplanung)
-                            </td>
-                        </tr>
-                        {personnel.map(p => renderGridRow(p, 'person'))}
+                    <tbody>
+                        {groupedPersonnel.map(({ department, members }) => (
+                            <React.Fragment key={department}>
+                                <tr>
+                                    <td 
+                                        colSpan={daysInMonth.length + 1} 
+                                        style={{ 
+                                            background: '#f1f5f9', 
+                                            fontWeight: 'bold', 
+                                            padding: '8px 12px', 
+                                            fontSize: '13px',
+                                            color: '#1e293b',
+                                            borderTop: '2px solid #cbd5e1',
+                                            borderBottom: '1px solid #cbd5e1'
+                                        }}
+                                    >
+                                        {department}
+                                    </td>
+                                </tr>
+                                {members.map(p => renderGridRow(p, 'person'))}
+                            </React.Fragment>
+                        ))}
+                        {doctors.length > 0 && (
+                            <React.Fragment key="doctors">
+                                <tr>
+                                    <td 
+                                        colSpan={daysInMonth.length + 1} 
+                                        style={{ 
+                                            background: '#f1f5f9', 
+                                            fontWeight: 'bold', 
+                                            padding: '8px 12px', 
+                                            fontSize: '13px',
+                                            color: '#1e293b',
+                                            borderTop: '2px solid #cbd5e1',
+                                            borderBottom: '1px solid #cbd5e1'
+                                        }}
+                                    >
+                                        ITW-Ärzte
+                                    </td>
+                                </tr>
+                                {doctors.map(d => renderGridRow(d, 'doctor'))}
+                            </React.Fragment>
+                        )}
                     </tbody>
                 </table>
             </div>

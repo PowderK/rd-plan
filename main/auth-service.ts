@@ -7,13 +7,13 @@ export interface AuthSession {
   vorname: string;
   roleId: number | null;
   roleName?: string;
-  permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>;
+  permissions: Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'>;
   assignedDepartment: string | 'all';
 }
 
 export class AuthService {
   private currentSession: AuthSession | null = null;
-  private getDefaultPermissions(): Record<string, 'none' | 'read' | 'read_all' | 'write'> {
+  private getDefaultPermissions(): Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'> {
     return {
       einteilung: 'none',
       dienstplan: 'none',
@@ -22,11 +22,12 @@ export class AuthService {
       fahrzeuge: 'none',
       einstellungen: 'none',
       kommentar_global: 'none',
-      kommentar_individuell: 'none'
+      kommentar_individuell: 'none',
+      itw: 'none'
     };
   }
 
-  private getPermissionsFromRoleRow(role: any): Record<string, 'none' | 'read' | 'read_all' | 'write'> {
+  private getPermissionsFromRoleRow(role: any): Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'> {
     const canViewReports = role.canViewReports === 1 || role.canViewReports === true;
     const canExportData = role.canExportData === 1 || role.canExportData === true;
     let werte: 'none' | 'read' | 'read_all' | 'write' = 'none';
@@ -42,6 +43,11 @@ export class AuthService {
     else if (role.canViewDienstplanAll === 1 || role.canViewDienstplanAll === true) dienstplan = 'read_all';
     else if (role.canViewDienstplan === 1 || role.canViewDienstplan === true) dienstplan = 'read';
 
+    let itw: 'none' | 'read' | 'write' | 'write_all' = 'none';
+    if (role.canEditItwAll === 1 || role.canEditItwAll === true) itw = 'write_all';
+    else if (role.canEditItw === 1 || role.canEditItw === true) itw = 'write';
+    else if (role.canViewItw === 1 || role.canViewItw === true) itw = 'read';
+
     return {
       einteilung,
       dienstplan,
@@ -50,18 +56,19 @@ export class AuthService {
       fahrzeuge: role.canEditVehicles ? 'write' : 'none',
       einstellungen: role.canEditSettings ? 'write' : 'none',
       kommentar_global: role.canEditGlobalComments ? 'write' : 'none',
-      kommentar_individuell: role.canEditPersonalComments ? 'write' : 'none'
+      kommentar_individuell: role.canEditPersonalComments ? 'write' : 'none',
+      itw
     };
   }
 
   private mergeLegacyRolePermissions(
-    permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>,
+    permissions: Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'>,
     legacyPermissions: any
-  ): Record<string, 'none' | 'read' | 'read_all' | 'write'> {
+  ): Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'> {
     const merged = { ...permissions };
     if (!legacyPermissions || typeof legacyPermissions !== 'object') return merged;
     for (const [key, val] of Object.entries(legacyPermissions)) {
-      if (val === 'none' || val === 'read' || val === 'read_all' || val === 'write') {
+      if (val === 'none' || val === 'read' || val === 'read_all' || val === 'write' || val === 'write_all') {
         merged[key] = val;
       }
     }
@@ -69,10 +76,10 @@ export class AuthService {
   }
 
   private applyAdministratorGrants(
-    permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>,
+    permissions: Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'>,
     roleName?: string,
     role?: any
-  ): Record<string, 'none' | 'read' | 'read_all' | 'write'> {
+  ): Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'> {
     const isAdmin =
       roleName?.toLowerCase() === 'administrator' ||
       role?.canManageUsers === 1 ||
@@ -92,10 +99,11 @@ export class AuthService {
       fahrzeuge: permissions.fahrzeuge === 'none' ? 'write' : permissions.fahrzeuge,
       einteilung: permissions.einteilung === 'none' ? 'write' : permissions.einteilung,
       dienstplan: permissions.dienstplan === 'none' ? 'write' : permissions.dienstplan,
+      itw: 'write_all'
     };
   }
 
-  private async resolveRoleInfo(roleId: number | null | undefined): Promise<{ permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>, name?: string }> {
+  private async resolveRoleInfo(roleId: number | null | undefined): Promise<{ permissions: Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'>, name?: string }> {
     const permissions = this.getDefaultPermissions();
     if (!roleId) return { permissions };
 

@@ -691,8 +691,10 @@ ipcMain.handle('get-personnel', async (_event, includeInactive?: boolean, depart
     const user = auth.getCurrentUser();
     const adapter = await ensureDatabaseAdapter();
     
-    let targetDept = user?.assignedDepartment;
-    if (targetDept === 'all' && department) {
+    let targetDept: string | undefined = user?.assignedDepartment === 'all' ? undefined : user?.assignedDepartment;
+    if (department === 'all') {
+        targetDept = undefined;
+    } else if (department) {
         targetDept = department;
     }
 
@@ -1271,9 +1273,9 @@ ipcMain.handle('get-rtw-vehicles', async (_event, year?: number) => {
 
 ipcMain.handle('add-rtw-vehicle', async (_event, v: any) => {
     const adapter = await ensureDatabaseAdapter();
-    await adapter.addRtwVehicle(v);
+    const vehicleId = await adapter.addRtwVehicle(v);
     BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
-    return true;
+    return vehicleId;
 });
 
 ipcMain.handle('update-rtw-vehicle', async (_event, v: any) => {
@@ -1306,9 +1308,9 @@ ipcMain.handle('get-nef-vehicles', async (_event, year?: number) => {
 
 ipcMain.handle('add-nef-vehicle', async (_event, v: any) => {
     const adapter = await ensureDatabaseAdapter();
-    await adapter.addNefVehicle(v);
+    const vehicleId = await adapter.addNefVehicle(v);
     BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
-    return true;
+    return vehicleId;
 });
 
 ipcMain.handle('update-nef-vehicle', async (_event, v: any) => {
@@ -1342,11 +1344,11 @@ ipcMain.handle('get-itw-vehicles', async (_event, year?: number) => {
 
 ipcMain.handle('add-itw-vehicle', async (_event, v: { name: string }) => {
     const adapter = await ensureDatabaseAdapter();
-    await adapter.addItwVehicle(v);
+    const vehicleId = await adapter.addItwVehicle(v);
     // Auto-enable ITW if a vehicle is added
     await adapter.setSetting('itw', 'true');
     BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
-    return true;
+    return vehicleId;
 });
 
 ipcMain.handle('update-itw-vehicle', async (_event, v: { id: number, name: string }) => {
@@ -1482,6 +1484,31 @@ ipcMain.handle('update-itw-vehicle-period', async (_event, period: any) => {
 ipcMain.handle('delete-itw-vehicle-period', async (_event, id: number) => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.deleteItwVehiclePeriod(id);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
+    return true;
+});
+
+// Vehicle Special Days & Peak Coverage IPC Handlers
+ipcMain.handle('get-vehicle-special-days', async (_event, vehicleType: string, vehicleId: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getVehicleSpecialDays(vehicleType, vehicleId);
+});
+
+ipcMain.handle('get-all-vehicle-special-days', async (_event, year?: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getAllVehicleSpecialDays(year);
+});
+
+ipcMain.handle('set-vehicle-special-days', async (_event, vehicleType: string, vehicleId: number, specialDays: any[]) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.setVehicleSpecialDays(vehicleType, vehicleId, specialDays);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
+    return true;
+});
+
+ipcMain.handle('set-vehicle-periods', async (_event, vehicleType: string, vehicleId: number, periods: any[]) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.setVehiclePeriodsGeneric(vehicleType, vehicleId, periods);
     BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
     return true;
 });
@@ -2313,15 +2340,15 @@ ipcMain.on('open-edit-itw-window', (_ev, id: number) => {
 });
 
 ipcMain.on('open-add-rtw-window', () => {
-    openWindow('addRtw.html', 'addRtwWindow', 560, 360);
+    openWindow('addRtw.html', 'addRtwWindow', 680, 580);
 });
 
 ipcMain.on('open-add-nef-window', () => {
-    openWindow('addNef.html', 'addNefWindow', 560, 360);
+    openWindow('addNef.html', 'addNefWindow', 680, 580);
 });
 
 ipcMain.on('open-add-itw-vehicle-window', () => {
-    openWindow('addItwVehicle.html', 'addItwVehicleWindow', 560, 360);
+    openWindow('addItwVehicle.html', 'addItwVehicleWindow', 680, 580);
 });
 
 // App quit handler

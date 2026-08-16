@@ -97,15 +97,15 @@
   width: var(--vehicle-card-width);
   min-width: var(--vehicle-card-width);
   max-width: var(--vehicle-card-width);
+  box-sizing: border-box;
   background: var(--bg);
-  border-right: 2px solid #ef4444;
 }
 
 .nefTable {
   display: grid;
   grid-template-columns: 60px minmax(0, 1fr);
   /* Label | Spalte ohne Überschrift */
-  gap: 6px 6px;
+  gap: 6px;
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -114,8 +114,8 @@
   width: var(--vehicle-card-width);
   min-width: var(--vehicle-card-width);
   max-width: var(--vehicle-card-width);
+  box-sizing: border-box;
   background: var(--bg);
-  border-right: 2px solid #ef4444;
 }
 
 .tableHead {

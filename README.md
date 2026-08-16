@@ -7,7 +7,7 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v1.3.0** - Neue Automatik zur Azubi-Einteilung inkl. interaktiver Konfliktlösung und erweiterter Kontrollkasten-Ansicht.
+**v1.5.3** - Kategorienbasierter Multi-Sheet Import/Export, Duplikat-Konfliktbehandlung, globale UI-Steuerungsleisten über Tabs und dynamische ITW-Ärzte-Statusanzeige.
 
 ## Funktionen
 
@@ -314,7 +314,15 @@ Die Schichtübernahme ermöglicht es, SOLL-Schichten gezielt zwischen Mitarbeite
 - ✅ **Sichere IPC**: Erweiterte Electron preload APIs für Auth-Kommunikation
 - ✅ **UI-Verbesserungen**: Login-Seite, Benutzer-Anzeige in Header, Logout-Funktion
 
-### Version 1.2.0 (März 2026) - Aktuell
+### Version 1.5.3 (August 2026) - Aktuell
+- ✅ **Kategorienbasierter Multi-Sheet Import/Export**: Vollständiger JSON & Excel (`.xlsx`) Import/Export für Personal und Fahrzeuge inklusive aller Unterzeiträume und Schicht-Positionen.
+- ✅ **Bereinigte Datenstruktur**: Entfernung obsolet gewordener Qualifikations-Booleans und Dienstfähigkeits-Zeiträume; Fokus auf echte Qualifikationszeiträume und Abteilungszugehörigkeiten.
+- ✅ **Duplikat-Konfliktbehandlung**: Interaktiver Dialog bei vorhandenen Einträgen beim Import mit Checkbox *"Auswahl für alle übernehmen"*.
+- ✅ **Globale UI-Vereinheitlichung der Steuerungselemente**: Platzierung von Live-Suche, Hinzufügen-, Import-, Export- und Speichern-Schaltflächen in der fixierten Header-Leiste über den Tabs (Personal & Fahrzeuge).
+- ✅ **ITW-Modul Redesign & Dynamischer Status**: Anpassung des ITW-Tab-Designs an den globalen Standard sowie dynamische Farbindikation (Grün bei vollständiger Einteilung, Rot bei fehlenden Ärzten inkl. visueller Tabellen-Hervorhebung).
+- ✅ **Rollen- & Login-Fixes**: Behebung des SQLite-ID Speichers in Rollen und automatischer Redirect beim Login auf den jeweils berechtigten Funktionsbereich.
+
+### Version 1.2.0 (März 2026)
 - ✅ **Optimierte horizontale Navigation**: Migration der horizontalen Scrollbalken in ein fixiertes Footer-System (Dienstplan & Einteilung)
 - ✅ **Zwei-Schichten-Footer-Architektur**: Ergonomische Platzierung der Scrollleiste mit Abstand zum Bildschirmrand für bessere Bedienbarkeit
 - ✅ **Globale Layout-Synchronisation**: Dynamische Ausrichtung aller fixierten UI-Elemente an der Sidebar via CSS-Variablen

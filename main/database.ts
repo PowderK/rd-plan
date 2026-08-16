@@ -277,6 +277,8 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
                     canViewRoster INTEGER DEFAULT 0,
                     canViewDienstplan INTEGER DEFAULT 0,
                     canViewDienstplanAll INTEGER DEFAULT 0,
+                    canViewItw INTEGER DEFAULT 0,
+                    canEditItw INTEGER DEFAULT 0,
                     sort INTEGER DEFAULT 0
                 )
             `);
@@ -708,11 +710,17 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         )
     `);
 
-    // Migration: add 'sort' column to itw_doctors if missing
+    // Migration: add 'sort', 'anrede', 'title' columns to itw_doctors if missing
     const itwCols = await db.all("PRAGMA table_info('itw_doctors')");
     if (!itwCols.some((c: any) => c.name === 'sort')) {
         await db.exec("ALTER TABLE itw_doctors ADD COLUMN sort INTEGER DEFAULT 0");
         await db.exec("UPDATE itw_doctors SET sort = 0 WHERE sort IS NULL");
+    }
+    if (!itwCols.some((c: any) => c.name === 'anrede')) {
+        await db.exec("ALTER TABLE itw_doctors ADD COLUMN anrede TEXT DEFAULT ''");
+    }
+    if (!itwCols.some((c: any) => c.name === 'title')) {
+        await db.exec("ALTER TABLE itw_doctors ADD COLUMN title TEXT DEFAULT ''");
     }
 
     // --- RTW / NEF / ITW Fahrzeuge Tabellen ---
@@ -865,6 +873,30 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         await db.exec(`CREATE INDEX idx_itw_vehicle_periods_vehicle ON itw_vehicle_periods (vehicleId)`);
     }
 
+    // --- Sondertage & Spitzenabdeckung (Fahrzeuge) ---
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS vehicle_special_days (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vehicleType TEXT NOT NULL,
+            vehicleId INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            reason TEXT,
+            shiftMode TEXT DEFAULT '24h',
+            action TEXT DEFAULT 'add',
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(vehicleType, vehicleId, date)
+        )
+    `);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_vehicle_special_days_lookup ON vehicle_special_days (vehicleType, vehicleId, date)`);
+
+    // Ensure note column in vehicle period tables
+    for (const table of ['rtw_vehicle_periods', 'nef_vehicle_periods', 'itw_vehicle_periods']) {
+        const cols = await db.all(`PRAGMA table_info('${table}')`);
+        if (!cols.some((c: any) => c.name === 'note')) {
+            try { await db.exec(`ALTER TABLE ${table} ADD COLUMN note TEXT`); } catch { }
+        }
+    }
+
     // --- Jahresspezifische Vorplanungsdateien ---
     const yearPlanningsExists = await db.get(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='year_plannings'"
@@ -953,16 +985,26 @@ export const getPersonnel = async (db: AsyncDB, includeInactive: boolean = false
     // If no date is provided, use legacy behavior (active flag only)
     if (!date) {
         const list = await db.all('SELECT * FROM personnel ORDER BY sort ASC, id ASC');
+        const currentDate = new Date().toISOString().slice(0, 10);
         const result = [];
         for (const p of list) {
             // Check department
             if (department && department !== 'all') {
-                const period = await db.get(
-                    'SELECT department FROM personnel_department_periods WHERE person_id = ? ORDER BY start_date DESC LIMIT 1',
+                const hasDeptPeriods = await db.get(
+                    'SELECT 1 FROM personnel_department_periods WHERE person_id = ? LIMIT 1',
                     [p.id]
                 );
-                const currentDept = period?.department || p.department;
-                if (normalizeDepartment(currentDept) !== normalizeDepartment(department)) continue;
+                if (hasDeptPeriods) {
+                    const period = await db.get(
+                        `SELECT department FROM personnel_department_periods 
+                         WHERE person_id = ? AND start_date <= ? AND (end_date IS NULL OR end_date >= ?) 
+                         ORDER BY start_date DESC LIMIT 1`,
+                        [p.id, currentDate, currentDate]
+                    );
+                    if (!period || normalizeDepartment(period.department) !== normalizeDepartment(department)) continue;
+                } else {
+                    if (normalizeDepartment(p.department || '1. Abteilung') !== normalizeDepartment(department)) continue;
+                }
             }
             
             // Check active (unless including inactive)
@@ -1044,15 +1086,25 @@ export const getPersonnel = async (db: AsyncDB, includeInactive: boolean = false
                 deptEndLimit = `${ym}-01`;
             }
 
-            const period = await db.get(
-                `SELECT department FROM personnel_department_periods 
-                 WHERE person_id = ? AND start_date <= ? AND (end_date IS NULL OR end_date >= ?) 
-                 ORDER BY start_date DESC LIMIT 1`,
-                [p.id, deptStartLimit, deptEndLimit]
+            const hasDeptPeriods = await db.get(
+                'SELECT 1 FROM personnel_department_periods WHERE person_id = ? LIMIT 1',
+                [p.id]
             );
-            const currentDept = period?.department || p.department;
-            if (normalizeDepartment(currentDept) !== normalizeDepartment(department)) {
-                continue;
+
+            if (hasDeptPeriods) {
+                const period = await db.get(
+                    `SELECT department FROM personnel_department_periods 
+                     WHERE person_id = ? AND start_date <= ? AND (end_date IS NULL OR end_date >= ?) 
+                     ORDER BY start_date DESC LIMIT 1`,
+                    [p.id, deptStartLimit, deptEndLimit]
+                );
+                if (!period || normalizeDepartment(period.department) !== normalizeDepartment(department)) {
+                    continue;
+                }
+            } else {
+                if (normalizeDepartment(p.department || '1. Abteilung') !== normalizeDepartment(department)) {
+                    continue;
+                }
             }
         }
 
@@ -1939,18 +1991,22 @@ export const getItwDoctors = async (db: AsyncDB) => {
     return await db.all('SELECT * FROM itw_doctors ORDER BY sort ASC, id ASC');
 };
 
-export const addItwDoctor = async (db: AsyncDB, doc: { name: string, vorname: string }) => {
+export const addItwDoctor = async (db: AsyncDB, doc: { name: string, vorname: string, anrede?: string, title?: string }) => {
+    const anrede = doc.anrede || '';
+    const title = doc.title || '';
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM itw_doctors');
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
-        await db.run('INSERT INTO itw_doctors (name, vorname, sort) VALUES (?, ?, ?)', [doc.name, doc.vorname, next]);
+        await db.run('INSERT INTO itw_doctors (name, vorname, anrede, title, sort) VALUES (?, ?, ?, ?, ?)', [doc.name, doc.vorname, anrede, title, next]);
     } catch (e) {
-        await db.run('INSERT INTO itw_doctors (name, vorname) VALUES (?, ?)', [doc.name, doc.vorname]);
+        await db.run('INSERT INTO itw_doctors (name, vorname, anrede, title) VALUES (?, ?, ?, ?)', [doc.name, doc.vorname, anrede, title]);
     }
 };
 
-export const updateItwDoctor = async (db: AsyncDB, doc: { id: number, name: string, vorname: string }) => {
-    await db.run('UPDATE itw_doctors SET name = ?, vorname = ? WHERE id = ?', [doc.name, doc.vorname, doc.id]);
+export const updateItwDoctor = async (db: AsyncDB, doc: { id: number, name: string, vorname: string, anrede?: string, title?: string }) => {
+    const anrede = doc.anrede || '';
+    const title = doc.title || '';
+    await db.run('UPDATE itw_doctors SET name = ?, vorname = ?, anrede = ?, title = ? WHERE id = ?', [doc.name, doc.vorname, anrede, title, doc.id]);
 };
 
 export const deleteItwDoctor = async (db: AsyncDB, id: number) => {
@@ -1963,22 +2019,36 @@ export const updateItwDoctorOrder = async (db: AsyncDB, order: number[]) => {
     }
 };
 
+export const ensureVehicleCategoryColumns = async (db: AsyncDB) => {
+    for (const table of ['rtw_vehicles', 'nef_vehicles', 'itw_vehicles']) {
+        try {
+            const cols = await db.all(`PRAGMA table_info('${table}')`);
+            if (cols.length > 0 && !cols.some((c: any) => c.name === 'category')) {
+                await db.exec(`ALTER TABLE ${table} ADD COLUMN category TEXT NOT NULL DEFAULT 'regular'`);
+            }
+        } catch { }
+    }
+};
+
 // --- RTW Vehicles CRUD ---
 export const getRtwVehicles = async (db: AsyncDB, year?: number) => {
+    await ensureVehicleCategoryColumns(db);
     if (typeof year === 'number') {
-        return await db.all('SELECT * FROM rtw_vehicles WHERE archived_year IS NULL OR archived_year >= ? ORDER BY sort ASC, id ASC', [year]);
+        return await db.all("SELECT id, name, sort, archived_year, COALESCE(category, 'regular') as category FROM rtw_vehicles WHERE archived_year IS NULL OR archived_year >= ? ORDER BY CASE WHEN COALESCE(category, 'regular') = 'reserve' THEN 1 ELSE 0 END ASC, sort ASC, id ASC", [year]);
     }
-    return await db.all('SELECT * FROM rtw_vehicles WHERE archived_year IS NULL ORDER BY sort ASC, id ASC');
+    return await db.all("SELECT id, name, sort, archived_year, COALESCE(category, 'regular') as category FROM rtw_vehicles WHERE archived_year IS NULL ORDER BY CASE WHEN COALESCE(category, 'regular') = 'reserve' THEN 1 ELSE 0 END ASC, sort ASC, id ASC");
 };
-export const addRtwVehicle = async (db: AsyncDB, v: { name: string }) => {
+export const addRtwVehicle = async (db: AsyncDB, v: { name: string, category?: string }) => {
+    await ensureVehicleCategoryColumns(db);
     let vehicleId: number | undefined;
+    const cat = v.category === 'reserve' ? 'reserve' : 'regular';
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM rtw_vehicles');
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
-        const result = await db.run('INSERT INTO rtw_vehicles (name, sort) VALUES (?, ?)', [v.name, next]);
+        const result = await db.run('INSERT INTO rtw_vehicles (name, sort, category) VALUES (?, ?, ?)', [v.name, next, cat]);
         vehicleId = Number(result.lastInsertRowid);
     } catch (e) {
-        const result = await db.run('INSERT INTO rtw_vehicles (name) VALUES (?)', [v.name]);
+        const result = await db.run('INSERT INTO rtw_vehicles (name, category) VALUES (?, ?)', [v.name, cat]);
         vehicleId = Number(result.lastInsertRowid);
     }
 
@@ -1994,9 +2064,13 @@ export const addRtwVehicle = async (db: AsyncDB, v: { name: string }) => {
     const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     await db.run('INSERT INTO rtw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, NULL, 1)',
         [vehicleId, currentYM]);
+
+    return vehicleId;
 };
-export const updateRtwVehicle = async (db: AsyncDB, v: { id: number, name: string }) => {
-    await db.run('UPDATE rtw_vehicles SET name = ? WHERE id = ?', [v.name, v.id]);
+export const updateRtwVehicle = async (db: AsyncDB, v: { id: number, name: string, category?: string }) => {
+    await ensureVehicleCategoryColumns(db);
+    const cat = v.category === 'reserve' ? 'reserve' : 'regular';
+    await db.run('UPDATE rtw_vehicles SET name = ?, category = ? WHERE id = ?', [v.name, cat, v.id]);
 };
 export const deleteRtwVehicle = async (db: AsyncDB, id: number, currentYear?: number) => {
     // Soft Delete: mark archived_year = currentYear (oder aktuelles Jahr wenn nicht gegeben)
@@ -2011,28 +2085,32 @@ export const updateRtwVehicleOrder = async (db: AsyncDB, order: number[]) => {
 
 // --- NEF Vehicles CRUD ---
 export const getNefVehicles = async (db: AsyncDB, year?: number) => {
+    await ensureVehicleCategoryColumns(db);
     if (typeof year === 'number') {
-        return await db.all('SELECT id, name, sort, archived_year, COALESCE(occupancy_mode, \'24h\') as occupancy_mode FROM nef_vehicles WHERE archived_year IS NULL OR archived_year >= ? ORDER BY sort ASC, id ASC', [year]);
+        return await db.all("SELECT id, name, sort, archived_year, COALESCE(occupancy_mode, '24h') as occupancy_mode, COALESCE(category, 'regular') as category FROM nef_vehicles WHERE archived_year IS NULL OR archived_year >= ? ORDER BY CASE WHEN COALESCE(category, 'regular') = 'reserve' THEN 1 ELSE 0 END ASC, sort ASC, id ASC", [year]);
     }
-    return await db.all('SELECT id, name, sort, archived_year, COALESCE(occupancy_mode, \'24h\') as occupancy_mode FROM nef_vehicles WHERE archived_year IS NULL ORDER BY sort ASC, id ASC');
+    return await db.all("SELECT id, name, sort, archived_year, COALESCE(occupancy_mode, '24h') as occupancy_mode, COALESCE(category, 'regular') as category FROM nef_vehicles WHERE archived_year IS NULL ORDER BY CASE WHEN COALESCE(category, 'regular') = 'reserve' THEN 1 ELSE 0 END ASC, sort ASC, id ASC");
 };
 
 // --- ITW Vehicles CRUD ---
 export const getItwVehicles = async (db: AsyncDB, year?: number) => {
+    await ensureVehicleCategoryColumns(db);
     if (typeof year === 'number') {
-        return await db.all('SELECT * FROM itw_vehicles WHERE archived_year IS NULL OR archived_year >= ? ORDER BY sort ASC, id ASC', [year]);
+        return await db.all("SELECT id, name, sort, archived_year, COALESCE(category, 'regular') as category FROM itw_vehicles WHERE archived_year IS NULL OR archived_year >= ? ORDER BY CASE WHEN COALESCE(category, 'regular') = 'reserve' THEN 1 ELSE 0 END ASC, sort ASC, id ASC", [year]);
     }
-    return await db.all('SELECT * FROM itw_vehicles WHERE archived_year IS NULL ORDER BY sort ASC, id ASC');
+    return await db.all("SELECT id, name, sort, archived_year, COALESCE(category, 'regular') as category FROM itw_vehicles WHERE archived_year IS NULL ORDER BY CASE WHEN COALESCE(category, 'regular') = 'reserve' THEN 1 ELSE 0 END ASC, sort ASC, id ASC");
 };
-export const addItwVehicle = async (db: AsyncDB, v: { name: string }) => {
+export const addItwVehicle = async (db: AsyncDB, v: { name: string, category?: string }) => {
+    await ensureVehicleCategoryColumns(db);
     let vehicleId: number | undefined;
+    const cat = v.category === 'reserve' ? 'reserve' : 'regular';
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM itw_vehicles');
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
-        const result = await db.run('INSERT INTO itw_vehicles (name, sort) VALUES (?, ?)', [v.name, next]);
+        const result = await db.run('INSERT INTO itw_vehicles (name, sort, category) VALUES (?, ?, ?)', [v.name, next, cat]);
         vehicleId = Number(result.lastInsertRowid);
     } catch (e) {
-        const result = await db.run('INSERT INTO itw_vehicles (name) VALUES (?)', [v.name]);
+        const result = await db.run('INSERT INTO itw_vehicles (name, category) VALUES (?, ?)', [v.name, cat]);
         vehicleId = Number(result.lastInsertRowid);
     }
 
@@ -2048,9 +2126,13 @@ export const addItwVehicle = async (db: AsyncDB, v: { name: string }) => {
     const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     await db.run('INSERT INTO itw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, NULL, 1)',
         [vehicleId, currentYM]);
+
+    return vehicleId;
 };
-export const updateItwVehicle = async (db: AsyncDB, v: { id: number, name: string }) => {
-    await db.run('UPDATE itw_vehicles SET name = ? WHERE id = ?', [v.name, v.id]);
+export const updateItwVehicle = async (db: AsyncDB, v: { id: number, name: string, category?: string }) => {
+    await ensureVehicleCategoryColumns(db);
+    const cat = v.category === 'reserve' ? 'reserve' : 'regular';
+    await db.run('UPDATE itw_vehicles SET name = ?, category = ? WHERE id = ?', [v.name, cat, v.id]);
 };
 export const deleteItwVehicle = async (db: AsyncDB, id: number, currentYear?: number) => {
     const y = currentYear || new Date().getFullYear();
@@ -2062,17 +2144,19 @@ export const updateItwVehicleOrder = async (db: AsyncDB, order: number[]) => {
     }
 };
 
-export const addNefVehicle = async (db: AsyncDB, v: { name: string, occupancyMode?: '24h' | 'tag' }) => {
+export const addNefVehicle = async (db: AsyncDB, v: { name: string, occupancyMode?: '24h' | 'tag', category?: string }) => {
+    await ensureVehicleCategoryColumns(db);
     let vehicleId: number | undefined;
+    const cat = v.category === 'reserve' ? 'reserve' : 'regular';
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM nef_vehicles');
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
-        const result = await db.run('INSERT INTO nef_vehicles (name, sort, occupancy_mode) VALUES (?, ?, ?)',
-            [v.name, next, v.occupancyMode === 'tag' ? 'tag' : '24h']);
+        const result = await db.run('INSERT INTO nef_vehicles (name, sort, occupancy_mode, category) VALUES (?, ?, ?, ?)',
+            [v.name, next, v.occupancyMode === 'tag' ? 'tag' : '24h', cat]);
         vehicleId = result.lastInsertRowid as number;
     } catch (e) {
-        const result = await db.run('INSERT INTO nef_vehicles (name, occupancy_mode) VALUES (?, ?)',
-            [v.name, v.occupancyMode === 'tag' ? 'tag' : '24h']);
+        const result = await db.run('INSERT INTO nef_vehicles (name, occupancy_mode, category) VALUES (?, ?, ?)',
+            [v.name, v.occupancyMode === 'tag' ? 'tag' : '24h', cat]);
         vehicleId = result.lastInsertRowid as number;
     }
 
@@ -2088,12 +2172,16 @@ export const addNefVehicle = async (db: AsyncDB, v: { name: string, occupancyMod
     const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     await db.run('INSERT INTO nef_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, NULL, 1)',
         [vehicleId, currentYM]);
+
+    return vehicleId;
 };
-export const updateNefVehicle = async (db: AsyncDB, v: { id: number, name: string, occupancyMode?: '24h' | 'tag' }) => {
+export const updateNefVehicle = async (db: AsyncDB, v: { id: number, name: string, occupancyMode?: '24h' | 'tag', category?: string }) => {
+    await ensureVehicleCategoryColumns(db);
+    const cat = v.category === 'reserve' ? 'reserve' : 'regular';
     if (v.occupancyMode) {
-        await db.run('UPDATE nef_vehicles SET name = ?, occupancy_mode = ? WHERE id = ?', [v.name, v.occupancyMode, v.id]);
+        await db.run('UPDATE nef_vehicles SET name = ?, occupancy_mode = ?, category = ? WHERE id = ?', [v.name, v.occupancyMode, cat, v.id]);
     } else {
-        await db.run('UPDATE nef_vehicles SET name = ? WHERE id = ?', [v.name, v.id]);
+        await db.run('UPDATE nef_vehicles SET name = ?, category = ? WHERE id = ?', [v.name, cat, v.id]);
     }
 };
 export const setNefOccupancyMode = async (db: AsyncDB, id: number, mode: '24h' | 'tag') => {
@@ -2260,6 +2348,109 @@ export const getNefVehiclePeriods = async (db: AsyncDB, vehicleId: number) => {
 
 export const getAllNefVehiclePeriods = async (db: AsyncDB) => {
     return await db.all('SELECT * FROM nef_vehicle_periods ORDER BY vehicleId, startYM ASC');
+};
+
+// --- Special Days & Peak Coverage (Spitzenabdeckung / Sonderlagen) ---
+export const ensureVehicleTables = async (db: AsyncDB) => {
+    try {
+        await db.exec(`
+            CREATE TABLE IF NOT EXISTS vehicle_special_days (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vehicleType TEXT NOT NULL,
+                vehicleId INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                reason TEXT,
+                shiftMode TEXT DEFAULT '24h',
+                action TEXT DEFAULT 'add',
+                createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(vehicleType, vehicleId, date)
+            )
+        `);
+        await db.exec(`CREATE INDEX IF NOT EXISTS idx_vehicle_special_days_lookup ON vehicle_special_days (vehicleType, vehicleId, date)`);
+
+        for (const table of ['rtw_vehicle_periods', 'nef_vehicle_periods', 'itw_vehicle_periods']) {
+            try {
+                await db.exec(`
+                    CREATE TABLE IF NOT EXISTS ${table} (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        vehicleId INTEGER NOT NULL,
+                        startYM TEXT NOT NULL,
+                        endYM TEXT,
+                        active INTEGER DEFAULT 1,
+                        note TEXT
+                    )
+                `);
+                const cols = await db.all(`PRAGMA table_info('${table}')`);
+                if (cols.length > 0 && !cols.some((c: any) => c.name === 'note')) {
+                    await db.exec(`ALTER TABLE ${table} ADD COLUMN note TEXT`);
+                }
+            } catch { }
+        }
+    } catch (e) {
+        console.warn('[DB] ensureVehicleTables error:', e);
+    }
+};
+
+export const getVehicleSpecialDays = async (db: AsyncDB, vehicleType: string, vehicleId: number) => {
+    await ensureVehicleTables(db);
+    const vt = (vehicleType || 'rtw').toLowerCase();
+    return await db.all(
+        'SELECT * FROM vehicle_special_days WHERE vehicleType = ? AND vehicleId = ? ORDER BY date ASC',
+        [vt, vehicleId]
+    );
+};
+
+export const getAllVehicleSpecialDays = async (db: AsyncDB, year?: number) => {
+    await ensureVehicleTables(db);
+    if (year) {
+        return await db.all('SELECT * FROM vehicle_special_days WHERE date LIKE ? ORDER BY date ASC', [`${year}-%`]);
+    }
+    return await db.all('SELECT * FROM vehicle_special_days ORDER BY date ASC');
+};
+
+export const setVehicleSpecialDays = async (
+    db: AsyncDB,
+    vehicleType: string,
+    vehicleId: number,
+    specialDays: Array<{ date: string, reason?: string, shiftMode?: string, action?: string }>
+) => {
+    await ensureVehicleTables(db);
+    const vt = (vehicleType || 'rtw').toLowerCase();
+    await db.run('DELETE FROM vehicle_special_days WHERE vehicleType = ? AND vehicleId = ?', [vt, vehicleId]);
+    for (const s of (specialDays || [])) {
+        const date = (s.date || '').trim();
+        if (!date) continue;
+        const reason = (s.reason || '').trim() || null;
+        const shiftMode = s.shiftMode || '24h';
+        const action = s.action || 'add';
+        await db.run(
+            'INSERT OR REPLACE INTO vehicle_special_days (vehicleType, vehicleId, date, reason, shiftMode, action) VALUES (?, ?, ?, ?, ?, ?)',
+            [vt, vehicleId, date, reason, shiftMode, action]
+        );
+    }
+};
+
+export const setVehiclePeriodsGeneric = async (
+    db: AsyncDB,
+    vehicleType: string,
+    vehicleId: number,
+    periods: Array<{ startYM?: string, startDate?: string, endYM?: string, endDate?: string, active?: boolean | number, note?: string }>
+) => {
+    await ensureVehicleTables(db);
+    const vt = (vehicleType || 'rtw').toLowerCase();
+    const table = vt === 'nef' ? 'nef_vehicle_periods' : vt === 'itw' ? 'itw_vehicle_periods' : 'rtw_vehicle_periods';
+    await db.run(`DELETE FROM ${table} WHERE vehicleId = ?`, [vehicleId]);
+    for (const p of (periods || [])) {
+        const start = (p.startDate || p.startYM || '').trim();
+        if (!start) continue;
+        const end = (p.endDate || p.endYM || '').trim() || null;
+        const active = (p.active === false || p.active === 0) ? 0 : 1;
+        const note = (p.note || '').trim() || null;
+        await db.run(
+            `INSERT INTO ${table} (vehicleId, startYM, endYM, active, note) VALUES (?, ?, ?, ?, ?)`,
+            [vehicleId, start, end, active, note]
+        );
+    }
 };
 
 export const getUniqueDepartments = async (db: AsyncDB) => {
@@ -3415,11 +3606,18 @@ export const getItwDutyRoster = async (db: AsyncDB, year: number) => {
 
 export const setItwDutyRosterEntry = async (db: AsyncDB, entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number }) => {
     const personType = entry.personType || 'person';
-    await db.run(
-        `INSERT OR REPLACE INTO itw_duty_roster (personId, personType, date, value, type, manual_edit)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [entry.personId, personType, entry.date, entry.value, entry.type, entry.manual_edit || 0]
-    );
+    if (!entry.value && !entry.type) {
+        await db.run(
+            `DELETE FROM itw_duty_roster WHERE personId = ? AND personType = ? AND date = ?`,
+            [entry.personId, personType, entry.date]
+        );
+    } else {
+        await db.run(
+            `INSERT OR REPLACE INTO itw_duty_roster (personId, personType, date, value, type, manual_edit)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [entry.personId, personType, entry.date, entry.value, entry.type, entry.manual_edit || 0]
+        );
+    }
 };
 
 // --- Guests Management ---

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import './SettingsMenuTables.css'; // Recycle some table styles if needed or use inline.
 
 interface QualPeriod {
@@ -16,6 +17,24 @@ const ItwVorplanungTab: React.FC = () => {
     const [holidays, setHolidays] = useState<string[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [year, setYear] = useState<number>(new Date().getFullYear());
+
+    const { currentUser, isDevMode } = useAuth();
+    const isAppAdmin = isDevMode || currentUser?.roleName?.toLowerCase() === 'administrator';
+    const itwPerm = isAppAdmin ? 'write_all' : (currentUser?.permissions?.itw || 'none');
+    const canWriteAll = itwPerm === 'write_all';
+    const canWriteOwn = itwPerm === 'write';
+
+    const isOwnUser = (p: any) => {
+        if (!currentUser) return false;
+        if (isDevMode || currentUser.userId === -1) return true;
+        if (currentUser.userId && Number(p.id) === Number(currentUser.userId)) return true;
+        if (currentUser.personnelNumber && p.personnelNumber && String(p.personnelNumber).trim().toLowerCase() === String(currentUser.personnelNumber).trim().toLowerCase()) return true;
+        if (currentUser.name && currentUser.vorname && p.name && p.vorname) {
+            return String(p.name).trim().toLowerCase() === String(currentUser.name).trim().toLowerCase() &&
+                   String(p.vorname).trim().toLowerCase() === String(currentUser.vorname).trim().toLowerCase();
+        }
+        return false;
+    };
 
     const sortedItwSeqs = useMemo(() => {
         return [...itwSeqs].sort((a, b) => a.startDate.localeCompare(b.startDate));
@@ -39,7 +58,7 @@ const ItwVorplanungTab: React.FC = () => {
             const seqs = await (window as any).api.getItwPatterns?.() || [];
             setItwSeqs(seqs);
             
-            const persInfo = await (window as any).api.getPersonnel?.() || [];
+            const persInfo = await (window as any).api.getPersonnel?.(false, 'all') || [];
             setPersonnel(persInfo);
 
             const assigns = await (window as any).api.getItwPhaseAssignments?.() || [];
@@ -417,17 +436,41 @@ const ItwVorplanungTab: React.FC = () => {
                             {roles.map(role => {
                                 const currentAssgn = getAssignmentForPhase(phase.start, role);
                                 const currentId = currentAssgn ? currentAssgn.person_id : '';
+                                const isOccupied = Boolean(currentId);
+                                const isAssignedToSelf = Boolean(
+                                    currentId && personnel.some(p => Number(p.id) === Number(currentId) && isOwnUser(p))
+                                );
+
+                                let selectDisabled = false;
+                                if (canWriteAll) {
+                                    selectDisabled = false;
+                                } else if (canWriteOwn) {
+                                    selectDisabled = isOccupied && !isAssignedToSelf;
+                                } else {
+                                    selectDisabled = true;
+                                }
+
+                                const availablePersonnel = (canWriteOwn && !canWriteAll)
+                                    ? personnel.filter(p => isOwnUser(p) || Number(p.id) === Number(currentId))
+                                    : personnel;
 
                                 return (
                                     <div key={role} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                         <label style={{ fontSize: 13, color: '#555', fontWeight: 600 }}>{role}</label>
                                         <select
                                             value={currentId || ''}
+                                            disabled={selectDisabled}
                                             onChange={e => handleAssign(phase.start, phase.end, role, e.target.value)}
-                                            style={{ padding: '8px', borderRadius: 4, border: '1px solid #ccc' }}
+                                            style={{
+                                                padding: '8px',
+                                                borderRadius: 4,
+                                                border: '1px solid #ccc',
+                                                backgroundColor: selectDisabled ? '#f1f5f9' : '#fff',
+                                                cursor: selectDisabled ? 'not-allowed' : 'pointer'
+                                            }}
                                         >
                                             <option value="">- Leer -</option>
-                                            {personnel.map(p => {
+                                            {availablePersonnel.map(p => {
                                                 const quals = activeQuals[p.id] || [];
                                                 const isFzf = quals.includes('ITW Fahrzeugführer') || quals.includes('Fahrzeugführer') || quals.includes('Fahrzeugführer HLF-B');
                                                 const isMasch = quals.includes('ITW Maschinist');

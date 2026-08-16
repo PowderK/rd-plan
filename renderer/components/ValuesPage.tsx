@@ -7,6 +7,7 @@ import {
   qualificationAppliesInMonth,
   yearMonthKey,
 } from '../utils/personPeriods';
+import { isVehicleActiveOnDate, VehiclePeriod, VehicleSpecialDay } from '../utils/vehiclePeriods';
 
 const monthNames = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 
@@ -130,6 +131,8 @@ function usePersonnel(year: number, departmentName?: string) {
           for (let m = 0; m < 12; m++) {
             rettungsdienstMonthly[m] = qualApplies(rettungsdienstPeriods, yearMonthKey(year, m));
           }
+        } else {
+          rettungsdienstMonthly.fill(true);
         }
 
         const deptActiveMonthly = buildDepartmentActiveMonthly(
@@ -265,55 +268,60 @@ function useAuswertungByType() {
   return map;
 }
 
-function useVehicles(year: number) {
+function useVehicles(year?: number) {
   const [rtw, setRtw] = useState<{ id: number; name: string }[]>([]);
   const [nef, setNef] = useState<{ id: number; name: string; occupancyMode?: '24h' | 'tag' }[]>([]);
   useEffect(() => {
     (async () => {
-      try { const r = await (window as any).api.getRtwVehicles?.(year); if (Array.isArray(r)) setRtw(r); } catch { }
-      try {
-        const n = await (window as any).api.getNefVehicles?.(year);
-        if (Array.isArray(n)) {
-          setNef(n.map((v: any) => ({ ...v, occupancyMode: v.occupancy_mode || v.occupancyMode || '24h' })));
-        }
-      } catch { }
+      try { const r = await (window as any).api.getRtwVehicles?.(); if (Array.isArray(r)) setRtw(r); } catch { }
+      try { const n = await (window as any).api.getNefVehicles?.(); if (Array.isArray(n)) setNef(n); } catch { }
     })();
   }, [year]);
   return { rtw, nef };
 }
 
-function useActivations(year: number) {
-  const [rtwActs, setRtwActs] = useState<Record<number, boolean[]>>({});
-  const [nefActs, setNefActs] = useState<Record<number, boolean[]>>({});
+function useVehicleData() {
+  const [rtwPeriods, setRtwPeriods] = useState<Record<number, VehiclePeriod[]>>({});
+  const [nefPeriods, setNefPeriods] = useState<Record<number, VehiclePeriod[]>>({});
+  const [specialDays, setSpecialDays] = useState<VehicleSpecialDay[]>([]);
+
+  const fetchAll = async () => {
+    try {
+      const [rtwP, nefP, spec] = await Promise.all([
+        (window as any).api.getAllRtwVehiclePeriods?.() || [],
+        (window as any).api.getAllNefVehiclePeriods?.() || [],
+        (window as any).api.getAllVehicleSpecialDays?.() || []
+      ]);
+
+      const rMap: Record<number, VehiclePeriod[]> = {};
+      (rtwP || []).forEach((p: any) => {
+        const vid = Number(p.vehicleId);
+        if (!rMap[vid]) rMap[vid] = [];
+        rMap[vid].push(p);
+      });
+      const nMap: Record<number, VehiclePeriod[]> = {};
+      (nefP || []).forEach((p: any) => {
+        const vid = Number(p.vehicleId);
+        if (!nMap[vid]) nMap[vid] = [];
+        nMap[vid].push(p);
+      });
+
+      setRtwPeriods(rMap);
+      setNefPeriods(nMap);
+      setSpecialDays(Array.isArray(spec) ? spec : []);
+    } catch { }
+  };
+
   useEffect(() => {
-    (async () => {
-      try {
-        const acts = await (window as any).api.getRtwVehicleActivations?.(year);
-        const map: Record<number, boolean[]> = {};
-        (acts || []).forEach((row: any) => {
-          const vid = Number(row.vehicleId);
-          const m = Number(row.month);
-          const arr = map[vid] || Array(12).fill(true);
-          arr[m - 1] = !!row.enabled;
-          map[vid] = arr;
-        });
-        setRtwActs(map);
-      } catch { }
-      try {
-        const acts = await (window as any).api.getNefVehicleActivations?.(year);
-        const map: Record<number, boolean[]> = {};
-        (acts || []).forEach((row: any) => {
-          const vid = Number(row.vehicleId);
-          const m = Number(row.month);
-          const arr = map[vid] || Array(12).fill(true);
-          arr[m - 1] = !!row.enabled;
-          map[vid] = arr;
-        });
-        setNefActs(map);
-      } catch { }
-    })();
-  }, [year]);
-  return { rtwActs, nefActs };
+    fetchAll();
+    const api = (window as any).api;
+    if (api?.onVehiclesUpdated) {
+      api.onVehiclesUpdated(fetchAll);
+      return () => api.offVehiclesUpdated?.(fetchAll);
+    }
+  }, []);
+
+  return { rtwPeriods, nefPeriods, specialDays };
 }
 
 function useDeptPatterns() {
@@ -322,16 +330,10 @@ function useDeptPatterns() {
     (async () => {
       try {
         const raw = await (window as any).api.getDeptPatterns?.();
-        const normDept = (arr: string[], len = 21) => (arr || [])
-          .slice(0, len)
-          .concat(Array(len).fill(''))
-          .slice(0, len)
-          .map(v => (v === '1' || v === '2' || v === '3') ? v : '');
-        const parsed = (raw || []).map((s: any) => ({
-          startDate: String(s.startDate),
-          pattern: normDept(String(s.pattern || '').split(',').map((x: string) => x.trim()), 21)
-        }));
-        setSeqs(parsed);
+        const normDept = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(Math.max(0, len - (arr || []).length)).fill('1'));
+        if (Array.isArray(raw)) {
+          setSeqs(raw.map((p: any) => ({ startDate: p.startDate, pattern: normDept(p.pattern || []) })));
+        }
       } catch { }
     })();
   }, []);
@@ -367,25 +369,71 @@ function computeDeptShiftsPerMonth(year: number, department: number, seqs: { sta
 
 function computePositionsPerMonth(
   year: number,
+  department: number,
   vehicles: { rtw: { id: number }[]; nef: { id: number; occupancyMode?: '24h' | 'tag' }[] },
-  acts: { rtwActs: Record<number, boolean[]>; nefActs: Record<number, boolean[]> },
-  deptShifts: number[],
+  vehicleData: { rtwPeriods: Record<number, VehiclePeriod[]>; nefPeriods: Record<number, VehiclePeriod[]>; specialDays: VehicleSpecialDay[] },
+  deptPatternSeqs: { startDate: string; pattern: string[] }[],
   itwShifts: number[]
 ) {
   const positions: number[] = Array(12).fill(0);
+
   for (let m = 0; m < 12; m++) {
-    const rtwCount = (vehicles.rtw || []).filter(v => (acts.rtwActs[v.id] ?? Array(12).fill(true))[m] !== false).length;
+    const daysInMonth = new Date(year, m + 1, 0).getDate();
+    let monthTotal = 0;
 
-    let nefShifts = 0;
-    (vehicles.nef || []).forEach(v => {
-      if ((acts.nefActs[v.id] ?? Array(12).fill(true))[m] !== false) {
-        nefShifts += (v.occupancyMode === 'tag' ? 1 : 2);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateObj = new Date(year, m, d);
+      const dateStr = `${year}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const depDay = getDeptDayFor(dateObj, deptPatternSeqs);
+      const isDeptDay = depDay && String(department) === depDay;
+
+      // RTWs
+      for (const v of (vehicles?.rtw || [])) {
+        if (!v) continue;
+        const vPeriods = (vehicleData?.rtwPeriods) ? vehicleData.rtwPeriods[v.id] || [] : [];
+        const vSpec = (vehicleData?.specialDays || []).filter(s => s && (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id));
+        const isReserve = (v as any).category === 'reserve';
+        const status = isVehicleActiveOnDate(dateStr, vPeriods, vSpec, isReserve);
+
+        if (status.active) {
+          if (status.isSpecialDay) {
+            if (status.shiftMode === 'tag' || status.shiftMode === 'nacht') {
+              monthTotal += 2;
+            } else {
+              monthTotal += 4;
+            }
+          } else if (isDeptDay) {
+            monthTotal += 4;
+          }
+        }
       }
-    });
 
-    const base = deptShifts[m] * (rtwCount * 4 + nefShifts);
-    positions[m] = base + (itwShifts[m] || 0);
+      // NEFs
+      for (const v of (vehicles?.nef || [])) {
+        if (!v) continue;
+        const vPeriods = (vehicleData?.nefPeriods) ? vehicleData.nefPeriods[v.id] || [] : [];
+        const vSpec = (vehicleData?.specialDays || []).filter(s => s && (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id));
+        const isReserve = (v as any).category === 'reserve';
+        const status = isVehicleActiveOnDate(dateStr, vPeriods, vSpec, isReserve);
+
+        if (status.active) {
+          const defaultSlots = (v.occupancyMode === 'tag') ? 1 : 2;
+          if (status.isSpecialDay) {
+            if (status.shiftMode === 'tag' || status.shiftMode === 'nacht') {
+              monthTotal += 1;
+            } else {
+              monthTotal += 2;
+            }
+          } else if (isDeptDay) {
+            monthTotal += defaultSlots;
+          }
+        }
+      }
+    }
+
+    positions[m] = monthTotal + (itwShifts[m] || 0);
   }
+
   return positions;
 }
 
@@ -453,7 +501,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const ue50Ids = useUe50PersonnelIds(year, departmentName);
   const auswertungByType = useAuswertungByType();
   const { rtw, nef } = useVehicles(year);
-  const { rtwActs, nefActs } = useActivations(year);
+  const vehicleData = useVehicleData();
   const deptPatternSeqs = useDeptPatterns();
 
   useEffect(() => {
@@ -517,8 +565,8 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const deptShifts = useMemo(() => computeDeptShiftsPerMonth(year, department, deptPatternSeqs), [year, department, JSON.stringify(deptPatternSeqs)]);
 
   const row1 = useMemo(
-    () => computePositionsPerMonth(year, { rtw, nef }, { rtwActs, nefActs }, deptShifts, rowItw),
-    [year, rtw, nef, rtwActs, nefActs, deptShifts, rowItw]
+    () => computePositionsPerMonth(year, department, { rtw, nef }, vehicleData, deptPatternSeqs, rowItw),
+    [year, department, rtw, nef, vehicleData, deptPatternSeqs, rowItw]
   );
   const row2 = useMemo(() => computeActivePersonnelPerMonth(year, roster, auswertungByType, personnel, ue50Ids), [year, roster, auswertungByType, personnel, ue50Ids]);
 
@@ -1077,66 +1125,115 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
             </tr>
           </thead>
           <tbody>
-            <tr>
+            {/* SECTION 1: GESAMTWERTE & STATIONSÜBERSICHT */}
+            <tr key="section-gesamtwerte">
+              <td
+                colSpan={monthNames.length + 2}
+                style={{
+                  background: 'linear-gradient(90deg, #1e40af 0%, #3b82f6 100%)',
+                  color: '#ffffff',
+                  padding: '10px 14px',
+                  fontWeight: 700,
+                  fontSize: '0.95em',
+                  letterSpacing: '0.3px',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                }}
+              >
+                📊 GESAMTWERTE & STATIONSÜBERSICHT
+              </td>
+            </tr>
+
+            <tr title="Gesamtzahl aller zu besetzenden Schichten im Monat (RTW, NEF, ITW) abzüglich der von Azubis, Gästen und Ü50-Personal besetzten Schichten.">
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
-                <div style={{ fontWeight: 600 }}>Positionen gesamt (netto)</div>
+                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>Positionen gesamt (netto)</span>
+                  <span style={{ fontSize: '12px', color: '#2563eb', cursor: 'help' }} title="Gesamtzahl aller zu besetzenden Schichten im Monat (RTW, NEF, ITW) abzüglich der von Azubis, Gästen und Ü50-Personal besetzten Schichten.">ℹ️</span>
+                </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Abteilungsschichten × (RTW×4 + NEF×2) + ITW − Gast/Azubis − Ü50</div>
               </td>
               {row1Adj.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }}>{fmt(sumPositionsYear)}</td>
             </tr>
-            <tr>
+
+            <tr title="Anzahl der aktiven Mitarbeiter, die in diesem Monat mindestens eine Schicht leisten (ohne Ü50/LPAL).">
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
-                <div style={{ fontWeight: 600 }}>Anzahl Personal (gewichtet)</div>
+                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>Anzahl Personal (gewichtet)</span>
+                  <span style={{ fontSize: '12px', color: '#2563eb', cursor: 'help' }} title="Anzahl der aktiven Mitarbeiter, die in diesem Monat mindestens eine Schicht leisten (ohne Ü50/LPAL).">ℹ️</span>
+                </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Stammpersonal mit mind. einer Schicht (Auswertung ≠ off); HLF‑B ungewichtet gezählt</div>
               </td>
               {row2.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
             </tr>
-            <tr>
+
+            <tr title="Summe aller Einsätze von Gästen sowie Azubis auf Maschinist-Positionen in diesem Monat.">
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
-                <div style={{ fontWeight: 600 }}>Anzahl Gast / Azubis</div>
+                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>Anzahl Gast / Azubis</span>
+                  <span style={{ fontSize: '12px', color: '#2563eb', cursor: 'help' }} title="Summe aller Einsätze von Gästen sowie Azubis auf Maschinist-Positionen in diesem Monat.">ℹ️</span>
+                </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Summe der Gast- und Azubi-Maschinist-Einsätze je Monat</div>
               </td>
               {rowAzubis.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v + (rowGuests[i] || 0))}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
             </tr>
-            <tr>
+
+            <tr title="Summe aller Schichten von Kolleginnen und Kollegen mit Ü50- oder LPAL-Qualifikation in diesem Monat.">
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
-                <div style={{ fontWeight: 600 }}>Anzahl Ü50-Schichten</div>
+                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>Anzahl Ü50-Schichten</span>
+                  <span style={{ fontSize: '12px', color: '#2563eb', cursor: 'help' }} title="Summe aller Schichten von Kolleginnen und Kollegen mit Ü50- oder LPAL-Qualifikation in diesem Monat.">ℹ️</span>
+                </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Summe aller Ü50-Personen-Einsätze je Monat (alle Positionen)</div>
               </td>
               {rowUe50.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
             </tr>
-            <tr>
+
+            <tr title="Anzahl aller im Dienstplan geplanten Schichten auf dem ITW (Integrierter Behandlungs- und Wirkstoffplan).">
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
-                <div style={{ fontWeight: 600 }}>ITW‑Schichten</div>
+                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>ITW‑Schichten</span>
+                  <span style={{ fontSize: '12px', color: '#2563eb', cursor: 'help' }} title="Anzahl aller im Dienstplan geplanten Schichten auf dem ITW (Integrierter Behandlungs- und Wirkstoffplan).">ℹ️</span>
+                </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Summe aller ITW‑Einsätze (Slot oder Auswertung = ITW)</div>
               </td>
               {rowItw.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
             </tr>
-            <tr>
+
+            <tr title="Durchschnittliche Schichtanzahl (24h- und ITW-Dienste) pro aktiver Person in diesem Monat.">
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
-                <div style={{ fontWeight: 600 }}>Mittelwert (24h + ITW)</div>
+                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>Mittelwert (24h + ITW)</span>
+                  <span style={{ fontSize: '12px', color: '#2563eb', cursor: 'help' }} title="Durchschnittliche Schichtanzahl (24h- und ITW-Dienste) pro aktiver Person in diesem Monat.">ℹ️</span>
+                </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Durchschnitt pro Monat über Personen mit {'>'} 0 (gerundet)</div>
               </td>
               {rowAvgCombined.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
             </tr>
-            <tr>
+
+            <tr title="Rechnerischer Richtwert: Netto-Positionen dividiert durch die Anzahl des aktiven Personals.">
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
-                <div style={{ fontWeight: 600 }}>Schichten je Person</div>
+                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>Schichten je Person</span>
+                  <span style={{ fontSize: '12px', color: '#2563eb', cursor: 'help' }} title="Rechnerischer Richtwert: Netto-Positionen dividiert durch die Anzahl des aktiven Personals.">ℹ️</span>
+                </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Positionen gesamt ÷ Anzahl Personal</div>
               </td>
               {row3.map((v, i) => <td key={i} style={{ ...styles.td, ...styles.kpiRow }}>{fmt(v)}</td>)}
               <td style={{ ...styles.td, ...styles.kpiRow }} />
             </tr>
-            {/* Kontrolle: Positionen vs. Soll (grün/rot je Monat und Summe) */}
-            <tr>
+
+            {/* KONTROLLE */}
+            <tr title="Vergleich zwischen den tatsächlich benötigten Netto-Schichtpositionen (links) und der Summe aller vergebenen Personen-Soll-Schichten (rechts). Grüner Hintergrund zeigt exakte Übereinstimmung.">
               <td style={{ ...(styles.nameSticky as any), ...styles.kpiRow }}>
-                <div style={{ fontWeight: 600 }}>Kontrolle: Positionen vs. Soll</div>
+                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>Kontrolle: Positionen vs. Soll</span>
+                  <span style={{ fontSize: '12px', color: '#2563eb', cursor: 'help' }} title="Vergleich zwischen den tatsächlich benötigten Netto-Schichtpositionen (links) und der Summe aller vergebenen Personen-Soll-Schichten (rechts). Grüner Hintergrund zeigt exakte Übereinstimmung.">ℹ️</span>
+                </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Markiert = Vergleich Positionen zu Soll</div>
               </td>
               {row1Adj.map((pos, i) => {
@@ -1169,18 +1266,35 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                 );
               })()}
             </tr>
-            <tr>
-              <td style={{ ...styles.sectionSep }} colSpan={monthNames.length + 2} />
+
+            {/* SECTION 2: PERSÖNLICHE WERTE */}
+            <tr key="section-persoenlich-header">
+              <td
+                colSpan={monthNames.length + 2}
+                style={{
+                  background: 'linear-gradient(90deg, #15803d 0%, #22c55e 100%)',
+                  color: '#ffffff',
+                  padding: '10px 14px',
+                  fontWeight: 700,
+                  fontSize: '0.95em',
+                  letterSpacing: '0.3px',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                }}
+              >
+                👤 PERSÖNLICHE WERTE — STAMMPERSONAL & EINSATZKRÄFTE (Ist | Soll)
+              </td>
             </tr>
+
             {visiblePresenceRows.map(row => {
               const sumPresence = row.counts.reduce((a, b) => a + b, 0);
               const targRow = perPersonTargets.find(t => t.id === row.id);
               const targets = targRow?.targets || Array(12).fill(0);
               const sumTargets = targets.reduce((a, b) => a + b, 0);
-              // Priorität: Ü50 (rot) > HLF-B (blau)
               const nameColor = row.hlfb ? 'var(--accent)' : undefined;
+              const quicktipText = `Persönliche Werte von ${row.name}: Links = Tatsächlich geleistete Schichten (Ist). Rechts = Berechnetes Schichtsoll laut Verteilungsschlüssel (Soll). Klicken für Details zur Soll-Berechnung.`;
+
               return (
-                <tr key={row.id} style={Number(row.id) % 2 === 0 ? styles.zebra1 : styles.zebra2}>
+                <tr key={row.id} style={Number(row.id) % 2 === 0 ? styles.zebra1 : styles.zebra2} title={quicktipText}>
                   <td
                     style={{
                       ...(styles.nameSticky as any),
@@ -1190,9 +1304,12 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                       textDecoration: 'underline'
                     }}
                     onClick={() => setSelectedPersonId(row.id)}
-                    title="Klicken für Details zur Soll-Berechnung"
+                    title={`Klicken für Details zur Soll-Berechnung von ${row.name}`}
                   >
-                    {row.name}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>{row.name}</span>
+                      <span style={{ fontSize: '11px', color: '#16a34a', cursor: 'pointer' }} title={`Klicken für Details zur Soll-Berechnung von ${row.name}`}>ℹ️</span>
+                    </div>
                   </td>
                   {row.counts.map((v, i) => {
                     const hasTransfer = (shiftTransfers || []).some((t: any) => {
@@ -1204,7 +1321,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                     const targetWeight = hasTransfer ? 'bold' : 'normal';
 
                     return (
-                      <td key={i} style={styles.td}>
+                      <td key={i} style={styles.td} title={`${monthNames[i]}: ${v ? fmt(v) : '0'} Ist-Schichten | ${targets[i] ? fmt(targets[i]) : '0'} Soll-Schichten`}>
                         {v ? (
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                             <span>{fmt(v)}</span>
@@ -1219,7 +1336,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                       </td>
                     );
                   })}
-                  <td style={styles.td}>
+                  <td style={styles.td} title={`Jahressumme ${row.name}: ${sumPresence ? fmt(sumPresence) : '0'} Ist | ${sumTargets ? fmt(sumTargets) : '0'} Soll`}>
                     {(sumPresence || sumTargets) ? (
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                         <span>{sumPresence ? fmt(sumPresence) : ''}</span>
@@ -1231,20 +1348,41 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                 </tr>
               );
             })}
+
+            {/* SUBSECTION: GAST / AZUBIS */}
             {canReadAllWerte && (
               <>
-                <tr>
-                  <td colSpan={monthNames.length + 2} style={{ ...styles.tdLeft, background: '#eef5ff', fontWeight: 600 }}>Gast / Azubis</td>
+                <tr key="section-azubis-header">
+                  <td
+                    colSpan={monthNames.length + 2}
+                    style={{
+                      background: 'linear-gradient(90deg, #d97706 0%, #f59e0b 100%)',
+                      color: '#ffffff',
+                      padding: '10px 14px',
+                      fontWeight: 700,
+                      fontSize: '0.95em',
+                      letterSpacing: '0.3px',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                    }}
+                  >
+                    🎓 GAST-EINSÄTZE & AZUBI-MASCHINISTEN
+                  </td>
                 </tr>
                 {[...perGuestPositions, ...perAzubiMaschinist].map((row, idx) => {
                   const sum = row.counts.reduce((a, b) => a + b, 0);
+                  const guestQuicktip = `Geleistete Einsätze von ${row.name} auf Gast- oder Azubi-Maschinist-Positionen.`;
                   return (
-                    <tr key={`ga_${idx}_${row.id}`} style={idx % 2 === 0 ? styles.zebra1 : styles.zebra2}>
-                      <td style={styles.nameSticky as any}>{row.name}</td>
+                    <tr key={`ga_${idx}_${row.id}`} style={idx % 2 === 0 ? styles.zebra1 : styles.zebra2} title={guestQuicktip}>
+                      <td style={styles.nameSticky as any} title={guestQuicktip}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>{row.name}</span>
+                          <span style={{ fontSize: '11px', color: '#d97706', cursor: 'help' }} title={guestQuicktip}>ℹ️</span>
+                        </div>
+                      </td>
                       {row.counts.map((v, i) => (
-                        <td key={i} style={styles.td}>{v ? fmt(v) : ''}</td>
+                        <td key={i} style={styles.td} title={`${monthNames[i]}: ${v ? fmt(v) : '0'} Einsätze`}>{v ? fmt(v) : ''}</td>
                       ))}
-                      <td style={styles.td}>{sum ? fmt(sum) : ''}</td>
+                      <td style={styles.td} title={`Jahressumme: ${sum ? fmt(sum) : '0'} Einsätze`}>{sum ? fmt(sum) : ''}</td>
                     </tr>
                   );
                 })}

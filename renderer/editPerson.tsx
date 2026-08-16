@@ -384,16 +384,17 @@ const ActivePeriodForm: React.FC<ActivePeriodFormProps> = ({ period, onSave, onC
 };
 
 interface DepartmentPeriodFormProps {
-  onSave: (period: { department: string; startDate: string; endDate?: string }) => Promise<void>;
+  onSave: (period: { id?: number; department: string; startDate: string; endDate?: string }) => Promise<void>;
   onCancel: () => void;
   title: string;
+  initialData?: { id?: number; department: string; startDate: string; endDate?: string };
 }
 
-const DepartmentPeriodForm: React.FC<DepartmentPeriodFormProps> = ({ onSave, onCancel, title }) => {
-  const [department, setDepartment] = useState('1. Abteilung');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [isUnlimited, setIsUnlimited] = useState(true);
+const DepartmentPeriodForm: React.FC<DepartmentPeriodFormProps> = ({ onSave, onCancel, title, initialData }) => {
+  const [department, setDepartment] = useState(initialData?.department || '1. Abteilung');
+  const [startDate, setStartDate] = useState(initialData?.startDate || '');
+  const [endDate, setEndDate] = useState(initialData?.endDate || '');
+  const [isUnlimited, setIsUnlimited] = useState(initialData ? !initialData.endDate : true);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -402,6 +403,7 @@ const DepartmentPeriodForm: React.FC<DepartmentPeriodFormProps> = ({ onSave, onC
       return;
     }
     onSave({
+      id: initialData?.id,
       department,
       startDate,
       endDate: isUnlimited ? undefined : endDate
@@ -480,6 +482,7 @@ const EditPerson: React.FC = () => {
 
   // Department Periods State
   const [departmentPeriods, setDepartmentPeriods] = useState<any[]>([]);
+  const [editingDepartmentPeriod, setEditingDepartmentPeriod] = useState<any | null>(null);
   const [showAddDepartmentPeriod, setShowAddDepartmentPeriod] = useState(false);
 
   useEffect(() => {
@@ -756,18 +759,29 @@ const EditPerson: React.FC = () => {
     } catch (error) {}
   };
 
-  const handleAddDepartmentPeriod = async (period: any) => {
+  const handleSaveDepartmentPeriod = async (period: any) => {
     try {
-      await (window as any).api.addPersonnelDepartmentPeriod({
-        personId: id,
-        department: period.department,
-        startDate: period.startDate,
-        endDate: period.endDate || null
-      });
+      if (period.id) {
+        await (window as any).api.updatePersonnelDepartmentPeriod({
+          id: period.id,
+          personId: id,
+          department: period.department,
+          startDate: period.startDate,
+          endDate: period.endDate || null
+        });
+      } else {
+        await (window as any).api.addPersonnelDepartmentPeriod({
+          personId: id,
+          department: period.department,
+          startDate: period.startDate,
+          endDate: period.endDate || null
+        });
+      }
       await refreshDepartmentPeriods();
       setShowAddDepartmentPeriod(false);
+      setEditingDepartmentPeriod(null);
     } catch (error) {
-      alert('Fehler beim Hinzufügen der Abteilungsperiode');
+      alert('Fehler beim Speichern der Abteilungsperiode');
     }
   };
 
@@ -1173,7 +1187,7 @@ const EditPerson: React.FC = () => {
         <div style={{ padding: '10px 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h4 style={{ margin: 0 }}>Abteilungshistorie</h4>
-            <button type="button" onClick={() => setShowAddDepartmentPeriod(true)} style={{ background: '#28a745', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px' }}>
+            <button type="button" onClick={() => { setEditingDepartmentPeriod(null); setShowAddDepartmentPeriod(true); }} style={{ background: '#28a745', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px' }}>
               + Abteilung hinzufügen
             </button>
           </div>
@@ -1183,7 +1197,7 @@ const EditPerson: React.FC = () => {
                 <th style={{ padding: '12px', textAlign: 'left' }}>Abteilung</th>
                 <th style={{ padding: '12px', textAlign: 'left' }}>Von</th>
                 <th style={{ padding: '12px', textAlign: 'left' }}>Bis</th>
-                <th style={{ padding: '12px', textAlign: 'center', width: '100px' }}>Aktionen</th>
+                <th style={{ padding: '12px', textAlign: 'center', width: '160px' }}>Aktionen</th>
               </tr>
             </thead>
             <tbody>
@@ -1193,7 +1207,8 @@ const EditPerson: React.FC = () => {
                     <td style={{ padding: '12px' }}>{period.department}</td>
                     <td style={{ padding: '12px' }}>{period.startDate}</td>
                     <td style={{ padding: '12px' }}>{period.endDate || 'Laufend'}</td>
-                    <td style={{ padding: '12px', textAlign: 'center' }}>
+                    <td style={{ padding: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      <button type="button" onClick={() => { setEditingDepartmentPeriod(period); setShowAddDepartmentPeriod(true); }} style={{ background: '#007bff', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '3px', marginRight: '6px' }}>Bearbeiten</button>
                       <button type="button" onClick={() => handleDeleteDepartmentPeriod(period.id)} style={{ background: '#dc3545', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '3px' }}>Löschen</button>
                     </td>
                   </tr>
@@ -1204,7 +1219,12 @@ const EditPerson: React.FC = () => {
             </tbody>
           </table>
           {showAddDepartmentPeriod && (
-            <DepartmentPeriodForm onSave={handleAddDepartmentPeriod} onCancel={() => setShowAddDepartmentPeriod(false)} title="Abteilung hinzufügen" />
+            <DepartmentPeriodForm
+              onSave={handleSaveDepartmentPeriod}
+              onCancel={() => { setShowAddDepartmentPeriod(false); setEditingDepartmentPeriod(null); }}
+              title={editingDepartmentPeriod ? "Abteilungszuordnung bearbeiten" : "Abteilung hinzufügen"}
+              initialData={editingDepartmentPeriod || undefined}
+            />
           )}
         </div>
       )}

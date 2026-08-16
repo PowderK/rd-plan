@@ -14,6 +14,30 @@ interface SettingsMenuProps {
   departmentName?: string;
 }
 
+const getOffsetDateInfo = (startDateStr: string, offsetDays: number): { dateStr: string; weekdayStr: string; isWeekend: boolean } | null => {
+  if (!startDateStr || !/^\d{4}-\d{2}-\d{2}$/.test(startDateStr)) return null;
+  const [yearStr, monthStr, dayStr] = startDateStr.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10) - 1;
+  const day = parseInt(dayStr, 10);
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+
+  const d = new Date(Date.UTC(year, month, day + offsetDays));
+  const dayOfWeek = d.getUTCDay();
+  const weekdays = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+  const weekdayStr = weekdays[dayOfWeek];
+
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dateStr = `${dd}.${mm}.`;
+
+  return {
+    dateStr,
+    weekdayStr,
+    isWeekend: dayOfWeek === 0 || dayOfWeek === 6
+  };
+};
+
 const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, departmentName }) => {
   const defaultQualificationCategories = ['Fahrzeugführung', 'Notfall', 'Transport', 'Ausbildung', 'Sonstiges'];
   const [rescueStation, setRescueStation] = useState('1');
@@ -88,7 +112,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
   const [hlfbQualificationType, setHlfbQualificationType] = useState<string>('FzF HLF B');
 
   // Rollen und Rechte Management
-  const [roles, setRoles] = useState<{ id: number; name: string; description?: string; permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'> }[]>([]);
+  const [roles, setRoles] = useState<{ id: number; name: string; description?: string; permissions: Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'> }[]>([]);
   const [addedRoleIds, setAddedRoleIds] = useState<number[]>([]);
   // Ü50 Qualifikationszuordnung (keine Soll/Ist-Berechnung, rot im Kontrollfeld)
   const [ue50QualificationType, setUe50QualificationType] = useState<string>('Ü50');
@@ -157,7 +181,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
         permissions: Object.keys(r.permissions || {}).sort().reduce((acc, key) => {
           acc[key] = r.permissions[key];
           return acc;
-        }, {} as Record<string, 'none' | 'read' | 'read_all' | 'write'>)
+        }, {} as Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'>)
       }))
       .sort((a, b) => a.id - b.id);
 
@@ -605,7 +629,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                 fahrzeuge: (role.canEditVehicles ? 'write' : 'none') as 'none' | 'write',
                 einstellungen: (role.canEditSettings ? 'write' : 'none') as 'none' | 'write',
                 kommentar_global: (role.canEditGlobalComments ? 'write' : 'none') as 'none' | 'write',
-                kommentar_individuell: (role.canEditPersonalComments ? 'write' : 'none') as 'none' | 'write'
+                kommentar_individuell: (role.canEditPersonalComments ? 'write' : 'none') as 'none' | 'write',
+                itw: (role.canEditItwAll ? 'write_all' : role.canEditItw ? 'write' : role.canViewItw ? 'read' : 'none') as 'none' | 'read' | 'write' | 'write_all'
               }
             };
           });
@@ -931,7 +956,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
               fahrzeuge: (role.canEditVehicles ? 'write' : 'none') as 'none' | 'write',
               einstellungen: (role.canEditSettings ? 'write' : 'none') as 'none' | 'write',
               kommentar_global: (role.canEditGlobalComments ? 'write' : 'none') as 'none' | 'write',
-              kommentar_individuell: (role.canEditPersonalComments ? 'write' : 'none') as 'none' | 'write'
+              kommentar_individuell: (role.canEditPersonalComments ? 'write' : 'none') as 'none' | 'write',
+              itw: (role.canEditItwAll ? 'write_all' : role.canEditItw ? 'write' : role.canViewItw ? 'read' : 'none') as 'none' | 'read' | 'write' | 'write_all'
             }
           };
         }));
@@ -950,14 +976,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
 
   const setRolePermission = (
     roleId: number,
-    areaKey: 'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge' | 'einstellungen' | 'kommentar_global' | 'kommentar_individuell',
-    permission: 'read' | 'read_all' | 'write',
+    areaKey: 'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge' | 'einstellungen' | 'kommentar_global' | 'kommentar_individuell' | 'itw',
+    permission: 'read' | 'read_all' | 'write' | 'write_all',
     checked: boolean
   ) => {
     setRoles(prev => prev.map(role => {
       if (role.id !== roleId) return role;
       const current = role.permissions?.[areaKey] || 'none';
-      const nextValue: 'none' | 'read' | 'read_all' | 'write' = checked
+      const nextValue: 'none' | 'read' | 'read_all' | 'write' | 'write_all' = checked
         ? permission
         : (current === permission ? 'none' : current);
       return {
@@ -1354,25 +1380,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
               </p>
             </div>
 
-            {/* ITW-Aktivierung (global) */}
-            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
-              <h3>Allgemeine Funktionen</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr', columnGap: 12, alignItems: 'start' }}>
-                <input
-                  type="checkbox"
-                  id="featureItw"
-                  checked={itwFeatureEnabled}
-                  onChange={(e) => setItwFeatureEnabled(e.target.checked)}
-                  style={{ marginTop: 2 }}
-                />
-                <label htmlFor="featureItw" style={{ cursor: 'pointer', margin: 0 }}>
-                  <strong>ITW (Integrierter Behandlungs- und Wirkstoffplan) aktivieren</strong>
-                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
-                    Blendet alle ITW-Bereiche in Dienstplan, Fahrzeuge und Personal ein oder aus.
-                  </div>
-                </label>
-              </div>
-            </div>
 
             <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
               <h3>Gemeinsame Schichtfolge für alle Abteilungen</h3>
@@ -1400,25 +1407,43 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                             }} />
                         </td>
                         <td>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            {Array.from({ length: 21 }).map((_, i) => (
-                              <select key={i} value={s.pattern[i] || ''} disabled={!editingDeptPatterns}
-                                onChange={e => {
-                                  if (!editingDeptPatterns) return;
-                                  const v = ['1', '2', '3'].includes(e.target.value) ? e.target.value : '';
-                                  setDeptPatternSeqs(prev => prev.map((x, j) => {
-                                    if (j !== idx) return x;
-                                    const next = [...x.pattern];
-                                    next[i] = v as any;
-                                    return { ...x, pattern: next };
-                                  }));
-                                }}>
-                                <option value=""></option>
-                                <option value="1">1</option>
-                                <option value="2">2</option>
-                                <option value="3">3</option>
-                              </select>
-                            ))}
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingTop: 4, paddingBottom: 4 }}>
+                            {Array.from({ length: 21 }).map((_, i) => {
+                              const info = getOffsetDateInfo(s.startDate, i);
+                              return (
+                                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                                  <span style={{ fontSize: '10px', color: info?.isWeekend ? '#c5221f' : '#666', fontWeight: info?.isWeekend ? 700 : 600, userSelect: 'none', lineHeight: '12px' }}>
+                                    {info ? info.weekdayStr : `T${i + 1}`}
+                                  </span>
+                                  <span style={{ fontSize: '10px', color: info?.isWeekend ? '#c5221f' : '#555', fontWeight: 400, userSelect: 'none', lineHeight: '12px' }}>
+                                    {info ? info.dateStr : ''}
+                                  </span>
+                                  <select value={s.pattern[i] || ''} disabled={!editingDeptPatterns}
+                                    style={{
+                                      width: 44,
+                                      padding: '2px',
+                                      textAlign: 'center',
+                                      borderColor: info?.isWeekend ? '#f5c6cb' : undefined,
+                                      background: info?.isWeekend ? '#fff8f8' : undefined
+                                    }}
+                                    onChange={e => {
+                                      if (!editingDeptPatterns) return;
+                                      const v = ['1', '2', '3'].includes(e.target.value) ? e.target.value : '';
+                                      setDeptPatternSeqs(prev => prev.map((x, j) => {
+                                        if (j !== idx) return x;
+                                        const next = [...x.pattern];
+                                        next[i] = v as any;
+                                        return { ...x, pattern: next };
+                                      }));
+                                    }}>
+                                    <option value=""></option>
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                  </select>
+                                </div>
+                              );
+                            })}
                           </div>
                         </td>
                       </tr>
@@ -1903,6 +1928,22 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                   </div>
                 </label>
               </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr', columnGap: 12, alignItems: 'start' }}>
+                <input
+                  type="checkbox"
+                  id="featureItw"
+                  checked={itwFeatureEnabled}
+                  onChange={(e) => setItwFeatureEnabled(e.target.checked)}
+                  style={{ marginTop: 2 }}
+                />
+                <label htmlFor="featureItw" style={{ cursor: 'pointer', margin: 0 }}>
+                  <strong>ITW Vorplanung</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                    Blendet alle ITW-Bereiche in Dienstplan, Fahrzeuge und Personal ein oder aus.
+                  </div>
+                </label>
+              </div>
             </div>
           </div>
         )}
@@ -1951,24 +1992,41 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                                       }} />
                                   </td>
                                   <td>
-                                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                      {Array.from({ length: 21 }).map((_, i) => (
-                                        <select key={i} value={s.pattern[i] || ''} disabled={!editingItwPatterns}
-                                          style={{ width: 42, padding: '2px' }}
-                                          onChange={e => {
-                                            if (!editingItwPatterns) return;
-                                            const v = e.target.value === 'IW' ? 'IW' : '';
-                                            setItwPatternSeqs(prev => prev.map((x, j) => {
-                                              if (j !== mainIdx) return x;
-                                              const next = [...x.pattern];
-                                              next[i] = v;
-                                              return { ...x, pattern: next };
-                                            }));
-                                          }}>
-                                          <option value=""></option>
-                                          <option value="IW">IW</option>
-                                        </select>
-                                      ))}
+                                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingTop: 4, paddingBottom: 4 }}>
+                                      {Array.from({ length: 21 }).map((_, i) => {
+                                        const info = getOffsetDateInfo(s.startDate, i);
+                                        return (
+                                          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                                            <span style={{ fontSize: '10px', color: info?.isWeekend ? '#c5221f' : '#666', fontWeight: info?.isWeekend ? 700 : 600, userSelect: 'none', lineHeight: '12px' }}>
+                                              {info ? info.weekdayStr : `T${i + 1}`}
+                                            </span>
+                                            <span style={{ fontSize: '10px', color: info?.isWeekend ? '#c5221f' : '#555', fontWeight: 400, userSelect: 'none', lineHeight: '12px' }}>
+                                              {info ? info.dateStr : ''}
+                                            </span>
+                                            <select value={s.pattern[i] || ''} disabled={!editingItwPatterns}
+                                              style={{
+                                                width: 44,
+                                                padding: '2px',
+                                                textAlign: 'center',
+                                                borderColor: info?.isWeekend ? '#f5c6cb' : undefined,
+                                                background: info?.isWeekend ? '#fff8f8' : undefined
+                                              }}
+                                              onChange={e => {
+                                                if (!editingItwPatterns) return;
+                                                const v = e.target.value === 'IW' ? 'IW' : '';
+                                                setItwPatternSeqs(prev => prev.map((x, j) => {
+                                                  if (j !== mainIdx) return x;
+                                                  const next = [...x.pattern];
+                                                  next[i] = v;
+                                                  return { ...x, pattern: next };
+                                                }));
+                                              }}>
+                                              <option value=""></option>
+                                              <option value="IW">IW</option>
+                                            </select>
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   </td>
                                 </tr>
@@ -2438,6 +2496,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                   <th className={styles.center} colSpan={1} style={{ background: '#ffecef' }}>Einstellungen</th>
                   <th className={styles.center} colSpan={1} style={{ background: '#f1f5f9' }}>Globale Kommentare</th>
                   <th className={styles.center} colSpan={1} style={{ background: '#fef2f2' }}>Individuelle Kommentare</th>
+                  {itwFeatureEnabled && <th className={styles.center} colSpan={3} style={{ background: '#e0f2fe' }}>ITW</th>}
                   <th className={styles.center} rowSpan={2} style={{ width: 90 }}>Aktion</th>
                 </tr>
                 <tr className={styles.thead}>
@@ -2453,6 +2512,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                   <th className={styles.center} style={{ background: '#ffecef' }}>Schreiben</th>
                   <th className={styles.center} style={{ background: '#f1f5f9' }}>Schreiben</th>
                   <th className={styles.center} style={{ background: '#fef2f2' }}>Schreiben</th>
+                  {itwFeatureEnabled && (
+                    <>
+                      <th className={styles.center} style={{ background: '#e0f2fe' }}>Lesen</th>
+                      <th className={styles.center} style={{ background: '#e0f2fe' }}>Schreiben</th>
+                      <th className={styles.center} style={{ background: '#e0f2fe' }}>Schreiben alle</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody className={styles.tbody}>
@@ -2559,6 +2625,31 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                         onChange={e => setRolePermission(role.id, 'kommentar_individuell', 'write', e.target.checked)}
                       />
                     </td>
+                    {itwFeatureEnabled && (
+                      <>
+                        <td className={styles.center} style={{ background: '#f0f9ff' }}>
+                          <input
+                            type="checkbox"
+                            checked={(role.permissions?.itw || 'none') === 'read'}
+                            onChange={e => setRolePermission(role.id, 'itw', 'read', e.target.checked)}
+                          />
+                        </td>
+                        <td className={styles.center} style={{ background: '#f0f9ff' }}>
+                          <input
+                            type="checkbox"
+                            checked={(role.permissions?.itw || 'none') === 'write'}
+                            onChange={e => setRolePermission(role.id, 'itw', 'write', e.target.checked)}
+                          />
+                        </td>
+                        <td className={styles.center} style={{ background: '#f0f9ff' }}>
+                          <input
+                            type="checkbox"
+                            checked={(role.permissions?.itw || 'none') === 'write_all'}
+                            onChange={e => setRolePermission(role.id, 'itw', 'write_all', e.target.checked)}
+                          />
+                        </td>
+                      </>
+                    )}
                     <td className={styles.center}>
                       <button
                         onClick={() => {

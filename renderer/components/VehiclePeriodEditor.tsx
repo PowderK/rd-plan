@@ -1,13 +1,5 @@
-import React, { useState } from 'react';
-import styles from './PersonnelOverview.module.css';
-
-interface VehiclePeriod {
-  id: number;
-  vehicleId: number;
-  startYM: string;
-  endYM: string;
-  active: boolean;
-}
+import React, { useState, useEffect, useCallback } from 'react';
+import { VehiclePeriod, VehicleSpecialDay } from '../utils/vehiclePeriods';
 
 interface VehiclePeriodListProps {
   vehicleId: number;
@@ -19,8 +11,8 @@ interface VehiclePeriodListProps {
   onEmbeddedSaveStateChange?: (canSave: boolean, saveHandler: (() => Promise<void>) | null) => void;
 }
 
-export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({ 
-  vehicleId, 
+export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
+  vehicleId,
   vehicleName,
   vehicleType,
   onClose,
@@ -29,300 +21,331 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
   onEmbeddedSaveStateChange
 }) => {
   const [periods, setPeriods] = useState<VehiclePeriod[]>([]);
-  const [editing, setEditing] = useState(false);
-  const [originalPeriods, setOriginalPeriods] = useState<VehiclePeriod[] | null>(null);
-  const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(null);
+  const [specialDays, setSpecialDays] = useState<VehicleSpecialDay[]>([]);
 
-  const loadPeriods = async () => {
+  const loadData = async () => {
     try {
-      let data;
+      let periodData;
       if (vehicleType === 'rtw') {
-        data = await (window as any).api.getRtwVehiclePeriods(vehicleId);
+        periodData = await (window as any).api.getRtwVehiclePeriods(vehicleId);
       } else if (vehicleType === 'nef') {
-        data = await (window as any).api.getNefVehiclePeriods(vehicleId);
+        periodData = await (window as any).api.getNefVehiclePeriods(vehicleId);
       } else {
-        data = await (window as any).api.getItwVehiclePeriods(vehicleId);
+        periodData = await (window as any).api.getItwVehiclePeriods(vehicleId);
       }
-      setPeriods(data || []);
+
+      const loadedPeriods: VehiclePeriod[] = (periodData || []).map((p: any) => ({
+        id: p.id,
+        vehicleId: p.vehicleId,
+        startDate: p.startDate || p.startYM || '',
+        endDate: p.endDate || p.endYM || '',
+        active: p.active !== 0 && p.active !== false,
+        note: p.note || ''
+      }));
+      setPeriods(loadedPeriods);
+
+      const specData = await (window as any).api.getVehicleSpecialDays?.(vehicleType, vehicleId);
+      const loadedSpec: VehicleSpecialDay[] = (specData || []).map((s: any) => ({
+        id: s.id,
+        vehicleType: s.vehicleType || vehicleType,
+        vehicleId: s.vehicleId || vehicleId,
+        date: s.date || '',
+        reason: s.reason || '',
+        shiftMode: s.shiftMode || s.shift_mode || '24h',
+        action: s.action || 'add'
+      }));
+      setSpecialDays(loadedSpec);
     } catch (error) {
-      // console.error('Failed to load vehicle periods:', error);
+      // Failed loading
     }
   };
 
-  React.useEffect(() => {
-    loadPeriods();
+  useEffect(() => {
+    loadData();
   }, [vehicleId, vehicleType]);
 
-  const startEditing = () => {
-    setOriginalPeriods(JSON.parse(JSON.stringify(periods)));
-    setEditing(true);
-  };
-
-  const cancelEditing = () => {
-    if (originalPeriods) {
-      setPeriods(originalPeriods);
-    }
-    setEditing(false);
-    setOriginalPeriods(null);
-    setSelectedPeriodId(null);
-  };
-
-  const handleAdd = () => {
+  // --- Handlers: Grund-Zeiträume ---
+  const handleAddPeriod = () => {
+    const today = new Date().toISOString().slice(0, 10);
     const newPeriod: VehiclePeriod = {
       id: Date.now(),
       vehicleId,
-      startYM: '',
-      endYM: '',
-      active: true
+      startDate: today,
+      endDate: '',
+      active: true,
+      note: ''
     };
-
-    if (!editing) {
-      setOriginalPeriods(JSON.parse(JSON.stringify(periods)));
-      setEditing(true);
-    }
-
     setPeriods([...periods, newPeriod]);
-    setSelectedPeriodId(newPeriod.id);
   };
 
-  const handleDeleteSelected = async () => {
-    if (selectedPeriodId == null) return;
+  const handleRemovePeriod = (id?: number) => {
+    if (!confirm('Möchten Sie diesen Zeitraum wirklich löschen?')) return;
+    setPeriods(periods.filter(p => p.id !== id));
+  };
 
-    if (editing) {
-      setPeriods(periods.filter(p => p.id !== selectedPeriodId));
-      setSelectedPeriodId(null);
-      return;
-    }
+  const updatePeriod = (id: number | undefined, field: keyof VehiclePeriod, value: any) => {
+    setPeriods(periods.map(p => p.id === id ? { ...p, [field]: value } : p));
+  };
 
-    if (!confirm('Möchten Sie diesen Zeitraum wirklich löschen?')) {
-      return;
-    }
+  // --- Handlers: Sondertage & Spitzenabdeckung ---
+  const handleAddSpecialDay = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const newSpec: VehicleSpecialDay = {
+      id: Date.now(),
+      vehicleType,
+      vehicleId,
+      date: today,
+      reason: 'Spitzenabdeckung',
+      shiftMode: '24h',
+      action: 'add'
+    };
+    setSpecialDays([...specialDays, newSpec]);
+  };
 
+  const handleRemoveSpecialDay = (id?: number) => {
+    if (!confirm('Möchten Sie diesen Sondertag wirklich löschen?')) return;
+    setSpecialDays(specialDays.filter(s => s.id !== id));
+  };
+
+  const updateSpecialDay = (id: number | undefined, field: keyof VehicleSpecialDay, value: any) => {
+    setSpecialDays(specialDays.map(s => s.id === id ? { ...s, [field]: value } : s));
+  };
+
+  const handleSave = useCallback(async () => {
     try {
-      if (vehicleType === 'rtw') {
-        await (window as any).api.deleteRtwVehiclePeriod(selectedPeriodId);
-      } else if (vehicleType === 'nef') {
-        await (window as any).api.deleteNefVehiclePeriod(selectedPeriodId);
-      } else {
-        await (window as any).api.deleteItwVehiclePeriod(selectedPeriodId);
-      }
-      setSelectedPeriodId(null);
-      await loadPeriods();
+      await (window as any).api.setVehiclePeriods?.(vehicleType, vehicleId, periods);
+      await (window as any).api.setVehicleSpecialDays?.(vehicleType, vehicleId, specialDays);
+      await loadData();
     } catch {
-      alert('Fehler beim Löschen des Zeitraums.');
+      alert('Fehler beim Speichern der Fahrzeug-Zeiträume.');
     }
-  };
+  }, [periods, specialDays, vehicleId, vehicleType]);
 
-  const handleSave = async () => {
-    const invalid = periods.find(p => !p.startYM);
-    if (invalid) {
-      alert('Bitte bei allen Zeiträumen einen Start-Monat angeben.');
-      return;
-    }
-
-    try {
-      for (const period of periods) {
-        const original = originalPeriods?.find(p => p.id === period.id);
-
-        if (!original) {
-          const payload = {
-            vehicleId: period.vehicleId,
-            startYM: period.startYM,
-            endYM: period.endYM || '',
-            active: period.active
-          };
-          if (vehicleType === 'rtw') {
-            await (window as any).api.addRtwVehiclePeriod(payload);
-          } else if (vehicleType === 'nef') {
-            await (window as any).api.addNefVehiclePeriod(payload);
-          } else {
-            await (window as any).api.addItwVehiclePeriod(payload);
-          }
-        } else if (
-          original.startYM !== period.startYM ||
-          (original.endYM || '') !== (period.endYM || '') ||
-          original.active !== period.active
-        ) {
-          if (vehicleType === 'rtw') {
-            await (window as any).api.updateRtwVehiclePeriod(period);
-          } else if (vehicleType === 'nef') {
-            await (window as any).api.updateNefVehiclePeriod(period);
-          } else {
-            await (window as any).api.updateItwVehiclePeriod(period);
-          }
-        }
-      }
-
-      if (originalPeriods) {
-        for (const original of originalPeriods) {
-          if (!periods.find(p => p.id === original.id)) {
-            if (vehicleType === 'rtw') {
-              await (window as any).api.deleteRtwVehiclePeriod(original.id);
-            } else if (vehicleType === 'nef') {
-              await (window as any).api.deleteNefVehiclePeriod(original.id);
-            } else {
-              await (window as any).api.deleteItwVehiclePeriod(original.id);
-            }
-          }
-        }
-      }
-
-      setEditing(false);
-      setOriginalPeriods(null);
-      setSelectedPeriodId(null);
-      await loadPeriods();
-    } catch {
-      alert('Fehler beim Speichern des Zeitraums.');
-    }
-  };
-
-  React.useEffect(() => {
+  useEffect(() => {
     if (!externalSaveControls || !onEmbeddedSaveStateChange) return;
-    onEmbeddedSaveStateChange(editing, editing ? handleSave : null);
+    onEmbeddedSaveStateChange(true, handleSave);
     return () => onEmbeddedSaveStateChange(false, null);
-  }, [externalSaveControls, onEmbeddedSaveStateChange, editing, handleSave]);
-
-  const updateStartYM = (id: number, startYM: string) => {
-    setPeriods(periods.map(p => p.id === id ? { ...p, startYM } : p));
-  };
-
-  const updateEndYM = (id: number, endYM: string) => {
-    setPeriods(periods.map(p => p.id === id ? { ...p, endYM } : p));
-  };
-
-  const updateUnlimited = (id: number, unlimited: boolean) => {
-    setPeriods(periods.map(p => p.id === id ? { ...p, endYM: unlimited ? '' : p.endYM } : p));
-  };
-
-  const formatYM = (ym: string) => {
-    if (!ym) return '';
-    const [year, month] = ym.split('-');
-    return `${month}/${year}`;
-  };
+  }, [externalSaveControls, onEmbeddedSaveStateChange, handleSave]);
 
   const content = (
-      <div style={embedded ? {
-        background: 'transparent',
-        padding: 0,
-        borderRadius: 0,
-        width: '100%',
-        maxHeight: '100%',
-        overflow: 'auto'
-      } : {
-        background: 'white',
-        padding: '24px',
-        borderRadius: '8px',
-        width: '700px',
-        maxHeight: '80vh',
-        overflow: 'auto'
-      }}>
-        <h3 style={{ marginTop: 0, marginBottom: '8px', color: '#007bff' }}>
-          Einsatzzeiträume: {vehicleName}
-        </h3>
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* ABSCHNITT 1: REGEL-ZEITRÄUME */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <h4 style={{ margin: 0, fontSize: '15px', color: '#1e40af', fontWeight: 600 }}>
+            1. Regelmäßige Aktivitäts-Zeiträume
+          </h4>
+          <button
+            type="button"
+            onClick={handleAddPeriod}
+            style={{
+              background: '#28a745',
+              color: 'white',
+              border: 'none',
+              padding: '5px 10px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: 500
+            }}
+          >
+            + Zeitraum hinzufügen
+          </button>
+        </div>
 
-        <table style={{ 
-          width: '100%', 
-          borderCollapse: 'collapse',
-          marginBottom: '16px'
-        }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #ddd' }}>
-              <th style={{ textAlign: 'left', padding: '8px' }}>Start</th>
-              <th style={{ textAlign: 'left', padding: '8px' }}>Ende</th>
-              <th style={{ textAlign: 'center', padding: '8px' }}>Aktiv</th>
-            </tr>
-          </thead>
-          <tbody>
-            {periods.length === 0 && (
-              <tr>
-                <td colSpan={3} style={{ textAlign: 'center', padding: '24px', color: '#999' }}>
-                  Keine Einsatzzeiträume definiert
-                </td>
-              </tr>
-            )}
-            {periods.map(period => (
-              <tr
-                key={period.id}
-                onClick={() => setSelectedPeriodId(prev => prev === period.id ? null : period.id)}
-                className={[styles.row, selectedPeriodId === period.id ? styles.selected : ''].filter(Boolean).join(' ')}
-                style={{ borderBottom: '1px solid #eee', cursor: 'pointer' }}
-              >
-                <td style={{ padding: '8px' }}>
-                  {editing ? (
-                    <input
-                      type="month"
-                      value={period.startYM}
-                      onChange={(e) => updateStartYM(period.id, e.target.value)}
-                    />
-                  ) : (
-                    formatYM(period.startYM)
-                  )}
-                </td>
-                <td style={{ padding: '8px' }}>
-                  {editing ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <input
-                          type="checkbox"
-                          checked={!period.endYM}
-                          onChange={(e) => updateUnlimited(period.id, e.target.checked)}
-                        />
-                        Unbegrenzt
-                      </label>
-                      {!!period.endYM && (
-                        <input
-                          type="month"
-                          value={period.endYM}
-                          onChange={(e) => updateEndYM(period.id, e.target.value)}
-                        />
-                      )}
-                    </div>
-                  ) : (
-                    period.endYM ? formatYM(period.endYM) : 'Unbegrenzt'
-                  )}
-                </td>
-                <td style={{ textAlign: 'center', padding: '8px' }}>
-                  <span style={{ 
-                    display: 'inline-block',
-                    width: '16px',
-                    height: '16px',
-                    borderRadius: '50%',
-                    background: period.active ? '#28a745' : '#dc3545'
-                  }} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {!editing ? (
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            <button onClick={handleAdd}>Hinzufügen</button>
-            <button onClick={startEditing} disabled={periods.length === 0}>Ändern</button>
-            <button onClick={handleDeleteSelected} disabled={selectedPeriodId == null}>Löschen</button>
-            {!embedded && (
-              <button onClick={onClose} style={{ marginLeft: 'auto' }}>Schließen</button>
-            )}
+        {periods.length > 0 ? (
+          <div style={{ border: '1px solid #ddd', borderRadius: '4px', overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #ddd' }}>
+                  <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600 }}>Gültig ab</th>
+                  <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600 }}>Gültig bis</th>
+                  <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600 }}>Bemerkung</th>
+                  <th style={{ textAlign: 'center', padding: '8px 10px', fontWeight: 600, width: '60px' }}>Aktion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {periods.map(p => (
+                  <tr key={p.id} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '6px 10px' }}>
+                      <input
+                        type="date"
+                        value={p.startDate || p.startYM || ''}
+                        onChange={(e) => updatePeriod(p.id, 'startDate', e.target.value)}
+                        style={{ padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
+                      />
+                    </td>
+                    <td style={{ padding: '6px 10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '12px', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={!p.endDate && !p.endYM}
+                            onChange={(e) => updatePeriod(p.id, 'endDate', e.target.checked ? '' : p.endDate || p.startDate)}
+                          />
+                          Unbegrenzt
+                        </label>
+                        {(!!p.endDate || !!p.endYM) && (
+                          <input
+                            type="date"
+                            value={p.endDate || p.endYM || ''}
+                            onChange={(e) => updatePeriod(p.id, 'endDate', e.target.value)}
+                            style={{ padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
+                          />
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ padding: '6px 10px' }}>
+                      <input
+                        type="text"
+                        placeholder="z.B. Sommer-RTW"
+                        value={p.note || ''}
+                        onChange={(e) => updatePeriod(p.id, 'note', e.target.value)}
+                        style={{ width: '90%', padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
+                      />
+                    </td>
+                    <td style={{ textAlign: 'center', padding: '6px 10px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePeriod(p.id)}
+                        style={{
+                          background: '#dc3545',
+                          color: 'white',
+                          border: 'none',
+                          padding: '3px 8px',
+                          borderRadius: '3px',
+                          fontSize: '11px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Löschen
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : (
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            {!externalSaveControls && (
-              <button
-                onClick={handleSave}
-                style={{ backgroundColor: '#007acc', color: 'white', padding: '8px 16px', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-              >
-                Speichern
-              </button>
-            )}
-            <button
-              onClick={cancelEditing}
-              style={{ padding: '8px 16px', border: '1px solid #ccc', borderRadius: 4, cursor: 'pointer' }}
-            >
-              Abbrechen
-            </button>
+          <div style={{ padding: '12px', background: '#f8f9fa', border: '1px dashed #ddd', borderRadius: '4px', textAlign: 'center', color: '#6c757d', fontSize: '13px' }}>
+            Keine Grund-Zeiträume definiert (Fahrzeug gilt als durchgehend aktiv).
           </div>
         )}
       </div>
+
+      {/* ABSCHNITT 2: SPITZENABDECKUNG & SONDERLAGEN (EINZEL-TAGE) */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <h4 style={{ margin: 0, fontSize: '15px', color: '#b45309', fontWeight: 600 }}>
+            2. Taggenaue Sonderlagen & Spitzenabdeckung (Einzel-Tage)
+          </h4>
+          <button
+            type="button"
+            onClick={handleAddSpecialDay}
+            style={{
+              background: '#d97706',
+              color: 'white',
+              border: 'none',
+              padding: '5px 10px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: 500
+            }}
+          >
+            + Sondertag hinzufügen
+          </button>
+        </div>
+
+        {specialDays.length > 0 ? (
+          <div style={{ border: '1px solid #ddd', borderRadius: '4px', overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: '#fffbe6', borderBottom: '2px solid #ffe58f' }}>
+                  <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600, width: '140px' }}>Datum</th>
+                  <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600 }}>Anlass / Sonderlage</th>
+                  <th style={{ textAlign: 'center', padding: '8px 10px', fontWeight: 600, width: '100px' }}>Schicht-Modus</th>
+                  <th style={{ textAlign: 'center', padding: '8px 10px', fontWeight: 600, width: '120px' }}>Aktivierung</th>
+                  <th style={{ textAlign: 'center', padding: '8px 10px', fontWeight: 600, width: '60px' }}>Aktion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {specialDays.map(s => (
+                  <tr key={s.id} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '6px 10px' }}>
+                      <input
+                        type="date"
+                        value={s.date || ''}
+                        onChange={(e) => updateSpecialDay(s.id, 'date', e.target.value)}
+                        style={{ padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
+                      />
+                    </td>
+                    <td style={{ padding: '6px 10px' }}>
+                      <input
+                        type="text"
+                        placeholder="z.B. Spitzenabdeckung, Marathon"
+                        value={s.reason || ''}
+                        onChange={(e) => updateSpecialDay(s.id, 'reason', e.target.value)}
+                        style={{ width: '90%', padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
+                      />
+                    </td>
+                    <td style={{ textAlign: 'center', padding: '6px 10px' }}>
+                      <select
+                        value={s.shiftMode || '24h'}
+                        onChange={(e) => updateSpecialDay(s.id, 'shiftMode', e.target.value)}
+                        style={{ padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
+                      >
+                        <option value="24h">24h (Ganztags)</option>
+                        <option value="tag">Nur Tag</option>
+                        <option value="nacht">Nur Nacht</option>
+                      </select>
+                    </td>
+                    <td style={{ textAlign: 'center', padding: '6px 10px' }}>
+                      <select
+                        value={s.action || 'add'}
+                        onChange={(e) => updateSpecialDay(s.id, 'action', e.target.value)}
+                        style={{
+                          padding: '4px 6px',
+                          border: '1px solid #ccc',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          fontWeight: 500,
+                          color: s.action === 'remove' ? '#c5221f' : '#137333'
+                        }}
+                      >
+                        <option value="add">Zusätzlich Aktiv</option>
+                        <option value="remove">Außerordentlich Inaktiv</option>
+                      </select>
+                    </td>
+                    <td style={{ textAlign: 'center', padding: '6px 10px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveSpecialDay(s.id)}
+                        style={{
+                          background: '#dc3545',
+                          color: 'white',
+                          border: 'none',
+                          padding: '3px 8px',
+                          borderRadius: '3px',
+                          fontSize: '11px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Löschen
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ padding: '12px', background: '#fffbe6', border: '1px dashed #ffe58f', borderRadius: '4px', textAlign: 'center', color: '#b45309', fontSize: '13px' }}>
+            Keine taggenauen Sonderlagen eingetragen. Klicken Sie auf „+ Sondertag hinzufügen“, um Tage für Spitzenabdeckung zu erfassen.
+          </div>
+        )}
+      </div>
+    </div>
   );
 
   if (embedded) {
@@ -342,7 +365,14 @@ export const VehiclePeriodList: React.FC<VehiclePeriodListProps> = ({
       alignItems: 'center',
       zIndex: 999
     }}>
-      {content}
+      <div style={{ background: 'white', padding: 24, borderRadius: 8, width: 720, maxHeight: '90vh', overflowY: 'auto' }}>
+        {content}
+        <div style={{ marginTop: 20, textAlign: 'right' }}>
+          <button type="button" onClick={onClose} style={{ padding: '8px 16px', border: '1px solid #ccc', borderRadius: 4, cursor: 'pointer' }}>
+            Schließen
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

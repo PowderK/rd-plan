@@ -19,7 +19,7 @@ const monthNames = [
 ];
 
 const AppContent: React.FC = () => {
-    const { isAuthenticated, login, isDevMode, currentUser } = useAuth();
+    const { isAuthenticated, login, isDevMode, currentUser, hasPermission } = useAuth();
     const [currentMonth] = useState<number>(new Date().getMonth());
     const [rescueStation, setRescueStation] = useState<string>('');
     const [departmentName, setDepartmentName] = useState<string>('Rettungsdienst');
@@ -59,9 +59,24 @@ const AppContent: React.FC = () => {
         }
     }
 
+    const getFirstAllowedView = (): 'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge' | 'einstellungen' | 'itw' => {
+        const areas: Array<'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge' | 'itw' | 'einstellungen'> = [
+            'einteilung', 'dienstplan', 'werte', 'personal', 'fahrzeuge', 'itw', 'einstellungen'
+        ];
+        for (const area of areas) {
+            if (hasPermission(area, 'read') || hasPermission(area, 'write')) {
+                return area;
+            }
+        }
+        return 'einteilung';
+    };
+
     useEffect(() => {
         if (isAuthenticated) {
-            setActiveView('einteilung');
+            const firstAllowed = getFirstAllowedView();
+            if (!hasPermission(activeView, 'read') && !hasPermission(activeView, 'write')) {
+                setActiveView(firstAllowed);
+            }
             loadHeaderInfo();
             
             // Reagiere auf Jahr-Änderungen von DutyRoster/Values
@@ -80,12 +95,27 @@ const AppContent: React.FC = () => {
             };
             window.addEventListener('rdplan-department-changed', handleDepartmentChange);
             
+            const handlePersonnelUpdated = () => {
+                loadHeaderInfo();
+            };
+            (window as any).api?.onPersonnelUpdated?.(handlePersonnelUpdated);
+            
             return () => {
                 window.removeEventListener('rdplan-year-changed', handleYearChange);
                 window.removeEventListener('rdplan-department-changed', handleDepartmentChange);
+                (window as any).api?.offPersonnelUpdated?.(handlePersonnelUpdated);
             };
         }
     }, [isAuthenticated, currentUser]);
+
+    useEffect(() => {
+        if (isAuthenticated) {
+            if (!hasPermission(activeView, 'read') && !hasPermission(activeView, 'write')) {
+                const firstAllowed = getFirstAllowedView();
+                setActiveView(firstAllowed);
+            }
+        }
+    }, [isAuthenticated, currentUser, activeView]);
 
     useEffect(() => {
         if (!isAuthenticated) return;

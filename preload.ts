@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+ipcRenderer.setMaxListeners(100);
+
 // Small helper to safely stringify arguments
 function safeStringify(arg: any) {
     if (typeof arg === 'string') return arg;
@@ -194,6 +196,11 @@ contextBridge.exposeInMainWorld('api', {
     addNefVehiclePeriod: (period: any) => ipcRenderer.invoke('add-nef-vehicle-period', period),
     updateNefVehiclePeriod: (period: any) => ipcRenderer.invoke('update-nef-vehicle-period', period),
     deleteNefVehiclePeriod: (id: number) => ipcRenderer.invoke('delete-nef-vehicle-period', id),
+    // Vehicle Special Days & Peak Coverage
+    getVehicleSpecialDays: (vehicleType: string, vehicleId: number) => ipcRenderer.invoke('get-vehicle-special-days', vehicleType, vehicleId),
+    getAllVehicleSpecialDays: (year?: number) => ipcRenderer.invoke('get-all-vehicle-special-days', year),
+    setVehicleSpecialDays: (vehicleType: string, vehicleId: number, specialDays: any[]) => ipcRenderer.invoke('set-vehicle-special-days', vehicleType, vehicleId, specialDays),
+    setVehiclePeriods: (vehicleType: string, vehicleId: number, periods: any[]) => ipcRenderer.invoke('set-vehicle-periods', vehicleType, vehicleId, periods),
     // Holidays
     getHolidaysForYear: (year: number) => ipcRenderer.invoke('get-holidays', year),
     setHolidaysForYear: (year: number, dates: { date: string, name?: string }[]) => ipcRenderer.invoke('set-holidays', year, dates),

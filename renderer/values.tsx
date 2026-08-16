@@ -43,7 +43,7 @@ function usePersonnel() {
         const filteredList = (Array.isArray(rawList) ? rawList : []).filter((p: any) => {
           const pPeriods = periodsByPerson[p.id] || [];
           const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName && per.active);
-          // Person muss mindestens eine aktive Rettungsdienst-Periode haben
+          if (rdPeriods.length === 0) return true;
           return rdPeriods.length > 0;
         });
         

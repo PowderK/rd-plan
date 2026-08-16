@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { buildVehicleActivationMap, calculateTargets } from '../utils/calculation';
 import { rosterReleasedSettingKey } from '../utils/rosterRelease';
+import { isVehicleActiveOnDate } from '../utils/vehiclePeriods';
 import styles from './MonthTabs.module.css';
 import { Kontrollkasten } from './Kontrollkasten';
 import { AzubiAutoAssignDialog, ShiftSummary, ProposedAssignment, ConflictAzubi } from './AzubiAutoAssignDialog';
@@ -62,8 +63,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
     const [department, setDepartment] = useState<number>(() => departmentNameToId(departmentName));
     const [localRoster, setLocalRoster] = useState(roster || {} as Record<string, Record<string, { value: string; type: string }>>);
-    const [rtwVehicles, setRtwVehicles] = useState<{ id: number; name: string }[]>([]);
-    const [nefVehicles, setNefVehicles] = useState<{ id: number; name: string; occupancy_mode?: '24h' | 'tag' }[]>([]);
+    const [rtwVehicles, setRtwVehicles] = useState<{ id: number; name: string; category?: string }[]>([]);
+    const [nefVehicles, setNefVehicles] = useState<{ id: number; name: string; occupancy_mode?: '24h' | 'tag'; category?: string }[]>([]);
     const [itwEnabled, setItwEnabled] = useState<boolean>(false);
     const [shiftTypes, setShiftTypes] = useState<{ id: number, code: string, description: string }[]>([]);
     const [auswertungByType, setAuswertungByType] = useState<Record<string, 'off' | 'tag' | 'nacht' | '24h' | 'itw'>>({});
@@ -76,6 +77,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [nefActivations, setNefActivations] = useState<Record<number, boolean[]>>({});
     const [rtwVehiclePeriods, setRtwVehiclePeriods] = useState<Record<number, any[]>>({});
     const [nefVehiclePeriods, setNefVehiclePeriods] = useState<Record<number, any[]>>({});
+    const [vehicleSpecialDays, setVehicleSpecialDays] = useState<any[]>([]);
     const [itwPatternSeqs, setItwPatternSeqs] = useState<{ startDate: string; department: string; pattern: string[] }[]>([]);
     const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
     const [isUpdating, setIsUpdating] = useState(false); // Verhindert Race-Conditions während Updates
@@ -266,9 +268,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
     // Höre auf Sidebar Collapse Events
     useEffect(() => {
-        const handler = () => {
-            setSidebarCollapsed(!!(window as any).sidebarCollapsed);
+        const handler = (e: any) => {
+            const collapsed = typeof e?.detail?.collapsed === 'boolean' ? e.detail.collapsed : !!(window as any).sidebarCollapsed;
+            setSidebarCollapsed(collapsed);
         };
+        setSidebarCollapsed(!!(window as any).sidebarCollapsed);
         window.addEventListener('sidebar-collapsed', handler as EventListener);
         return () => window.removeEventListener('sidebar-collapsed', handler as EventListener);
     }, []);
@@ -435,6 +439,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     nMap[p.vehicleId].push(p);
                 });
                 setNefVehiclePeriods(nMap);
+
+                const spec = await (window as any).api.getAllVehicleSpecialDays?.(year);
+                setVehicleSpecialDays(Array.isArray(spec) ? spec : []);
             } catch { }
         };
         load();
@@ -699,29 +706,45 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[monthIndex] !== false;
                 if (!enabled) continue;
 
+                const isReserve = v.category === 'reserve';
+                const dayStatus = isVehicleActiveOnDate(
+                    iso,
+                    rtwVehiclePeriods[v.id] || [],
+                    (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id)),
+                    isReserve
+                );
+                if (!dayStatus.active) continue;
+
+                const showTag = dayStatus.shiftMode !== 'nacht';
+                const showNacht = dayStatus.shiftMode !== 'tag';
+
                 const positions = rtwMap[v.id] || [];
 
-                for (let pIdx = 0; pIdx < Math.min(2, positions.length); pIdx++) {
-                    const pos = positions[pIdx];
-                    const slotId = `rtw${rIdx + 1}_tag_${pIdx + 1}`;
-                    const value = getAssignedValueFor(iso, slotId);
-                    if (!value || value.trim() === '') {
-                        const dt = new Date(iso + 'T00:00:00');
-                        const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-                        const posName = pos.positionName.replace(/\s+\d+$/, '');
-                        emptySlots.push(`${label}: ${v.name || `RTW ${rIdx + 1}`} ${posName} Tag`);
+                if (showTag) {
+                    for (let pIdx = 0; pIdx < Math.min(2, positions.length); pIdx++) {
+                        const pos = positions[pIdx];
+                        const slotId = `rtw${rIdx + 1}_tag_${pIdx + 1}`;
+                        const value = getAssignedValueFor(iso, slotId);
+                        if (!value || value.trim() === '') {
+                            const dt = new Date(iso + 'T00:00:00');
+                            const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                            const posName = pos.positionName.replace(/\s+\d+$/, '');
+                            emptySlots.push(`${label}: ${v.name || `RTW ${rIdx + 1}`} ${posName} Tag`);
+                        }
                     }
                 }
 
-                for (let pIdx = 0; pIdx < Math.min(2, positions.length); pIdx++) {
-                    const pos = positions[pIdx];
-                    const slotId = `rtw${rIdx + 1}_nacht_${pIdx + 1}`;
-                    const value = getAssignedValueFor(iso, slotId);
-                    if (!value || value.trim() === '') {
-                        const dt = new Date(iso + 'T00:00:00');
-                        const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-                        const posName = pos.positionName.replace(/\s+\d+$/, '');
-                        emptySlots.push(`${label}: ${v.name || `RTW ${rIdx + 1}`} ${posName} Nacht`);
+                if (showNacht) {
+                    for (let pIdx = 0; pIdx < Math.min(2, positions.length); pIdx++) {
+                        const pos = positions[pIdx];
+                        const slotId = `rtw${rIdx + 1}_nacht_${pIdx + 1}`;
+                        const value = getAssignedValueFor(iso, slotId);
+                        if (!value || value.trim() === '') {
+                            const dt = new Date(iso + 'T00:00:00');
+                            const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                            const posName = pos.positionName.replace(/\s+\d+$/, '');
+                            emptySlots.push(`${label}: ${v.name || `RTW ${rIdx + 1}`} ${posName} Nacht`);
+                        }
                     }
                 }
             }
@@ -730,6 +753,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const v = nefVehicles[nIdx];
                 const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[monthIndex] !== false;
                 if (!enabled) continue;
+
+                const isReserve = v.category === 'reserve';
+                const isPeriodActive = isVehicleActiveOnDate(
+                    iso,
+                    nefVehiclePeriods[v.id] || [],
+                    (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id)),
+                    isReserve
+                ).active;
+                if (!isPeriodActive) continue;
 
                 const positions = nefMap[v.id] || [];
                 if (positions.length === 0) continue;
@@ -746,7 +778,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         }
 
         return emptySlots;
-    }, [buildDepartmentDaysForMonth, rtwVehicles, nefVehicles, rtwActivations, nefActivations, getAssignedValueFor]);
+    }, [buildDepartmentDaysForMonth, rtwVehicles, nefVehicles, rtwActivations, nefActivations, rtwVehiclePeriods, nefVehiclePeriods, vehicleSpecialDays, getAssignedValueFor]);
 
     useEffect(() => {
         const flags = Array.from({ length: 12 }, (_, i) =>
@@ -1435,10 +1467,18 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         };
     }, [viewMode, currentMonth, rtwVehicles, nefVehicles, rtwActivations, nefActivations, sidebarCollapsed]);
 
+    const isScrollSyncingRef = React.useRef<'content' | 'header' | null>(null);
+
     // Synchronisiere Scroll zwischen Fahrzeug-Header und Content
     const handleContentScroll = (e: React.UIEvent<HTMLDivElement>) => {
-        if (vehicleHeaderRef.current) {
+        if (vehicleHeaderRef.current && isScrollSyncingRef.current !== 'header') {
+            isScrollSyncingRef.current = 'content';
             vehicleHeaderRef.current.scrollLeft = e.currentTarget.scrollLeft;
+            requestAnimationFrame(() => {
+                if (isScrollSyncingRef.current === 'content') {
+                    isScrollSyncingRef.current = null;
+                }
+            });
         }
     };
 
@@ -2264,59 +2304,231 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         style={{ overflowX: 'auto', overflowY: 'hidden', background: 'var(--bg)' }}
                         onScroll={(e) => {
                             // Synchronisiere zurück zum Content wenn Header gescrollt wird
-                            if (contentRef.current) {
+                            if (contentRef.current && isScrollSyncingRef.current !== 'content') {
+                                isScrollSyncingRef.current = 'header';
                                 contentRef.current.scrollLeft = e.currentTarget.scrollLeft;
+                                requestAnimationFrame(() => {
+                                    if (isScrollSyncingRef.current === 'header') {
+                                        isScrollSyncingRef.current = null;
+                                    }
+                                });
                             }
                         }}
                     >
                         <div className={styles.container}>
-                            {(rtwVehicles || []).map((v, rIdx) => {
+                            {/* 1. REGEL-RTWS */}
+                            {(rtwVehicles || []).map((v, rIdx) => ({ v, rIdx })).filter(item => item.v.category !== 'reserve').map(({ v, rIdx }) => {
                                 const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
                                 if (!enabled) return null;
                                 return (
                                     <div key={`rtw_header_${rIdx}`} style={{
                                         marginRight: 8,
-                                        marginBottom: 8,
+                                        marginBottom: 4,
                                         width: 'var(--vehicle-card-width)',
                                         minWidth: 'var(--vehicle-card-width)',
                                         maxWidth: 'var(--vehicle-card-width)',
-                                        padding: 8,
+                                        height: 54,
+                                        padding: '8px 8px 6px 8px',
                                         boxSizing: 'border-box',
-                                        background: 'var(--bg)'
+                                        background: '#ffffff',
+                                        borderRadius: '8px 8px 0 0',
+                                        border: '1px solid transparent',
+                                        position: 'relative',
+                                        overflow: 'hidden'
                                     }}>
-                                        <div style={{ paddingBottom: 4, borderBottom: '2px solid #ef4444' }}>
-                                            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 4, paddingLeft: 66 }}>{v.name || rtwNames[rIdx] || ''}</div>
-                                            <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr 1fr', gap: '6px' }}>
-                                                <div></div>
-                                                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>Tag</div>
-                                                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>Nacht</div>
+                                        <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '60px minmax(0, 1fr) minmax(0, 1fr)',
+                                            gap: '6px',
+                                            alignItems: 'center'
+                                        }}>
+                                            <div style={{
+                                                gridColumn: '2 / span 2',
+                                                textAlign: 'center',
+                                                fontWeight: 700,
+                                                fontSize: 15,
+                                                color: 'var(--text)',
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                marginBottom: 6
+                                            }}>
+                                                {v.name || rtwNames[rIdx] || ''}
                                             </div>
+                                            <div></div>
+                                            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>Tag</div>
+                                            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>Nacht</div>
                                         </div>
+                                        <div style={{
+                                            position: 'absolute',
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0,
+                                            height: '3px',
+                                            background: '#ef4444',
+                                            borderRadius: '3px 3px 0 0'
+                                        }} />
                                     </div>
                                 );
                             })}
-                            {(nefVehicles || []).map((v, nIdx) => {
+                            {/* 2. REGEL-NEFS */}
+                            {(nefVehicles || []).map((v, nIdx) => ({ v, nIdx })).filter(item => item.v.category !== 'reserve').map(({ v, nIdx }) => {
                                 const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
                                 if (!enabled) return null;
                                 const nefLabel = v.occupancy_mode === '24h' ? '24h' : 'Tag';
                                 return (
                                     <div key={`nef_header_${nIdx}`} style={{
                                         marginRight: 8,
-                                        marginBottom: 8,
+                                        marginBottom: 4,
                                         width: 'var(--vehicle-card-width)',
                                         minWidth: 'var(--vehicle-card-width)',
                                         maxWidth: 'var(--vehicle-card-width)',
-                                        padding: 8,
+                                        height: 54,
+                                        padding: '8px 8px 6px 8px',
                                         boxSizing: 'border-box',
-                                        background: 'var(--bg)'
+                                        background: '#ffffff',
+                                        borderRadius: '8px 8px 0 0',
+                                        border: '1px solid transparent',
+                                        position: 'relative',
+                                        overflow: 'hidden'
                                     }}>
-                                        <div style={{ paddingBottom: 4, borderBottom: '2px solid #ef4444' }}>
-                                            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 4, paddingLeft: 66 }}>{v.name || nefName || ''}</div>
-                                            <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr', gap: '6px' }}>
-                                                <div></div>
-                                                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>{nefLabel}</div>
+                                        <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '60px minmax(0, 1fr)',
+                                            gap: '6px',
+                                            alignItems: 'center'
+                                        }}>
+                                            <div style={{
+                                                gridColumn: '2 / span 1',
+                                                textAlign: 'center',
+                                                fontWeight: 700,
+                                                fontSize: 15,
+                                                color: 'var(--text)',
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                marginBottom: 6
+                                            }}>
+                                                {v.name || nefName || ''}
                                             </div>
+                                            <div></div>
+                                            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>{nefLabel}</div>
                                         </div>
+                                        <div style={{
+                                            position: 'absolute',
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0,
+                                            height: '3px',
+                                            background: '#ef4444',
+                                            borderRadius: '3px 3px 0 0'
+                                        }} />
+                                    </div>
+                                );
+                            })}
+                            {/* 3. RESERVE-RTWS (GANZ RECHTS) */}
+                            {(rtwVehicles || []).map((v, rIdx) => ({ v, rIdx })).filter(item => item.v.category === 'reserve').map(({ v, rIdx }) => {
+                                const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
+                                if (!enabled) return null;
+
+                                const monthDays = buildDepartmentDaysForMonth(currentMonth);
+                                const periods = rtwVehiclePeriods[v.id] || [];
+                                const specialDays = (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id));
+                                const isActiveInMonth = monthDays.some(dateStr => isVehicleActiveOnDate(dateStr, periods, specialDays, true).active);
+                                if (!isActiveInMonth) return null;
+
+                                return (
+                                    <div key={`rtw_header_${rIdx}`} style={{
+                                        marginRight: 8,
+                                        marginBottom: 4,
+                                        width: 'var(--vehicle-card-width)',
+                                        minWidth: 'var(--vehicle-card-width)',
+                                        maxWidth: 'var(--vehicle-card-width)',
+                                        height: 54,
+                                        padding: '0 8px 3px 8px',
+                                        boxSizing: 'border-box',
+                                        background: '#ffffff',
+                                        borderRadius: '8px 8px 0 0',
+                                        border: '1px solid transparent',
+                                        position: 'relative',
+                                        overflow: 'hidden',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center'
+                                    }}>
+                                        <div style={{
+                                            textAlign: 'center',
+                                            fontWeight: 700,
+                                            fontSize: 15,
+                                            color: '#b91c1c',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis'
+                                        }}>
+                                            {v.name || rtwNames[rIdx] || ''} <span style={{ fontSize: 11, fontWeight: 500, color: '#ef4444' }}>(Reserve)</span>
+                                        </div>
+                                        <div style={{
+                                            position: 'absolute',
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0,
+                                            height: '3px',
+                                            background: '#fca5a5',
+                                            borderRadius: '3px 3px 0 0'
+                                        }} />
+                                    </div>
+                                );
+                            })}
+                            {/* 4. RESERVE-NEFS (GANZ RECHTS) */}
+                            {(nefVehicles || []).map((v, nIdx) => ({ v, nIdx })).filter(item => item.v.category === 'reserve').map(({ v, nIdx }) => {
+                                const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
+                                if (!enabled) return null;
+
+                                const monthDays = buildDepartmentDaysForMonth(currentMonth);
+                                const periods = nefVehiclePeriods[v.id] || [];
+                                const specialDays = (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id));
+                                const isActiveInMonth = monthDays.some(dateStr => isVehicleActiveOnDate(dateStr, periods, specialDays, true).active);
+                                if (!isActiveInMonth) return null;
+
+                                return (
+                                    <div key={`nef_header_${nIdx}`} style={{
+                                        marginRight: 8,
+                                        marginBottom: 4,
+                                        width: 'var(--vehicle-card-width)',
+                                        minWidth: 'var(--vehicle-card-width)',
+                                        maxWidth: 'var(--vehicle-card-width)',
+                                        height: 54,
+                                        padding: '0 8px 3px 8px',
+                                        boxSizing: 'border-box',
+                                        background: '#ffffff',
+                                        borderRadius: '8px 8px 0 0',
+                                        border: '1px solid transparent',
+                                        position: 'relative',
+                                        overflow: 'hidden',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center'
+                                    }}>
+                                        <div style={{
+                                            textAlign: 'center',
+                                            fontWeight: 700,
+                                            fontSize: 15,
+                                            color: '#b91c1c',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis'
+                                        }}>
+                                            {v.name || nefName || ''} <span style={{ fontSize: 11, fontWeight: 500, color: '#ef4444' }}>(Reserve)</span>
+                                        </div>
+                                        <div style={{
+                                            position: 'absolute',
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0,
+                                            height: '3px',
+                                            background: '#fca5a5',
+                                            borderRadius: '3px 3px 0 0'
+                                        }} />
                                     </div>
                                 );
                             })}
@@ -2439,7 +2651,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                     }
 
                                     return (
-                                        <div key={d.date} style={{ marginBottom: 12 }}>
+                                        <div key={d.date} style={{ marginBottom: 12, width: 'max-content', minWidth: '100%' }}>
                                             {(() => {
                                                 const dt = new Date(d.date + 'T00:00:00');
                                                 const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }); // DD.MM
@@ -2498,272 +2710,306 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                     </div>
                                                 );
                                             })()}
-                                            {viewMode === 'rtwnef' && <div className={styles.dayDivider} />}
+                                            {viewMode === 'rtwnef' && <div className={styles.dayDivider} style={{ width: '100%' }} />}
                                             <div>
                                                 <div className={styles.container}>
-                                                    {(rtwVehicles || []).map((v, rIdx) => {
-                                                        const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                                                        if (!enabled) return null;
+                                                    {(() => {
+                                                        const renderRtwCard = (v: typeof rtwVehicles[0], rIdx: number) => {
+                                                            const isReserve = v.category === 'reserve';
+                                                            const dayStatus = isVehicleActiveOnDate(
+                                                                d.date,
+                                                                rtwVehiclePeriods[v.id] || [],
+                                                                (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id)),
+                                                                isReserve
+                                                            );
+                                                            const isMonthEnabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
+                                                            if (!isMonthEnabled || !dayStatus.active) return null;
+
+                                                            const showTag = dayStatus.shiftMode !== 'nacht';
+                                                            const showNacht = dayStatus.shiftMode !== 'tag';
+                                                            const gridCols = (showTag && showNacht) ? '60px minmax(0, 1fr) minmax(0, 1fr)' : '60px minmax(0, 1fr)';
+
+                                                            return (
+                                                                <div key={`rtw_${rIdx}`} className={styles.rtwTable} style={{ gridTemplateColumns: gridCols }}>
+                                                                    {isReserve && (
+                                                                        <>
+                                                                            <div></div>
+                                                                            {showTag && <div style={{ fontSize: 11, color: '#b91c1c', fontWeight: 600, textAlign: 'center' }}>Tag</div>}
+                                                                            {showNacht && <div style={{ fontSize: 11, color: '#b91c1c', fontWeight: 600, textAlign: 'center' }}>Nacht</div>}
+                                                                        </>
+                                                                    )}
+                                                                    <div className={styles.rowLabel}>FzF</div>
+                                                                    {showTag && (() => {
+                                                                        const slotId = `rtw${rIdx + 1}_tag_1`;
+                                                                        const value = getAssignedValue(slotId);
+
+                                                                        const optionsP = personnel
+                                                                            .filter(p => {
+                                                                                const hasQual = p.fahrzeugfuehrer;
+                                                                                const dutyCode = getDutyCodeFor(`p_${p.id}`);
+                                                                                const allowed = allowedByAuswertung(dutyCode, 'tag');
+                                                                                return allowed && hasQual;
+                                                                            })
+                                                                            .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
+                                                                        const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                        const allOptionsP = [...optionsP, ...guestsForDate];
+                                                                        const renderOptions = value && !allOptionsP.some(o => o.value === value)
+                                                                            ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
+
+                                                                        const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                                        const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
+
+                                                                        return (
+                                                                            <select
+                                                                                className={styles.select}
+                                                                                value={value}
+                                                                                disabled={!canWrite}
+                                                                                style={highlightStyle}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
+                                                                        );
+                                                                    })()}
+                                                                    {showNacht && (() => {
+                                                                        const slotId = `rtw${rIdx + 1}_nacht_1`;
+                                                                        const value = getAssignedValue(slotId);
+                                                                        const optionsP = personnel
+                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && p.fahrzeugfuehrer)
+                                                                            .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
+                                                                        const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                        const allOptionsP = [...optionsP, ...guestsForDate];
+                                                                        const renderOptions = value && !allOptionsP.some(o => o.value === value)
+                                                                            ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
+
+                                                                        const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                                        const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
+
+                                                                        return (
+                                                                            <select
+                                                                                className={styles.select}
+                                                                                value={value}
+                                                                                disabled={!canWrite}
+                                                                                style={highlightStyle}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
+                                                                        );
+                                                                    })()}
+                                                                    <div className={styles.rowLabel}>Ma</div>
+                                                                    {showTag && (() => {
+                                                                        const slotId = `rtw${rIdx + 1}_tag_2`;
+                                                                        const value = getAssignedValue(slotId);
+                                                                        const optionsP = personnel
+                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'tag'))
+                                                                            .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
+                                                                        const optionsA = azubis
+                                                                            .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'tag'))
+                                                                            .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
+                                                                        const options = [...optionsP, ...optionsA];
+                                                                        const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                        const allOptions = [...options, ...guestsForDate];
+                                                                        const renderOptions = value && !allOptions.some(o => o.value === value)
+                                                                            ? [{ value, label: findPersonLabelByValue(value) }, ...allOptions] : allOptions;
+
+                                                                        const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                                        const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
+
+                                                                        return (
+                                                                            <select className={styles.select} value={value}
+                                                                                disabled={!canWrite}
+                                                                                style={highlightStyle}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
+                                                                        );
+                                                                    })()}
+                                                                    {showNacht && (() => {
+                                                                        const slotId = `rtw${rIdx + 1}_nacht_2`;
+                                                                        const value = getAssignedValue(slotId);
+                                                                        const optionsP = personnel
+                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht'))
+                                                                            .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
+                                                                        const optionsA = azubis
+                                                                            .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'nacht'))
+                                                                            .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
+                                                                        const options = [...optionsP, ...optionsA];
+                                                                        const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                        const allOptions = [...options, ...guestsForDate];
+                                                                        const renderOptions = value && !allOptions.some(o => o.value === value)
+                                                                            ? [{ value, label: findPersonLabelByValue(value) }, ...allOptions] : allOptions;
+
+                                                                        const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                                        const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
+
+                                                                        return (
+                                                                            <select className={styles.select} value={value}
+                                                                                disabled={!canWrite}
+                                                                                style={highlightStyle}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
+                                                                        );
+                                                                    })()}
+                                                                    <div className={styles.rowLabel}>Azubi</div>
+                                                                    {showTag && (() => {
+                                                                        const slotId = `rtw${rIdx + 1}_tag_3`;
+                                                                        const value = getAssignedValue(slotId);
+                                                                        const optionsA = azubis
+                                                                            .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'tag'))
+                                                                            .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
+                                                                        const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                        const allOptionsA = [...optionsA, ...guestsForDate];
+                                                                        const renderOptions = value && !allOptionsA.some(o => o.value === value)
+                                                                            ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
+                                                                        return (
+                                                                            <select className={styles.select} value={value}
+                                                                                disabled={!canWrite}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
+                                                                        );
+                                                                    })()}
+                                                                    {showNacht && (() => {
+                                                                        const slotId = `rtw${rIdx + 1}_nacht_3`;
+                                                                        const value = getAssignedValue(slotId);
+                                                                        const optionsA = azubis
+                                                                            .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'nacht'))
+                                                                            .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
+                                                                        const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                        const allOptionsA = [...optionsA, ...guestsForDate];
+                                                                        const renderOptions = value && !allOptionsA.some(o => o.value === value)
+                                                                            ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
+                                                                        return (
+                                                                            <select className={styles.select} value={value}
+                                                                                disabled={!canWrite}
+                                                                                onChange={e => handleAssign(d.date, d.dayOfYear, e.target.value, slotId)}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); clearAssignedForSlot(slotId); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
+                                                                        );
+                                                                    })()}
+                                                                </div>
+                                                            );
+                                                        };
+
+                                                        const renderNefCard = (v: typeof nefVehicles[0], nefIdx: number) => {
+                                                            const isReserve = v.category === 'reserve';
+                                                            const dayStatus = isVehicleActiveOnDate(
+                                                                d.date,
+                                                                nefVehiclePeriods[v.id] || [],
+                                                                (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id)),
+                                                                isReserve
+                                                            );
+                                                            const isMonthEnabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
+                                                            if (!isMonthEnabled || !dayStatus.active) return null;
+                                                            const nefLabel = dayStatus.shiftMode === 'tag' ? 'Tag' : (dayStatus.shiftMode === 'nacht' ? 'Nacht' : (v.occupancy_mode === 'tag' ? 'Tag' : '24h'));
+                                                            return (
+                                                                <div key={`nef_${nefIdx}`} className={styles.nefTable}>
+                                                                    {isReserve && (
+                                                                        <>
+                                                                            <div></div>
+                                                                            <div style={{ fontSize: 11, color: '#b91c1c', fontWeight: 600, textAlign: 'center' }}>{nefLabel}</div>
+                                                                        </>
+                                                                    )}
+                                                                    <div className={styles.rowLabel}>FzF</div>
+                                                                    {(() => {
+                                                                        const slotId = `nef${nefIdx + 1}_assist`;
+                                                                        const value = (() => {
+                                                                            let v = getAssignedValue(slotId);
+                                                                            if (!v && nefIdx === 0) v = getAssignedValue('nef_assist');
+                                                                            return v;
+                                                                        })();
+                                                                        const optionsP = personnel
+                                                                            .filter(p => {
+                                                                                if (!p.nef) return false;
+                                                                                const dutyCode = getDutyCodeFor(`p_${p.id}`);
+                                                                                const evalMode = auswertungByType[dutyCode];
+                                                                                if (!dutyCode || dutyCode.trim() === '') return false;
+                                                                                if (!evalMode || evalMode === 'off') return false;
+                                                                                return true;
+                                                                            })
+                                                                            .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
+                                                                        const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                        const allOptionsP = [...optionsP, ...guestsForDate];
+                                                                        const renderOptions = value && !allOptionsP.some(o => o.value === value)
+                                                                            ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
+
+                                                                        const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                                        const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
+
+                                                                        return (
+                                                                            <select className={styles.select} value={value}
+                                                                                disabled={!canWrite}
+                                                                                style={highlightStyle}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
+                                                                        );
+                                                                    })()}
+                                                                    <div className={styles.rowLabel}>Azubi</div>
+                                                                    {(() => {
+                                                                        const slotId = `nef${nefIdx + 1}_azubi`;
+                                                                        const value = (() => {
+                                                                            let v = getAssignedValue(slotId);
+                                                                            if (!v && nefIdx === 0) v = getAssignedValue('nef_azubi');
+                                                                            return v;
+                                                                        })();
+                                                                        const optionsA = azubis
+                                                                            .filter(a => {
+                                                                                const dutyCode = getDutyCodeFor(`a_${a.id}`);
+                                                                                const evalMode = auswertungByType[dutyCode];
+                                                                                if (!dutyCode || dutyCode.trim() === '') return false;
+                                                                                if (!evalMode || evalMode === 'off') return false;
+                                                                                return true;
+                                                                            })
+                                                                            .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
+                                                                        const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                        const allOptionsA = [...optionsA, ...guestsForDate];
+                                                                        const renderOptions = value && !allOptionsA.some(o => o.value === value)
+                                                                            ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
+                                                                        return (
+                                                                            <select className={styles.select} value={value}
+                                                                                disabled={!canWrite}
+                                                                                onChange={e => handleAssign(d.date, d.dayOfYear, e.target.value, slotId)}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_azubi'); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
+                                                                        );
+                                                                    })()}
+                                                                </div>
+                                                            );
+                                                        };
+
+                                                        const indexedRtw = (rtwVehicles || []).map((v, rIdx) => ({ v, rIdx }));
+                                                        const indexedNef = (nefVehicles || []).map((v, nefIdx) => ({ v, nefIdx }));
+
                                                         return (
-                                                            <div key={`rtw_${rIdx}`} className={styles.rtwTable}>
-                                                                <div className={styles.rowLabel}>FzF</div>
-                                                                {(() => {
-                                                                    const slotId = `rtw${rIdx + 1}_tag_1`;
-                                                                    const value = getAssignedValue(slotId);
-
-                                                                    const optionsP = personnel
-                                                                        .filter(p => {
-                                                                            const hasQual = p.fahrzeugfuehrer;
-                                                                            const dutyCode = getDutyCodeFor(`p_${p.id}`);
-                                                                            const allowed = allowedByAuswertung(dutyCode, 'tag');
-                                                                            
-                                                                            if (d.day === 2 && rIdx === 0) {
-                                                                                console.log(`[DEBUG MonthTabs] Filter p=${p.name}, hasQual=${hasQual}, dutyCode=${dutyCode}, allowed=${allowed}`);
-                                                                            }
-                                                                            
-                                                                            return allowed && hasQual;
-                                                                        })
-                                                                        .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
-                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
-                                                                    const allOptionsP = [...optionsP, ...guestsForDate];
-                                                                    const renderOptions = value && !allOptionsP.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
-
-                                                                    // Prüfe ob hervorgehobene Person eingeteilt ist (rot)
-                                                                    const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
-                                                                    const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
-
-                                                                    if (d.day === 2) {
-                                                                        console.log('[DEBUG MonthTabs] RTW Select Day 2:', {
-                                                                            slotId,
-                                                                            value,
-                                                                            personnelCount: personnel.length,
-                                                                            matchingPersonnel: optionsP.map(o => o.label)
-                                                                        });
-                                                                    }
-                                                                    return (
-                                                                        <select
-                                                                            className={styles.select}
-                                                                            value={value}
-                                                                            disabled={!canWrite}
-                                                                            style={highlightStyle}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
-                                                                    );
-                                                                })()}
-                                                                {(() => {
-                                                                    const slotId = `rtw${rIdx + 1}_nacht_1`;
-                                                                    const value = getAssignedValue(slotId);
-                                                                    const optionsP = personnel
-                                                                        .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && p.fahrzeugfuehrer)
-                                                                        .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
-                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
-                                                                    const allOptionsP = [...optionsP, ...guestsForDate];
-                                                                    const renderOptions = value && !allOptionsP.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
-
-                                                                    // Prüfe ob hervorgehobene Person eingeteilt ist (blau)
-                                                                    const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
-                                                                    const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
-
-                                                                    return (
-                                                                        <select
-                                                                            className={styles.select}
-                                                                            value={value}
-                                                                            disabled={!canWrite}
-                                                                            style={highlightStyle}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
-                                                                    );
-                                                                })()}
-                                                                <div className={styles.rowLabel}>Ma</div>
-                                                                {(() => {
-                                                                    const slotId = `rtw${rIdx + 1}_tag_2`;
-                                                                    const value = getAssignedValue(slotId);
-                                                                    const optionsP = personnel
-                                                                        .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'tag'))
-                                                                        .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
-                                                                    const optionsA = azubis
-                                                                        .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'tag'))
-                                                                        .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
-                                                                    const options = [...optionsP, ...optionsA];
-                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
-                                                                    const allOptions = [...options, ...guestsForDate];
-                                                                    const renderOptions = value && !allOptions.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptions] : allOptions;
-
-                                                                    const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
-                                                                    const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
-
-                                                                    return (
-                                                                        <select className={styles.select} value={value}
-                                                                            disabled={!canWrite}
-                                                                            style={highlightStyle}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
-                                                                    );
-                                                                })()}
-                                                                {(() => {
-                                                                    const slotId = `rtw${rIdx + 1}_nacht_2`;
-                                                                    const value = getAssignedValue(slotId);
-                                                                    const optionsP = personnel
-                                                                        .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht'))
-                                                                        .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
-                                                                    const optionsA = azubis
-                                                                        .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'nacht'))
-                                                                        .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
-                                                                    const options = [...optionsP, ...optionsA];
-                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
-                                                                    const allOptions = [...options, ...guestsForDate];
-                                                                    const renderOptions = value && !allOptions.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptions] : allOptions;
-
-                                                                    const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
-                                                                    const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
-
-                                                                    return (
-                                                                        <select className={styles.select} value={value}
-                                                                            disabled={!canWrite}
-                                                                            style={highlightStyle}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
-                                                                    );
-                                                                })()}
-                                                                <div className={styles.rowLabel}>Azubi</div>
-                                                                {(() => {
-                                                                    const slotId = `rtw${rIdx + 1}_tag_3`;
-                                                                    const value = getAssignedValue(slotId);
-                                                                    const optionsA = azubis
-                                                                        .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'tag'))
-                                                                        .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
-                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
-                                                                    const allOptionsA = [...optionsA, ...guestsForDate];
-                                                                    const renderOptions = value && !allOptionsA.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
-                                                                    return (
-                                                                        <select className={styles.select} value={value}
-                                                                            disabled={!canWrite}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
-                                                                    );
-                                                                })()}
-                                                                {(() => {
-                                                                    const slotId = `rtw${rIdx + 1}_nacht_3`;
-                                                                    const value = getAssignedValue(slotId);
-                                                                    const optionsA = azubis
-                                                                        .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'nacht'))
-                                                                        .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
-                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
-                                                                    const allOptionsA = [...optionsA, ...guestsForDate];
-                                                                    const renderOptions = value && !allOptionsA.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
-                                                                    return (
-                                                                        <select className={styles.select} value={value}
-                                                                            disabled={!canWrite}
-                                                                            onChange={e => handleAssign(d.date, d.dayOfYear, e.target.value, slotId)}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
-                                                                    );
-                                                                })()}
-                                                            </div>
+                                                            <>
+                                                                {/* 1. REGEL-RTWS */}
+                                                                {indexedRtw.filter(item => item.v.category !== 'reserve').map(item => renderRtwCard(item.v, item.rIdx))}
+                                                                {/* 2. REGEL-NEFS */}
+                                                                {indexedNef.filter(item => item.v.category !== 'reserve').map(item => renderNefCard(item.v, item.nefIdx))}
+                                                                {/* 3. RESERVE-RTWS (GANZ RECHTS) */}
+                                                                {indexedRtw.filter(item => item.v.category === 'reserve').map(item => renderRtwCard(item.v, item.rIdx))}
+                                                                {/* 4. RESERVE-NEFS (GANZ RECHTS) */}
+                                                                {indexedNef.filter(item => item.v.category === 'reserve').map(item => renderNefCard(item.v, item.nefIdx))}
+                                                            </>
                                                         );
-                                                    })}
-
-                                                    {(nefVehicles || []).map((v, nefIdx) => {
-                                                        const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                                                        if (!enabled) return null;
-                                                        return (
-                                                            <div key={`nef_${nefIdx}`} className={styles.nefTable}>
-                                                                <div className={styles.rowLabel}>FzF</div>
-                                                                {(() => {
-                                                                    const slotId = `nef${nefIdx + 1}_assist`;
-                                                                    const value = (() => {
-                                                                        let v = getAssignedValue(slotId);
-                                                                        if (!v && nefIdx === 0) v = getAssignedValue('nef_assist');
-                                                                        return v;
-                                                                    })();
-                                                                    const optionsP = personnel
-                                                                        .filter(p => {
-                                                                            if (!p.nef) return false;
-                                                                            const dutyCode = getDutyCodeFor(`p_${p.id}`);
-                                                                            const evalMode = auswertungByType[dutyCode];
-                                                                            // Nur Personen die an diesem Tag tatsächlich im aktiven Dienst sind (nicht 'off', nicht leer, nicht undefined)
-                                                                            if (!dutyCode || dutyCode.trim() === '') return false;
-                                                                            if (!evalMode || evalMode === 'off') return false;
-                                                                            return true;
-                                                                        })
-                                                                        .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
-                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
-                                                                    const allOptionsP = [...optionsP, ...guestsForDate];
-                                                                    const renderOptions = value && !allOptionsP.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
-
-                                                                    const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
-                                                                    const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
-
-                                                                    return (
-                                                                        <select className={styles.select} value={value}
-                                                                            disabled={!canWrite}
-                                                                            style={highlightStyle}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
-                                                                    );
-                                                                })()}
-                                                                <div className={styles.rowLabel}>Azubi</div>
-                                                                {(() => {
-                                                                    const slotId = `nef${nefIdx + 1}_azubi`;
-                                                                    const value = (() => {
-                                                                        let v = getAssignedValue(slotId);
-                                                                        if (!v && nefIdx === 0) v = getAssignedValue('nef_azubi');
-                                                                        return v;
-                                                                    })();
-                                                                    const optionsA = azubis
-                                                                        .filter(a => {
-                                                                            const dutyCode = getDutyCodeFor(`a_${a.id}`);
-                                                                            const evalMode = auswertungByType[dutyCode];
-                                                                            // Nur Azubis die an diesem Tag tatsächlich im aktiven Dienst sind (nicht 'off', nicht leer, nicht undefined)
-                                                                            if (!dutyCode || dutyCode.trim() === '') return false;
-                                                                            if (!evalMode || evalMode === 'off') return false;
-                                                                            return true;
-                                                                        })
-                                                                        .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
-                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
-                                                                    const allOptionsA = [...optionsA, ...guestsForDate];
-                                                                    const renderOptions = value && !allOptionsA.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
-                                                                    return (
-                                                                        <select className={styles.select} value={value}
-                                                                            disabled={!canWrite}
-                                                                            onChange={e => handleAssign(d.date, d.dayOfYear, e.target.value, slotId)}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_azubi'); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
-                                                                    );
-                                                                })()}
-                                                            </div>
-                                                        );
-                                                    })}
+                                                    })()}
                                                 </div>
                                             </div>
                                         </div>
