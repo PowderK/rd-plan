@@ -8,6 +8,11 @@ import {
   yearMonthKey,
 } from '../utils/personPeriods';
 import { isVehicleActiveOnDate, VehiclePeriod, VehicleSpecialDay } from '../utils/vehiclePeriods';
+import {
+  buildVehicleActivationMap,
+  calculateTargetsWithDetails,
+  computeAssignedShiftsPerPerson,
+} from '../utils/calculation';
 
 const monthNames = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 
@@ -62,17 +67,13 @@ function usePersonnel(year: number, departmentName?: string) {
         (window as any).api.getSetting?.('hlfb_qualification_type'),
         (window as any).api.getSetting?.('ue50_qualification_type'),
         (window as any).api.getSetting?.('lpal_qualification_type'),
-        (window as any).api.getSetting?.('rettungsdienst_qualification_type')
+        (window as any).api.getSetting?.('rettungsdienst_qualification_type'),
       ]);
 
-      const deptPeriodsByPerson = indexDepartmentPeriodsByPerson(
-        Array.isArray(allDeptPeriods) ? allDeptPeriods : []
-      );
-
-      const hlfbQualName = String(hlfbQualSetting || 'FzF HLF B');
+      const hlfbQualName = String(hlfbQualSetting || 'Fahrzeugführer HLF-B');
       const ue50QualName = String(ue50QualSetting || 'Ü50');
       const lpalQualName = String(lpalQualSetting || 'LPAL');
-      const rettungsdienstQualName = String(rdQualSetting || 'Rettungsdienst'); // Neue Grundqualifikation
+      const rdQualName = String(rdQualSetting || 'Rettungsdienst');
 
       const periodsByPerson: Record<number, any[]> = {};
       if (Array.isArray(allPeriods)) {
@@ -82,57 +83,31 @@ function usePersonnel(year: number, departmentName?: string) {
         });
       }
 
-      const enriched = (Array.isArray(rawList) ? rawList : []).map((p: any) => {
+      const deptPeriodsByPerson = indexDepartmentPeriodsByPerson(
+        Array.isArray(allDeptPeriods) ? allDeptPeriods : []
+      );
+
+      const mapped: PersonnelStatsRow[] = (rawList || []).map((p: any) => {
         const pPeriods = periodsByPerson[p.id] || [];
+        const hlfbPeriods = pPeriods.filter((per: any) => per.qualType === hlfbQualName);
+        const ue50Periods = pPeriods.filter((per: any) => per.qualType === ue50QualName);
+        const lpalPeriods = pPeriods.filter((per: any) => per.qualType === lpalQualName);
+        const rdPeriods = pPeriods.filter((per: any) => per.qualType === rdQualName);
 
         const hlfbMonthly = Array(12).fill(false);
         const ue50Monthly = Array(12).fill(false);
         const lpalMonthly = Array(12).fill(false);
         const rettungsdienstMonthly = Array(12).fill(false);
 
-        // Filter periods relevant for HLF-B
-        const hlfbPeriods = pPeriods.filter((per: any) => per.qualType === hlfbQualName);
-        const hasHlfbPeriod = hlfbPeriods.length > 0;
+        const qualApplies = (perList: any[], ym: string) =>
+          perList.some((per: any) => qualificationAppliesInMonth(per, ym));
 
-        // Filter periods relevant for Ü50
-        const ue50Periods = pPeriods.filter((per: any) => per.qualType === ue50QualName);
-        const hasUe50Period = ue50Periods.length > 0;
-
-        // Filter periods relevant for LPAL
-        const lpalPeriods = pPeriods.filter((per: any) => per.qualType === lpalQualName);
-        const hasLpalPeriod = lpalPeriods.length > 0;
-
-        // Filter periods relevant for Rettungsdienst
-        const rettungsdienstPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
-        const hasRettungsdienstPeriod = rettungsdienstPeriods.length > 0;
-
-        const qualApplies = (periods: any[], ym: string) =>
-          periods.some((per: any) => qualificationAppliesInMonth(per, ym));
-
-        if (hasHlfbPeriod) {
-          for (let m = 0; m < 12; m++) {
-            hlfbMonthly[m] = qualApplies(hlfbPeriods, yearMonthKey(year, m));
-          }
-        }
-
-        if (hasUe50Period) {
-          for (let m = 0; m < 12; m++) {
-            ue50Monthly[m] = qualApplies(ue50Periods, yearMonthKey(year, m));
-          }
-        }
-
-        if (hasLpalPeriod) {
-          for (let m = 0; m < 12; m++) {
-            lpalMonthly[m] = qualApplies(lpalPeriods, yearMonthKey(year, m));
-          }
-        }
-
-        if (hasRettungsdienstPeriod) {
-          for (let m = 0; m < 12; m++) {
-            rettungsdienstMonthly[m] = qualApplies(rettungsdienstPeriods, yearMonthKey(year, m));
-          }
-        } else {
-          rettungsdienstMonthly.fill(false);
+        for (let m = 0; m < 12; m++) {
+          const ym = yearMonthKey(year, m);
+          if (hlfbPeriods.length > 0) hlfbMonthly[m] = qualApplies(hlfbPeriods, ym);
+          if (ue50Periods.length > 0) ue50Monthly[m] = qualApplies(ue50Periods, ym);
+          if (lpalPeriods.length > 0) lpalMonthly[m] = qualApplies(lpalPeriods, ym);
+          if (rdPeriods.length > 0) rettungsdienstMonthly[m] = qualApplies(rdPeriods, ym);
         }
 
         const deptActiveMonthly = buildDepartmentActiveMonthly(
@@ -142,40 +117,42 @@ function usePersonnel(year: number, departmentName?: string) {
           departmentName
         );
 
-        // Statisches Flag als Fallback
-        const staticFlag = p.fahrzeugfuehrerHLFB === 1 || p.fahrzeugfuehrerHLFB === true || p.fahrzeugfuehrerHLFB === '1' ||
-          p.fahrzeugfuehrer_hlf_b === 1 || p.fahrzeugfuehrer_hlf_b === true || p.fahrzeugfuehrer_hlf_b === '1';
-
-        // Wenn keine HLF-B Perioden gefunden wurden, aber das statische Flag gesetzt ist, gilt es für das ganze Jahr
-        if (!hasHlfbPeriod && staticFlag) {
+        const staticFlag = p.fahrzeugfuehrerHLFB === 1 || p.fahrzeugfuehrerHLFB === true || p.fahrzeugfuehrerHLFB === '1';
+        if (hlfbPeriods.length === 0 && staticFlag) {
           hlfbMonthly.fill(true);
         }
 
         return {
-          ...p,
-          fahrzeugfuehrerHLFB: hlfbMonthly.some(b => b),
+          id: p.id,
+          name: p.name,
+          vorname: p.vorname,
+          fahrzeugfuehrerHLFB: hlfbMonthly.some(Boolean),
           hlfbMonthly,
-          ue50: ue50Monthly.some(b => b),
+          ue50: ue50Monthly.some(Boolean),
           ue50Monthly,
-          lpal: lpalMonthly.some(b => b),
+          lpal: lpalMonthly.some(Boolean),
           lpalMonthly,
-          rettungsdienst: rettungsdienstMonthly.some(b => b),
+          rettungsdienst: rettungsdienstMonthly.some(Boolean),
           rettungsdienstMonthly,
           deptActiveMonthly
         };
       });
 
-      setList(enriched);
-    } catch { setList([]); }
+      setList(mapped);
+    } catch {
+      setList([]);
+    }
   };
+
   useEffect(() => {
     fetch();
     const api = (window as any).api;
-    if (api.onPersonnelUpdated) {
+    if (api?.onPersonnelUpdated) {
       api.onPersonnelUpdated(fetch);
-      return () => api.offPersonnelUpdated(fetch);
+      return () => api.offPersonnelUpdated?.(fetch);
     }
-  }, [year, departmentName]); // Re-fetch when year or department changes
+  }, [year, departmentName]);
+
   return list;
 }
 
@@ -184,8 +161,8 @@ function useAzubis(departmentName?: string) {
   useEffect(() => {
     (async () => {
       try {
-        const r = await (window as any).api.getAzubiList?.(departmentName);
-        setList(Array.isArray(r) ? r : []);
+        const raw = await (window as any).api.getAzubiList?.(false, undefined, departmentName);
+        setList(Array.isArray(raw) ? raw : []);
       } catch { setList([]); }
     })();
   }, [departmentName]);
@@ -193,12 +170,12 @@ function useAzubis(departmentName?: string) {
 }
 
 function useGuests(year: number) {
-  const [list, setList] = useState<{ id: number; name: string; date: string }[]>([]);
+  const [list, setList] = useState<{ id: number; name: string }[]>([]);
   useEffect(() => {
     (async () => {
       try {
-        const r = await (window as any).api.getAllGuests?.(year);
-        setList(Array.isArray(r) ? r : []);
+        const raw = await (window as any).api.getAllGuests?.();
+        setList(Array.isArray(raw) ? raw : []);
       } catch { setList([]); }
     })();
   }, [year]);
@@ -206,48 +183,29 @@ function useGuests(year: number) {
 }
 
 function useUe50PersonnelIds(year: number, departmentName?: string) {
-  const [ue50Ids, setUe50Ids] = useState<Set<number>>(new Set());
+  const [ids, setIds] = useState<Set<number>>(new Set());
   useEffect(() => {
     (async () => {
       try {
-        // Lade Ü50 und LPAL Qualifikationstypen aus Settings
-        let ue50QualName = 'Ü50';
-        const setting = await (window as any).api.getSetting('ue50_qualification_type');
-        if (setting) ue50QualName = String(setting);
-
-        let lpalQualName = 'LPAL';
-        const lpalSetting = await (window as any).api.getSetting('lpal_qualification_type');
-        if (lpalSetting) lpalQualName = String(lpalSetting);
-
-        const personnel = await (window as any).api.getPersonnelList?.(false, String(year), departmentName) || [];
-        const ids = new Set<number>();
-
-        // Für jede Person prüfen, ob sie Ü50- oder LPAL-Qualifikation hat
-        for (const person of personnel) {
-          try {
-            const periods = await (window as any).api.getQualificationPeriods?.(person.id) || [];
-
-            // Prüfe für jeden Monat des Jahres
-            for (let month = 0; month < 12; month++) {
-              const yearMonth = `${year}-${String(month + 1).padStart(2, '0')}`;
-              const hasUe50OrLpal = periods.some((p: any) =>
-                p.active &&
-                (p.qualType === ue50QualName || p.qualType === lpalQualName) &&
-                p.startYM <= yearMonth &&
-                (!p.endYM || p.endYM >= yearMonth)
-              );
-              if (hasUe50OrLpal) {
-                ids.add(person.id);
-                break; // Einmal gefunden reicht
-              }
-            }
-          } catch { }
-        }
-        setUe50Ids(ids);
-      } catch { setUe50Ids(new Set()); }
+        const [rawList, allPeriods, ue50QualSetting, lpalQualSetting] = await Promise.all([
+          (window as any).api.getPersonnelList?.(false, year.toString(), departmentName),
+          (window as any).api.getAllQualificationPeriods?.(),
+          (window as any).api.getSetting?.('ue50_qualification_type'),
+          (window as any).api.getSetting?.('lpal_qualification_type'),
+        ]);
+        const ue50QualName = String(ue50QualSetting || 'Ü50');
+        const lpalQualName = String(lpalQualSetting || 'LPAL');
+        const nextIds = new Set<number>();
+        (allPeriods || []).forEach((per: any) => {
+          if (per.active && (per.qualType === ue50QualName || per.qualType === lpalQualName)) {
+            nextIds.add(per.personId);
+          }
+        });
+        setIds(nextIds);
+      } catch { setIds(new Set()); }
     })();
   }, [year, departmentName]);
-  return ue50Ids;
+  return ids;
 }
 
 function useAuswertungByType() {
@@ -256,12 +214,12 @@ function useAuswertungByType() {
     (async () => {
       try {
         const types = await (window as any).api.getShiftTypes?.();
-        const m: Record<string, 'off' | 'tag' | 'nacht' | '24h' | 'itw'> = {};
-        for (const t of (types || [])) {
-          const v = await (window as any).api.getSetting?.(`auswertung_${t.code}`);
-          m[t.code] = (v === 'tag' || v === 'nacht' || v === '24h' || v === 'itw') ? v : 'off';
+        const next: Record<string, 'off' | 'tag' | 'nacht' | '24h' | 'itw'> = {};
+        for (const t of types || []) {
+          const mode = await (window as any).api.getSetting?.(`auswertung_${t.code}`);
+          next[t.code] = (mode === 'tag' || mode === 'nacht' || mode === '24h' || mode === 'itw') ? mode : 'off';
         }
-        setMap(m);
+        setMap(next);
       } catch { }
     })();
   }, []);
@@ -273,11 +231,29 @@ function useVehicles(year?: number) {
   const [nef, setNef] = useState<{ id: number; name: string; occupancyMode?: '24h' | 'tag' }[]>([]);
   useEffect(() => {
     (async () => {
-      try { const r = await (window as any).api.getRtwVehicles?.(); if (Array.isArray(r)) setRtw(r); } catch { }
-      try { const n = await (window as any).api.getNefVehicles?.(); if (Array.isArray(n)) setNef(n); } catch { }
+      try { const r = await (window as any).api.getRtwVehicles?.(year); if (Array.isArray(r)) setRtw(r); } catch { }
+      try { const n = await (window as any).api.getNefVehicles?.(year); if (Array.isArray(n)) setNef(n); } catch { }
     })();
   }, [year]);
   return { rtw, nef };
+}
+
+function useVehicleActivations(year?: number) {
+  const [rtwActs, setRtwActs] = useState<Record<number, boolean[]>>({});
+  const [nefActs, setNefActs] = useState<Record<number, boolean[]>>({});
+  useEffect(() => {
+    (async () => {
+      try {
+        const acts = await (window as any).api.getRtwVehicleActivations?.(year);
+        setRtwActs(buildVehicleActivationMap(acts));
+      } catch { }
+      try {
+        const acts = await (window as any).api.getNefVehicleActivations?.(year);
+        setNefActs(buildVehicleActivationMap(acts));
+      } catch { }
+    })();
+  }, [year]);
+  return { rtwActs, nefActs };
 }
 
 function useVehicleData() {
@@ -330,111 +306,19 @@ function useDeptPatterns() {
     (async () => {
       try {
         const raw = await (window as any).api.getDeptPatterns?.();
+        const parsePattern = (pat: any) => {
+          if (Array.isArray(pat)) return pat;
+          if (typeof pat === 'string') return pat.split(',').map((s: string) => s.trim());
+          return [];
+        };
         const normDept = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(Math.max(0, len - (arr || []).length)).fill('1'));
         if (Array.isArray(raw)) {
-          setSeqs(raw.map((p: any) => ({ startDate: p.startDate, pattern: normDept(p.pattern || []) })));
+          setSeqs(raw.map((p: any) => ({ startDate: p.startDate, pattern: normDept(parsePattern(p.pattern)) })));
         }
       } catch { }
     })();
   }, []);
   return seqs;
-}
-
-function getDeptDayFor(dateObj: Date, seqs: { startDate: string, pattern: string[] }[]): string | undefined {
-  const iso = new Date(Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate())).toISOString().slice(0, 10);
-  if (!seqs || seqs.length === 0) return undefined;
-  const sorted = [...seqs].sort((a, b) => a.startDate.localeCompare(b.startDate));
-  let active = sorted[0];
-  for (const s of sorted) { if (s.startDate <= iso) active = s; else break; }
-  const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
-  const diffDays = Math.floor((new Date(iso + 'T00:00:00Z').getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-  const pat = active?.pattern || [];
-  return pat.length ? pat[((diffDays % 21) + 21) % 21] : undefined;
-}
-
-function computeDeptShiftsPerMonth(year: number, department: number, seqs: { startDate: string; pattern: string[] }[]) {
-  const counts: number[] = Array(12).fill(0);
-  for (let m = 0; m < 12; m++) {
-    const daysInMonth = new Date(year, m + 1, 0).getDate();
-    let cnt = 0;
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateObj = new Date(year, m, d);
-      const depDay = getDeptDayFor(dateObj, seqs);
-      if (depDay && String(department) === depDay) cnt++;
-    }
-    counts[m] = cnt;
-  }
-  return counts;
-}
-
-function computePositionsPerMonth(
-  year: number,
-  department: number,
-  vehicles: { rtw: { id: number }[]; nef: { id: number; occupancyMode?: '24h' | 'tag' }[] },
-  vehicleData: { rtwPeriods: Record<number, VehiclePeriod[]>; nefPeriods: Record<number, VehiclePeriod[]>; specialDays: VehicleSpecialDay[] },
-  deptPatternSeqs: { startDate: string; pattern: string[] }[],
-  itwShifts: number[]
-) {
-  const positions: number[] = Array(12).fill(0);
-
-  for (let m = 0; m < 12; m++) {
-    const daysInMonth = new Date(year, m + 1, 0).getDate();
-    let monthTotal = 0;
-
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateObj = new Date(year, m, d);
-      const dateStr = `${year}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const depDay = getDeptDayFor(dateObj, deptPatternSeqs);
-      const isDeptDay = depDay && String(department) === depDay;
-
-      // RTWs
-      for (const v of (vehicles?.rtw || [])) {
-        if (!v) continue;
-        const vPeriods = (vehicleData?.rtwPeriods) ? vehicleData.rtwPeriods[v.id] || [] : [];
-        const vSpec = (vehicleData?.specialDays || []).filter(s => s && (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id));
-        const isReserve = (v as any).category === 'reserve';
-        const status = isVehicleActiveOnDate(dateStr, vPeriods, vSpec, isReserve);
-
-        if (status.active) {
-          if (status.isSpecialDay) {
-            if (status.shiftMode === 'tag' || status.shiftMode === 'nacht') {
-              monthTotal += 2;
-            } else {
-              monthTotal += 4;
-            }
-          } else if (isDeptDay) {
-            monthTotal += 4;
-          }
-        }
-      }
-
-      // NEFs
-      for (const v of (vehicles?.nef || [])) {
-        if (!v) continue;
-        const vPeriods = (vehicleData?.nefPeriods) ? vehicleData.nefPeriods[v.id] || [] : [];
-        const vSpec = (vehicleData?.specialDays || []).filter(s => s && (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id));
-        const isReserve = (v as any).category === 'reserve';
-        const status = isVehicleActiveOnDate(dateStr, vPeriods, vSpec, isReserve);
-
-        if (status.active) {
-          const defaultSlots = (v.occupancyMode === 'tag') ? 1 : 2;
-          if (status.isSpecialDay) {
-            if (status.shiftMode === 'tag' || status.shiftMode === 'nacht') {
-              monthTotal += 1;
-            } else {
-              monthTotal += 2;
-            }
-          } else if (isDeptDay) {
-            monthTotal += defaultSlots;
-          }
-        }
-      }
-    }
-
-    positions[m] = monthTotal + (itwShifts[m] || 0);
-  }
-
-  return positions;
 }
 
 function computeActivePersonnelPerMonth(
@@ -444,9 +328,6 @@ function computeActivePersonnelPerMonth(
   personnel: PersonnelStatsRow[],
   ue50Ids: Set<number>
 ) {
-  // Ermittelt Anwesenheit pro Monat und zählt UNGEWICHTET: jede Person mit >0 Präsenz zählt 1
-  // Ü50-Personen werden monatsweise ausgeschlossen (wie Azubis)
-  // NEU: Nur Personal MIT Rettungsdienst-Qualifikation wird gezählt!
   const activeIds = new Set(personnel.map(p => p.id));
   const personnelById = new Map(personnel.map(p => [p.id, p]));
   const presentByMonth: Array<Set<number>> = Array.from({ length: 12 }, () => new Set());
@@ -455,8 +336,6 @@ function computeActivePersonnelPerMonth(
     try {
       if (String(row.personType) !== 'person') continue;
       const pid = Number(row.personId);
-
-      // Filter: Person muss im aktuellen Personalstamm sein
       if (!activeIds.has(pid)) continue;
 
       const val = String(row.value || '').trim();
@@ -468,13 +347,11 @@ function computeActivePersonnelPerMonth(
       const m = new Date(iso + 'T00:00:00Z');
       const month = m.getUTCMonth();
 
-      // NEU: Prüfe ob Person in diesem Monat Rettungsdienst-Qualifikation hat
       const person = personnelById.get(pid);
       if (!person || !isEligibleForStatsMonth(person, month)) {
         continue;
       }
 
-      // Ü50 / LPAL in diesem Monat ausschließen
       if (person.ue50Monthly?.[month] || person.lpalMonthly?.[month]) {
         continue;
       }
@@ -501,8 +378,10 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const ue50Ids = useUe50PersonnelIds(year, departmentName);
   const auswertungByType = useAuswertungByType();
   const { rtw, nef } = useVehicles(year);
+  const { rtwActs, nefActs } = useVehicleActivations(year);
   const vehicleData = useVehicleData();
   const deptPatternSeqs = useDeptPatterns();
+  const [shiftTransfers, setShiftTransfers] = useState<any[]>([]);
 
   useEffect(() => {
     setDepartment(departmentNameToId(departmentName));
@@ -515,7 +394,6 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     window.addEventListener('rdplan-department-changed', handler as EventListener);
     return () => window.removeEventListener('rdplan-department-changed', handler as EventListener);
   }, []);
-  const [shiftTransfers, setShiftTransfers] = useState<any[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -526,7 +404,6 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     })();
   }, [year]);
 
-  // Reagiere auf Jahr-Änderungen von DutyRoster
   useEffect(() => {
     const handleYearChange = (e: any) => {
       if (e.detail?.year) {
@@ -537,165 +414,32 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     return () => window.removeEventListener('rdplan-year-changed', handleYearChange);
   }, [setYear]);
 
-  const rowItw = useMemo(() => {
-    const sums = Array(12).fill(0);
-    const activeIds = new Set(personnel.map(p => p.id));
-    for (const row of (roster || [])) {
-      try {
-        // Nur Stammpersonal zählen, keine Ärzte/Azubis
-        if (String(row.personType) !== 'person') continue;
+  const calculationResult = useMemo(() => {
+    return calculateTargetsWithDetails(
+      year,
+      roster,
+      personnel,
+      azubis,
+      ue50Ids,
+      auswertungByType,
+      { rtw, nef },
+      { rtwActs, nefActs },
+      department,
+      deptPatternSeqs,
+      undefined,
+      shiftTransfers,
+      vehicleData
+    );
+  }, [year, roster, personnel, azubis, ue50Ids, auswertungByType, rtw, nef, rtwActs, nefActs, department, deptPatternSeqs, shiftTransfers, vehicleData]);
 
-        // Nur aktives Personal zählen (das auch in der Liste angezeigt wird)
-        const pid = Number(row.personId);
-        if (!activeIds.has(pid)) continue;
+  const perPersonAssignedMap = useMemo(() => {
+    return computeAssignedShiftsPerPerson(year, roster, personnel, department, deptPatternSeqs, nef);
+  }, [year, roster, personnel, department, deptPatternSeqs, nef]);
 
-        const iso = String(row.date);
-        if (!iso) continue;
-        const m = new Date(iso + 'T00:00:00Z').getUTCMonth();
-        const t = String(row.type || '');
-        const code = String(row.value || '').trim();
-        if (t.startsWith('itw_') || (code && auswertungByType[code] === 'itw')) {
-          sums[m] += 1;
-        }
-      } catch { }
-    }
-    return sums;
-  }, [roster, auswertungByType, personnel]);
-
-  const deptShifts = useMemo(() => computeDeptShiftsPerMonth(year, department, deptPatternSeqs), [year, department, JSON.stringify(deptPatternSeqs)]);
-
-  const row1 = useMemo(
-    () => computePositionsPerMonth(year, department, { rtw, nef }, vehicleData, deptPatternSeqs, rowItw),
-    [year, department, rtw, nef, vehicleData, deptPatternSeqs, rowItw]
-  );
-  const row2 = useMemo(() => computeActivePersonnelPerMonth(year, roster, auswertungByType, personnel, ue50Ids), [year, roster, auswertungByType, personnel, ue50Ids]);
-
-  const perPerson24h = useMemo(() => {
-    const countsByPerson: Record<number, number[]> = {};
-    const ensure = (pid: number) => (countsByPerson[pid] ||= Array(12).fill(0));
-    const personnelById = new Map((personnel || []).map(p => [p.id, p]));
-    for (const row of (roster || [])) {
-      try {
-        if (String(row.personType) !== 'person') continue;
-        const pid = Number(row.personId);
-        const iso = String(row.date);
-        const m = new Date(iso + 'T00:00:00Z');
-        const month = m.getUTCMonth();
-        const p = personnelById.get(pid);
-        if (p?.ue50Monthly?.[month] || p?.lpalMonthly?.[month]) continue; // Ü50 in diesem Monat ausschließen
-        const code = String(row.value || '').trim();
-        if (!code) continue;
-        if (auswertungByType[code] !== '24h') continue;
-        ensure(pid)[month] += 1;
-      } catch { }
-    }
-    const rows = (personnel || []).map(p => ({
-      id: p.id,
-      name: `${p.vorname ? p.vorname + ' ' : ''}${p.name}`.trim(),
-      counts: countsByPerson[p.id] || Array(12).fill(0)
-    }));
-    return rows;
-  }, [roster, personnel, auswertungByType]);
-
-  const perPersonITW = useMemo(() => {
-    const countsByPerson: Record<number, number[]> = {};
-    const ensure = (pid: number) => (countsByPerson[pid] ||= Array(12).fill(0));
-    const personnelById = new Map((personnel || []).map(p => [p.id, p]));
-    for (const row of (roster || [])) {
-      try {
-        if (String(row.personType) !== 'person') continue;
-        const pid = Number(row.personId);
-        const iso = String(row.date);
-        const m = new Date(iso + 'T00:00:00Z').getUTCMonth();
-        const p = personnelById.get(pid);
-        if (p?.ue50Monthly?.[m] || p?.lpalMonthly?.[m]) continue; // Ü50 in diesem Monat ausschließen
-        const t = String(row.type || '');
-        const code = String(row.value || '').trim();
-        if (t.startsWith('itw_') || (code && auswertungByType[code] === 'itw')) {
-          ensure(pid)[m] += 1;
-        }
-      } catch { }
-    }
-    const rows = (personnel || []).map(p => ({
-      id: p.id,
-      name: `${p.vorname ? p.vorname + ' ' : ''}${p.name}`.trim(),
-      counts: countsByPerson[p.id] || Array(12).fill(0)
-    }));
-    return rows;
-  }, [roster, personnel, auswertungByType]);
-
-  // Präsenz je Person (Auswertung ≠ 'off'), inkl. HLF‑B Flag
-  const perPersonPresence = useMemo(() => {
-    const countsByPerson: Record<number, number[]> = {};
-    const ensure = (pid: number) => (countsByPerson[pid] ||= Array(12).fill(0));
-    const personnelById = new Map((personnel || []).map(p => [p.id, p]));
-    for (const row of (roster || [])) {
-      try {
-        if (String(row.personType) !== 'person') continue;
-        const pid = Number(row.personId);
-        const iso = String(row.date);
-        const month = new Date(iso + 'T00:00:00Z').getUTCMonth();
-        const person = personnelById.get(pid);
-        if (!person || !isEligibleForStatsMonth(person, month)) continue;
-        if (person.ue50Monthly?.[month] || person.lpalMonthly?.[month]) continue; // Ü50 in diesem Monat ausschließen
-        const code = String(row.value || '').trim();
-        if (!code) continue;
-        if ((auswertungByType[code] || 'off') === 'off') continue;
-        ensure(pid)[month] += 1;
-      } catch { }
-    }
-    const byId: Record<number, boolean> = {};
-    const monthlyById: Record<number, boolean[]> = {};
-    const ue50ById: Record<number, boolean> = {};
-    const ue50MonthlyById: Record<number, boolean[]> = {};
-    const rettungsdienstMonthlyById: Record<number, boolean[]> = {};
-    const deptActiveMonthlyById: Record<number, boolean[]> = {};
-    for (const p of (personnel || [])) {
-      byId[p.id] = !!(p as any).fahrzeugfuehrerHLFB;
-      monthlyById[p.id] = (p as any).hlfbMonthly || Array(12).fill(false);
-      ue50ById[p.id] = !!(p as any).ue50;
-      ue50MonthlyById[p.id] = (p as any).ue50Monthly || Array(12).fill(false);
-      rettungsdienstMonthlyById[p.id] = (p as any).rettungsdienstMonthly || Array(12).fill(false);
-      deptActiveMonthlyById[p.id] = (p as any).deptActiveMonthly || Array(12).fill(true);
-    }
-    const rows = (personnel || [])
-      .filter(p => {
-        for (let m = 0; m < 12; m++) {
-          if (isEligibleForStatsMonth(p, m)) return true;
-        }
-        return false;
-      })
-      .map(p => ({
-        id: p.id,
-        name: `${p.vorname ? p.vorname + ' ' : ''}${p.name}`.trim(),
-        hlfb: byId[p.id] || false,
-        hlfbMonthly: monthlyById[p.id],
-        ue50: ue50ById[p.id] || false,
-        ue50Monthly: ue50MonthlyById[p.id],
-        counts: countsByPerson[p.id] || Array(12).fill(0)
-      }));
-    return rows;
-  }, [roster, personnel, auswertungByType]);
-
-  // Gewichtete Präsenz je Person/Monat für Anzeige & Berechnung (HLF‑B = round(0,75 × Ai,m))
-  const perPersonPresenceWeighted = useMemo(() => {
-    const personnelById = new Map((personnel || []).map(p => [p.id, p]));
-    const rows = (perPersonPresence || []).map(r => ({
-      id: r.id,
-      name: r.name,
-      hlfb: r.hlfb,
-      hlfbMonthly: r.hlfbMonthly,
-      ue50: r.ue50,
-      ue50Monthly: r.ue50Monthly,
-      counts: (r.counts || []).map((v: number, i: number) => {
-        const p = personnelById.get(r.id);
-        if (!p || !isEligibleForStatsMonth(p, i)) return 0;
-        const isHlfbMonth = r.hlfbMonthly ? r.hlfbMonthly[i] : r.hlfb;
-        return isHlfbMonth ? Math.round(Number(v || 0) * 0.75) : Number(v || 0);
-      })
-    }));
-    return rows;
-  }, [perPersonPresence, personnel]);
+  const rowAzubis = calculationResult.azubiShifts;
+  const rowUe50 = calculationResult.ue50Shifts;
+  const rowItw = calculationResult.itwShifts;
+  const row1Adj = calculationResult.positionsAdj;
 
   const perAzubiMaschinist = useMemo(() => {
     const countsByAzubi: Record<number, number[]> = {};
@@ -720,14 +464,6 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     return rows;
   }, [roster, azubis]);
 
-  const rowAzubis = useMemo(() => {
-    const sums = Array(12).fill(0);
-    for (const r of (perAzubiMaschinist || [])) {
-      r.counts.forEach((v, i) => { sums[i] += v; });
-    }
-    return sums;
-  }, [perAzubiMaschinist]);
-
   const perGuestPositions = useMemo(() => {
     const countsByGuest: Record<number, number[]> = {};
     const ensure = (id: number) => (countsByGuest[id] ||= Array(12).fill(0));
@@ -748,7 +484,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       name: `${g.name} (Gast)`.trim(),
       counts: countsByGuest[g.id] || Array(12).fill(0)
     }));
-    return rows.filter(r => r.counts.some(c => c > 0)); // Only show guests with shifts
+    return rows.filter(r => r.counts.some(c => c > 0));
   }, [roster, guests]);
 
   const rowGuests = useMemo(() => {
@@ -759,53 +495,12 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     return sums;
   }, [perGuestPositions]);
 
-  // Ü50-Schichten pro Monat (alle Positionen)
-  const rowUe50 = useMemo(() => {
-    const sums = Array(12).fill(0);
-    const reSlot = /^(rtw\d+_(tag|nacht)_[12]|nef(\d+)?_(arzt|assist|azubi)|itw_row_[123])$/;
-    const personnelById = new Map((personnel || []).map(p => [p.id, p]));
-
-    const getNefMode = (idStr?: string) => {
-      if (!idStr) {
-        if (nef.length > 0) return nef[0].occupancyMode || '24h';
-        return '24h';
-      }
-      const vid = Number(idStr);
-      const v = nef.find(n => n.id === vid);
-      return v?.occupancyMode || '24h';
-    };
-
-    for (const row of (roster || [])) {
-      try {
-        if (String(row.personType) !== 'person') continue;
-        const pid = Number(row.personId);
-        const iso = String(row.date);
-        const m = new Date(iso + 'T00:00:00Z').getUTCMonth();
-        const p = personnelById.get(pid);
-        if (!p?.ue50Monthly?.[m] && !p?.lpalMonthly?.[m]) continue;
-        const t = String(row.type || '');
-        if (!reSlot.test(t)) continue; // Nur echte Schicht-Slots zählen
-
-        // NEF Assistenz zählt doppelt bei 24h-Besetzung
-        const nefMatch = t.match(/^nef(\d+)?_assist$/);
-        if (nefMatch) {
-          const mode = getNefMode(nefMatch[1]);
-          if (mode === 'tag') sums[m] += 1;
-          else sums[m] += 2; // 24h
-        } else {
-          sums[m] += 1;
-        }
-      } catch { }
-    }
-    return sums;
-  }, [roster, personnel, nef]);
-
-  const row1Adj = useMemo(() => row1.map((v, i) => Math.max(0, v - (rowAzubis[i] || 0) - (rowGuests[i] || 0) - (rowUe50[i] || 0))), [row1, rowAzubis, rowGuests, rowUe50]);
+  const row2 = useMemo(() => computeActivePersonnelPerMonth(year, roster, auswertungByType, personnel, ue50Ids), [year, roster, auswertungByType, personnel, ue50Ids]);
   const row3 = useMemo(() => computeShiftsPerPerson(row1Adj, row2), [row1Adj, row2]);
 
   const rowAvgCombined = useMemo(() => {
     const avgs = Array(12).fill(0);
-    const rows = perPersonPresence || [];
+    const rows = calculationResult.presence || [];
     for (let i = 0; i < 12; i++) {
       let sum = 0, cnt = 0;
       for (const r of rows) {
@@ -815,167 +510,30 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       avgs[i] = cnt > 0 ? Math.round(sum / cnt) : 0;
     }
     return avgs;
-  }, [perPersonPresence]);
+  }, [calculationResult.presence]);
 
-  // Soll-Berechnung pro Person/Monat via Hamilton (größtes Rest-Verfahren) auf Basis gewichteter Präsenz
-  const calculationDetails = useMemo(() => {
-    const personnelById = new Map((personnel || []).map(p => [p.id, p]));
-    const byId: Record<number, number[]> = {};
-    for (const r of (perPersonPresenceWeighted || [])) byId[r.id] = r.counts.slice();
-    const idList = (perPersonPresenceWeighted || []).map(r => r.id);
-
-    const detailsById: Record<number, Array<{
-      month: number;
-      required: number;
-      totalWeight: number;
-      personWeight: number;
-      exact: number;
-      floor: number;
-      bonus: number;
-      final: number;
-    }>> = Object.fromEntries(idList.map(id => [id, []]));
-
-    for (let m = 0; m < 12; m++) {
-      const required = Number(row1Adj[m] || 0);
-      if (required <= 0) {
-        idList.forEach(id => {
-          detailsById[id].push({ month: m, required: 0, totalWeight: 0, personWeight: 0, exact: 0, floor: 0, bonus: 0, final: 0 });
-        });
-        continue;
-      }
-      const weights = idList.map(id => ({ id, w: Number((byId[id] || [])[m] || 0) }));
-      const active = weights.filter(x => x.w > 0);
-      const totalW = active.reduce((a, b) => a + b.w, 0);
-
-      const parts: Record<number, number> = {};
-      for (const a of active) {
-        parts[a.id] = (required * a.w) / totalW;
-      }
-
-      // Integration von Schichtübernahmen auf Exakt-Ebene
-      const monthTransfers = (shiftTransfers || []).filter((t: any) => {
-        const [ty, tm] = (t.month || '').split('-').map(Number);
-        return ty === year && tm === (m + 1);
-      });
-
-      const transfersByPerson: Record<number, number> = {};
-      if (monthTransfers.length > 0) {
-        let totalTransferred = 0;
-        const excludedIds = new Set<number>();
-
-        for (const t of monthTransfers) {
-          const toId = Number(t.to_person_id);
-          const toPerson = personnelById.get(toId);
-          if (!toPerson || !isEligibleForStatsMonth(toPerson, m)) continue;
-
-          totalTransferred += t.shift_count;
-          if (t.from_person_id) excludedIds.add(t.from_person_id);
-          excludedIds.add(toId);
-
-          parts[toId] = (parts[toId] || 0) + t.shift_count;
-          transfersByPerson[toId] = (transfersByPerson[toId] || 0) + t.shift_count;
-        }
-
-        const pool = active.filter(a => !excludedIds.has(a.id));
-        const poolWeight = pool.reduce((sum, a) => sum + a.w, 0);
-
-        if (poolWeight > 0 && totalTransferred > 0) {
-          for (const p of pool) {
-            const reduction = (totalTransferred * p.w) / poolWeight;
-            parts[p.id] = Math.max(0, (parts[p.id] || 0) - reduction);
-          }
-        }
-      }
-
-      const exactList = idList.map(id => ({ id, exact: parts[id] || 0, w: Number((byId[id] || [])[m] || 0) }));
-      const floors = exactList.filter(e => e.w > 0 || transfersByPerson[e.id]).map(p => ({
-        id: p.id,
-        v: Math.floor(p.exact),
-        frac: p.exact - Math.floor(p.exact),
-        exact: p.exact,
-        w: p.w
-      }));
-
-      let assigned = floors.reduce((s, f) => s + f.v, 0);
-      let rest = required - assigned;
-      floors.sort((a, b) => b.frac - a.frac);
-
-      const bonuses: Record<number, number> = {};
-      for (let i = 0; i < floors.length && rest > 0; i++, rest--) {
-        floors[i].v += 1;
-        bonuses[floors[i].id] = 1;
-      }
-
-      // Fill details for those who have entries (active or transfer)
-      const processedIds = new Set<number>();
-      floors.forEach(f => {
-        processedIds.add(f.id);
-        detailsById[f.id].push({
-          month: m,
-          required,
-          totalWeight: totalW,
-          personWeight: f.w,
-          exact: f.exact,
-          floor: Math.floor(f.exact),
-          bonus: bonuses[f.id] || 0,
-          final: f.v
-        });
-      });
-
-      // Fill details for others (weight 0 and no transfer)
-      idList.forEach(id => {
-        if (!processedIds.has(id)) {
-          detailsById[id].push({
-            month: m,
-            required,
-            totalWeight: totalW,
-            personWeight: 0,
-            exact: parts[id] || 0,
-            floor: 0,
-            bonus: 0,
-            final: Math.floor(parts[id] || 0) + (bonuses[id] || 0)
-          });
-        }
-      });
-    }
-    return detailsById;
-  }, [perPersonPresenceWeighted, row1Adj, shiftTransfers, year, personnel]);
-
-  const perPersonTargets = useMemo(() => {
-    return Object.entries(calculationDetails).map(([idStr, details]) => ({
-      id: Number(idStr),
-      targets: details.map(d => d.final)
-    }));
-  }, [calculationDetails]);
-
-  // Gesamt-Soll pro Monat (Summe aller Personen-Soll je Monat)
-  const totalTargetsPerMonth = useMemo(() => {
-    const sums = Array(12).fill(0);
-    for (const r of (perPersonTargets || [])) {
-      (r.targets || []).forEach((v, i) => { sums[i] += Number(v || 0); });
-    }
-    return sums;
-  }, [perPersonTargets]);
-
-  // Jahres-Gesamtsumme der Positionen
-  const sumPositionsYear = useMemo(() => (row1Adj || []).reduce((a, b) => a + (Number(b) || 0), 0), [row1Adj]);
-  // Jahres-Gesamtsumme der Soll-Schichten
-  const sumTargetsYear = useMemo(() => (totalTargetsPerMonth || []).reduce((a, b) => a + (Number(b) || 0), 0), [totalTargetsPerMonth]);
-
-  const [selectedPersonId, setSelectedPersonId] = useState<number | null>(null);
+  const calculationDetails = calculationResult.detailsById;
 
   const wertePermission: 'none' | 'read' | 'read_all' | 'write' =
     (currentUser?.permissions?.werte as any) || 'none';
-  /** Alle Namen: Werte „alle lesen“ (read_all) oder Schreiben; „nur lesen“ (read) = nur eigene Zeile. */
   const canReadAllWerte = wertePermission === 'read_all' || wertePermission === 'write';
-  const visiblePresenceRows = useMemo(() => {
-    if (canReadAllWerte) return perPersonPresenceWeighted;
+  
+  const visiblePersonnelRows = useMemo(() => {
+    const eligible = (personnel || []).filter(p => {
+      for (let m = 0; m < 12; m++) {
+        if (isEligibleForStatsMonth(p, m)) return true;
+      }
+      return false;
+    });
+    if (canReadAllWerte) return eligible;
     if (wertePermission === 'read' && currentUser?.userId != null) {
       const currentUserId = Number(currentUser.userId);
-      return perPersonPresenceWeighted.filter(r => Number(r.id) === currentUserId);
+      return eligible.filter(r => Number(r.id) === currentUserId);
     }
     return [];
-  }, [perPersonPresenceWeighted, canReadAllWerte, wertePermission, currentUser?.userId]);
+  }, [personnel, canReadAllWerte, wertePermission, currentUser?.userId]);
+
+  const [selectedPersonId, setSelectedPersonId] = useState<number | null>(null);
 
   const fmt = (v: number) => new Intl.NumberFormat('de-DE').format(Number(v || 0));
   const fmtDec = (v: number) => new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(Number(v || 0));
@@ -1024,14 +582,14 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const renderCalculationPopup = () => {
     if (selectedPersonId === null) return null;
     const details = calculationDetails[selectedPersonId];
-    const person = perPersonPresenceWeighted.find(p => p.id === selectedPersonId);
+    const person = personnel.find(p => p.id === selectedPersonId);
     if (!details || !person) return null;
 
     return (
       <div style={styles.popupOverlay} onClick={() => setSelectedPersonId(null)}>
         <div style={styles.popupContent} onClick={e => e.stopPropagation()}>
           <div style={styles.closeBtn} onClick={() => setSelectedPersonId(null)}>×</div>
-          <h3 style={{ margin: '0 0 12px', color: 'var(--text)' }}>Soll-Berechnung für {person.name}</h3>
+          <h3 style={{ margin: '0 0 12px', color: 'var(--text)' }}>Soll-Berechnung für {person.vorname ? `${person.vorname} ` : ''}{person.name}</h3>
           {person.ue50 && (
             <div style={{
               marginBottom: 15,
@@ -1049,7 +607,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               <span>Ü50-Qualifikation: Wird von der Soll-Berechnung ausgeschlossen.</span>
             </div>
           )}
-          {!person.ue50 && person.hlfb && (
+          {!person.ue50 && person.fahrzeugfuehrerHLFB && (
             <div style={{
               marginBottom: 15,
               padding: '10px 12px',
@@ -1123,12 +681,21 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     );
   };
 
+  const totalTargetsPerMonth = useMemo(() => {
+    const sums = Array(12).fill(0);
+    for (const targets of Object.values(calculationResult.targetsById)) {
+      targets.forEach((v, i) => { sums[i] += v; });
+    }
+    return sums;
+  }, [calculationResult.targetsById]);
+
+  const sumPositionsYear = useMemo(() => (row1Adj || []).reduce((a, b) => a + (Number(b) || 0), 0), [row1Adj]);
+  const sumTargetsYear = useMemo(() => (totalTargetsPerMonth || []).reduce((a, b) => a + (Number(b) || 0), 0), [totalTargetsPerMonth]);
+
   return (
     <div className="page-container">
       {renderCalculationPopup()}
-      {/* Überschrift */}
       <h2 className="page-header">Werte – {year}{departmentName ? ` – ${departmentName}` : ''}</h2>
-      {/* Content */}
       <div className="page-content" style={{ overflow: 'auto', maxHeight: '74vh', border: '1px solid var(--line)', borderRadius: 10, position: 'relative', paddingTop: 0 }}>
         <table style={styles.table}>
           <thead>
@@ -1297,17 +864,18 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                   boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
                 }}
               >
-                PERSÖNLICHE WERTE — STAMMPERSONAL & EINSATZKRÄFTE (Ist | Soll)
+                PERSÖNLICHE WERTE — STAMMPERSONAL & EINSATZKRÄFTE (Soll | Ist)
               </td>
             </tr>
 
-            {visiblePresenceRows.map(row => {
-              const sumPresence = row.counts.reduce((a, b) => a + b, 0);
-              const targRow = perPersonTargets.find(t => t.id === row.id);
-              const targets = targRow?.targets || Array(12).fill(0);
+            {visiblePersonnelRows.map(row => {
+              const assigned = perPersonAssignedMap[row.id] || Array(12).fill(0);
+              const sumAssigned = assigned.reduce((a, b) => a + b, 0);
+              const targets = calculationResult.targetsById[row.id] || Array(12).fill(0);
               const sumTargets = targets.reduce((a, b) => a + b, 0);
-              const nameColor = row.hlfb ? 'var(--accent)' : undefined;
-              const quicktipText = `Persönliche Werte von ${row.name}: Links = Tatsächlich geleistete Schichten (Ist). Rechts = Berechnetes Schichtsoll laut Verteilungsschlüssel (Soll). Klicken für Details zur Soll-Berechnung.`;
+              const nameColor = row.fahrzeugfuehrerHLFB ? 'var(--accent)' : undefined;
+              const displayName = `${row.vorname ? `${row.vorname} ` : ''}${row.name}`.trim();
+              const quicktipText = `Persönliche Werte von ${displayName}: Links = Berechnetes Schichtsoll laut Verteilungsschlüssel (Soll). Rechts = Tatsächlich geleistete Schichten (Ist). Klicken für Details zur Soll-Berechnung.`;
 
               return (
                 <tr key={row.id} style={Number(row.id) % 2 === 0 ? styles.zebra1 : styles.zebra2} title={quicktipText}>
@@ -1320,14 +888,15 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                       textDecoration: 'underline'
                     }}
                     onClick={() => setSelectedPersonId(row.id)}
-                    title={`Klicken für Details zur Soll-Berechnung von ${row.name}`}
+                    title={`Klicken für Details zur Soll-Berechnung von ${displayName}`}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span>{row.name}</span>
+                      <span>{displayName}</span>
                       <InfoIcon color="var(--status-success)" />
                     </div>
                   </td>
-                  {row.counts.map((v, i) => {
+                  {assigned.map((istVal, i) => {
+                    const targVal = targets[i] || 0;
                     const hasTransfer = (shiftTransfers || []).some((t: any) => {
                       if (t.to_person_id !== row.id) return false;
                       const [ty, tm] = (t.month || '').split('-').map(Number);
@@ -1337,34 +906,25 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                     const targetWeight = hasTransfer ? 'bold' : 'normal';
 
                     return (
-                      <td key={i} style={styles.td} title={`${monthNames[i]}: ${v ? fmt(v) : '0'} Ist-Schichten | ${targets[i] ? fmt(targets[i]) : '0'} Soll-Schichten`}>
-                        {v ? (
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                            <span>{fmt(v)}</span>
-                            <span style={{ color: 'var(--muted)' }}>|</span>
-                            <span style={{ color: targetColor, fontWeight: targetWeight }}>{targets[i] ? fmt(targets[i]) : ''}</span>
-                          </div>
-                        ) : (targets[i] ? (
-                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                            <span style={{ color: targetColor, fontWeight: targetWeight }}>{fmt(targets[i])}</span>
-                          </div>
-                        ) : '')}
+                      <td key={i} style={styles.td} title={`${monthNames[i]}: ${fmt(targVal)} Soll-Schichten | ${fmt(istVal)} Ist-Schichten`}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                          <span style={{ color: targetColor, fontWeight: targetWeight }}>{targVal ? fmt(targVal) : '0'}</span>
+                          <span style={{ color: 'var(--muted)' }}>|</span>
+                          <span>{fmt(istVal)}</span>
+                        </div>
                       </td>
                     );
                   })}
-                  <td style={styles.td} title={`Jahressumme ${row.name}: ${sumPresence ? fmt(sumPresence) : '0'} Ist | ${sumTargets ? fmt(sumTargets) : '0'} Soll`}>
-                    {(sumPresence || sumTargets) ? (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                        <span>{sumPresence ? fmt(sumPresence) : ''}</span>
-                        <span style={{ color: 'var(--muted)' }}>|</span>
-                        <span style={{ color: 'var(--accent)' }}>{sumTargets ? fmt(sumTargets) : ''}</span>
-                      </div>
-                    ) : ''}
+                  <td style={styles.td} title={`Jahressumme ${displayName}: ${fmt(sumTargets)} Soll | ${fmt(sumAssigned)} Ist`}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                      <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{fmt(sumTargets)}</span>
+                      <span style={{ color: 'var(--muted)' }}>|</span>
+                      <span>{fmt(sumAssigned)}</span>
+                    </div>
                   </td>
                 </tr>
               );
             })}
-
             {/* SUBSECTION: GAST / AZUBIS */}
             {canReadAllWerte && (
               <>

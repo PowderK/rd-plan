@@ -6,7 +6,7 @@ export function buildVehicleActivationMap(rows: unknown): Record<number, boolean
         const vid = Number(row?.vehicleId);
         const m = Number(row?.month);
         if (!Number.isFinite(vid) || !Number.isFinite(m) || m < 1 || m > 12) return;
-        const arr = Array.isArray(map[vid]) ? map[vid].slice() : Array(12).fill(true);
+        const arr = Array.isArray(map[vid]) ? map[vid].slice() : Array(12).fill(false);
         arr[m - 1] = !!row.enabled;
         map[vid] = arr;
     });
@@ -73,10 +73,12 @@ function checkVehicleActive(vid: number, mIdx: number, year: number, periods?: R
     const yearMonth = `${year}-${String(mIdx + 1).padStart(2, '0')}`;
     const p = periods?.[vid] || [];
     if (p.length > 0) {
-        return p.some(x => x.active && x.startYM <= yearMonth && (!x.endYM || x.endYM >= yearMonth));
+        return p.some(x => (x.active === 1 || x.active === true || x.active === '1') && x.startYM <= yearMonth && (!x.endYM || x.endYM >= yearMonth));
     }
-    // Fallback to legacy activations
-    return (legacyActs?.[vid] ?? Array(12).fill(true))[mIdx] !== false;
+    if (periods) {
+        return false;
+    }
+    return (legacyActs?.[vid] ?? Array(12).fill(false))[mIdx] === true;
 }
 
 export function computePositionsPerMonth(
@@ -236,6 +238,10 @@ export function computeWeightedPresence(
                 const ym = `${year}-${String(m + 1).padStart(2, '0')}`;
                 hlfbStatus[m] = periods.some(per => per.startYM <= ym && (!per.endYM || per.endYM >= ym));
             }
+        } else if ((p as any).hlfbMonthly && Array.isArray((p as any).hlfbMonthly)) {
+            for (let m = 0; m < 12; m++) {
+                hlfbStatus[m] = !!(p as any).hlfbMonthly[m];
+            }
         } else {
             // 2. Fallback to static flag
             if (p.fahrzeugfuehrerHLFB) {
@@ -251,7 +257,7 @@ export function computeWeightedPresence(
 
             return hlfbStatus[i] ? Math.round(v * 0.75) : v;
         });
-        return { id: p.id, counts: weightedCounts };
+        return { id: p.id, counts: weightedCounts, hlfbStatus };
     });
 }
 
@@ -266,8 +272,30 @@ export interface ShiftTransfer {
     reason?: string;
 }
 
+export interface CalculationDetailMonth {
+    month: number;
+    required: number;
+    totalWeight: number;
+    personWeight: number;
+    exact: number;
+    floor: number;
+    bonus: number;
+    final: number;
+}
 
-export function calculateTargets(
+export interface CalculationResultDetails {
+    deptShifts: number[];
+    itwShifts: number[];
+    positions: number[];
+    azubiShifts: number[];
+    ue50Shifts: number[];
+    positionsAdj: number[];
+    presence: Array<{ id: number; counts: number[]; hlfbStatus?: boolean[] }>;
+    targetsById: Record<number, number[]>;
+    detailsById: Record<number, CalculationDetailMonth[]>;
+}
+
+export function calculateTargetsWithDetails(
     year: number,
     roster: any[], // Flattened roster array or similar structure
     personnel: { id: number; fahrzeugfuehrerHLFB?: boolean | number; ue50Monthly?: boolean[]; lpalMonthly?: boolean[]; rettungsdienstMonthly?: boolean[]; deptActiveMonthly?: boolean[] }[],
@@ -281,7 +309,7 @@ export function calculateTargets(
     hlfbPeriodsByPerson?: Record<number, Array<{ startYM: string; endYM?: string }>>,
     shiftTransfers: ShiftTransfer[] = [], // Optional for backward compatibility
     vehiclePeriods?: { rtwPeriods: Record<number, any[]>; nefPeriods: Record<number, any[]> }
-) {
+): CalculationResultDetails {
     // 1. Dept Shifts
     const deptShifts = computeDeptShiftsPerMonth(year, department, deptPatternSeqs);
 
@@ -302,9 +330,11 @@ export function calculateTargets(
 
     // 6. Hamilton Allocation
     const targetsById: Record<number, number[]> = {};
+    const detailsById: Record<number, CalculationDetailMonth[]> = {};
     const ensureTargetRow = (personId: number) => {
         if (!Number.isFinite(personId)) return;
         if (!targetsById[personId]) targetsById[personId] = Array(12).fill(0);
+        if (!detailsById[personId]) detailsById[personId] = [];
     };
     personnel.forEach(p => ensureTargetRow(p.id));
     // Schichtübernahmen können Personen betreffen, die (noch) nicht in der gefilterten personnel-Liste stehen
@@ -324,15 +354,49 @@ export function calculateTargets(
         (transfersByMonth[mIdx] ||= []).push(t);
     }
 
+    const allPersonIds = Object.keys(targetsById).map(Number);
+
     for (let m = 0; m < 12; m++) {
         const required = positionsAdj[m];
-        if (required <= 0) continue;
+        if (required <= 0) {
+            allPersonIds.forEach(pid => {
+                ensureTargetRow(pid);
+                targetsById[pid][m] = 0;
+                detailsById[pid].push({
+                    month: m,
+                    required: 0,
+                    totalWeight: 0,
+                    personWeight: 0,
+                    exact: 0,
+                    floor: 0,
+                    bonus: 0,
+                    final: 0
+                });
+            });
+            continue;
+        }
 
         const weights = presence.map(p => ({ id: p.id, w: p.counts[m] }));
         const active = weights.filter(x => x.w > 0);
         const totalW = active.reduce((a, b) => a + b.w, 0);
 
-        if (totalW <= 0) continue;
+        if (totalW <= 0) {
+            allPersonIds.forEach(pid => {
+                ensureTargetRow(pid);
+                targetsById[pid][m] = 0;
+                detailsById[pid].push({
+                    month: m,
+                    required,
+                    totalWeight: 0,
+                    personWeight: 0,
+                    exact: 0,
+                    floor: 0,
+                    bonus: 0,
+                    final: 0
+                });
+            });
+            continue;
+        }
 
         // Basis-Berechnung der exakten Anteile
         const parts: Record<number, number> = {};
@@ -342,6 +406,7 @@ export function calculateTargets(
 
         // Integration von Schichtübernahmen auf Exakt-Ebene
         const monthTransfers = transfersByMonth[m];
+        const transfersByPerson: Record<number, number> = {};
         if (monthTransfers && monthTransfers.length > 0) {
             let totalTransferred = 0;
             const excludedIds = new Set<number>();
@@ -353,6 +418,7 @@ export function calculateTargets(
 
                 // Empfänger erhält die Schichten direkt
                 parts[t.to_person_id] = (parts[t.to_person_id] || 0) + t.shift_count;
+                transfersByPerson[t.to_person_id] = (transfersByPerson[t.to_person_id] || 0) + t.shift_count;
             }
 
             // Pool für die Reduzierung (alle Aktiven außer Geber und Empfänger)
@@ -370,11 +436,14 @@ export function calculateTargets(
         // Hamilton-Rundung auf Basis der (ggf. durch Übernahmen modifizierten) exakten Anteile
         const targetIds = Object.keys(parts).map(Number);
         const floors = targetIds.map(pid => {
-            const exact = parts[pid];
+            const exact = parts[pid] || 0;
+            const pPresence = presence.find(p => p.id === pid);
             return {
                 id: pid,
                 v: Math.floor(exact),
-                frac: exact - Math.floor(exact)
+                frac: exact - Math.floor(exact),
+                exact,
+                w: pPresence?.counts[m] || 0
             };
         });
 
@@ -383,16 +452,156 @@ export function calculateTargets(
 
         // Falls die Summe durch Rundung nicht stimmt, Reste verteilen
         floors.sort((a, b) => b.frac - a.frac);
+        const bonuses: Record<number, number> = {};
         for (let i = 0; i < floors.length && rest > 0; i++, rest--) {
             floors[i].v += 1;
+            bonuses[floors[i].id] = 1;
         }
 
+        const processedIds = new Set<number>();
         for (const f of floors) {
             ensureTargetRow(f.id);
             targetsById[f.id][m] = f.v;
+            processedIds.add(f.id);
+            detailsById[f.id].push({
+                month: m,
+                required,
+                totalWeight: totalW,
+                personWeight: f.w,
+                exact: f.exact,
+                floor: Math.floor(f.exact),
+                bonus: bonuses[f.id] || 0,
+                final: f.v
+            });
+        }
+
+        allPersonIds.forEach(pid => {
+            if (!processedIds.has(pid)) {
+                ensureTargetRow(pid);
+                targetsById[pid][m] = 0;
+                detailsById[pid].push({
+                    month: m,
+                    required,
+                    totalWeight: totalW,
+                    personWeight: 0,
+                    exact: parts[pid] || 0,
+                    floor: 0,
+                    bonus: 0,
+                    final: 0
+                });
+            }
+        });
+    }
+
+    return {
+        deptShifts,
+        itwShifts,
+        positions,
+        azubiShifts,
+        ue50Shifts,
+        positionsAdj,
+        presence,
+        targetsById,
+        detailsById
+    };
+}
+
+export function calculateTargets(
+    year: number,
+    roster: any[], // Flattened roster array or similar structure
+    personnel: { id: number; fahrzeugfuehrerHLFB?: boolean | number; ue50Monthly?: boolean[]; lpalMonthly?: boolean[]; rettungsdienstMonthly?: boolean[]; deptActiveMonthly?: boolean[] }[],
+    azubis: { id: number }[],
+    ue50Input: Set<number> | ((personId: number, monthIndex: number) => boolean) | Record<number, boolean[]>,
+    auswertungByType: Record<string, string>,
+    vehicles: { rtw: { id: number }[]; nef: { id: number; occupancyMode?: '24h' | 'tag' }[] },
+    activations: { rtwActs: Record<number, boolean[]>; nefActs: Record<number, boolean[]> },
+    department: number,
+    deptPatternSeqs: { startDate: string; pattern: string[] }[],
+    hlfbPeriodsByPerson?: Record<number, Array<{ startYM: string; endYM?: string }>>,
+    shiftTransfers: ShiftTransfer[] = [], // Optional for backward compatibility
+    vehiclePeriods?: { rtwPeriods: Record<number, any[]>; nefPeriods: Record<number, any[]> }
+): Record<number, number[]> {
+    return calculateTargetsWithDetails(
+        year,
+        roster,
+        personnel,
+        azubis,
+        ue50Input,
+        auswertungByType,
+        vehicles,
+        activations,
+        department,
+        deptPatternSeqs,
+        hlfbPeriodsByPerson,
+        shiftTransfers,
+        vehiclePeriods
+    ).targetsById;
+}
+
+export function computeAssignedShiftsPerPerson(
+    year: number,
+    roster: any[],
+    personnel: { id: number }[],
+    department: number,
+    deptPatternSeqs: { startDate: string; pattern: string[] }[],
+    nefVehicles?: { id: number; occupancyMode?: '24h' | 'tag' }[]
+): Record<number, number[]> {
+    const assignedById: Record<number, number[]> = {};
+    (personnel || []).forEach(p => { assignedById[p.id] = Array(12).fill(0); });
+
+    const getNefWeight = (t: string) => {
+        const nefMatch = t.match(/^nef(\d+)?_assist$/);
+        if (nefMatch) {
+            const idx = nefMatch[1] ? Math.max(0, Number(nefMatch[1]) - 1) : 0;
+            const mode = nefVehicles?.[idx]?.occupancyMode || '24h';
+            return mode === 'tag' ? 1 : 2;
+        }
+        return 1;
+    };
+
+    for (let m = 0; m < 12; m++) {
+        const daysInMonth = new Date(year, m + 1, 0).getDate();
+        const deptDays = new Set<string>();
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const iso = new Date(Date.UTC(year, m, d)).toISOString().slice(0, 10);
+            const sortedSeqs = [...(deptPatternSeqs || [])].sort((a, b) => a.startDate.localeCompare(b.startDate));
+            let active = sortedSeqs[0];
+            for (const s of sortedSeqs) { if (s.startDate <= iso) active = s; else break; }
+            const start = new Date((active?.startDate || '1970-01-01') + 'T00:00:00Z');
+            const cur = new Date(iso + 'T00:00:00Z');
+            const diffDays = Math.floor((cur.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+            const pat = active?.pattern || [];
+            const depDay = pat.length ? pat[((diffDays % 21) + 21) % 21] : '';
+            if (depDay && String(department) === depDay) deptDays.add(iso);
+        }
+
+        for (const row of (roster || [])) {
+            try {
+                if (String(row.personType) !== 'person') continue;
+                const pid = Number(row.personId);
+                if (!assignedById[pid]) continue;
+
+                const iso = String(row.date);
+                if (!iso) continue;
+                const rowMonth = new Date(iso + 'T00:00:00Z').getUTCMonth();
+                if (rowMonth !== m) continue;
+
+                const t = String(row.type || '');
+                if (deptDays.has(iso)) {
+                    if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t)) {
+                        assignedById[pid][m] += 1;
+                    } else if (/^nef(\d+)?_assist$/.test(t)) {
+                        assignedById[pid][m] += getNefWeight(t);
+                    }
+                }
+                if (t.startsWith('itw_row_')) {
+                    assignedById[pid][m] += 1;
+                }
+            } catch { }
         }
     }
 
-    return targetsById;
+    return assignedById;
 }
 

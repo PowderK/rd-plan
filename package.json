@@ -23,7 +23,8 @@
     "dist": "npm run dist:win && npm run dist:mac && npm run dist:linux",
     "postinstall": "electron-builder install-app-deps",
     "perf": "npm run build && node test-performance.js",
-    "perf:compare": "node compare-performance.js"
+    "perf:compare": "node compare-performance.js",
+    "validate": "node scripts/validate-calculations.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",

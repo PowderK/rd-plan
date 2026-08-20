@@ -2291,8 +2291,7 @@ export const updateNefVehicleOrder = async (db: AsyncDB, order: number[]) => {
 // --- Vehicle monthly activation helpers (DEPRECATED - use vehicle periods instead) ---
 export const getRtwVehicleActivations = async (db: AsyncDB, year: number) => {
     // Compatibility: Generate activation list from periods
-    // We need to fetch vehicles to know which ones exist, but we can also just fetch all periods
-    // and group by vehicle. However, to handle "no periods = active", we need the list of vehicles.
+    // Vehicles without active periods are INACTIVE by default (e.g. reserve vehicles or unassigned)
     const vehicles = await getRtwVehicles(db, year);
     const results: { vehicleId: number, month: number, enabled: number }[] = [];
 
@@ -2302,8 +2301,8 @@ export const getRtwVehicleActivations = async (db: AsyncDB, year: number) => {
         for (let m = 1; m <= 12; m++) {
             const ym = `${year}-${String(m).padStart(2, '0')}`;
             
-            // If no periods exist, vehicle is active by default
-            let isActive = periods.length === 0;
+            // If no periods exist, vehicle is inactive by default (must have valid period)
+            let isActive = false;
             
             if (periods.length > 0) {
                 isActive = periods.some((p: any) =>
@@ -2334,8 +2333,8 @@ export const getNefVehicleActivations = async (db: AsyncDB, year: number) => {
         for (let m = 1; m <= 12; m++) {
             const ym = `${year}-${String(m).padStart(2, '0')}`;
             
-            // If no periods exist, vehicle is active by default
-            let isActive = periods.length === 0;
+            // If no periods exist, vehicle is inactive by default (must have valid period)
+            let isActive = false;
             
             if (periods.length > 0) {
                 isActive = periods.some((p: any) =>

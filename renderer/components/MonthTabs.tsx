@@ -2318,8 +2318,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         <div className={styles.container}>
                             {/* 1. REGEL-RTWS */}
                             {(rtwVehicles || []).map((v, rIdx) => ({ v, rIdx })).filter(item => item.v.category !== 'reserve').map(({ v, rIdx }) => {
-                                const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
+                                const enabled = (rtwActivations[v.id] ?? Array(12).fill(false))[currentMonth] === true;
                                 if (!enabled) return null;
+
+                                const monthDays = buildDepartmentDaysForMonth(currentMonth);
+                                const periods = rtwVehiclePeriods[v.id] || [];
+                                const specialDays = (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id));
+                                const isActiveInMonth = monthDays.some(dateStr => isVehicleActiveOnDate(dateStr, periods, specialDays, false).active);
+                                if (!isActiveInMonth) return null;
+
                                 return (
                                     <div key={`rtw_header_${rIdx}`} style={{
                                         marginRight: 8,
@@ -2374,8 +2381,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                             })}
                             {/* 2. REGEL-NEFS */}
                             {(nefVehicles || []).map((v, nIdx) => ({ v, nIdx })).filter(item => item.v.category !== 'reserve').map(({ v, nIdx }) => {
-                                const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
+                                const enabled = (nefActivations[v.id] ?? Array(12).fill(false))[currentMonth] === true;
                                 if (!enabled) return null;
+
+                                const monthDays = buildDepartmentDaysForMonth(currentMonth);
+                                const periods = nefVehiclePeriods[v.id] || [];
+                                const specialDays = (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id));
+                                const isActiveInMonth = monthDays.some(dateStr => isVehicleActiveOnDate(dateStr, periods, specialDays, false).active);
+                                if (!isActiveInMonth) return null;
+
                                 const nefLabel = v.occupancy_mode === '24h' ? '24h' : 'Tag';
                                 return (
                                     <div key={`nef_header_${nIdx}`} style={{

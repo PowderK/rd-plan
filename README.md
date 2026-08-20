@@ -77,8 +77,10 @@ RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die 
 	- ITW-Tab: Dezente gelbe Hinterlegung bei RTW/NEF-Einteilungen
 	- Verbessert Navigation zwischen verschiedenen Dienstbereichen
 - **Abteilungsfilter**: In der RTW/NEF-Ansicht werden nur Tage der eingestellten Abteilung angezeigt
-- **Fahrzeug- und Musterverwaltung** (RTW/NEF/ITW) mit monatlicher Aktivierung
+- **Fahrzeug- und Musterverwaltung** (RTW/NEF/ITW) mit monatlicher Aktivierung und strikter Validierung von Einsatzzeiträumen
 - **Feiertagsverwaltung** mit automatischer Berechnung für Niedersachsen
+- **Wertetabelle & Soll/Ist-Berechnung**: Einheitliche Hamilton-Verteilung, transparente Berechnungsschritte und detailgetreue Erfassung aller Netto-Schichten
+- **Datenbank- & Berechnungs-Validierung**: Integriertes Validierungs-Skript (`npm run validate`) zur automatisierten Konsistenzprüfung direkt gegen die Datenbank
 
 ### Technische Basis
 - Electron + React + TypeScript + Vite
