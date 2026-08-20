@@ -1,14 +1,20 @@
+## Build 1464 - 2026-08-20
+
+- automated build
+
 ## Build 1463 - 2026-08-20
 
-- automated build
+- **Wertetabelle & Soll/Ist-Berechnung**:
+  - Vereinheitlichung der Berechnungslogik zwischen Kontrollkasten und Wertetabelle (`ValuesPage.tsx`) über `calculateTargetsWithDetails` und `computeAssignedShiftsPerPerson`.
+  - Behebung des Schichtmuster-Parsings (`p.pattern.split(',')`) und der UTC-Datumsverarbeitung in der Wertetabelle, sodass alle Abteilungstage vollständig erfasst werden.
+  - Spaltenreihenfolge in Abschnitt 2 der Wertetabelle einheitlich auf `Soll | Ist` angepasst (passend zum Kontrollkasten).
+  - Transparente Detailaufschlüsselung der Hamilton-Berechnung im Popup beim Klick auf den Namen.
+- **Fahrzeug-Validierung & Zeiträume (Reserveretter-Support)**:
+  - Striktes Fallback in Datenbank-Adapter (`getRtwVehicleActivations` / `getNefVehicleActivations`) und Berechnungs-Engine: Fahrzeuge ohne hinterlegte aktive Zeiträume sind standardmäßig inaktiv und fließen nicht in die Soll-Positionen ein.
+  - In `MonthTabs.tsx` prüfen Regel- und Reserve-Fahrzeuge einheitlich `isActiveInMonth`, um leere Tabellenspalten zu vermeiden.
+- **DB-Validierungsskript**:
+  - Neues Skript `scripts/validate-calculations.js` (`npm run validate`) zur automatisierten Validierung aller Soll/Ist-Werte, Qualifikationen und Fahrzeugzeiträume direkt gegen die SQLite-Datenbank.
 
-## Build 1462 - 2026-08-20
-
-- automated build
-
-## Build 1461 - 2026-08-20
-
-- automated build
 
 ## Build 1460 - 2026-08-15
 
