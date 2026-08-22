@@ -1,6 +1,6 @@
 {
   "name": "rd-plan",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "Eine Offline-App zur Planung der Rettungswagenschichten.",
   "main": "dist/main/main.js",
   "scripts": {

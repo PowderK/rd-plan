@@ -3548,14 +3548,14 @@ export const getItwPatterns = async (db: AsyncDB, department?: string) => {
     const params = [];
     if (department && department !== 'all') {
         query += ' WHERE department = ?';
-        params.push(department);
+        params.push(normalizeDepartment(department));
     }
     query += ' ORDER BY start_date ASC';
     const rows = await db.all(query, params);
     return rows.map((r: any) => ({ 
         startDate: String(r.startDate), 
         pattern: String(r.pattern),
-        department: String(r.department || '1. Abteilung')
+        department: normalizeDepartment(r.department || '1. Abteilung')
     }));
 };
 
@@ -3569,7 +3569,7 @@ export const setItwPatterns = async (db: AsyncDB, patterns: { startDate: string,
             if (!/\d{4}-\d{2}-\d{2}/.test(sd)) continue;
             const parts = String(p.pattern || '').split(',').map(s => s.trim());
             const norm = (parts.slice(0, 21).concat(Array(21).fill(''))).slice(0, 21).map(v => (v === '1' || v === '2' || v === '3' || v === 'IW') ? v : '');
-            await db.run('INSERT INTO itw_patterns (start_date, department, pattern) VALUES (?, ?, ?)', [sd, p.department || '1. Abteilung', norm.join(',')]);
+            await db.run('INSERT INTO itw_patterns (start_date, department, pattern) VALUES (?, ?, ?)', [sd, normalizeDepartment(p.department || '1. Abteilung'), norm.join(',')]);
         }
         await db.run('COMMIT');
     } catch (e) {
@@ -3600,10 +3600,10 @@ export const generateItwPlanningsForYear = async (db: AsyncDB, year: number, hol
         
         // Find department of person
         const person = await db.get('SELECT department FROM personnel WHERE id = ?', [personId]);
-        const dept = person?.department || '1. Abteilung';
+        const dept = normalizeDepartment(person?.department || '1. Abteilung');
         
         // Filter patterns for this department
-        const deptPatterns = patterns.filter(p => p.department === dept);
+        const deptPatterns = patterns.filter(p => normalizeDepartment(p.department) === dept);
         if (deptPatterns.length === 0) continue;
         
         const sortedPatterns = [...deptPatterns].sort((a, b) => a.startDate.localeCompare(b.startDate));

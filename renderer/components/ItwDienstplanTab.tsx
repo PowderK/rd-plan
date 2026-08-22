@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { normalizeDepartmentName } from '../utils/personPeriods';
 import './SettingsMenuTables.css'; // Just using basic table styles from here if any
 
 const monthNames = [
@@ -13,6 +14,7 @@ interface RosterEntry {
     type: string;
     personId: number;
     personType: string;
+    manual_edit?: number;
 }
 
 const ItwDienstplanTab: React.FC = () => {
@@ -27,7 +29,7 @@ const ItwDienstplanTab: React.FC = () => {
     const [doctors, setDoctors] = useState<any[]>([]);
     const [roster, setRoster] = useState<RosterEntry[]>([]);
     const [holidays, setHolidays] = useState<string[]>([]);
-    const [itwSeqs, setItwSeqs] = useState<{ startDate: string, pattern: string }[]>([]);
+    const [itwSeqs, setItwSeqs] = useState<{ startDate: string, pattern: string, department?: string }[]>([]);
     const [assignments, setAssignments] = useState<any[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
 
@@ -48,12 +50,15 @@ const ItwDienstplanTab: React.FC = () => {
             .map(item => item.trim() === 'IW' ? 'IW' : '');
     };
 
-    const getActiveItwSequence = (dateStr: string) => {
-        if (sortedItwSeqs.length === 0) return null;
-        if (dateStr < sortedItwSeqs[0].startDate) return null;
+    const getActiveItwSequence = (dateStr: string, department?: string) => {
+        const deptNorm = normalizeDepartmentName(department || '1. Abteilung');
+        const deptSeqs = sortedItwSeqs.filter(s => normalizeDepartmentName(s.department || '1. Abteilung') === deptNorm);
+        const seqsToUse = deptSeqs.length > 0 ? deptSeqs : sortedItwSeqs;
+        if (seqsToUse.length === 0) return null;
+        if (dateStr < seqsToUse[0].startDate) return null;
 
-        let activeSeq = sortedItwSeqs[0];
-        for (const seq of sortedItwSeqs) {
+        let activeSeq = seqsToUse[0];
+        for (const seq of seqsToUse) {
             if (seq.startDate <= dateStr) {
                 activeSeq = seq;
             } else {
@@ -67,8 +72,11 @@ const ItwDienstplanTab: React.FC = () => {
         if (sortedItwSeqs.length === 0) return null;
         if (holidays.includes(dateStr)) return null;
 
+        const person = personnel.find(p => Number(p.id) === Number(personId));
+        const personDept = person?.department || '1. Abteilung';
+
         const targetTime = new Date(dateStr + 'T00:00:00Z').getTime();
-        const activeSeq = getActiveItwSequence(dateStr);
+        const activeSeq = getActiveItwSequence(dateStr, personDept);
         if (!activeSeq) return null;
 
         const pattern = normalizeItwPattern(activeSeq.pattern);
@@ -128,7 +136,7 @@ const ItwDienstplanTab: React.FC = () => {
             const transferPromises = [];
             for (const person of persInfo) {
                 for (const d of days) {
-                            const dateStr = formatDateString(d);
+                    const dateStr = formatDateString(d);
                     const planned = getPlannedCell(person.id, dateStr);
                     const existing = rosterData.find((r: RosterEntry) => r.personId === person.id && r.personType === 'person' && r.date === dateStr);
                     if (planned === 'IW' && !existing) {
@@ -139,6 +147,17 @@ const ItwDienstplanTab: React.FC = () => {
                                 date: dateStr,
                                 value: '1',
                                 type: 'IW',
+                                manual_edit: 0
+                            })
+                        );
+                    } else if (existing && (!existing.manual_edit || existing.manual_edit === 0) && existing.type === 'IW' && planned !== 'IW') {
+                        transferPromises.push(
+                            (window as any).api.setItwDutyRosterEntry?.({
+                                personId: person.id,
+                                personType: 'person',
+                                date: dateStr,
+                                value: '',
+                                type: '',
                                 manual_edit: 0
                             })
                         );

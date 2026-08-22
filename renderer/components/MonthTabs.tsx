@@ -3282,7 +3282,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                             if (holidays.has(iso)) continue;
 
                                             const seqs = [...(itwPatternSeqs || [])]
-                                                .filter(s => s.department === deptStr)
+                                                .filter(s => (s.department || '1. Abteilung') === deptStr || (s.department && s.department.startsWith(String(department))))
                                                 .sort((a, b) => a.startDate.localeCompare(b.startDate));
                                             if (seqs.length === 0) continue;
 

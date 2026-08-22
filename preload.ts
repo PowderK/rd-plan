@@ -208,7 +208,7 @@ contextBridge.exposeInMainWorld('api', {
     deleteHoliday: (date: string) => ipcRenderer.invoke('delete-holiday', date),
     // ITW Patterns
     getItwPatterns: (department?: string) => ipcRenderer.invoke('get-itw-patterns', department),
-    setItwPatterns: (patterns: { startDate: string, pattern: string }[]) => ipcRenderer.invoke('set-itw-patterns', patterns),
+    setItwPatterns: (patterns: { startDate: string, pattern: string, department?: string }[]) => ipcRenderer.invoke('set-itw-patterns', patterns),
     generateItwPlanningsForYear: (year: number) => ipcRenderer.invoke('generate-itw-plannings-for-year', year),
     // Department Patterns
     getDeptPatterns: () => ipcRenderer.invoke('get-dept-patterns'),

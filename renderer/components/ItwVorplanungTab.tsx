@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { normalizeDepartmentName } from '../utils/personPeriods';
 import './SettingsMenuTables.css'; // Recycle some table styles if needed or use inline.
 
 interface QualPeriod {
@@ -10,7 +11,7 @@ interface QualPeriod {
 }
 
 const ItwVorplanungTab: React.FC = () => {
-    const [itwSeqs, setItwSeqs] = useState<{ startDate: string, pattern: string }[]>([]);
+    const [itwSeqs, setItwSeqs] = useState<{ startDate: string, pattern: string, department?: string }[]>([]);
     const [personnel, setPersonnel] = useState<any[]>([]);
     const [assignments, setAssignments] = useState<any[]>([]);
     const [activeQuals, setActiveQuals] = useState<Record<number, string[]>>({});
@@ -106,12 +107,15 @@ const ItwVorplanungTab: React.FC = () => {
             .map(item => item.trim() === 'IW' ? 'IW' : '');
     };
 
-    const getActiveItwSequence = (dateStr: string) => {
-        if (sortedItwSeqs.length === 0) return null;
-        if (dateStr < sortedItwSeqs[0].startDate) return null;
+    const getActiveItwSequence = (dateStr: string, department?: string) => {
+        const deptNorm = normalizeDepartmentName(department || '1. Abteilung');
+        const deptSeqs = sortedItwSeqs.filter(s => normalizeDepartmentName(s.department || '1. Abteilung') === deptNorm);
+        const seqsToUse = deptSeqs.length > 0 ? deptSeqs : sortedItwSeqs;
+        if (seqsToUse.length === 0) return null;
+        if (dateStr < seqsToUse[0].startDate) return null;
 
-        let activeSeq = sortedItwSeqs[0];
-        for (const seq of sortedItwSeqs) {
+        let activeSeq = seqsToUse[0];
+        for (const seq of seqsToUse) {
             if (seq.startDate <= dateStr) {
                 activeSeq = seq;
             } else {
@@ -182,7 +186,7 @@ const ItwVorplanungTab: React.FC = () => {
         return phases;
     }, [sortedItwSeqs, year]);
 
-    const calculatePhaseItwDays = (phaseStartStr: string, phaseEndStr: string) => {
+    const calculatePhaseItwDays = (phaseStartStr: string, phaseEndStr: string, department?: string) => {
         // Calculate which days in the phase are marked as "IW" in the pattern
         if (!sortedItwSeqs || sortedItwSeqs.length === 0) {
             console.warn('[ITW] Keine itwSeqs verfügbar');
@@ -196,6 +200,7 @@ const ItwVorplanungTab: React.FC = () => {
         console.log('[ITW] calculatePhaseItwDays:', {
             phaseStartStr,
             phaseEndStr,
+            department,
             phaseStart: new Date(phaseStart).toISOString(),
             phaseEnd: new Date(phaseEnd).toISOString(),
             holidaysCount: holidays.length
@@ -214,7 +219,7 @@ const ItwVorplanungTab: React.FC = () => {
                 continue;
             }
 
-            const activeSeq = getActiveItwSequence(dateStr);
+            const activeSeq = getActiveItwSequence(dateStr, department);
             if (!activeSeq) {
                 console.log('[ITW] Kein aktives ITW Pattern für Datum:', dateStr);
                 currentTime += dayMs;
@@ -229,7 +234,7 @@ const ItwVorplanungTab: React.FC = () => {
             if (diffDays >= 0) {
                 const patternIndex = ((diffDays % pattern.length) + pattern.length) % pattern.length;
                 const patternValue = pattern[patternIndex];
-                console.log(`[ITW] Tag ${dateStr}: activeStart=${activeSeq.startDate}, diffDays=${diffDays}, patternIndex=${patternIndex}, patternValue='${patternValue}'`);
+                console.log(`[ITW] Tag ${dateStr}: activeStart=${activeSeq.startDate}, dept=${activeSeq.department}, diffDays=${diffDays}, patternIndex=${patternIndex}, patternValue='${patternValue}'`);
 
                 if (patternValue === 'IW') {
                     itwDays.push(dateStr);
@@ -247,9 +252,11 @@ const ItwVorplanungTab: React.FC = () => {
     };
 
     const transferSchichtToRoster = async (personId: number, phaseStartStr: string, phaseEndStr: string) => {
-        // Get all IW days in this phase
-        const itwDays = calculatePhaseItwDays(phaseStartStr, phaseEndStr);
-        console.log(`[ITW] Übertrage ${itwDays.length} IW-Tage für Person ${personId} von ${phaseStartStr} bis ${phaseEndStr}:`, itwDays);
+        const person = personnel.find(p => Number(p.id) === Number(personId));
+        const personDept = person?.department || '1. Abteilung';
+        // Get all IW days in this phase for this person's department
+        const itwDays = calculatePhaseItwDays(phaseStartStr, phaseEndStr, personDept);
+        console.log(`[ITW] Übertrage ${itwDays.length} IW-Tage für Person ${personId} (${personDept}) von ${phaseStartStr} bis ${phaseEndStr}:`, itwDays);
         
         if (itwDays.length === 0) {
             console.warn('[ITW] Keine IW-Tage gefunden für Phase', { phaseStartStr, phaseEndStr, holidays, itwSeqs: itwSeqs[0]?.pattern });
@@ -276,8 +283,10 @@ const ItwVorplanungTab: React.FC = () => {
     };
 
     const removeSchichtFromRoster = async (personId: number, phaseStartStr: string, phaseEndStr: string) => {
-        const itwDays = calculatePhaseItwDays(phaseStartStr, phaseEndStr);
-        console.log(`[ITW] Lösche ${itwDays.length} IW-Tage für Person ${personId} von ${phaseStartStr} bis ${phaseEndStr}`);
+        const person = personnel.find(p => Number(p.id) === Number(personId));
+        const personDept = person?.department || '1. Abteilung';
+        const itwDays = calculatePhaseItwDays(phaseStartStr, phaseEndStr, personDept);
+        console.log(`[ITW] Lösche ${itwDays.length} IW-Tage für Person ${personId} (${personDept}) von ${phaseStartStr} bis ${phaseEndStr}`);
         
         for (const dateStr of itwDays) {
             try {

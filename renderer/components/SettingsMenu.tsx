@@ -12,6 +12,8 @@ interface SettingsMenuProps {
   onClose: () => void;
   setFooterActions?: (actions: React.ReactNode) => void;
   departmentName?: string;
+  activeCategoryProp?: 'general' | 'roster' | 'features' | 'itw' | 'qualifications' | 'roles' | 'audit';
+  onCategoryChange?: (category: 'general' | 'roster' | 'features' | 'itw' | 'qualifications' | 'roles' | 'audit') => void;
 }
 
 const getOffsetDateInfo = (startDateStr: string, offsetDays: number): { dateStr: string; weekdayStr: string; isWeekend: boolean } | null => {
@@ -38,7 +40,7 @@ const getOffsetDateInfo = (startDateStr: string, offsetDays: number): { dateStr:
   };
 };
 
-const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, departmentName }) => {
+const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, departmentName, activeCategoryProp, onCategoryChange }) => {
   const defaultQualificationCategories = ['Fahrzeugführung', 'Notfall', 'Transport', 'Ausbildung', 'Sonstiges'];
   const [rescueStation, setRescueStation] = useState('1');
   const [year, setYear] = useState(new Date().getFullYear());
@@ -141,7 +143,18 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
   const [featureOldRtwShifts, setFeatureOldRtwShifts] = useState(false);
   const [featureShiftTransfers, setFeatureShiftTransfers] = useState(false);
   const [itwFeatureEnabled, setItwFeatureEnabled] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<'general' | 'roster' | 'features' | 'itw' | 'qualifications' | 'roles' | 'audit'>('general');
+  const [activeCategory, setActiveCategory] = useState<'general' | 'roster' | 'features' | 'itw' | 'qualifications' | 'roles' | 'audit'>(activeCategoryProp || 'general');
+
+  useEffect(() => {
+    if (activeCategoryProp && activeCategoryProp !== activeCategory) {
+      setActiveCategory(activeCategoryProp);
+    }
+  }, [activeCategoryProp]);
+
+  const handleCategorySelect = (cat: 'general' | 'roster' | 'features' | 'itw' | 'qualifications' | 'roles' | 'audit') => {
+    setActiveCategory(cat);
+    onCategoryChange?.(cat);
+  };
   // ITW Vorplanungen
   const [itwPlanningYear, setItwPlanningYear] = useState<number>(new Date().getFullYear());
   // System Info
@@ -162,8 +175,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
     }, {} as Record<string, string>);
 
     const normalizedItwPatterns = (itwPatternSeqs || [])
-      .map(p => ({ startDate: p.startDate, pattern: [...(p.pattern || [])] }))
-      .sort((a, b) => a.startDate.localeCompare(b.startDate));
+      .map(p => ({ startDate: p.startDate, department: p.department || '1. Abteilung', pattern: [...(p.pattern || [])] }))
+      .sort((a, b) => (a.startDate + (a.department || '')).localeCompare(b.startDate + (b.department || '')));
 
     const normalizedDeptPatterns = (deptPatternSeqs || [])
       .map(p => ({ startDate: p.startDate, pattern: [...(p.pattern || [])] }))
@@ -493,7 +506,11 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       }
       // Sequenzen speichern
       try {
-        const payload = (itwPatternSeqs || []).map(s => ({ startDate: s.startDate, pattern: (s.pattern || []).map(v => (['1', '2', '3', 'IW'].includes(v) ? v : '')).join(',') }));
+        const payload = (itwPatternSeqs || []).map(s => ({ 
+          startDate: s.startDate, 
+          department: s.department || '1. Abteilung', 
+          pattern: (s.pattern || []).map(v => (['1', '2', '3', 'IW'].includes(v) ? v : '')).join(',') 
+        }));
         await (window as any).api.setItwPatterns?.(payload);
       } catch { }
       // Dept Sequenzen speichern
@@ -561,7 +578,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
 
   useEffect(() => {
     if (!itwFeatureEnabled && activeCategory === 'itw') {
-      setActiveCategory('features');
+      handleCategorySelect('features');
     }
   }, [itwFeatureEnabled, activeCategory]);
 
@@ -1139,118 +1156,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
 
   return (
     <div className="page-container settings-table-theme" style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxSizing: 'border-box' }}>
-      {/* Sticky Container für Header + Tabs */}
-      <div className="sticky-header-container">
-        {/* Überschrift - ROT */}
+      {/* Sticky Container für Header */}
+      <div className="sticky-header-container" style={{ paddingBottom: 8, borderBottom: '1px solid var(--line)' }}>
+        {/* Überschrift */}
         <div className="page-header-with-version">
           <h2>Einstellungen</h2>
           <div className="page-header-version">
             Version {displayVersion} (Build {displayBuild}) — © Benjamin Kreitz
           </div>
-        </div>
-
-        {/* Kategorie-Tabs - GRÜN */}
-        <div className="tab-navigation">
-          <button
-            onClick={() => setActiveCategory('general')}
-            style={{
-              padding: '8px 16px',
-              border: 'none',
-              borderBottom: activeCategory === 'general' ? '3px solid #0d6efd' : '3px solid transparent',
-              background: activeCategory === 'general' ? '#f8f9fa' : 'transparent',
-              fontWeight: activeCategory === 'general' ? 600 : 400,
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            Allgemein
-          </button>
-          <button
-            onClick={() => setActiveCategory('roster')}
-            style={{
-              padding: '8px 16px',
-              border: 'none',
-              borderBottom: activeCategory === 'roster' ? '3px solid #0d6efd' : '3px solid transparent',
-              background: activeCategory === 'roster' ? '#f8f9fa' : 'transparent',
-              fontWeight: activeCategory === 'roster' ? 600 : 400,
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            Dienstplan
-          </button>
-          <button
-            onClick={() => setActiveCategory('features')}
-            style={{
-              padding: '8px 16px',
-              border: 'none',
-              borderBottom: activeCategory === 'features' ? '3px solid #0d6efd' : '3px solid transparent',
-              background: activeCategory === 'features' ? '#f8f9fa' : 'transparent',
-              fontWeight: activeCategory === 'features' ? 600 : 400,
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            Features
-          </button>
-          {itwFeatureEnabled && (
-          <button
-            onClick={() => setActiveCategory('itw')}
-            style={{
-              padding: '8px 16px',
-              border: 'none',
-              borderBottom: activeCategory === 'itw' ? '3px solid #0d6efd' : '3px solid transparent',
-              background: activeCategory === 'itw' ? '#f8f9fa' : 'transparent',
-              fontWeight: activeCategory === 'itw' ? 600 : 400,
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            ITW
-          </button>
-          )}
-          <button
-            onClick={() => setActiveCategory('qualifications')}
-            style={{
-              padding: '8px 16px',
-              border: 'none',
-              borderBottom: activeCategory === 'qualifications' ? '3px solid #0d6efd' : '3px solid transparent',
-              background: activeCategory === 'qualifications' ? '#f8f9fa' : 'transparent',
-              fontWeight: activeCategory === 'qualifications' ? 600 : 400,
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            Qualifikationen
-          </button>
-          <button
-            onClick={() => setActiveCategory('roles')}
-            style={{
-              padding: '8px 16px',
-              border: 'none',
-              borderBottom: activeCategory === 'roles' ? '3px solid #0d6efd' : '3px solid transparent',
-              background: activeCategory === 'roles' ? '#f8f9fa' : 'transparent',
-              fontWeight: activeCategory === 'roles' ? 600 : 400,
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            Rollen & Rechte
-          </button>
-          <button
-            onClick={() => setActiveCategory('audit')}
-            style={{
-              padding: '8px 16px',
-              border: 'none',
-              borderBottom: activeCategory === 'audit' ? '3px solid #0d6efd' : '3px solid transparent',
-              background: activeCategory === 'audit' ? '#f8f9fa' : 'transparent',
-              fontWeight: activeCategory === 'audit' ? 600 : 400,
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            Verlauf
-          </button>
         </div>
       </div>
       {/* Ende Sticky Container */}
@@ -1932,6 +1845,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
             <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
               <h3>ITW Schichtfolgen</h3>
               <p style={{ marginTop: 0, color: '#666' }}>Pflege hier beliebig viele 21‑Tage‑Schichtfolgen, die ab einem Datum gelten. Die Folge setzt sich jahresübergreifend fort, bis eine neuere Folge beginnt.</p>
+
               <div>
                 <h4>Schichtfolgenwechsel (gültig ab)</h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
