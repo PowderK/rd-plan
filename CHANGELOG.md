@@ -1,18 +1,20 @@
-## Build 1468 - 2026-08-22
+## Build 1469 - 2026-08-22
 
 - automated build
 
-## Build 1467 - 2026-08-22
+## Version 1.5.4 (Build 1468) - 2026-08-22
 
-- automated build
-
-## Build 1466 - 2026-08-22
-
-- automated build
-
-## Build 1465 - 2026-08-22
-
-- automated build
+- **ITW-Schichtfolgen & Abteilungszuordnung**:
+  - Behebung der ITW-Musterzuordnung im ITW-Dienstplan (`ItwDienstplanTab.tsx`) und in der ITW-Vorplanung (`ItwVorplanungTab.tsx`): Kollegen unterschiedlicher Abteilungen erhalten bei einer Phasenzuweisung nun exakt die ITW-Schichtfolge ihrer jeweiligen Abteilung.
+  - Fehlerbereinigung beim Speichern von ITW-Schichtfolgen in den Einstellungen (`department`-Attribut wird nun konsistent gespeichert und normalisiert).
+  - Automatisches Bereinigen fehlerhafter automatischer ITW-Einträge bei Abteilungsänderungen.
+- **Einstellungsmenü & Seitenleiste**:
+  - Einstellungskategorien (Allgemein, Dienstplan, Features, ITW, Qualifikationen, Rollen & Rechte, Verlauf) wurden als einklappbarer Ordnerbaum direkt in die Seitenleiste integriert.
+  - Das Einstellungs-Untermenü ist standardmäßig eingeklappt und öffnet sich bei Aktivierung der Einstellungen oder per Klick auf den Pfeil-Button.
+  - Die redundante horizontale Reiterleiste am oberen Rand der Einstellungsseite wurde entfernt für maximale Übersichtlichkeit und Arbeitsfläche.
+  - Entfernung des redundanten Abteilungs-Umschalters im ITW-Einstellungsreiter (es gilt automatisch die im Hauptmenü ausgewählte Abteilung).
+- **Personal- und Fahrzeugmenü**:
+  - Personal und Fahrzeuge sind als eigenständige Hauptmenüpunkte direkt im Seitenmenü verankert.
 
 ## Build 1464 - 2026-08-20
 
