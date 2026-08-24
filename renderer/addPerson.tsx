@@ -252,6 +252,7 @@ const AddPerson: React.FC = () => {
   const [roles, setRoles] = useState<Array<{ id: number; name: string }>>([]);
   const [qualifications, setQualifications] = useState<QualificationPeriod[]>([]);
   const [departmentPeriods, setDepartmentPeriods] = useState<DepartmentPeriod[]>([]);
+  const [active, setActive] = useState(true);
   const [showAddQualification, setShowAddQualification] = useState(false);
   const [showAddDepartment, setShowAddDepartment] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -343,6 +344,7 @@ const AddPerson: React.FC = () => {
         name, 
         vorname, 
         teilzeit,
+        active,
         department: departmentPeriods.length > 0 ? departmentPeriods[0].department : '1. Abteilung',
         personnelNumber: personnelNumber.trim(),
         roleId,
@@ -530,6 +532,21 @@ const AddPerson: React.FC = () => {
             <option key={r.id} value={r.id}>{r.name}</option>
           ))}
         </select>
+      </div>
+
+      <div style={{ marginBottom: '24px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={e => setActive(e.target.checked)}
+            style={{ width: 18, height: 18, cursor: 'pointer' }}
+          />
+          <span style={{ fontWeight: 500 }}>Aktiv</span>
+          <span style={{ fontSize: '13px', color: '#666' }}>
+            ({active ? 'Mitarbeiter ist aktiv' : 'Mitarbeiter ist inaktiv'})
+          </span>
+        </label>
       </div>
 
       {/* Qualifikationen Sektion */}

@@ -586,7 +586,7 @@ const EditPerson: React.FC = () => {
 
     try {
       // Nur noch Basisdaten speichern - Qualifikationen werden separat über Perioden verwaltet
-      await (window as any).api.updatePerson({ id, name, vorname, teilzeit, department, active: true, sort, personnelNumber: personnelNumber.trim(), roleId, oldRtwShifts });
+      await (window as any).api.updatePerson({ id, name, vorname, teilzeit, department, active, sort, personnelNumber: personnelNumber.trim(), roleId, oldRtwShifts });
       if (window.opener) window.opener.postMessage('personnel-updated', '*');
       window.close();
     } catch (e) {
@@ -894,6 +894,19 @@ const EditPerson: React.FC = () => {
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 220 }}>
           <span>Teilzeit (%)</span>
           <input type="number" value={teilzeit} min={0} max={100} onChange={e => setTeilzeit(Number(e.target.value))} />
+        </label>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 24, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={e => setActive(e.target.checked)}
+            style={{ width: 18, height: 18, cursor: 'pointer' }}
+          />
+          <span style={{ fontWeight: 600 }}>Aktiv</span>
+          <span style={{ fontSize: '12px', color: '#666' }}>
+            ({active ? 'Mitarbeiter ist aktiv' : 'Mitarbeiter ist inaktiv'})
+          </span>
         </label>
       </div>
 

@@ -23,6 +23,7 @@ const AddAzubi: React.FC = () => {
   const [vorname, setVorname] = useState('');
   const [lehrjahr, setLehrjahr] = useState(1);
   const [department, setDepartment] = useState('1. Abteilung');
+  const [active, setActive] = useState(true);
   const [periods, setPeriods] = useState<AzubiPeriod[]>([]);
   const [newPeriod, setNewPeriod] = useState<AzubiPeriod>({ start_date: '', end_date: '', description: '', lehrjahr: 1 });
   const [showAddPeriod, setShowAddPeriod] = useState(false);
@@ -77,7 +78,7 @@ const AddAzubi: React.FC = () => {
         return;
       }
       
-      await api.addAzubi({ name, vorname, lehrjahr, department, periods });
+      await api.addAzubi({ name, vorname, lehrjahr, department, periods, active });
       // console.log('[AddAzubi] saved successfully');
       
       try { 
@@ -159,6 +160,21 @@ const AddAzubi: React.FC = () => {
           <option value={2}>2. Lehrjahr</option>
           <option value={3}>3. Lehrjahr</option>
         </select>
+      </div>
+
+      <div style={{ marginBottom: '24px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={e => setActive(e.target.checked)}
+            style={{ width: 18, height: 18, cursor: 'pointer' }}
+          />
+          <span style={{ fontWeight: 500 }}>Aktiv</span>
+          <span style={{ fontSize: '13px', color: '#666' }}>
+            ({active ? 'Azubi ist aktiv' : 'Azubi ist inaktiv'})
+          </span>
+        </label>
       </div>
 
       <div style={{ marginBottom: '24px', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px' }}>

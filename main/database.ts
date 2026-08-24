@@ -1814,22 +1814,23 @@ export const getAzubi = async (db: AsyncDB, id: number) => {
     return azubi;
 };
 
-export const addAzubi = async (db: AsyncDB, azubi: { name: string, vorname: string, lehrjahr: number, department?: string, periods?: any[] }) => {
+export const addAzubi = async (db: AsyncDB, azubi: { name: string, vorname: string, lehrjahr: number, department?: string, periods?: any[], active?: boolean | number }) => {
     const dept = normalizeDepartment(azubi.department);
+    const activeVal = azubi.active !== false && azubi.active !== 0 ? 1 : 0;
     let azubiId: number;
     // determine next sort index (pro Abteilung)
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM azubis WHERE department = ?', [dept]);
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
         const result = await db.run(
-            'INSERT INTO azubis (name, vorname, lehrjahr, sort, department) VALUES (?, ?, ?, ?, ?)',
-            [azubi.name, azubi.vorname, azubi.lehrjahr, next, dept]
+            'INSERT INTO azubis (name, vorname, lehrjahr, sort, department, active) VALUES (?, ?, ?, ?, ?, ?)',
+            [azubi.name, azubi.vorname, azubi.lehrjahr, next, dept, activeVal]
         );
         azubiId = result.lastInsertRowid as number;
     } catch (e) {
         const result = await db.run(
-            'INSERT INTO azubis (name, vorname, lehrjahr, department) VALUES (?, ?, ?, ?)',
-            [azubi.name, azubi.vorname, azubi.lehrjahr, dept]
+            'INSERT INTO azubis (name, vorname, lehrjahr, department, active) VALUES (?, ?, ?, ?, ?)',
+            [azubi.name, azubi.vorname, azubi.lehrjahr, dept, activeVal]
         );
         azubiId = result.lastInsertRowid as number;
     }
@@ -1843,14 +1844,26 @@ export const addAzubi = async (db: AsyncDB, azubi: { name: string, vorname: stri
     return azubiId;
 };
 
-export const updateAzubi = async (db: AsyncDB, azubi: { id: number, name: string, vorname: string, lehrjahr: number, department?: string }) => {
+export const updateAzubi = async (db: AsyncDB, azubi: { id: number, name: string, vorname: string, lehrjahr: number, department?: string, active?: boolean | number }) => {
+    const activeVal = azubi.active !== undefined ? (azubi.active !== false && azubi.active !== 0 ? 1 : 0) : null;
     if (azubi.department != null) {
-        await db.run(
-            'UPDATE azubis SET name = ?, vorname = ?, lehrjahr = ?, department = ? WHERE id = ?',
-            [azubi.name, azubi.vorname, azubi.lehrjahr, normalizeDepartment(azubi.department), azubi.id]
-        );
+        if (activeVal !== null) {
+            await db.run(
+                'UPDATE azubis SET name = ?, vorname = ?, lehrjahr = ?, department = ?, active = ? WHERE id = ?',
+                [azubi.name, azubi.vorname, azubi.lehrjahr, normalizeDepartment(azubi.department), activeVal, azubi.id]
+            );
+        } else {
+            await db.run(
+                'UPDATE azubis SET name = ?, vorname = ?, lehrjahr = ?, department = ? WHERE id = ?',
+                [azubi.name, azubi.vorname, azubi.lehrjahr, normalizeDepartment(azubi.department), azubi.id]
+            );
+        }
     } else {
-        await db.run('UPDATE azubis SET name = ?, vorname = ?, lehrjahr = ? WHERE id = ?', [azubi.name, azubi.vorname, azubi.lehrjahr, azubi.id]);
+        if (activeVal !== null) {
+            await db.run('UPDATE azubis SET name = ?, vorname = ?, lehrjahr = ?, active = ? WHERE id = ?', [azubi.name, azubi.vorname, azubi.lehrjahr, activeVal, azubi.id]);
+        } else {
+            await db.run('UPDATE azubis SET name = ?, vorname = ?, lehrjahr = ? WHERE id = ?', [azubi.name, azubi.vorname, azubi.lehrjahr, azubi.id]);
+        }
     }
 };
 

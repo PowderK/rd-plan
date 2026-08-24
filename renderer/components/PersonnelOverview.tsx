@@ -1702,6 +1702,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                       <th>Vorname</th>
                       <th style={{ width: 130 }}>Personalnummer</th>
                       <th style={{ width: 160 }}>Nutzerrolle</th>
+                      <th style={{ width: 90 }} className={styles.center}>Status</th>
                       <th style={{ width: 120 }} className={styles.center}>Qualifikationen</th>
                       <th style={{ width: 100 }} className={styles.center}>Aktionen</th>
                     </tr>
@@ -1736,6 +1737,30 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                           <td>{person.personnelNumber || '—'}</td>
                           <td>
                             {roles.find(r => r.id === person.roleId)?.name || '—'}
+                          </td>
+                          <td className={styles.center}>
+                            <span
+                              style={{
+                                background: '#dcfce7',
+                                color: '#166534',
+                                border: '1px solid #86efac',
+                                padding: '3px 8px',
+                                borderRadius: '12px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              <span style={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                backgroundColor: '#22c55e'
+                              }} />
+                              Aktiv
+                            </span>
                           </td>
                           <td className={styles.center} style={{ fontSize: '11px', padding: '4px' }}>
                             {qualificationPeriods[person.id] && qualificationPeriods[person.id].length > 0 ? (
@@ -1812,6 +1837,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                           <th>Vorname</th>
                           <th style={{ width: 130 }}>Personalnummer</th>
                           <th style={{ width: 160 }}>Nutzerrolle</th>
+                          <th style={{ width: 90 }} className={styles.center}>Status</th>
                           <th style={{ width: 120 }} className={styles.center}>Qualifikationen</th>
                           <th style={{ width: 100 }} className={styles.center}>Aktionen</th>
                         </tr>
@@ -1839,6 +1865,30 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                               <td>{person.personnelNumber || '—'}</td>
                               <td>
                                 {roles.find(r => r.id === person.roleId)?.name || '—'}
+                              </td>
+                              <td className={styles.center}>
+                                <span
+                                  style={{
+                                    background: '#f1f5f9',
+                                    color: '#64748b',
+                                    border: '1px solid #cbd5e1',
+                                    padding: '3px 8px',
+                                    borderRadius: '12px',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                >
+                                  <span style={{
+                                    width: '6px',
+                                    height: '6px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#94a3b8'
+                                  }} />
+                                  Inaktiv
+                                </span>
                               </td>
                               <td className={styles.center} style={{ fontSize: '11px', padding: '4px' }}>
                                 {qualificationPeriods[person.id] && qualificationPeriods[person.id].length > 0 ? (
@@ -1954,25 +2004,19 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                             {periodsText}
                           </td>
                           <td className={styles.center}>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleAzubiActive(a.id, true);
-                              }}
+                            <span
                               style={{
                                 background: '#dcfce7',
                                 color: '#166534',
                                 border: '1px solid #86efac',
                                 padding: '3px 8px',
                                 borderRadius: '12px',
-                                cursor: 'pointer',
                                 fontSize: '11px',
                                 fontWeight: 600,
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '4px'
                               }}
-                              title="Klicken um Azubi inaktiv zu schalten"
                             >
                               <span style={{
                                 width: '6px',
@@ -1981,7 +2025,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                                 backgroundColor: '#22c55e'
                               }} />
                               Aktiv
-                            </button>
+                            </span>
                           </td>
                           <td className={styles.center}>
                             <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
@@ -2050,25 +2094,19 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                                 {periodsText}
                               </td>
                               <td className={styles.center}>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleAzubiActive(a.id, false);
-                                  }}
+                                <span
                                   style={{
                                     background: '#f1f5f9',
                                     color: '#64748b',
                                     border: '1px solid #cbd5e1',
                                     padding: '3px 8px',
                                     borderRadius: '12px',
-                                    cursor: 'pointer',
                                     fontSize: '11px',
                                     fontWeight: 600,
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     gap: '4px'
                                   }}
-                                  title="Klicken um Azubi zu aktivieren"
                                 >
                                   <span style={{
                                     width: '6px',
@@ -2077,7 +2115,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                                     backgroundColor: '#94a3b8'
                                   }} />
                                   Inaktiv
-                                </button>
+                                </span>
                               </td>
                               <td className={styles.center}>
                                 <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
