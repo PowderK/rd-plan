@@ -295,8 +295,13 @@ export async function initializePostgreSQLDatabase(config: PostgresConfig): Prom
             name VARCHAR(255) NOT NULL,
             vorname VARCHAR(255) NOT NULL,
             lehrjahr INTEGER NOT NULL,
-            sort INTEGER NOT NULL DEFAULT 0
+            sort INTEGER NOT NULL DEFAULT 0,
+            department VARCHAR(255) NOT NULL DEFAULT '1. Abteilung',
+            active INTEGER NOT NULL DEFAULT 1
         );
+        await client.query("ALTER TABLE azubis ADD COLUMN IF NOT EXISTS department VARCHAR(255) DEFAULT '1. Abteilung'");
+        await client.query("ALTER TABLE azubis ADD COLUMN IF NOT EXISTS active INTEGER DEFAULT 1");
+        await client.query("ALTER TABLE azubis ADD COLUMN IF NOT EXISTS sort INTEGER DEFAULT 0");
 
         -- Azubi periods table
         CREATE TABLE IF NOT EXISTS azubi_periods (

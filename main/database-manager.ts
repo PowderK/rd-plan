@@ -2032,10 +2032,21 @@ export class DatabaseManager {
     }
 
     const azubiColsMgr = await db.all("PRAGMA table_info('azubis')");
-    const azubiDeptAdded = !azubiColsMgr.some((c: any) => c.name === 'department');
-    if (azubiDeptAdded) {
-      console.log('[DatabaseManager] Adding department to azubis');
-      await db.exec("ALTER TABLE azubis ADD COLUMN department TEXT NOT NULL DEFAULT '1. Abteilung'");
+    if (azubiColsMgr.length > 0) {
+      if (!azubiColsMgr.some((c: any) => c.name === 'sort')) {
+        console.log('[DatabaseManager] Adding sort to azubis');
+        await db.exec("ALTER TABLE azubis ADD COLUMN sort INTEGER DEFAULT 0");
+        await db.exec("UPDATE azubis SET sort = 0 WHERE sort IS NULL");
+      }
+      if (!azubiColsMgr.some((c: any) => c.name === 'department')) {
+        console.log('[DatabaseManager] Adding department to azubis');
+        await db.exec("ALTER TABLE azubis ADD COLUMN department TEXT NOT NULL DEFAULT '1. Abteilung'");
+      }
+      if (!azubiColsMgr.some((c: any) => c.name === 'active')) {
+        console.log('[DatabaseManager] Adding active to azubis');
+        await db.exec("ALTER TABLE azubis ADD COLUMN active INTEGER DEFAULT 1");
+        await db.exec("UPDATE azubis SET active = 1 WHERE active IS NULL");
+      }
     }
 
     // UNIQUE(personId, personType, date, department) für abteilungsgetrennte Dienstpläne
@@ -2249,7 +2260,8 @@ export class DatabaseManager {
             vorname TEXT NOT NULL,
             lehrjahr INTEGER NOT NULL,
             sort INTEGER NOT NULL DEFAULT 0,
-            department TEXT NOT NULL DEFAULT '1. Abteilung'
+            department TEXT NOT NULL DEFAULT '1. Abteilung',
+            active INTEGER NOT NULL DEFAULT 1
         );
         
         CREATE TABLE IF NOT EXISTS azubi_periods (
@@ -2545,6 +2557,27 @@ export class DatabaseManager {
       }
     } catch (e) {
       console.warn('[DatabaseManager] Warning while ensuring personnel.active column', e);
+    }
+    try {
+      const cols: any[] = await db.all("PRAGMA table_info('azubis')");
+      if (cols.length > 0) {
+        if (!cols.some((c: any) => c.name === 'active')) {
+          console.log('[DatabaseManager] Adding missing column "active" to azubis table');
+          await db.exec("ALTER TABLE azubis ADD COLUMN active INTEGER DEFAULT 1");
+          try { await db.exec("UPDATE azubis SET active = 1 WHERE active IS NULL"); } catch { }
+        }
+        if (!cols.some((c: any) => c.name === 'sort')) {
+          console.log('[DatabaseManager] Adding missing column "sort" to azubis table');
+          await db.exec("ALTER TABLE azubis ADD COLUMN sort INTEGER DEFAULT 0");
+          try { await db.exec("UPDATE azubis SET sort = 0 WHERE sort IS NULL"); } catch { }
+        }
+        if (!cols.some((c: any) => c.name === 'department')) {
+          console.log('[DatabaseManager] Adding missing column "department" to azubis table');
+          await db.exec("ALTER TABLE azubis ADD COLUMN department TEXT NOT NULL DEFAULT '1. Abteilung'");
+        }
+      }
+    } catch (e) {
+      console.warn('[DatabaseManager] Warning while ensuring azubis columns', e);
     }
   }
 
