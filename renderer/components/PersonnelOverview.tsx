@@ -269,7 +269,7 @@ interface Person {
   department?: string;
 }
 
-interface Azubi { id: number; name: string; vorname: string; lehrjahr: number }
+interface Azubi { id: number; name: string; vorname: string; lehrjahr: number; active?: number | boolean; department?: string; }
 interface ItwDoctor { id: number; name: string; vorname: string; anrede?: string; title?: string }
 interface AzubiPeriod {
   id: number;
@@ -402,12 +402,12 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
   }, []);
 
   const loadAzubis = useCallback(async () => {
-    const list = await (window as any).api.getAzubiList(departmentName);
-    setAzubis(list);
+    const list = await (window as any).api.getAzubiList(true, departmentName);
+    setAzubis(list || []);
     // Lade Zeiträume für alle Azubis
     const allPeriods = await (window as any).api.getAllAzubiPeriods();
     const periodsByAzubi: Record<number, AzubiPeriod[]> = {};
-    allPeriods.forEach((period: AzubiPeriod) => {
+    (allPeriods || []).forEach((period: AzubiPeriod) => {
       if (!periodsByAzubi[period.azubi_id]) {
         periodsByAzubi[period.azubi_id] = [];
       }
@@ -415,6 +415,15 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
     });
     setAzubiPeriods(periodsByAzubi);
   }, [departmentName]);
+
+  const toggleAzubiActive = useCallback(async (id: number, currentActive: boolean) => {
+    try {
+      await (window as any).api.setAzubiActive(id, !currentActive);
+      await loadAzubis();
+    } catch (e) {
+      console.error('Fehler beim Umschalten des Azubi-Status:', e);
+    }
+  }, [loadAzubis]);
 
   const loadQualificationPeriods = useCallback(async () => {
     try {
@@ -735,16 +744,33 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
     });
   }, [personnel, isPersonActive, searchQuery, roles]);
 
-  const filteredAzubis = useMemo(() => {
-    if (!searchQuery.trim()) return azubis;
+  const isAzubiActive = useCallback((a: Azubi) => {
+    return a.active !== 0 && (a.active as any) !== false;
+  }, []);
+
+  const filteredActiveAzubis = useMemo(() => {
+    const list = azubis.filter(a => isAzubiActive(a));
+    if (!searchQuery.trim()) return list;
     const q = searchQuery.toLowerCase().trim();
-    return azubis.filter(a => {
+    return list.filter(a => {
       const name = `${a.vorname} ${a.name}`.toLowerCase();
       const revName = `${a.name} ${a.vorname}`.toLowerCase();
       const lj = String(a.lehrjahr || '');
       return name.includes(q) || revName.includes(q) || lj.includes(q);
     });
-  }, [azubis, searchQuery]);
+  }, [azubis, isAzubiActive, searchQuery]);
+
+  const filteredInactiveAzubis = useMemo(() => {
+    const list = azubis.filter(a => !isAzubiActive(a));
+    if (!searchQuery.trim()) return list;
+    const q = searchQuery.toLowerCase().trim();
+    return list.filter(a => {
+      const name = `${a.vorname} ${a.name}`.toLowerCase();
+      const revName = `${a.name} ${a.vorname}`.toLowerCase();
+      const lj = String(a.lehrjahr || '');
+      return name.includes(q) || revName.includes(q) || lj.includes(q);
+    });
+  }, [azubis, isAzubiActive, searchQuery]);
 
   const filteredItws = useMemo(() => {
     if (!searchQuery.trim()) return itws;
@@ -1458,7 +1484,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
 
               {/* Action-Buttons Header */}
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                {activeTab === 'stammpersonal' && (
+                {(activeTab === 'stammpersonal' || activeTab === 'azubis') && (
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#475569', marginRight: '6px', cursor: 'pointer', userSelect: 'none' }}>
                     <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
                     Inaktive anzeigen
@@ -1898,11 +1924,12 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                       <th>Vorname</th>
                       <th className={styles.narrow}>Lehrjahr</th>
                       <th>Zeiträume</th>
+                      <th style={{ width: 90 }} className={styles.center}>Status</th>
                       <th className={styles.center}>Aktionen</th>
                     </tr>
                   </thead>
                   <tbody className={styles.tbody}>
-                    {filteredAzubis.map((a: Azubi) => {
+                    {filteredActiveAzubis.map((a: Azubi) => {
                       const isOver = dragContext === 'azubi' && dragOverId === a.id;
                       const rowClass = [styles.row, selectedAzubiId === a.id ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
                       const periods = azubiPeriods[a.id] || [];
@@ -1925,6 +1952,36 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                           <td>{editingAzubis ? <input type="number" className={styles.narrow} value={a.lehrjahr} onChange={e => updateAzubiField(a.id, 'lehrjahr', Number(e.target.value))} /> : a.lehrjahr}</td>
                           <td style={{ fontSize: '0.9em', color: periods.length > 0 ? '#333' : '#999', maxWidth: '200px', wordWrap: 'break-word' }}>
                             {periodsText}
+                          </td>
+                          <td className={styles.center}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleAzubiActive(a.id, true);
+                              }}
+                              style={{
+                                background: '#dcfce7',
+                                color: '#166534',
+                                border: '1px solid #86efac',
+                                padding: '3px 8px',
+                                borderRadius: '12px',
+                                cursor: 'pointer',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              title="Klicken um Azubi inaktiv zu schalten"
+                            >
+                              <span style={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                backgroundColor: '#22c55e'
+                              }} />
+                              Aktiv
+                            </button>
                           </td>
                           <td className={styles.center}>
                             <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
@@ -1954,6 +2011,123 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                     })}
                   </tbody>
                 </table>
+
+                {/* Inaktive Azubis Tabelle */}
+                {showInactive && filteredInactiveAzubis.length > 0 && (
+                  <div style={{ marginTop: '32px' }}>
+                    <h4 style={{ color: '#666', marginBottom: '8px', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>Inaktive Azubis</h4>
+                    <table className={styles.table} style={{ opacity: 0.75 }}>
+                      <thead>
+                        <tr className={styles.thead} style={{ color: '#666' }}>
+                          <th>Name</th>
+                          <th>Vorname</th>
+                          <th className={styles.narrow}>Lehrjahr</th>
+                          <th>Zeiträume</th>
+                          <th style={{ width: 90 }} className={styles.center}>Status</th>
+                          <th className={styles.center}>Aktionen</th>
+                        </tr>
+                      </thead>
+                      <tbody className={styles.tbody}>
+                        {filteredInactiveAzubis.map((a: Azubi) => {
+                          const selected = selectedAzubiId === a.id;
+                          const rowClass = [styles.row, selected ? styles.selected : ''].filter(Boolean).join(' ');
+                          const periods = azubiPeriods[a.id] || [];
+                          const periodsText = periods.length > 0
+                            ? periods.map(p => `${new Date(p.start_date).toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })} - ${new Date(p.end_date).toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })} `).join(', ')
+                            : 'Keine Zeiträume definiert';
+
+                          return (
+                            <tr
+                              key={a.id}
+                              onClick={() => handleAzubiRowClick(a.id)}
+                              className={rowClass}
+                              style={{ color: '#666' }}
+                            >
+                              <td>{a.name}</td>
+                              <td>{a.vorname}</td>
+                              <td className={styles.narrow}>{a.lehrjahr}</td>
+                              <td style={{ fontSize: '0.9em', color: '#999', maxWidth: '200px', wordWrap: 'break-word' }}>
+                                {periodsText}
+                              </td>
+                              <td className={styles.center}>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleAzubiActive(a.id, false);
+                                  }}
+                                  style={{
+                                    background: '#f1f5f9',
+                                    color: '#64748b',
+                                    border: '1px solid #cbd5e1',
+                                    padding: '3px 8px',
+                                    borderRadius: '12px',
+                                    cursor: 'pointer',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                  title="Klicken um Azubi zu aktivieren"
+                                >
+                                  <span style={{
+                                    width: '6px',
+                                    height: '6px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#94a3b8'
+                                  }} />
+                                  Inaktiv
+                                </button>
+                              </td>
+                              <td className={styles.center}>
+                                <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      (window as any).api.openEditAzubiWindow(a.id);
+                                    }}
+                                    style={{
+                                      background: '#f1f5f9',
+                                      color: '#0f172a',
+                                      border: '1px solid #cbd5e1',
+                                      padding: '4px 8px',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontSize: '11px',
+                                      fontWeight: 500
+                                    }}
+                                    title="Azubi bearbeiten"
+                                  >
+                                    Bearbeiten
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleAzubiActive(a.id, false);
+                                    }}
+                                    style={{
+                                      background: '#22c55e',
+                                      color: 'white',
+                                      border: 'none',
+                                      padding: '4px 8px',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontSize: '11px',
+                                      fontWeight: 500
+                                    }}
+                                    title="Azubi wieder aktivieren"
+                                  >
+                                    Aktivieren
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
                 {!editingAzubis ? (
                   !setFooterActions ? (
                     <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>

@@ -89,7 +89,8 @@ contextBridge.exposeInMainWorld('api', {
     // System Info
     getSystemUsername: () => ipcRenderer.invoke('get-system-username'),
     openAzubiWindow: () => ipcRenderer.send('open-azubi-window'),
-    getAzubiList: (department?: string) => ipcRenderer.invoke('get-azubi-list', department),
+    getAzubiList: (includeInactiveOrDept?: boolean | string, department?: string) => ipcRenderer.invoke('get-azubi-list', includeInactiveOrDept, department),
+    setAzubiActive: (id: number, active: boolean) => ipcRenderer.invoke('set-azubi-active', id, active),
     addAzubi: (azubi: any) => ipcRenderer.invoke('add-azubi', azubi),
     updateAzubi: (azubi: any) => ipcRenderer.invoke('update-azubi', azubi),
     deleteAzubi: (id: number) => ipcRenderer.invoke('delete-azubi', id),

@@ -7,9 +7,15 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v1.5.4** - Strukturierte Einstellungsnavigation als einklappbarer Ordnerbaum in der Seitenleiste, abteilungsspezifische ITW-Schichtfolgenzuordnung und bereinigte Einstellungs-Arbeitsfläche.
+**v1.5.4** - Wertetabelle mit Ampelsystem (Soll/Ist-Vergleich) und dezenter Nullendarstellung, transparente Fallback-Zeilen für Altdaten gelöschter Mitarbeiter/Azubis, 1-Klick-Inaktivstatus für Azubis sowie einklappbarer Ordnerbaum für Einstellungen in der Seitenleiste.
 
 ## Funktionen
+
+### Wertetabelle & Ampelsystem (v1.5.4+)
+- **Ampelsystem (Soll/Ist)**: Schneller Überblick über die Schichterfüllung (Grün: im Soll, Blau: Überhang/Plus, Orange: -1 Schicht, Rot: Defizit).
+- **Nullen-Kennzeichnung**: Inaktive Monate und Nullen (`0 | 0`) werden dezent in Grau dargestellt, um die Lesbarkeit aktiver Werte zu maximieren.
+- **Transparente Fallbacks**: Schichten gelöschter Azubis oder Mitarbeiter werden automatisch als Altdatenzeilen aufgeführt, sodass Summen 100% konsistent bleiben.
+- **1-Klick Azubi-Status**: Azubis können mit einem Klick auf ihren Status-Badge aktiv oder inaktiv geschaltet werden; inaktive Azubis werden standardmäßig ausgeblendet.
 
 ### Automatische Azubi-Einteilung (v1.3.0+)
 - **One-Click Verteilung**: Weist auf Knopfdruck alle ungeplanten Azubis des Monats auf freie Slots (RTW 2 für Maschinisten, RTW 3 für normale Azubis) zu.

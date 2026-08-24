@@ -990,12 +990,32 @@ ipcMain.handle('get-azubi-list', async (_event, department?: string) => {
     const user = auth.getCurrentUser();
     const adapter = await ensureDatabaseAdapter();
 
-    let targetDept = user?.assignedDepartment;
-    if (targetDept === 'all' && department) {
-        targetDept = department;
+    let incInactive = false;
+    let dept: string | undefined = undefined;
+    if (typeof department === 'boolean') {
+        incInactive = department;
+    } else if (typeof department === 'string') {
+        dept = department;
     }
 
-    return await adapter.getAzubiList(targetDept);
+    let targetDept = user?.assignedDepartment;
+    if (targetDept === 'all' && dept) {
+        targetDept = dept;
+    } else if (!targetDept && dept) {
+        targetDept = dept;
+    }
+
+    return await adapter.getAzubiList(targetDept, incInactive);
+});
+
+// Set azubi active/inactive
+ipcMain.handle('set-azubi-active', async (_event, id: number, active: boolean) => {
+    const auth = getAuthService();
+    auth.requirePermission('personal', 'write');
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.setAzubiActive(id, !!active);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubi-updated'); w.webContents.send('azubis-updated'); } catch { } });
+    return true;
 });
 
 ipcMain.handle('add-azubi', async (_event, azubi: any) => {

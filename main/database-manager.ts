@@ -32,7 +32,8 @@ export interface DatabaseAdapter {
   bulkImportDutyRosterEntries(entries: any[], respectManualEdits?: boolean, deleteEmpty?: boolean): Promise<{ imported: number; skipped: number; }>;
   deleteOrphanedDutyRosterEntries(year: number, monthRange: { start: number; end: number } | number | undefined, seenPersonIds: string[], department?: string): Promise<any>;
 
-  getAzubiList(department?: string): Promise<any[]>;
+  getAzubiList(department?: string, includeInactive?: boolean): Promise<any[]>;
+  setAzubiActive(id: number, active: boolean): Promise<void>;
   getAzubi(id: number): Promise<any | null>;
   addAzubi(azubi: any): Promise<any>;
   updateAzubi(azubi: any): Promise<void>;
@@ -286,9 +287,14 @@ class SQLiteAdapter implements DatabaseAdapter {
     return deleteOrphanedDutyRosterEntries(this.db, year, monthRange, seenPersonIds, department);
   }
 
-  async getAzubiList(department?: string) {
+  async getAzubiList(department?: string, includeInactive?: boolean) {
     const { getAzubiList } = await import('./database');
-    return getAzubiList(this.db, department);
+    return getAzubiList(this.db, department, includeInactive);
+  }
+
+  async setAzubiActive(id: number, active: boolean) {
+    const { setAzubiActive } = await import('./database');
+    return setAzubiActive(this.db, id, active);
   }
 
   async getAzubi(id: number) {

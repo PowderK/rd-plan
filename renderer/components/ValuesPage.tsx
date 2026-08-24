@@ -456,13 +456,75 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         ensure(Number(row.personId))[month] += 1;
       } catch { }
     }
-    const rows = (azubis || []).map(a => ({
-      id: a.id,
-      name: `${a.vorname ? a.vorname + ' ' : ''}${a.name} (Azubi)`.trim(),
-      counts: countsByAzubi[a.id] || Array(12).fill(0)
-    }));
+    const knownAzubiMap = new Map<number, any>((azubis || []).map(a => [Number(a.id), a]));
+    const rows: { id: number | string; name: string; counts: number[]; isDeleted?: boolean }[] = [];
+
+    // Bekannte Azubis
+    (azubis || []).forEach(a => {
+      rows.push({
+        id: a.id,
+        name: `${a.vorname ? a.vorname + ' ' : ''}${a.name} (Azubi)`.trim(),
+        counts: countsByAzubi[a.id] || Array(12).fill(0)
+      });
+    });
+
+    // Fallback-Zeilen für gelöschte / ehemalige Azubis mit Schichten
+    for (const [idStr, counts] of Object.entries(countsByAzubi)) {
+      const azId = Number(idStr);
+      if (!knownAzubiMap.has(azId) && counts.some(c => c > 0)) {
+        rows.push({
+          id: `del_az_${azId}`,
+          name: `Gelöschter Azubi (ID ${azId})`,
+          counts,
+          isDeleted: true
+        });
+      }
+    }
+
     return rows;
   }, [roster, azubis]);
+
+  const deletedPersonnelFallbackRows = useMemo(() => {
+    const knownIds = new Set((personnel || []).map(p => Number(p.id)));
+    const deletedCounts: Record<number, number[]> = {};
+    const ensure = (id: number) => (deletedCounts[id] ||= Array(12).fill(0));
+
+    for (const row of (roster || [])) {
+      try {
+        if (String(row.personType) !== 'person') continue;
+        const pid = Number(row.personId);
+        if (knownIds.has(pid)) continue;
+        const t = String(row.type || '');
+        const iso = String(row.date);
+        if (!iso) continue;
+        const month = new Date(iso + 'T00:00:00Z').getUTCMonth();
+        if (/^rtw\d+_(tag|nacht)_(1|2)$/.test(t) || t.startsWith('itw_row_')) {
+          ensure(pid)[month] += 1;
+        } else if (/^nef(\d+)?_assist$/.test(t)) {
+          const nefMatch = t.match(/^nef(\d+)?_assist$/);
+          const nefIndex = nefMatch && nefMatch[1] ? Math.max(0, Number(nefMatch[1]) - 1) : 0;
+          const nefObj = nef[nefIndex] as any;
+          const mode = nefObj?.occupancyMode || nefObj?.occupancy_mode || '24h';
+          ensure(pid)[month] += (mode === 'tag' ? 1 : 2);
+        }
+      } catch { }
+    }
+
+    const rows: { id: number; name: string; assigned: number[]; targets: number[]; isDeleted: boolean; fahrzeugfuehrerHLFB?: boolean; ue50?: boolean; vorname?: string }[] = [];
+    for (const [idStr, counts] of Object.entries(deletedCounts)) {
+      const pid = Number(idStr);
+      if (counts.some(c => c > 0)) {
+        rows.push({
+          id: pid,
+          name: `Gelöschter Mitarbeiter (ID ${pid})`,
+          assigned: counts,
+          targets: Array(12).fill(0),
+          isDeleted: true
+        });
+      }
+    }
+    return rows;
+  }, [roster, personnel, nef]);
 
   const perGuestPositions = useMemo(() => {
     const countsByGuest: Record<number, number[]> = {};
@@ -537,6 +599,83 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
 
   const fmt = (v: number) => new Intl.NumberFormat('de-DE').format(Number(v || 0));
   const fmtDec = (v: number) => new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(Number(v || 0));
+
+  const getSollIstStyle = (targVal: number, istVal: number, hasTransfer: boolean = false) => {
+    // 1. Both zeros: Muted Grey
+    if (targVal === 0 && istVal === 0) {
+      return {
+        targetColor: 'var(--muted, #94a3b8)',
+        targetWeight: 'normal' as const,
+        istColor: 'var(--muted, #94a3b8)',
+        istWeight: 'normal' as const,
+        tooltipExtra: 'Kein Dienst / Kein Soll'
+      };
+    }
+
+    // 2. Extra shifts without Soll (targVal == 0, istVal > 0)
+    if (targVal === 0 && istVal > 0) {
+      return {
+        targetColor: 'var(--muted, #94a3b8)',
+        targetWeight: 'normal' as const,
+        istColor: '#6366f1',
+        istWeight: 600 as const,
+        tooltipExtra: `+${istVal} Zusatzschichten ohne Soll`
+      };
+    }
+
+    // 3. Soll > 0
+    const targetColor = hasTransfer ? 'var(--accent)' : 'var(--text)';
+    const targetWeight = hasTransfer ? ('bold' as const) : ('normal' as const);
+    const delta = istVal - targVal;
+
+    if (istVal === 0) {
+      return {
+        targetColor,
+        targetWeight,
+        istColor: '#ef4444',
+        istWeight: 600 as const,
+        tooltipExtra: `Starkes Defizit: 0 von ${targVal} Schichten geleistet (-${targVal})`
+      };
+    }
+
+    if (delta === 0) {
+      return {
+        targetColor,
+        targetWeight,
+        istColor: '#16a34a',
+        istWeight: 600 as const,
+        tooltipExtra: 'Soll exakt erfüllt (±0)'
+      };
+    }
+
+    if (delta > 0) {
+      return {
+        targetColor,
+        targetWeight,
+        istColor: '#0284c7',
+        istWeight: 600 as const,
+        tooltipExtra: `Überhang: +${delta} ${delta === 1 ? 'Schicht' : 'Schichten'} über Soll`
+      };
+    }
+
+    if (delta === -1) {
+      return {
+        targetColor,
+        targetWeight,
+        istColor: '#d97706',
+        istWeight: 600 as const,
+        tooltipExtra: 'Geringes Defizit: 1 Schicht unter Soll (-1)'
+      };
+    }
+
+    return {
+      targetColor,
+      targetWeight,
+      istColor: '#dc2626',
+      istWeight: 600 as const,
+      tooltipExtra: `Defizit: ${Math.abs(delta)} Schichten unter Soll (${delta})`
+    };
+  };
 
   const InfoIcon = ({ color = 'var(--primary)' }: { color?: string }) => (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ minWidth: 14, cursor: 'help' }}>
@@ -695,7 +834,43 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   return (
     <div className="page-container">
       {renderCalculationPopup()}
-      <h2 className="page-header">Werte – {year}{departmentName ? ` – ${departmentName}` : ''}</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
+        <h2 className="page-header" style={{ margin: 0 }}>Werte – {year}{departmentName ? ` – ${departmentName}` : ''}</h2>
+        {/* Ampel Legende */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          fontSize: '12px',
+          background: 'var(--bg-card)',
+          padding: '6px 12px',
+          borderRadius: 8,
+          border: '1px solid var(--line)',
+          color: 'var(--text)'
+        }}>
+          <span style={{ fontWeight: 600, color: 'var(--muted)', marginRight: 2 }}>Ampel (Soll | Ist):</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#16a34a' }} />
+            <span>Im Soll</span>
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#0284c7' }} />
+            <span>Plus</span>
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#d97706' }} />
+            <span>-1 Schicht</span>
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#dc2626' }} />
+            <span>Defizit</span>
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#94a3b8' }} />
+            <span style={{ color: '#94a3b8' }}>0 / Kein Dienst</span>
+          </span>
+        </div>
+      </div>
       <div className="page-content" style={{ overflow: 'auto', maxHeight: '74vh', border: '1px solid var(--line)', borderRadius: 10, position: 'relative', paddingTop: 0 }}>
         <table style={styles.table}>
           <thead>
@@ -868,60 +1043,78 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               </td>
             </tr>
 
-            {visiblePersonnelRows.map(row => {
-              const assigned = perPersonAssignedMap[row.id] || Array(12).fill(0);
-              const sumAssigned = assigned.reduce((a, b) => a + b, 0);
-              const targets = calculationResult.targetsById[row.id] || Array(12).fill(0);
-              const sumTargets = targets.reduce((a, b) => a + b, 0);
-              const nameColor = row.fahrzeugfuehrerHLFB ? 'var(--accent)' : undefined;
-              const displayName = `${row.vorname ? `${row.vorname} ` : ''}${row.name}`.trim();
-              const quicktipText = `Persönliche Werte von ${displayName}: Links = Berechnetes Schichtsoll laut Verteilungsschlüssel (Soll). Rechts = Tatsächlich geleistete Schichten (Ist). Klicken für Details zur Soll-Berechnung.`;
+            {[...visiblePersonnelRows, ...(canReadAllWerte ? deletedPersonnelFallbackRows : [])].map(row => {
+              const isDeleted = (row as any).isDeleted === true;
+              const assigned = isDeleted ? (row as any).assigned : (perPersonAssignedMap[row.id] || Array(12).fill(0));
+              const sumAssigned = assigned.reduce((a: number, b: number) => a + b, 0);
+              const targets = isDeleted ? (row as any).targets : (calculationResult.targetsById[row.id] || Array(12).fill(0));
+              const sumTargets = targets.reduce((a: number, b: number) => a + b, 0);
+              const nameColor = isDeleted ? 'var(--muted)' : row.fahrzeugfuehrerHLFB ? 'var(--accent)' : undefined;
+              const displayName = isDeleted ? row.name : `${row.vorname ? `${row.vorname} ` : ''}${row.name}`.trim();
+              const quicktipText = isDeleted
+                ? `Altdaten für ${displayName} (Mitarbeiter nicht mehr im aktiven Personalbestand): Tatsächlich geleistete Schichten = ${sumAssigned}.`
+                : `Persönliche Werte von ${displayName}: Links = Berechnetes Schichtsoll laut Verteilungsschlüssel (Soll). Rechts = Tatsächlich geleistete Schichten (Ist). Klicken für Details zur Soll-Berechnung.`;
 
               return (
-                <tr key={row.id} style={Number(row.id) % 2 === 0 ? styles.zebra1 : styles.zebra2} title={quicktipText}>
+                <tr key={isDeleted ? `del_p_${row.id}` : row.id} style={Number(row.id) % 2 === 0 ? styles.zebra1 : styles.zebra2} title={quicktipText}>
                   <td
                     style={{
                       ...(styles.nameSticky as any),
                       color: nameColor,
-                      fontWeight: row.ue50 ? 600 : undefined,
-                      cursor: 'pointer',
-                      textDecoration: 'underline'
+                      fontStyle: isDeleted ? 'italic' : undefined,
+                      fontWeight: (!isDeleted && row.ue50) ? 600 : undefined,
+                      cursor: isDeleted ? 'default' : 'pointer',
+                      textDecoration: isDeleted ? 'none' : 'underline'
                     }}
-                    onClick={() => setSelectedPersonId(row.id)}
-                    title={`Klicken für Details zur Soll-Berechnung von ${displayName}`}
+                    onClick={() => {
+                      if (!isDeleted) setSelectedPersonId(row.id);
+                    }}
+                    title={isDeleted ? quicktipText : `Klicken für Details zur Soll-Berechnung von ${displayName}`}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span>{displayName}</span>
-                      <InfoIcon color="var(--status-success)" />
+                      {isDeleted ? <AlertIcon /> : <InfoIcon color="var(--status-success)" />}
                     </div>
                   </td>
-                  {assigned.map((istVal, i) => {
+                  {assigned.map((istVal: number, i: number) => {
                     const targVal = targets[i] || 0;
-                    const hasTransfer = (shiftTransfers || []).some((t: any) => {
+                    const hasTransfer = !isDeleted && (shiftTransfers || []).some((t: any) => {
                       if (t.to_person_id !== row.id) return false;
                       const [ty, tm] = (t.month || '').split('-').map(Number);
                       return ty === year && tm === (i + 1);
                     });
-                    const targetColor = hasTransfer ? 'var(--accent)' : 'var(--text)';
-                    const targetWeight = hasTransfer ? 'bold' : 'normal';
+                    const cellStyle = getSollIstStyle(targVal, istVal, hasTransfer);
 
                     return (
-                      <td key={i} style={styles.td} title={`${monthNames[i]}: ${fmt(targVal)} Soll-Schichten | ${fmt(istVal)} Ist-Schichten`}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                          <span style={{ color: targetColor, fontWeight: targetWeight }}>{targVal ? fmt(targVal) : '0'}</span>
-                          <span style={{ color: 'var(--muted)' }}>|</span>
-                          <span>{fmt(istVal)}</span>
+                      <td key={i} style={styles.td} title={`${monthNames[i]}: ${fmt(targVal)} Soll | ${fmt(istVal)} Ist (${cellStyle.tooltipExtra})`}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                          <span style={{ color: cellStyle.targetColor, fontWeight: cellStyle.targetWeight }}>
+                            {targVal ? fmt(targVal) : <span style={{ color: '#94a3b8' }}>0</span>}
+                          </span>
+                          <span style={{ color: '#cbd5e1', fontSize: '10px' }}>|</span>
+                          <span style={{ color: cellStyle.istColor, fontWeight: cellStyle.istWeight }}>
+                            {istVal ? fmt(istVal) : <span style={{ color: targVal === 0 ? '#94a3b8' : '#ef4444', fontWeight: targVal === 0 ? 'normal' : 600 }}>0</span>}
+                          </span>
                         </div>
                       </td>
                     );
                   })}
-                  <td style={styles.td} title={`Jahressumme ${displayName}: ${fmt(sumTargets)} Soll | ${fmt(sumAssigned)} Ist`}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                      <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{fmt(sumTargets)}</span>
-                      <span style={{ color: 'var(--muted)' }}>|</span>
-                      <span>{fmt(sumAssigned)}</span>
-                    </div>
-                  </td>
+                  {(() => {
+                    const sumStyle = getSollIstStyle(sumTargets, sumAssigned, false);
+                    return (
+                      <td style={styles.td} title={`Jahressumme ${displayName}: ${fmt(sumTargets)} Soll | ${fmt(sumAssigned)} Ist (${sumStyle.tooltipExtra})`}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                          <span style={{ color: sumTargets > 0 ? 'var(--accent)' : '#94a3b8', fontWeight: 600 }}>
+                            {fmt(sumTargets)}
+                          </span>
+                          <span style={{ color: '#cbd5e1', fontSize: '10px' }}>|</span>
+                          <span style={{ color: sumStyle.istColor, fontWeight: 700 }}>
+                            {fmt(sumAssigned)}
+                          </span>
+                        </div>
+                      </td>
+                    );
+                  })()}
                 </tr>
               );
             })}
@@ -946,19 +1139,30 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                 </tr>
                 {[...perGuestPositions, ...perAzubiMaschinist].map((row, idx) => {
                   const sum = row.counts.reduce((a, b) => a + b, 0);
-                  const guestQuicktip = `Geleistete Einsätze von ${row.name} auf Gast- oder Azubi-Maschinist-Positionen.`;
+                  const isDel = (row as any).isDeleted === true;
+                  const guestQuicktip = isDel
+                    ? `Altdaten für ${row.name} (Azubi nicht mehr im aktiven Bestand): ${sum} geleistete Maschinist-Einsätze.`
+                    : `Geleistete Einsätze von ${row.name} auf Gast- oder Azubi-Maschinist-Positionen.`;
                   return (
                     <tr key={`ga_${idx}_${row.id}`} style={idx % 2 === 0 ? styles.zebra1 : styles.zebra2} title={guestQuicktip}>
-                      <td style={styles.nameSticky as any} title={guestQuicktip}>
+                      <td style={{
+                        ...(styles.nameSticky as any),
+                        color: isDel ? 'var(--muted)' : undefined,
+                        fontStyle: isDel ? 'italic' : undefined
+                      }} title={guestQuicktip}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span>{row.name}</span>
-                          <InfoIcon color="var(--status-warning)" />
+                          {isDel ? <AlertIcon /> : <InfoIcon color="var(--status-warning)" />}
                         </div>
                       </td>
                       {row.counts.map((v, i) => (
-                        <td key={i} style={styles.td} title={`${monthNames[i]}: ${v ? fmt(v) : '0'} Einsätze`}>{v ? fmt(v) : ''}</td>
+                        <td key={i} style={styles.td} title={`${monthNames[i]}: ${v ? fmt(v) : '0'} Einsätze`}>
+                          {v ? <span style={{ color: '#0284c7', fontWeight: 600 }}>{fmt(v)}</span> : <span style={{ color: '#94a3b8' }}>0</span>}
+                        </td>
                       ))}
-                      <td style={styles.td} title={`Jahressumme: ${sum ? fmt(sum) : '0'} Einsätze`}>{sum ? fmt(sum) : ''}</td>
+                      <td style={styles.td} title={`Jahressumme: ${sum ? fmt(sum) : '0'} Einsätze`}>
+                        {sum ? <span style={{ color: '#0284c7', fontWeight: 700 }}>{fmt(sum)}</span> : <span style={{ color: '#94a3b8' }}>0</span>}
+                      </td>
                     </tr>
                   );
                 })}

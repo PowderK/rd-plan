@@ -569,6 +569,10 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
     if (!azubiCols.some((c: any) => c.name === 'department')) {
         await db.exec("ALTER TABLE azubis ADD COLUMN department TEXT NOT NULL DEFAULT '1. Abteilung'");
     }
+    if (!azubiCols.some((c: any) => c.name === 'active')) {
+        await db.exec("ALTER TABLE azubis ADD COLUMN active INTEGER DEFAULT 1");
+        await db.exec("UPDATE azubis SET active = 1 WHERE active IS NULL");
+    }
 
     // --- Azubi Periods Tabelle ---
     await db.exec(`
@@ -1734,12 +1738,20 @@ export const migrateRosterReleasedPerDepartment = async (
     return { migrated, skipped: false };
 };
 
-export const getAzubiList = async (db: AsyncDB, department?: string) => {
+export const getAzubiList = async (db: AsyncDB, department?: string, includeInactive: boolean = false) => {
     let query = 'SELECT * FROM azubis';
     const params: any[] = [];
+    const conditions: string[] = [];
+
+    if (!includeInactive) {
+        conditions.push('(active = 1 OR active IS NULL)');
+    }
     if (department && department !== 'all') {
-        query += ' WHERE department = ?';
+        conditions.push('department = ?');
         params.push(normalizeDepartment(department));
+    }
+    if (conditions.length > 0) {
+        query += ' WHERE ' + conditions.join(' AND ');
     }
     query += ' ORDER BY sort ASC, id ASC';
     const azubis = await db.all(query, params);
@@ -1769,6 +1781,10 @@ export const getAzubiList = async (db: AsyncDB, department?: string) => {
     }
 
     return azubis;
+};
+
+export const setAzubiActive = async (db: AsyncDB, id: number, active: boolean) => {
+    await db.run('UPDATE azubis SET active = ? WHERE id = ?', [active ? 1 : 0, id]);
 };
 
 export const getAzubi = async (db: AsyncDB, id: number) => {
