@@ -1,18 +1,11 @@
 ## Build 1477 - 2026-08-24
 
-- automated build
-
-## Build 1476 - 2026-08-24
-
-- automated build
-
-## Build 1475 - 2026-08-24
-
-- automated build
-
-## Build 1474 - 2026-08-24
-
-- automated build
+- **Azubi-Verwaltung – Automatische zeitraumgesteuerte Aktivierung**:
+  - **Vollautomatische Statusberechnung**: Azubis werden nun basierend auf ihren Ausbildungszeiträumen (`azubi_periods`) automatisch als *Aktiv* bzw. *Inaktiv* eingestuft.
+  - **Automatisches Auslaufen**: Endet der aktuelle Zeitraum und liegt kein weiterer Zeitraum vor, wird der Azubi automatisch als inaktiv geführt.
+  - **Erweiterung & Reaktivierung**: Sobald ein neuer Zeitraum (weiteres Lehrjahr oder Praktikum) angelegt oder verlängert wird und das aktuelle Datum umfasst, ist der Azubi sofort wieder aktiv.
+  - **Reine Statusanzeige**: Die manuelle Umschaltung wurde durch eine dezente, übersichtliche Statusanzeige (Badge `Aktiv` bzw. `Inaktiv`) in der Personalübersicht abgelöst.
+  - **Datenbank & Migration**: Korrektur der SQLite- und PostgreSQL-Schemas sowie automatischer Tabellenmigrationen für die Spalte `active` in der Tabelle `azubis`.
 
 ## Build 1473 - 2026-08-24
 
