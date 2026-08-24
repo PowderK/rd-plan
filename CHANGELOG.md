@@ -1,10 +1,27 @@
+## Build 1472 - 2026-08-24
+
+- automated build
+
 ## Build 1471 - 2026-08-24
 
-- automated build
-
-## Build 1470 - 2026-08-24
-
-- automated build
+- **Wertetabelle – Ampelsystem & Nullen-Kennzeichnung**:
+  - Farbliche Ampelkennzeichnung für `Soll | Ist`-Werte:
+    - 🟢 **Grün**: Soll exakt erreicht (`Ist == Soll` bei Soll > 0).
+    - 🔵 **Blau**: Plus-Schichten / Überhang (`Ist > Soll`).
+    - 🟠 **Orange**: Geringes Defizit (`Ist == Soll - 1`).
+    - 🔴 **Rot**: Größeres Defizit (`Ist < Soll - 1` oder `0` geleistet bei Soll > 0).
+    - ⚪ **Grau (`#94a3b8`)**: Dezent graue Darstellung für Nullen (`0 | 0`) und dienstfreie Monate für eine aufgeräumte, kontraststarke Übersicht.
+    - 🟣 **Indigo**: Zusatzschichten ohne festes Monatssoll.
+  - Kompakte Ampel-Legende im Seitenkopf der Wertetabelle.
+  - Detaillierte Mouseover-Tooltips mit Delta-Angaben je Zelle.
+- **Wertetabelle – Fallback-Zeilen für gelöschte Kollegen & Azubis**:
+  - Vollständige Erhaltung aller Schichtdaten in der Datenbank ohne Datenbereinigung.
+  - Automatische, transparente Fallback-Zeilen (`Gelöschter Azubi (ID X)` und `Gelöschter Mitarbeiter (ID X)`) für alle Schichten im Dienstplan, deren IDs keinem aktiven Datensatz mehr zugeordnet sind.
+  - Exakte Übereinstimmung aller Einzelzeilen mit den berechneten Gesamt-KPIs.
+- **Personalverwaltung – 1-Klick Inaktivschaltung für Azubis**:
+  - Neuer Status `Aktiv` / `Inaktiv` für Azubis (inkl. Datenbankmigration `active INTEGER DEFAULT 1` auf der Tabelle `azubis`).
+  - 1-Klick-Statusbadge in der Azubi-Tabelle zum schnellen Umschalten.
+  - Standardmäßiges Ausblenden inaktiver Azubis zur Verkürzung der Liste; Einblenden und Reaktivieren über Checkbox *„Inaktive anzeigen“*.
 
 ## Build 1469 - 2026-08-22
 
