@@ -416,15 +416,6 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
     setAzubiPeriods(periodsByAzubi);
   }, [departmentName]);
 
-  const toggleAzubiActive = useCallback(async (id: number, currentActive: boolean) => {
-    try {
-      await (window as any).api.setAzubiActive(id, !currentActive);
-      await loadAzubis();
-    } catch (e) {
-      console.error('Fehler beim Umschalten des Azubi-Status:', e);
-    }
-  }, [loadAzubis]);
-
   const loadQualificationPeriods = useCallback(async () => {
     try {
       const allPeriods = await (window as any).api.getAllQualificationPeriods();
@@ -745,12 +736,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
   }, [personnel, isPersonActive, searchQuery, roles]);
 
   const isAzubiActive = useCallback((a: Azubi) => {
-    // 1. Manuell inaktiv geschaltet?
-    if (a.active === 0 || (a.active as any) === false) {
-      return false;
-    }
-
-    // 2. Zeiträume prüfen: aktiv nur, wenn der heutige Tag in einem definierten Zeitraum liegt
+    // Zeiträume prüfen: aktiv nur, wenn der heutige Tag in einem definierten Zeitraum liegt (oder noch keine Zeiträume definiert sind)
     const periods = azubiPeriods[a.id] || [];
     if (periods.length > 0) {
       const now = new Date();
@@ -762,7 +748,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
       });
     }
 
-    // 3. Fallback, falls noch keine Zeiträume definiert sind
+    // Fallback, falls noch keine Zeiträume definiert sind
     return true;
   }, [azubiPeriods]);
 
@@ -1972,25 +1958,21 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                             {periodsText}
                           </td>
                           <td className={styles.center}>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleAzubiActive(a.id, true);
-                              }}
+                            <span
                               style={{
                                 background: '#dcfce7',
                                 color: '#166534',
                                 border: '1px solid #86efac',
                                 padding: '3px 8px',
                                 borderRadius: '12px',
-                                cursor: 'pointer',
                                 fontSize: '11px',
                                 fontWeight: 600,
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '4px'
+                                gap: '4px',
+                                userSelect: 'none'
                               }}
-                              title="Klicken um Azubi inaktiv zu schalten"
+                              title="Aktiv im aktuellen Zeitraum"
                             >
                               <span style={{
                                 width: '6px',
@@ -1999,7 +1981,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                                 backgroundColor: '#22c55e'
                               }} />
                               Aktiv
-                            </button>
+                            </span>
                           </td>
                           <td className={styles.center}>
                             <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
@@ -2068,25 +2050,21 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                                 {periodsText}
                               </td>
                               <td className={styles.center}>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleAzubiActive(a.id, false);
-                                  }}
+                                <span
                                   style={{
                                     background: '#f1f5f9',
                                     color: '#64748b',
                                     border: '1px solid #cbd5e1',
                                     padding: '3px 8px',
                                     borderRadius: '12px',
-                                    cursor: 'pointer',
                                     fontSize: '11px',
                                     fontWeight: 600,
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '4px'
+                                    gap: '4px',
+                                    userSelect: 'none'
                                   }}
-                                  title="Klicken um Azubi zu aktivieren"
+                                  title="Inaktiv (Zeitraum abgelaufen oder kein aktueller Zeitraum hinterlegt)"
                                 >
                                   <span style={{
                                     width: '6px',
@@ -2095,7 +2073,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                                     backgroundColor: '#94a3b8'
                                   }} />
                                   Inaktiv
-                                </button>
+                                </span>
                               </td>
                               <td className={styles.center}>
                                 <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
@@ -2117,25 +2095,6 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                                     title="Azubi bearbeiten"
                                   >
                                     Bearbeiten
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      toggleAzubiActive(a.id, false);
-                                    }}
-                                    style={{
-                                      background: '#22c55e',
-                                      color: 'white',
-                                      border: 'none',
-                                      padding: '4px 8px',
-                                      borderRadius: '4px',
-                                      cursor: 'pointer',
-                                      fontSize: '11px',
-                                      fontWeight: 500
-                                    }}
-                                    title="Azubi wieder aktivieren"
-                                  >
-                                    Aktivieren
                                   </button>
                                 </div>
                               </td>

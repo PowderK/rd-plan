@@ -1779,15 +1779,10 @@ export const getAzubiList = async (db: AsyncDB, department?: string, includeInac
             // Ansonsten bleibt das Lehrjahr aus der azubis-Tabelle bestehen
         }
 
-        // Dynamischer Aktivitätsstatus:
-        // 1. Manuell deaktiviert (active == 0) -> immer inaktiv
-        // 2. Zeiträume gepflegt -> aktiv nur, wenn der heutige Tag in einem Zeitraum liegt
-        // 3. Keine Zeiträume gepflegt -> Fallback auf azubi.active !== 0
-        const isManuallyInactive = azubi.active === 0 || (azubi.active as any) === false;
-        let isDynamicallyActive = !isManuallyInactive;
-        if (!isManuallyInactive && periods.length > 0) {
-            isDynamicallyActive = !!currentPeriod;
-        }
+        // Dynamischer Aktivitätsstatus (rein über Zeiträume gesteuert):
+        // 1. Zeiträume gepflegt -> aktiv nur, wenn der heutige Tag in einem Zeitraum liegt
+        // 2. Keine Zeiträume gepflegt -> Fallback aktiv
+        const isDynamicallyActive = periods.length > 0 ? !!currentPeriod : true;
 
         azubi.active = isDynamicallyActive ? 1 : 0;
         azubi.isActive = isDynamicallyActive;
@@ -1829,12 +1824,7 @@ export const getAzubi = async (db: AsyncDB, id: number) => {
         }
     }
 
-    const isManuallyInactive = azubi.active === 0 || (azubi.active as any) === false;
-    let isDynamicallyActive = !isManuallyInactive;
-    if (!isManuallyInactive && periods.length > 0) {
-        isDynamicallyActive = !!currentPeriod;
-    }
-
+    const isDynamicallyActive = periods.length > 0 ? !!currentPeriod : true;
     azubi.active = isDynamicallyActive ? 1 : 0;
     azubi.isActive = isDynamicallyActive;
 
