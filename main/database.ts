@@ -1743,9 +1743,6 @@ export const getAzubiList = async (db: AsyncDB, department?: string, includeInac
     const params: any[] = [];
     const conditions: string[] = [];
 
-    if (!includeInactive) {
-        conditions.push('(active = 1 OR active IS NULL)');
-    }
     if (department && department !== 'all') {
         conditions.push('department = ?');
         params.push(normalizeDepartment(department));
@@ -1756,16 +1753,19 @@ export const getAzubiList = async (db: AsyncDB, department?: string, includeInac
     query += ' ORDER BY sort ASC, id ASC';
     const azubis = await db.all(query, params);
     const currentDate = new Date();
+    const currentDateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
 
-    // Für jeden Azubi das aktuelle Lehrjahr aus den Zeiträumen berechnen
+    const result: any[] = [];
+
+    // Für jeden Azubi das aktuelle Lehrjahr und den Aktivitätsstatus aus den Zeiträumen berechnen
     for (const azubi of azubis) {
         const periods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ? ORDER BY start_date ASC', [azubi.id]);
 
         // Finde den aktuellen Zeitraum
         const currentPeriod = periods.find((period: any) => {
-            const startDate = new Date(period.start_date);
-            const endDate = new Date(period.end_date);
-            return currentDate >= startDate && currentDate <= endDate;
+            const startDateStr = String(period.start_date || '').slice(0, 10);
+            const endDateStr = String(period.end_date || '').slice(0, 10);
+            return currentDateStr >= startDateStr && currentDateStr <= endDateStr;
         });
 
         if (currentPeriod && currentPeriod.lehrjahr) {
@@ -1778,9 +1778,26 @@ export const getAzubiList = async (db: AsyncDB, department?: string, includeInac
             }
             // Ansonsten bleibt das Lehrjahr aus der azubis-Tabelle bestehen
         }
+
+        // Dynamischer Aktivitätsstatus:
+        // 1. Manuell deaktiviert (active == 0) -> immer inaktiv
+        // 2. Zeiträume gepflegt -> aktiv nur, wenn der heutige Tag in einem Zeitraum liegt
+        // 3. Keine Zeiträume gepflegt -> Fallback auf azubi.active !== 0
+        const isManuallyInactive = azubi.active === 0 || (azubi.active as any) === false;
+        let isDynamicallyActive = !isManuallyInactive;
+        if (!isManuallyInactive && periods.length > 0) {
+            isDynamicallyActive = !!currentPeriod;
+        }
+
+        azubi.active = isDynamicallyActive ? 1 : 0;
+        azubi.isActive = isDynamicallyActive;
+
+        if (includeInactive || isDynamicallyActive) {
+            result.push(azubi);
+        }
     }
 
-    return azubis;
+    return result;
 };
 
 export const setAzubiActive = async (db: AsyncDB, id: number, active: boolean) => {
@@ -1792,13 +1809,14 @@ export const getAzubi = async (db: AsyncDB, id: number) => {
     if (!azubi) return null;
 
     const currentDate = new Date();
+    const currentDateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
     const periods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ? ORDER BY start_date ASC', [id]);
 
     // Finde den aktuellen Zeitraum
     const currentPeriod = periods.find((period: any) => {
-        const startDate = new Date(period.start_date);
-        const endDate = new Date(period.end_date);
-        return currentDate >= startDate && currentDate <= endDate;
+        const startDateStr = String(period.start_date || '').slice(0, 10);
+        const endDateStr = String(period.end_date || '').slice(0, 10);
+        return currentDateStr >= startDateStr && currentDateStr <= endDateStr;
     });
 
     if (currentPeriod && currentPeriod.lehrjahr) {
@@ -1811,26 +1829,34 @@ export const getAzubi = async (db: AsyncDB, id: number) => {
         }
     }
 
+    const isManuallyInactive = azubi.active === 0 || (azubi.active as any) === false;
+    let isDynamicallyActive = !isManuallyInactive;
+    if (!isManuallyInactive && periods.length > 0) {
+        isDynamicallyActive = !!currentPeriod;
+    }
+
+    azubi.active = isDynamicallyActive ? 1 : 0;
+    azubi.isActive = isDynamicallyActive;
+
     return azubi;
 };
 
-export const addAzubi = async (db: AsyncDB, azubi: { name: string, vorname: string, lehrjahr: number, department?: string, periods?: any[], active?: boolean | number }) => {
+export const addAzubi = async (db: AsyncDB, azubi: { name: string, vorname: string, lehrjahr: number, department?: string, periods?: any[] }) => {
     const dept = normalizeDepartment(azubi.department);
-    const activeVal = azubi.active !== false && azubi.active !== 0 ? 1 : 0;
     let azubiId: number;
     // determine next sort index (pro Abteilung)
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM azubis WHERE department = ?', [dept]);
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
         const result = await db.run(
-            'INSERT INTO azubis (name, vorname, lehrjahr, sort, department, active) VALUES (?, ?, ?, ?, ?, ?)',
-            [azubi.name, azubi.vorname, azubi.lehrjahr, next, dept, activeVal]
+            'INSERT INTO azubis (name, vorname, lehrjahr, sort, department) VALUES (?, ?, ?, ?, ?)',
+            [azubi.name, azubi.vorname, azubi.lehrjahr, next, dept]
         );
         azubiId = result.lastInsertRowid as number;
     } catch (e) {
         const result = await db.run(
-            'INSERT INTO azubis (name, vorname, lehrjahr, department, active) VALUES (?, ?, ?, ?, ?)',
-            [azubi.name, azubi.vorname, azubi.lehrjahr, dept, activeVal]
+            'INSERT INTO azubis (name, vorname, lehrjahr, department) VALUES (?, ?, ?, ?)',
+            [azubi.name, azubi.vorname, azubi.lehrjahr, dept]
         );
         azubiId = result.lastInsertRowid as number;
     }
@@ -1844,26 +1870,14 @@ export const addAzubi = async (db: AsyncDB, azubi: { name: string, vorname: stri
     return azubiId;
 };
 
-export const updateAzubi = async (db: AsyncDB, azubi: { id: number, name: string, vorname: string, lehrjahr: number, department?: string, active?: boolean | number }) => {
-    const activeVal = azubi.active !== undefined ? (azubi.active !== false && azubi.active !== 0 ? 1 : 0) : null;
+export const updateAzubi = async (db: AsyncDB, azubi: { id: number, name: string, vorname: string, lehrjahr: number, department?: string }) => {
     if (azubi.department != null) {
-        if (activeVal !== null) {
-            await db.run(
-                'UPDATE azubis SET name = ?, vorname = ?, lehrjahr = ?, department = ?, active = ? WHERE id = ?',
-                [azubi.name, azubi.vorname, azubi.lehrjahr, normalizeDepartment(azubi.department), activeVal, azubi.id]
-            );
-        } else {
-            await db.run(
-                'UPDATE azubis SET name = ?, vorname = ?, lehrjahr = ?, department = ? WHERE id = ?',
-                [azubi.name, azubi.vorname, azubi.lehrjahr, normalizeDepartment(azubi.department), azubi.id]
-            );
-        }
+        await db.run(
+            'UPDATE azubis SET name = ?, vorname = ?, lehrjahr = ?, department = ? WHERE id = ?',
+            [azubi.name, azubi.vorname, azubi.lehrjahr, normalizeDepartment(azubi.department), azubi.id]
+        );
     } else {
-        if (activeVal !== null) {
-            await db.run('UPDATE azubis SET name = ?, vorname = ?, lehrjahr = ?, active = ? WHERE id = ?', [azubi.name, azubi.vorname, azubi.lehrjahr, activeVal, azubi.id]);
-        } else {
-            await db.run('UPDATE azubis SET name = ?, vorname = ?, lehrjahr = ? WHERE id = ?', [azubi.name, azubi.vorname, azubi.lehrjahr, azubi.id]);
-        }
+        await db.run('UPDATE azubis SET name = ?, vorname = ?, lehrjahr = ? WHERE id = ?', [azubi.name, azubi.vorname, azubi.lehrjahr, azubi.id]);
     }
 };
 

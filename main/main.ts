@@ -985,17 +985,18 @@ ipcMain.handle('assign-slot', async (_event, entry: { personId: number, personTy
 });
 
 // Azubi handlers
-ipcMain.handle('get-azubi-list', async (_event, department?: string) => {
+ipcMain.handle('get-azubi-list', async (_event, includeInactiveOrDept?: boolean | string, department?: string) => {
     const auth = getAuthService();
     const user = auth.getCurrentUser();
     const adapter = await ensureDatabaseAdapter();
 
     let incInactive = false;
     let dept: string | undefined = undefined;
-    if (typeof department === 'boolean') {
-        incInactive = department;
-    } else if (typeof department === 'string') {
-        dept = department;
+    if (typeof includeInactiveOrDept === 'boolean') {
+        incInactive = includeInactiveOrDept;
+        if (typeof department === 'string') dept = department;
+    } else if (typeof includeInactiveOrDept === 'string') {
+        dept = includeInactiveOrDept;
     }
 
     let targetDept = user?.assignedDepartment;

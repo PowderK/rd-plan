@@ -745,8 +745,26 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
   }, [personnel, isPersonActive, searchQuery, roles]);
 
   const isAzubiActive = useCallback((a: Azubi) => {
-    return a.active !== 0 && (a.active as any) !== false;
-  }, []);
+    // 1. Manuell inaktiv geschaltet?
+    if (a.active === 0 || (a.active as any) === false) {
+      return false;
+    }
+
+    // 2. Zeiträume prüfen: aktiv nur, wenn der heutige Tag in einem definierten Zeitraum liegt
+    const periods = azubiPeriods[a.id] || [];
+    if (periods.length > 0) {
+      const now = new Date();
+      const currentDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      return periods.some(p => {
+        const start = String(p.start_date || '').slice(0, 10);
+        const end = String(p.end_date || '').slice(0, 10);
+        return start <= currentDate && end >= currentDate;
+      });
+    }
+
+    // 3. Fallback, falls noch keine Zeiträume definiert sind
+    return true;
+  }, [azubiPeriods]);
 
   const filteredActiveAzubis = useMemo(() => {
     const list = azubis.filter(a => isAzubiActive(a));
@@ -1702,7 +1720,6 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                       <th>Vorname</th>
                       <th style={{ width: 130 }}>Personalnummer</th>
                       <th style={{ width: 160 }}>Nutzerrolle</th>
-                      <th style={{ width: 90 }} className={styles.center}>Status</th>
                       <th style={{ width: 120 }} className={styles.center}>Qualifikationen</th>
                       <th style={{ width: 100 }} className={styles.center}>Aktionen</th>
                     </tr>
@@ -1737,30 +1754,6 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                           <td>{person.personnelNumber || '—'}</td>
                           <td>
                             {roles.find(r => r.id === person.roleId)?.name || '—'}
-                          </td>
-                          <td className={styles.center}>
-                            <span
-                              style={{
-                                background: '#dcfce7',
-                                color: '#166534',
-                                border: '1px solid #86efac',
-                                padding: '3px 8px',
-                                borderRadius: '12px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}
-                            >
-                              <span style={{
-                                width: '6px',
-                                height: '6px',
-                                borderRadius: '50%',
-                                backgroundColor: '#22c55e'
-                              }} />
-                              Aktiv
-                            </span>
                           </td>
                           <td className={styles.center} style={{ fontSize: '11px', padding: '4px' }}>
                             {qualificationPeriods[person.id] && qualificationPeriods[person.id].length > 0 ? (
@@ -1837,7 +1830,6 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                           <th>Vorname</th>
                           <th style={{ width: 130 }}>Personalnummer</th>
                           <th style={{ width: 160 }}>Nutzerrolle</th>
-                          <th style={{ width: 90 }} className={styles.center}>Status</th>
                           <th style={{ width: 120 }} className={styles.center}>Qualifikationen</th>
                           <th style={{ width: 100 }} className={styles.center}>Aktionen</th>
                         </tr>
@@ -1865,30 +1857,6 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                               <td>{person.personnelNumber || '—'}</td>
                               <td>
                                 {roles.find(r => r.id === person.roleId)?.name || '—'}
-                              </td>
-                              <td className={styles.center}>
-                                <span
-                                  style={{
-                                    background: '#f1f5f9',
-                                    color: '#64748b',
-                                    border: '1px solid #cbd5e1',
-                                    padding: '3px 8px',
-                                    borderRadius: '12px',
-                                    fontSize: '11px',
-                                    fontWeight: 600,
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                  }}
-                                >
-                                  <span style={{
-                                    width: '6px',
-                                    height: '6px',
-                                    borderRadius: '50%',
-                                    backgroundColor: '#94a3b8'
-                                  }} />
-                                  Inaktiv
-                                </span>
                               </td>
                               <td className={styles.center} style={{ fontSize: '11px', padding: '4px' }}>
                                 {qualificationPeriods[person.id] && qualificationPeriods[person.id].length > 0 ? (
@@ -2004,19 +1972,25 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                             {periodsText}
                           </td>
                           <td className={styles.center}>
-                            <span
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleAzubiActive(a.id, true);
+                              }}
                               style={{
                                 background: '#dcfce7',
                                 color: '#166534',
                                 border: '1px solid #86efac',
                                 padding: '3px 8px',
                                 borderRadius: '12px',
+                                cursor: 'pointer',
                                 fontSize: '11px',
                                 fontWeight: 600,
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '4px'
                               }}
+                              title="Klicken um Azubi inaktiv zu schalten"
                             >
                               <span style={{
                                 width: '6px',
@@ -2025,7 +1999,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                                 backgroundColor: '#22c55e'
                               }} />
                               Aktiv
-                            </span>
+                            </button>
                           </td>
                           <td className={styles.center}>
                             <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
@@ -2094,19 +2068,25 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                                 {periodsText}
                               </td>
                               <td className={styles.center}>
-                                <span
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleAzubiActive(a.id, false);
+                                  }}
                                   style={{
                                     background: '#f1f5f9',
                                     color: '#64748b',
                                     border: '1px solid #cbd5e1',
                                     padding: '3px 8px',
                                     borderRadius: '12px',
+                                    cursor: 'pointer',
                                     fontSize: '11px',
                                     fontWeight: 600,
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     gap: '4px'
                                   }}
+                                  title="Klicken um Azubi zu aktivieren"
                                 >
                                   <span style={{
                                     width: '6px',
@@ -2115,7 +2095,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                                     backgroundColor: '#94a3b8'
                                   }} />
                                   Inaktiv
-                                </span>
+                                </button>
                               </td>
                               <td className={styles.center}>
                                 <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>

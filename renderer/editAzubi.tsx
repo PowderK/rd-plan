@@ -19,7 +19,6 @@ interface AzubiPeriod {
 const EditAzubi: React.FC = () => {
   const [name, setName] = useState('');
   const [vorname, setVorname] = useState('');
-  const [active, setActive] = useState(true);
   const [activeTab, setActiveTab] = useState<'stammdaten' | 'zeitraeume'>('stammdaten');
   const [azubiPeriods, setAzubiPeriods] = useState<AzubiPeriod[]>([]);
   const [newPeriod, setNewPeriod] = useState({ start_date: '', end_date: '', description: '', lehrjahr: 1 });
@@ -34,7 +33,6 @@ const EditAzubi: React.FC = () => {
           if (azubi) {
             setName(azubi.name);
             setVorname(azubi.vorname);
-            setActive(azubi.active !== 0 && azubi.active !== false);
             
             // Azubi-Zeiträume laden
             const azubiPeriods = await (window as any).api.getAzubiPeriods(azubiId);
@@ -61,7 +59,7 @@ const EditAzubi: React.FC = () => {
     const currentLehrjahr = currentPeriod?.lehrjahr || 1;
     
     // Azubi-Basisdaten aktualisieren
-    await (window as any).api.updateAzubi({ id: Number(azubiId), name, vorname, lehrjahr: currentLehrjahr, active });
+    await (window as any).api.updateAzubi({ id: Number(azubiId), name, vorname, lehrjahr: currentLehrjahr });
     
     if (window.opener) window.opener.postMessage('azubis-updated', '*');
     window.close();
@@ -314,21 +312,6 @@ const EditAzubi: React.FC = () => {
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span>Vorname</span>
           <input value={vorname} onChange={e => setVorname(e.target.value)} />
-        </label>
-      </div>
-
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={active}
-            onChange={e => setActive(e.target.checked)}
-            style={{ width: 18, height: 18, cursor: 'pointer' }}
-          />
-          <span style={{ fontWeight: 600 }}>Aktiv</span>
-          <span style={{ fontSize: '12px', color: '#666' }}>
-            ({active ? 'Azubi ist aktiv' : 'Azubi ist inaktiv'})
-          </span>
         </label>
       </div>
 
