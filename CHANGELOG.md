@@ -1,3 +1,7 @@
+## Build 1478 - 2026-08-30
+
+- automated build
+
 ## Build 1477 - 2026-08-24
 
 - **Azubi-Verwaltung – Automatische zeitraumgesteuerte Aktivierung**:

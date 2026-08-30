@@ -92,14 +92,60 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
     }}>
       {/* Header-Zeile */}
       <div style={{ display: 'contents' }}>
-        <span style={{ textAlign: 'right', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)' }}>Name</span>
-        <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)' }}>Soll | Ist</span>
-        <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)' }}>NEF</span>
-        {showItw && <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)' }}>ITW</span>}
-        {showWeekendShifts && <span style={{ textAlign: 'center', paddingRight: 4, fontSize: 9, fontWeight: 600, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)' }}>WE</span>}
-        {showOldRtwShifts && <span style={{ textAlign: 'center', paddingRight: 4, fontSize: 9, fontWeight: 600, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)' }}>Alt</span>}
-        <span style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)' }}>Ges.</span>
-        <span style={{ textAlign: 'center', fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)' }}>T/N | Rest</span>
+        <span 
+          style={{ textAlign: 'right', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)', cursor: 'help' }}
+          title="Mitarbeitername. Klick auf den Namen hebt die Person und ihre Dienste in der Einteilung hervor."
+        >
+          Name
+        </span>
+        <span 
+          style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)', cursor: 'help' }}
+          title="Soll | Ist: Berechnetes Schichtsoll im Monat vs. tatsächlich eingeteilte Schichten. Die Mini-Waage darunter zeigt den kumulierten Jahrestrend (Rot nach links = im Rückstand, Grün nach rechts = im Vorsprung)."
+        >
+          Soll | Ist
+        </span>
+        <span 
+          style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)', cursor: 'help' }}
+          title="NEF: Anzahl der eingeteilten NEF-Schichten im aktuellen Monat."
+        >
+          NEF
+        </span>
+        {showItw && (
+          <span 
+            style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)', cursor: 'help' }}
+            title="ITW: Anzahl der eingeteilten ITW-Schichten im aktuellen Monat."
+          >
+            ITW
+          </span>
+        )}
+        {showWeekendShifts && (
+          <span 
+            style={{ textAlign: 'center', paddingRight: 4, fontSize: 9, fontWeight: 600, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)', cursor: 'help' }}
+            title="WE: Geleistete Wochenendschichten im Vergleich zur Abteilung (Grün = überdurchschnittlich viele, Rot = unterdurchschnittlich viele)."
+          >
+            WE
+          </span>
+        )}
+        {showOldRtwShifts && (
+          <span 
+            style={{ textAlign: 'center', paddingRight: 4, fontSize: 9, fontWeight: 600, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)', cursor: 'help' }}
+            title="Alt: Historische/alte RTW-Schichten."
+          >
+            Alt
+          </span>
+        )}
+        <span 
+          style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)', cursor: 'help' }}
+          title="Ges. (Jahresrest): Verbleibender Schicht-Saldo bis zum Erreichen des Jahresziels (bereinigt nach Beschäftigungsgrad/Teilzeit). Ampelfarbe: Grün = guter Puffer, Gelb = mittlerer Bereich, Rot = kritisch. Bei Ü50/LPAL ohne Restwert."
+        >
+          Ges.
+        </span>
+        <span 
+          style={{ textAlign: 'center', fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)', cursor: 'help' }}
+          title="T/N | Rest: Oben: Tag/Nacht-Verhältnis (Rot links = Tag-Überhang, Blau rechts = Nacht-Überhang). Unten: Restkapazität (Rest V) im Vergleich zum Jahresrest (Grün = ausreichend Luft, Gelb = eng, Rot = kritisch)."
+        >
+          T/N | Rest
+        </span>
       </div>
 
       {/* Items */}
@@ -130,6 +176,24 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
             }
           }
 
+          const personMetaDetails = [
+            it.teilzeit && it.teilzeit < 100 ? `${it.teilzeit}% Teilzeit` : null,
+            it.ue50 ? 'Ü50' : null,
+            it.lpal ? 'LPAL' : null,
+            it.hlfb ? 'HLF-B' : null,
+            it.isItwExternal ? 'ITW Extern' : null,
+          ].filter(Boolean).join(' • ');
+
+          const personTooltip = `${it.name}${personMetaDetails ? ` (${personMetaDetails})` : ''} — Klicken zum Hervorheben in der Einteilung`;
+
+          const trendDiffText = it.cumDiff > 0 
+            ? `${it.cumDiff} Schicht(en) im Rückstand (Rot)` 
+            : it.cumDiff < 0 
+              ? `${Math.abs(it.cumDiff)} Schicht(en) im Vorsprung (Grün)` 
+              : 'Genau im Plan (Soll = Ist)';
+
+          const sollIstTooltip = `${it.name}: ${it.target === '' ? 0 : it.target} Soll | ${it.count} Ist im Monat${it.hasTransfer ? ' (inkl. Schichtübernahme)' : ''} — Jahrestrend: ${trendDiffText}`;
+
           return (
             <React.Fragment key={idx}>
               <div
@@ -140,6 +204,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                 <span
                   className={styles.sidebarName}
                   onClick={() => setHighlightedPersonKey(highlightedPersonKey === it.key ? null : it.key)}
+                  title={personTooltip}
                   style={{
                     color: it.lpal ? '#fd7e14' : it.ue50 ? '#dc3545' : it.hlfb ? '#1565c0' : (it.isItwExternal ? '#6b7280' : undefined),
                     cursor: 'pointer',
@@ -157,7 +222,10 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                 </span>
 
                 {/* Soll/Ist mit Waage */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, borderRight: '1px solid var(--line)', paddingRight: 4 }}>
+                <div 
+                  title={sollIstTooltip}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, borderRight: '1px solid var(--line)', paddingRight: 4, cursor: 'help' }}
+                >
                   <span className={styles.sidebarVal} style={{ fontSize: 11, color: it.hasTransfer ? '#3b82f6' : undefined, fontWeight: it.hasTransfer ? 600 : undefined }}>
                     {(it.target === '' ? '–' : it.target) + ' | ' + it.count}
                   </span>
@@ -165,110 +233,149 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                 </div>
 
                 {/* NEF */}
-                <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4 }}>
+                <span 
+                  className={styles.sidebarVal} 
+                  title={`${it.name}: ${it.nef} NEF-Schicht(en) in diesem Monat`}
+                  style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4, cursor: 'help' }}
+                >
                   {it.nef}
                 </span>
 
                 {showItw && (
-                  <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4 }}>
+                  <span 
+                    className={styles.sidebarVal} 
+                    title={`${it.name}: ${it.itw} ITW-Schicht(en) in diesem Monat`}
+                    style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4, cursor: 'help' }}
+                  >
                     {it.itw}
                   </span>
                 )}
 
                 {/* WE */}
                 {showWeekendShifts && (
-                  <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4, color: weekendColor, fontWeight: weekendColor ? 600 : undefined }}>
+                  <span 
+                    className={styles.sidebarVal} 
+                    title={`${it.name}: ${typeof it.weekend === 'number' ? it.weekend : 0} Wochenendschicht(en)`}
+                    style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4, color: weekendColor, fontWeight: weekendColor ? 600 : undefined, cursor: 'help' }}
+                  >
                     {typeof it.weekend === 'number' ? it.weekend : '–'}
                   </span>
                 )}
 
                 {/* Alte RTW-Schichten */}
                 {showOldRtwShifts && (
-                  <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4, color: '#666' }}>
+                  <span 
+                    className={styles.sidebarVal} 
+                    title={`${it.name}: ${it.oldRtwShifts || 0} alte RTW-Schichten`}
+                    style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4, color: '#666', cursor: 'help' }}
+                  >
                     {it.oldRtwShifts || 0}
                   </span>
                 )}
 
                 {/* Gesamt */}
                 {!it.ue50 && !it.lpal && (
-                  <span className={styles.sidebarVal} style={{ ...restStyle, textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4 }}>
+                  <span 
+                    className={styles.sidebarVal} 
+                    title={`${it.name} Jahresrest: ${Number.isFinite(it.rest) ? it.rest : 0} Schicht(en) bis zum Jahresziel`}
+                    style={{ ...restStyle, textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4, cursor: 'help' }}
+                  >
                     {Number.isFinite(it.rest) ? it.rest : '–'}
                   </span>
                 )}
-                {(it.ue50 || it.lpal) && <span className={styles.sidebarVal} style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4 }}>–</span>}
+                {(it.ue50 || it.lpal) && (
+                  <span 
+                    className={styles.sidebarVal} 
+                    title={`${it.name}: Kein fester Jahresrest (Sonderstatus ${it.ue50 ? 'Ü50' : 'LPAL'})`}
+                    style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4, cursor: 'help' }}
+                  >
+                    –
+                  </span>
+                )}
 
                 {/* Tag/Nacht Waage und Rest V untereinander */}
                 {!it.ue50 && !it.lpal && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: WAAGE_CONFIG.gap, alignItems: 'center' }}>
                     {/* Tag/Nacht Waage */}
-                    <div
-                      style={{
-                        position: 'relative',
-                        width: WAAGE_CONFIG.width,
-                        height: WAAGE_CONFIG.height,
-                        background: '#eef2f7',
-                        borderRadius: 3,
-                      }}
-                    >
-                      <div
-                        style={{
-                          position: 'absolute',
-                          left: '50%',
-                          top: 0,
-                          bottom: 0,
-                          width: 1,
-                          background: '#cbd5e1',
-                          zIndex: 1,
-                        }}
-                      />
-                      {(() => {
-                        const tagCount = it.tag || 0;
-                        const nachtCount = it.nacht || 0;
-                        const diff = tagCount - nachtCount;
+                    {(() => {
+                      const tagCount = it.tag || 0;
+                      const nachtCount = it.nacht || 0;
+                      const diff = tagCount - nachtCount;
+                      const tnDiffText = diff > 0 
+                        ? `${diff} mehr Tag-Schicht(en)` 
+                        : diff < 0 
+                          ? `${Math.abs(diff)} mehr Nacht-Schicht(en)` 
+                          : 'ausgeglichen';
+                      const tnTooltip = `${it.name} Tag/Nacht-Verhältnis: ${tagCount} Tag / ${nachtCount} Nacht (${tnDiffText})`;
 
-                        if (diff === 0 && tagCount === 0 && nachtCount === 0) return null;
+                      return (
+                        <div
+                          title={tnTooltip}
+                          style={{
+                            position: 'relative',
+                            width: WAAGE_CONFIG.width,
+                            height: WAAGE_CONFIG.height,
+                            background: '#eef2f7',
+                            borderRadius: 3,
+                            cursor: 'help',
+                          }}
+                        >
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: '50%',
+                              top: 0,
+                              bottom: 0,
+                              width: 1,
+                              background: '#cbd5e1',
+                              zIndex: 1,
+                            }}
+                          />
+                          {(() => {
+                            if (diff === 0 && tagCount === 0 && nachtCount === 0) return null;
 
-                        const maxVal = 5;
-                        const percentage = Math.min(1, Math.abs(diff) / maxVal);
-                        const width = percentage * 50;
+                            const maxVal = 5;
+                            const percentage = Math.min(1, Math.abs(diff) / maxVal);
+                            const width = percentage * 50;
 
-                        return (
-                          <>
-                            {/* Wenn mehr Tag-Schichten: Balken nach links (rot) */}
-                            {diff > 0 && (
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  right: '50%',
-                                  width: `${width}%`,
-                                  top: 0,
-                                  bottom: 0,
-                                  background: '#ef4444',
-                                  borderTopLeftRadius: 3,
-                                  borderBottomLeftRadius: 3,
-                                }}
-                              />
-                            )}
-                            {/* Wenn mehr Nacht-Schichten: Balken nach rechts (blau) */}
-                            {diff < 0 && (
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  left: '50%',
-                                  width: `${width}%`,
-                                  top: 0,
-                                  bottom: 0,
-                                  background: '#3b82f6',
-                                  borderTopRightRadius: 3,
-                                  borderBottomRightRadius: 3,
-                                }}
-                              />
-                            )}
-                            
-                          </>
-                        );
-                      })()}
-                    </div>
+                            return (
+                              <>
+                                {/* Wenn mehr Tag-Schichten: Balken nach links (rot) */}
+                                {diff > 0 && (
+                                  <div
+                                    style={{
+                                      position: 'absolute',
+                                      right: '50%',
+                                      width: `${width}%`,
+                                      top: 0,
+                                      bottom: 0,
+                                      background: '#ef4444',
+                                      borderTopLeftRadius: 3,
+                                      borderBottomLeftRadius: 3,
+                                    }}
+                                  />
+                                )}
+                                {/* Wenn mehr Nacht-Schichten: Balken nach rechts (blau) */}
+                                {diff < 0 && (
+                                  <div
+                                    style={{
+                                      position: 'absolute',
+                                      left: '50%',
+                                      width: `${width}%`,
+                                      top: 0,
+                                      bottom: 0,
+                                      background: '#3b82f6',
+                                      borderTopRightRadius: 3,
+                                      borderBottomRightRadius: 3,
+                                    }}
+                                  />
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      );
+                    })()}
 
                     {/* Rest V Balken */}
                     {(() => {
@@ -293,14 +400,18 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                         ? 1
                         : Math.max(0, Math.min(1, distance / widthStartDistance));
 
+                      const restVTooltip = `${it.name} Restkapazität (Rest V): ${remain} freie Schichten im Restjahr verfügbar vs. ${needed} noch benötigte Schichten (Puffer: ${distance >= 0 ? `+${distance}` : distance} Schichten)`;
+
                       return (
                         <div
+                          title={restVTooltip}
                           style={{
                             position: 'relative',
                             width: WAAGE_CONFIG.width,
                             height: WAAGE_CONFIG.height,
                             background: '#eef2f7',
                             borderRadius: 3,
+                            cursor: 'help',
                           }}
                         >
                           <div
@@ -314,7 +425,6 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                               borderRadius: 3,
                             }}
                           />
-                          
                         </div>
                       );
                     })()}

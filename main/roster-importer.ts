@@ -84,11 +84,16 @@ interface RosterEntry {
     department?: string;
 }
 
-interface AvailabilityConflict {
+export interface AvailabilityConflict {
+    personId?: number;
+    personType?: 'person' | 'azubi';
     personName: string;
     date: string;
+    formattedDate?: string;
     dutyRosterValue: string;
     einteilungValue: string;
+    conflictType?: 'removed_from_roster' | 'unavailable_shift';
+    reason?: string;
 }
 
 type PersonMatch = { id: number; type: 'person' | 'azubi' };
@@ -252,7 +257,7 @@ export class RosterImporter {
     constructor(private dbAdapter: DatabaseAdapter) {}
 
     // Prüft Verfügbarkeit: Sammelt Konflikte zwischen Dienstplan (duty roster) und Einteilung (fahrzeugzuweisung)
-    // Konflikt = Person hat Fahrzeugzuweisung (type), aber neue Schichtart bedeutet nicht verfügbar (auswertung = 'off')
+    // Konflikt = Person hat Fahrzeugzuweisung (type), aber neue Schichtart bedeutet nicht verfügbar (auswertung = 'off') oder wurde aus Vorplanung gelöscht
     private async checkAvailabilityConflicts(
         entriesToImport: RosterEntry[]
     ): Promise<AvailabilityConflict[]> {
@@ -271,14 +276,18 @@ export class RosterImporter {
             personMap.set(`azubi_${a.id}`, `${a.name}, ${a.vorname}`);
         }
         
-        // Hole Auswertungs-Einstellungen für alle Schichtarten
+        // Hole Auswertungs-Einstellungen und Beschreibungen für alle Schichtarten
         const shiftTypes = await this.dbAdapter.getShiftTypes();
         const auswertungMap = new Map<string, string>();
+        const shiftTypeDescMap = new Map<string, string>();
         for (const st of shiftTypes) {
             const auswertung = await this.dbAdapter.getSetting(`auswertung_${st.code}`);
             // 'off' = nicht verfügbar (Urlaub, Krank, Frei, etc.)
             // 'tag', 'nacht', '24h', 'itw' = verfügbar (Arbeitsschichten)
             auswertungMap.set(st.code, auswertung || 'off');
+            if (st.description) {
+                shiftTypeDescMap.set(st.code, st.description);
+            }
         }
         
         // Lade Fahrzeuge und deren Positionen für lesbare Bezeichnungen
@@ -356,33 +365,60 @@ export class RosterImporter {
             }
         }
         
-        // Prüfe Import-Einträge: Gibt es eine Fahrzeugzuweisung UND ist die neue Schichtart nicht verfügbar?
+        // Prüfe Import-Einträge: Gibt es eine Fahrzeugzuweisung UND ist die neue Schichtart nicht verfügbar oder leer?
         for (const entry of entriesToImport) {
             const key = `${entry.personType}_${entry.personId}_${entry.date}`;
             const vehicleAssignment = vehicleAssignments.get(key);
             
-            // Konflikt: Person hat Fahrzeugzuweisung ABER neue Schichtart bedeutet nicht verfügbar
             if (vehicleAssignment) {
-                const auswertung = auswertungMap.get(entry.value.trim());
+                const rawValue = (entry.value || '').trim();
+                const auswertung = auswertungMap.get(rawValue);
                 
-                // Wenn auswertung = 'off' oder nicht definiert → Person nicht verfügbar
+                // Wenn auswertung = 'off' oder nicht definiert (z.B. leerer Wert) → Person nicht verfügbar
                 if (!auswertung || auswertung === 'off') {
                     const personName = personMap.get(`${entry.personType}_${entry.personId}`) || `ID ${entry.personId}`;
-                    
-                    // Konvertiere Slot-ID zu lesbarer Bezeichnung
                     const readableAssignment = vehiclePositionsMap.get(vehicleAssignment) || vehicleAssignment;
                     
+                    let dutyRosterValue = rawValue;
+                    let conflictType: 'removed_from_roster' | 'unavailable_shift' = 'unavailable_shift';
+                    let reason = '';
+
+                    if (!rawValue) {
+                        dutyRosterValue = 'Aus Vorplanung entfernt (Kein Dienst)';
+                        conflictType = 'removed_from_roster';
+                        reason = 'In der Vorplanung gelöscht / kein Dienst eingetragen';
+                    } else {
+                        const desc = shiftTypeDescMap.get(rawValue);
+                        const label = desc ? `${desc} (${rawValue})` : rawValue;
+                        dutyRosterValue = label;
+                        conflictType = 'unavailable_shift';
+                        reason = `Schichtart "${label}" bedeutet nicht verfügbar`;
+                    }
+
+                    const [y, m, d] = entry.date.split('-').map(Number);
+                    const dt = new Date(Date.UTC(y, m - 1, d));
+                    const weekday = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][dt.getUTCDay()];
+                    const formattedDate = `${weekday}., ${String(d).padStart(2, '0')}.${String(m).padStart(2, '0')}.${y}`;
+
                     conflicts.push({
+                        personId: entry.personId,
+                        personType: entry.personType,
                         personName,
                         date: entry.date,
-                        dutyRosterValue: entry.value.trim(), // Neue Schichtart aus Import (z.B. "K" für Krank)
-                        einteilungValue: readableAssignment // Lesbare Fahrzeugzuweisung (z.B. "RTW 5 Fahrzeugführer Tag")
+                        formattedDate,
+                        dutyRosterValue,
+                        einteilungValue: readableAssignment,
+                        conflictType,
+                        reason
                     });
                 }
             }
         }
+
+        // Sortiere Konflikte chronologisch nach Datum und dann nach Name
+        conflicts.sort((a, b) => a.date.localeCompare(b.date) || a.personName.localeCompare(b.personName));
         
-        console.log(`[RosterImporter] Verfügbarkeitsprüfung: ${conflicts.length} Konflikte gefunden (Fahrzeugzuweisung vs. nicht verfügbare Schichtart)`);
+        console.log(`[RosterImporter] Verfügbarkeitsprüfung: ${conflicts.length} Konflikte gefunden (Fahrzeugzuweisung vs. nicht verfügbare Schichtart / gelöscht)`);
         return conflicts;
     }
 
@@ -618,6 +654,8 @@ export class RosterImporter {
             newShiftTypes?: Array<{code: string, description: string, color: string, auswertung: string}>;
             azubiPeriodAdjustments?: Array<{azubiId: number, startDate: string, endDate: string, description?: string, lehrjahr: number}>;
             department?: string;
+            validateOnly?: boolean;
+            dryRun?: boolean;
         }
     ): Promise<{
         success: boolean, 
@@ -856,13 +894,25 @@ export class RosterImporter {
                     }
                 }
 
+                const availabilityConflicts = await this.checkAvailabilityConflicts(entriesToImport);
+
+                // Wenn validateOnly oder dryRun aktiv ist: Breche vor dem Schreiben ab und gib den Prüfbericht zurück
+                if (options?.validateOnly || options?.dryRun) {
+                    const unknownAzubiList = allUnknownAzubiNames.size > 0 ? Array.from(allUnknownAzubiNames).sort() : undefined;
+                    return {
+                        success: true,
+                        message: 'Vorprüfung erfolgreich abgeschlossen.',
+                        importedCount: entriesToImport.length,
+                        unknownAzubis: unknownAzubiList,
+                        availabilityConflicts: availabilityConflicts.length > 0 ? availabilityConflicts : undefined
+                    };
+                }
+
                 console.log(`[RosterImporter] Schreibe ${entriesToImport.length} Einträge in duty_roster.`);
                 
                 const isYearlyImport = month == null;
                 const deleteEmpty = !isYearlyImport;
                 const respectManualEdits = !isYearlyImport;
-                
-                const availabilityConflicts = await this.checkAvailabilityConflicts(entriesToImport);
                 
                 const result = await this.dbAdapter.bulkImportDutyRosterEntries(entriesToImport, respectManualEdits, deleteEmpty);
                 console.log(`[RosterImporter] Import: ${result.imported} importiert, ${result.skipped} übersprungen.`);
@@ -872,6 +922,24 @@ export class RosterImporter {
                     const deletedOrphans = await this.dbAdapter.deleteOrphanedDutyRosterEntries(year, month, seenList, options?.department);
                     if (deletedOrphans > 0) {
                         console.log(`[RosterImporter] Sync-Cleanup: ${deletedOrphans} verwaiste Einträge wurden entfernt.`);
+                    }
+                }
+
+                // Bei Verfügbarkeitskonflikten die betroffenen Kollegen aus der Fahrzeug-Einteilung nehmen (Slot leeren)
+                if (availabilityConflicts.length > 0) {
+                    for (const c of availabilityConflicts) {
+                        if (c.personId && c.personType && c.date) {
+                            try {
+                                await this.dbAdapter.assignSlot({
+                                    personId: c.personId,
+                                    personType: c.personType,
+                                    date: c.date,
+                                    slotType: ''
+                                });
+                            } catch (slotErr) {
+                                console.warn(`[RosterImporter] Konnte Einteilung für ${c.personName} am ${c.date} nicht bereinigen:`, slotErr);
+                            }
+                        }
                     }
                 }
                 

@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 // ImportMonthDialog entfällt für direkten Monatsimport
 import ImportTable from './ImportTable';
 import CommentDialog from './CommentDialog';
+import { SyncConflictDialog, AvailabilityConflictItem } from './SyncConflictDialog';
 // DepartmentDutyDaysTable entfernt
 // DepartmentDutyDaysTableData entfernt
 import { BUILD_INFO } from '../buildInfo';
@@ -183,6 +184,13 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const [azubisWithoutPeriod, setAzubisWithoutPeriod] = useState<Array<{ azubiId: number, azubiName: string, importDateRange: { start: string, end: string } }>>([]);
   const [pendingImportYear, setPendingImportYear] = useState<number>(0);
   const [pendingImportMonth, setPendingImportMonth] = useState<number | { start: number, end: number } | undefined>(undefined);
+  // Sync Conflict Dialog States
+  const [showSyncConflictDialog, setShowSyncConflictDialog] = useState(false);
+  const [syncConflicts, setSyncConflicts] = useState<AvailabilityConflictItem[]>([]);
+  const [syncConflictTitle, setSyncConflictTitle] = useState<string>('Konflikte bei Dienstplan-Synchronisation');
+  const [syncConflictSubtitle, setSyncConflictSubtitle] = useState<string>('');
+  const [pendingSyncExecutor, setPendingSyncExecutor] = useState<(() => Promise<void>) | null>(null);
+  const [isSyncExecuting, setIsSyncExecuting] = useState(false);
   // Fahrzeuge und Aktivierungen für Positions-Berechnungen
   const [rtwVehicles, setRtwVehicles] = useState<{ id: number; name: string }[]>([]);
   const [nefVehicles, setNefVehicles] = useState<{ id: number; name: string }[]>([]);
@@ -857,7 +865,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     setShowNewShiftTypeDialog(false);
   };
 
-  // Import-Handler
+  // Import-Handler mit Vorprüfung und Konfliktdialog
   const handleImport = async () => {
     const rosterImportPath = await resolveRosterImportPath(year, departmentName);
 
@@ -866,83 +874,102 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       alert(`Bitte hinterlegen Sie zuerst eine Vorplanungsdatei für ${year} und ${deptLabel} in den Einstellungen (Dienstplan → Jahresspezifische Vorplanungsdateien).`);
       return;
     }
-    const ok = window.confirm(`Möchten Sie den Dienstplan für ${months[currentMonth]} ${year} aus der Excel-Datei importieren? Bestehende Daten für diesen Monat werden überschrieben.`);
-    if (!ok) return;
 
     try {
-      const result = await (window as any).api.importDutyRoster(rosterImportPath, year, currentMonth, { department: departmentName });
-      if (result.success) {
-        // Check if unknown shift types were found
-        if (result.unknownShiftTypes && result.unknownShiftTypes.length > 0) {
-          const createNewShiftTypes = window.confirm(
-            `Folgende unbekannte Dienstarten wurden gefunden:\n${result.unknownShiftTypes.join('\n')}\n\nMöchten Sie diese als neue Dienstarten anlegen?`
-          );
+      // 1. Vorprüfung (dryRun / validateOnly)
+      const checkResult = await (window as any).api.importDutyRoster(rosterImportPath, year, currentMonth, { department: departmentName, validateOnly: true });
+      if (!checkResult.success) {
+        alert(`Import fehlgeschlagen: ${checkResult.message}`);
+        return;
+      }
 
-          if (createNewShiftTypes) {
-            // Show new shift type dialog
-            setShowNewShiftTypeDialog(true);
-            setUnknownShiftTypes(result.unknownShiftTypes);
-            setPendingImportPath(rosterImportPath);
-            setPendingImportYear(year);
-            setPendingImportMonth(currentMonth);
-          }
-          return;
-        }
+      // Prüfe auf unbekannte Dienstarten
+      if (checkResult.unknownShiftTypes && checkResult.unknownShiftTypes.length > 0) {
+        const createNewShiftTypes = window.confirm(
+          `Folgende unbekannte Dienstarten wurden gefunden:\n${checkResult.unknownShiftTypes.join('\n')}\n\nMöchten Sie diese als neue Dienstarten anlegen?`
+        );
 
-        // Check if azubis without valid periods were found
-        if (result.azubisWithoutPeriod && result.azubisWithoutPeriod.length > 0) {
-          // Show dialog to adjust periods
-          setShowAzubiPeriodDialog(true);
-          setAzubisWithoutPeriod(result.azubisWithoutPeriod);
+        if (createNewShiftTypes) {
+          setShowNewShiftTypeDialog(true);
+          setUnknownShiftTypes(checkResult.unknownShiftTypes);
           setPendingImportPath(rosterImportPath);
           setPendingImportYear(year);
           setPendingImportMonth(currentMonth);
           return;
         }
+      }
 
-        // Check if unknown azubis were found
-        if (result.unknownAzubis && result.unknownAzubis.length > 0) {
-          const createNewAzubis = window.confirm(
-            `Folgende unbekannte Azubi-Namen wurden gefunden:\n${result.unknownAzubis.join('\n')}\n\nMöchten Sie diese als neue Azubis anlegen?`
-          );
+      // Prüfe auf Azubis ohne gültigen Zeitraum
+      if (checkResult.azubisWithoutPeriod && checkResult.azubisWithoutPeriod.length > 0) {
+        setShowAzubiPeriodDialog(true);
+        setAzubisWithoutPeriod(checkResult.azubisWithoutPeriod);
+        setPendingImportPath(rosterImportPath);
+        setPendingImportYear(year);
+        setPendingImportMonth(currentMonth);
+        return;
+      }
 
-          if (createNewAzubis) {
-            setShowNewAzubiDialog(true);
-            setUnknownAzubiNames(result.unknownAzubis);
-            setPendingImportPath(rosterImportPath);
-            setPendingImportYear(year);
-            setPendingImportMonth(currentMonth);
-            return;
-          }
-          if (result.importedCount > 0) {
-            await reloadRoster();
-            alert(`Import teilweise erfolgreich: ${result.importedCount} Einträge verarbeitet. Unbekannte Azubi-Namen wurden übersprungen.`);
-          }
+      // Prüfe auf unbekannte Azubis
+      if (checkResult.unknownAzubis && checkResult.unknownAzubis.length > 0) {
+        const createNewAzubis = window.confirm(
+          `Folgende unbekannte Azubi-Namen wurden gefunden:\n${checkResult.unknownAzubis.join('\n')}\n\nMöchten Sie diese als neue Azubis anlegen?`
+        );
+
+        if (createNewAzubis) {
+          setShowNewAzubiDialog(true);
+          setUnknownAzubiNames(checkResult.unknownAzubis);
+          setPendingImportPath(rosterImportPath);
+          setPendingImportYear(year);
+          setPendingImportMonth(currentMonth);
           return;
         }
-
-        // Check for availability conflicts (person assigned to vehicle but marked as unavailable)
-        let message = `Import erfolgreich: ${result.importedCount} Einträge wurden verarbeitet.`;
-
-        if (result.availabilityConflicts && result.availabilityConflicts.length > 0) {
-          const conflictList = result.availabilityConflicts.map((c: any) =>
-            `${c.personName} am ${c.date}: Schichtart "${c.dutyRosterValue}" (nicht verfügbar), aber eingeteilt auf "${c.einteilungValue}"`
-          ).join('\n');
-
-          message += `\n\n⚠️ WARNUNG: ${result.availabilityConflicts.length} Verfügbarkeitskonflikt(e) gefunden:\n\n${conflictList}\n\nBitte prüfen Sie die Einteilungen!`;
-        }
-
-        alert(message);
-        await reloadRoster();
-      } else {
-        alert(`Import fehlgeschlagen: ${result.message}`);
       }
+
+      const executeImport = async () => {
+        setIsSyncExecuting(true);
+        try {
+          const result = await (window as any).api.importDutyRoster(rosterImportPath, year, currentMonth, { department: departmentName });
+          if (result.success) {
+            await reloadRoster();
+            const conflictNote = checkResult.availabilityConflicts && checkResult.availabilityConflicts.length > 0
+              ? ` (${checkResult.availabilityConflicts.length} Einteilungs-Konflikt(e) bereinigt)`
+              : '';
+            alert(`Import erfolgreich: ${result.importedCount} Einträge wurden verarbeitet.${conflictNote}`);
+          } else {
+            alert(`Import fehlgeschlagen: ${result.message}`);
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Ein unbekannter Fehler ist aufgetreten.';
+          alert(`Fehler beim Import: ${message}`);
+        } finally {
+          setIsSyncExecuting(false);
+          setShowSyncConflictDialog(false);
+          setPendingSyncExecutor(null);
+        }
+      };
+
+      // Wenn Verfügbarkeitskonflikte gefunden wurden: Zeige den neuen Konfliktdialog mit Abbruchmöglichkeit
+      if (checkResult.availabilityConflicts && checkResult.availabilityConflicts.length > 0) {
+        setSyncConflicts(checkResult.availabilityConflicts);
+        setSyncConflictTitle(`Konflikte beim Monatsimport (${months[currentMonth]} ${year})`);
+        setSyncConflictSubtitle(`${checkResult.availabilityConflicts.length} Verfügbarkeitskonflikt(e) gefunden. Betroffene Kollegen werden bei Fortfahren aus der Fahrzeug-Einteilung genommen.`);
+        setPendingSyncExecutor(() => executeImport);
+        setShowSyncConflictDialog(true);
+        return;
+      }
+
+      // Wenn keine Konflikte vorhanden sind: Normale Bestätigung
+      const ok = window.confirm(`Möchten Sie den Dienstplan für ${months[currentMonth]} ${year} aus der Excel-Datei importieren? Bestehende Daten für diesen Monat werden überschrieben.`);
+      if (!ok) return;
+
+      await executeImport();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Ein unbekannter Fehler ist aufgetreten.';
       alert(`Fehler beim Import: ${message}`);
     }
   };
 
+  // Sync-Handler mit Vorprüfung und Konfliktdialog
   const handleSyncPastAndFuture = async () => {
     const rosterImportPath = await resolveRosterImportPath(year, departmentName);
 
@@ -959,80 +986,100 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       ? months[startMonthIndex] 
       : `${months[startMonthIndex]} bis ${months[endMonthIndex]}`;
       
-    const ok = window.confirm(`Möchten Sie den Dienstplan für den Zeitraum ${rangeLabel} ${year} synchronisieren?\n\nDies führt einen Abgleich (Sync) durch, bei dem leere Zellen in Excel bestehende Einträge im Programm löschen. Manuelle Änderungen werden im Synchronisations-Modus NICHT überschrieben.`);
-    if (!ok) return;
-
     const monthRange = { start: startMonthIndex, end: endMonthIndex };
 
     try {
-      const result = await (window as any).api.importDutyRoster(rosterImportPath, year, monthRange, { department: departmentName });
-      if (result.success) {
-        // Check if unknown shift types were found
-        if (result.unknownShiftTypes && result.unknownShiftTypes.length > 0) {
-          const createNewShiftTypes = window.confirm(
-            `Folgende unbekannte Dienstarten wurden gefunden:\n${result.unknownShiftTypes.join('\n')}\n\nMöchten Sie diese als neue Dienstarten anlegen?`
-          );
+      // 1. Vorprüfung (dryRun / validateOnly)
+      const checkResult = await (window as any).api.importDutyRoster(rosterImportPath, year, monthRange, { department: departmentName, validateOnly: true });
 
-          if (createNewShiftTypes) {
-            setPendingImportPath(rosterImportPath);
-            setPendingImportYear(year);
-            setPendingImportMonth(monthRange);
-            setUnknownShiftTypes(result.unknownShiftTypes);
-            setShowNewShiftTypeDialog(true);
-            return;
-          }
-        }
+      if (!checkResult.success) {
+        alert(`Synchronisation fehlgeschlagen: ${checkResult.message}`);
+        return;
+      }
 
-        // Check for unknown azubis
-        if (result.unknownAzubis && result.unknownAzubis.length > 0) {
-          const createNewAzubis = window.confirm(
-            `Folgende unbekannte Azubi-Namen wurden gefunden:\n${result.unknownAzubis.join('\n')}\n\nMöchten Sie diese als neue Azubis anlegen?`
-          );
+      // Prüfe auf unbekannte Dienstarten
+      if (checkResult.unknownShiftTypes && checkResult.unknownShiftTypes.length > 0) {
+        const createNewShiftTypes = window.confirm(
+          `Folgende unbekannte Dienstarten wurden gefunden:\n${checkResult.unknownShiftTypes.join('\n')}\n\nMöchten Sie diese als neue Dienstarten anlegen?`
+        );
 
-          if (createNewAzubis) {
-            setPendingImportPath(rosterImportPath);
-            setPendingImportYear(year);
-            setPendingImportMonth(monthRange);
-            setShowNewAzubiDialog(true);
-            setUnknownAzubiNames(result.unknownAzubis);
-            return;
-          }
-          if (result.importedCount > 0) {
-            await reloadRoster();
-            alert(`Synchronisation teilweise erfolgreich: ${result.importedCount} Einträge verarbeitet. Unbekannte Azubi-Namen wurden übersprungen.`);
-            return;
-          }
-        }
-
-        // Check for azubis without period
-        if (result.azubisWithoutPeriod && result.azubisWithoutPeriod.length > 0) {
-          setAzubisWithoutPeriod(result.azubisWithoutPeriod);
+        if (createNewShiftTypes) {
           setPendingImportPath(rosterImportPath);
           setPendingImportYear(year);
           setPendingImportMonth(monthRange);
-          setShowAzubiPeriodDialog(true);
+          setUnknownShiftTypes(checkResult.unknownShiftTypes);
+          setShowNewShiftTypeDialog(true);
           return;
         }
-
-        let message = `Synchronisation erfolgreich: ${result.importedCount} Einträge wurden verarbeitet.`;
-        
-        // Check for availability conflicts
-        if (result.availabilityConflicts && result.availabilityConflicts.length > 0) {
-          const conflictList = result.availabilityConflicts.map((c: any) => 
-            `${c.personName} am ${c.date}: Schichtart "${c.dutyRosterValue}" (nicht verfügbar), aber eingeteilt auf "${c.einteilungValue}"`
-          ).join('\n');
-          
-          message += `\n\n⚠️ WARNUNG: ${result.availabilityConflicts.length} Verfügbarkeitskonflikt(e) gefunden:\n\n${conflictList}\n\nBitte prüfen Sie die Einteilungen!`;
-        }
-        
-        alert(message);
-        await reloadRoster();
-      } else {
-        alert(`Synchronisation fehlgeschlagen: ${result.message}`);
       }
+
+      // Prüfe auf unbekannte Azubis
+      if (checkResult.unknownAzubis && checkResult.unknownAzubis.length > 0) {
+        const createNewAzubis = window.confirm(
+          `Folgende unbekannte Azubi-Namen wurden gefunden:\n${checkResult.unknownAzubis.join('\n')}\n\nMöchten Sie diese als neue Azubis anlegen?`
+        );
+
+        if (createNewAzubis) {
+          setPendingImportPath(rosterImportPath);
+          setPendingImportYear(year);
+          setPendingImportMonth(monthRange);
+          setShowNewAzubiDialog(true);
+          setUnknownAzubiNames(checkResult.unknownAzubis);
+          return;
+        }
+      }
+
+      // Prüfe auf Azubis ohne Zeitraum
+      if (checkResult.azubisWithoutPeriod && checkResult.azubisWithoutPeriod.length > 0) {
+        setAzubisWithoutPeriod(checkResult.azubisWithoutPeriod);
+        setPendingImportPath(rosterImportPath);
+        setPendingImportYear(year);
+        setPendingImportMonth(monthRange);
+        setShowAzubiPeriodDialog(true);
+        return;
+      }
+
+      const executeSync = async () => {
+        setIsSyncExecuting(true);
+        try {
+          const result = await (window as any).api.importDutyRoster(rosterImportPath, year, monthRange, { department: departmentName });
+          if (result.success) {
+            await reloadRoster();
+            const conflictNote = checkResult.availabilityConflicts && checkResult.availabilityConflicts.length > 0
+              ? ` (${checkResult.availabilityConflicts.length} Einteilungs-Konflikt(e) bereinigt)`
+              : '';
+            alert(`Synchronisation erfolgreich: ${result.importedCount} Einträge wurden verarbeitet.${conflictNote}`);
+          } else {
+            alert(`Synchronisation fehlgeschlagen: ${result.message}`);
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Ein unbekannter Fehler ist aufgetreten.';
+          alert(`Fehler bei der Synchronisation: ${message}`);
+        } finally {
+          setIsSyncExecuting(false);
+          setShowSyncConflictDialog(false);
+          setPendingSyncExecutor(null);
+        }
+      };
+
+      // Wenn Konflikte vorhanden sind: Zeige den neuen Konfliktdialog mit Abbruchmöglichkeit
+      if (checkResult.availabilityConflicts && checkResult.availabilityConflicts.length > 0) {
+        setSyncConflicts(checkResult.availabilityConflicts);
+        setSyncConflictTitle(`Konflikte bei Dienstplan-Synchronisation (${rangeLabel} ${year})`);
+        setSyncConflictSubtitle(`${checkResult.availabilityConflicts.length} Verfügbarkeitskonflikt(e) gefunden. Betroffene Kollegen werden bei Fortfahren aus der Fahrzeug-Einteilung genommen.`);
+        setPendingSyncExecutor(() => executeSync);
+        setShowSyncConflictDialog(true);
+        return;
+      }
+
+      // Keine Konflikte: Normale Bestätigung
+      const ok = window.confirm(`Möchten Sie den Dienstplan für den Zeitraum ${rangeLabel} ${year} synchronisieren?\n\nDies führt einen Abgleich (Sync) durch, bei dem leere Zellen in Excel bestehende Einträge im Programm löschen. Manuelle Änderungen werden im Synchronisations-Modus NICHT überschrieben.`);
+      if (!ok) return;
+
+      await executeSync();
     } catch (error) {
-      // console.error('Fehler bei der Synchronisation:', error);
-      alert('Fehler bei der Synchronisation.');
+      const message = error instanceof Error ? error.message : 'Ein unbekannter Fehler ist aufgetreten.';
+      alert(`Fehler bei der Synchronisation: ${message}`);
     }
   };
 
@@ -2078,6 +2125,25 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
           onCancel={handleCancelAzubiPeriodDialog}
         />
       )}
+
+      {/* Sync Conflict Dialog */}
+      <SyncConflictDialog
+        isOpen={showSyncConflictDialog}
+        conflicts={syncConflicts}
+        title={syncConflictTitle}
+        subtitle={syncConflictSubtitle}
+        isProcessing={isSyncExecuting}
+        onCancel={() => {
+          setShowSyncConflictDialog(false);
+          setSyncConflicts([]);
+          setPendingSyncExecutor(null);
+        }}
+        onConfirm={() => {
+          if (pendingSyncExecutor) {
+            pendingSyncExecutor();
+          }
+        }}
+      />
 
       {/* Version/Build Anzeige entfernt */}
 
