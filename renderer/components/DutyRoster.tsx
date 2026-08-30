@@ -187,7 +187,6 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   // Sync Conflict Dialog States
   const [showSyncConflictDialog, setShowSyncConflictDialog] = useState(false);
   const [syncConflicts, setSyncConflicts] = useState<AvailabilityConflictItem[]>([]);
-  const [syncUnknownPersonnel, setSyncUnknownPersonnel] = useState<string[]>([]);
   const [syncMissingPersonnel, setSyncMissingPersonnel] = useState<MissingPersonnelItem[]>([]);
   const [syncPersonnelStats, setSyncPersonnelStats] = useState<PersonnelSyncStats | undefined>(undefined);
   const [syncConflictTitle, setSyncConflictTitle] = useState<string>('Vorprüfung der Dienstplan-Synchronisation');
@@ -952,22 +951,18 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       };
 
       const hasConflicts = checkResult.availabilityConflicts && checkResult.availabilityConflicts.length > 0;
-      const hasUnknown = checkResult.unknownPersonnel && checkResult.unknownPersonnel.length > 0;
       const hasMissing = checkResult.missingPersonnel && checkResult.missingPersonnel.length > 0;
 
-      // Wenn Konflikte oder Stammpersonal-Auffälligkeiten vorhanden sind: Zeige den Vorprüfungsdialog
-      if (hasConflicts || hasUnknown || hasMissing) {
+      // Wenn Konflikte oder fehlendes Stammpersonal vorhanden sind: Zeige den Vorprüfungsdialog
+      if (hasConflicts || hasMissing) {
         setSyncConflicts(checkResult.availabilityConflicts || []);
-        setSyncUnknownPersonnel(checkResult.unknownPersonnel || []);
         setSyncMissingPersonnel(checkResult.missingPersonnel || []);
         setSyncPersonnelStats(checkResult.personnelSyncStats);
         setSyncConflictTitle(`Vorprüfung Monatsimport (${months[currentMonth]} ${year})`);
         setSyncConflictSubtitle(
           hasConflicts
             ? `${checkResult.availabilityConflicts.length} Verfügbarkeitskonflikt(e) gefunden. Betroffene Kollegen werden bei Fortfahren aus der Fahrzeug-Einteilung genommen.`
-            : hasUnknown
-              ? `${checkResult.unknownPersonnel.length} unbekannte(r) Name(n) in Excel gefunden.`
-              : `${checkResult.missingPersonnel.length} Mitarbeiter aus dem Stammpersonal nicht in Vorplanung gefunden.`
+            : `${checkResult.missingPersonnel.length} Mitarbeiter aus dem Stammpersonal nicht in der Vorplanung gefunden.`
         );
         setPendingSyncExecutor(() => executeImport);
         setShowSyncConflictDialog(true);
@@ -1079,22 +1074,18 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       };
 
       const hasConflicts = checkResult.availabilityConflicts && checkResult.availabilityConflicts.length > 0;
-      const hasUnknown = checkResult.unknownPersonnel && checkResult.unknownPersonnel.length > 0;
       const hasMissing = checkResult.missingPersonnel && checkResult.missingPersonnel.length > 0;
 
-      // Wenn Konflikte oder Stammpersonal-Auffälligkeiten vorhanden sind: Zeige den Vorprüfungsdialog
-      if (hasConflicts || hasUnknown || hasMissing) {
+      // Wenn Konflikte oder fehlendes Stammpersonal vorhanden sind: Zeige den Vorprüfungsdialog
+      if (hasConflicts || hasMissing) {
         setSyncConflicts(checkResult.availabilityConflicts || []);
-        setSyncUnknownPersonnel(checkResult.unknownPersonnel || []);
         setSyncMissingPersonnel(checkResult.missingPersonnel || []);
         setSyncPersonnelStats(checkResult.personnelSyncStats);
         setSyncConflictTitle(`Vorprüfung Dienstplan-Synchronisation (${rangeLabel} ${year})`);
         setSyncConflictSubtitle(
           hasConflicts
             ? `${checkResult.availabilityConflicts.length} Verfügbarkeitskonflikt(e) gefunden. Betroffene Kollegen werden bei Fortfahren aus der Fahrzeug-Einteilung genommen.`
-            : hasUnknown
-              ? `${checkResult.unknownPersonnel.length} unbekannte(r) Name(n) in Excel gefunden.`
-              : `${checkResult.missingPersonnel.length} Mitarbeiter aus dem Stammpersonal nicht in Vorplanung gefunden.`
+            : `${checkResult.missingPersonnel.length} Mitarbeiter aus dem Stammpersonal nicht in der Vorplanung gefunden.`
         );
         setPendingSyncExecutor(() => executeSync);
         setShowSyncConflictDialog(true);
@@ -2159,7 +2150,6 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       <SyncConflictDialog
         isOpen={showSyncConflictDialog}
         conflicts={syncConflicts}
-        unknownPersonnel={syncUnknownPersonnel}
         missingPersonnel={syncMissingPersonnel}
         personnelSyncStats={syncPersonnelStats}
         title={syncConflictTitle}
@@ -2168,7 +2158,6 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         onCancel={() => {
           setShowSyncConflictDialog(false);
           setSyncConflicts([]);
-          setSyncUnknownPersonnel([]);
           setSyncMissingPersonnel([]);
           setSyncPersonnelStats(undefined);
           setPendingSyncExecutor(null);

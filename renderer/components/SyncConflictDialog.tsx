@@ -28,7 +28,6 @@ export interface PersonnelSyncStats {
 interface SyncConflictDialogProps {
   isOpen: boolean;
   conflicts?: AvailabilityConflictItem[];
-  unknownPersonnel?: string[];
   missingPersonnel?: MissingPersonnelItem[];
   personnelSyncStats?: PersonnelSyncStats;
   title?: string;
@@ -41,7 +40,6 @@ interface SyncConflictDialogProps {
 export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
   isOpen,
   conflicts = [],
-  unknownPersonnel = [],
   missingPersonnel = [],
   personnelSyncStats,
   title = 'Vorprüfung der Dienstplan-Synchronisation',
@@ -55,7 +53,6 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
   if (!isOpen) return null;
 
   const hasConflicts = conflicts.length > 0;
-  const hasUnknownPersonnel = unknownPersonnel.length > 0;
   const hasMissingPersonnel = missingPersonnel.length > 0;
 
   const filteredConflicts = conflicts.filter(c => {
@@ -107,10 +104,10 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
         <div
           style={{
             padding: '18px 24px',
-            background: hasConflicts || hasUnknownPersonnel
+            background: hasConflicts
               ? 'linear-gradient(to right, #fffbeb, #fef3c7)'
               : 'linear-gradient(to right, #eff6ff, #f8fafc)',
-            borderBottom: hasConflicts || hasUnknownPersonnel ? '1px solid #fde68a' : '1px solid #e2e8f0',
+            borderBottom: hasConflicts ? '1px solid #fde68a' : '1px solid #e2e8f0',
             display: 'flex',
             alignItems: 'center',
             gap: '14px',
@@ -121,7 +118,7 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
               width: '42px',
               height: '42px',
               borderRadius: '50%',
-              backgroundColor: hasConflicts || hasUnknownPersonnel ? '#f59e0b' : '#3b82f6',
+              backgroundColor: hasConflicts ? '#f59e0b' : '#3b82f6',
               color: '#ffffff',
               display: 'flex',
               alignItems: 'center',
@@ -131,7 +128,7 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
               boxShadow: '0 2px 6px rgba(0, 0, 0, 0.15)',
             }}
           >
-            {hasConflicts || hasUnknownPersonnel ? '⚠️' : 'ℹ️'}
+            {hasConflicts ? '⚠️' : 'ℹ️'}
           </div>
           <div style={{ flex: 1 }}>
             <h3
@@ -139,7 +136,7 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
                 margin: 0,
                 fontSize: '18px',
                 fontWeight: 700,
-                color: hasConflicts || hasUnknownPersonnel ? '#92400e' : '#1e3a8a',
+                color: hasConflicts ? '#92400e' : '#1e3a8a',
               }}
             >
               {title}
@@ -148,7 +145,7 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
               style={{
                 margin: '3px 0 0 0',
                 fontSize: '13px',
-                color: hasConflicts || hasUnknownPersonnel ? '#b45309' : '#475569',
+                color: hasConflicts ? '#b45309' : '#475569',
               }}
             >
               {subtitle || (
@@ -166,55 +163,11 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
           {/* Section 1: Stammpersonal Synchronisations-Check */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#334155' }}>
-              👤 Stammpersonal-Abgleich:
+              👤 Stammpersonal-Abgleich (Vorhandensein in Excel):
             </h4>
 
-            {/* Case A: Unbekannte Namen in Excel (nicht in DB gefunden) */}
-            {hasUnknownPersonnel && (
-              <div
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: '8px',
-                  backgroundColor: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  fontSize: '13px',
-                  color: '#991b1b',
-                }}
-              >
-                <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                  <span>⚠️</span>
-                  <span>{unknownPersonnel.length} Name(n) in der Excel-Vorplanung keinem Stammpersonal zugeordnet:</span>
-                </div>
-                <div style={{ marginBottom: '8px', color: '#7f1d1d' }}>
-                  Folgende Namen wurden in der Excel-Datei gefunden, existieren jedoch nicht im Stammpersonal (z.&thinsp;B. Schreibfehler oder noch nicht angelegte Mitarbeiter):
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {unknownPersonnel.map((name, idx) => (
-                    <span
-                      key={idx}
-                      style={{
-                        display: 'inline-block',
-                        padding: '3px 8px',
-                        borderRadius: '4px',
-                        background: '#ffffff',
-                        border: '1px solid #fca5a5',
-                        fontWeight: 600,
-                        fontSize: '12px',
-                        color: '#b91c1c',
-                      }}
-                    >
-                      {name}
-                    </span>
-                  ))}
-                </div>
-                <div style={{ marginTop: '8px', fontSize: '12px', color: '#991b1b' }}>
-                  ➔ Diese Zeilen werden beim Sync übersprungen. Falls es sich um Tippfehler handelt, korrigieren Sie die Excel-Datei und brechen Sie hier ab.
-                </div>
-              </div>
-            )}
-
-            {/* Case B: Stammpersonal aus DB nicht in Excel gefunden */}
-            {hasMissingPersonnel && (
+            {/* Case: Stammpersonal aus DB nicht in Excel gefunden */}
+            {hasMissingPersonnel ? (
               <div
                 style={{
                   padding: '12px 16px',
@@ -228,13 +181,13 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
                 <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
                   <span>ℹ️</span>
                   <span>
-                    {missingPersonnel.length} von {personnelSyncStats?.total || (missingPersonnel.length + (personnelSyncStats?.matched || 0))} Mitarbeiter(n) aus dem Stammpersonal nicht in der Vorplanung gefunden:
+                    {missingPersonnel.length} von {personnelSyncStats?.total || (missingPersonnel.length + (personnelSyncStats?.matched || 0))} Mitarbeiter(n) aus dem Stammpersonal nicht in der Excel-Vorplanung gefunden:
                   </span>
                 </div>
                 <div style={{ marginBottom: '8px', color: '#b45309' }}>
-                  Für folgende aktive Mitarbeiter wurden in der ausgewählten Vorplanungsdatei keine Zeilen/Dienste gefunden:
+                  Folgende aktive Mitarbeiter aus dem Stammpersonal der Abteilung wurden in der Excel-Vorplanungsdatei nicht gefunden:
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '100px', overflowY: 'auto' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '110px', overflowY: 'auto' }}>
                   {missingPersonnel.map((p, idx) => (
                     <span
                       key={idx}
@@ -254,13 +207,10 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
                   ))}
                 </div>
                 <div style={{ marginTop: '8px', fontSize: '12px', color: '#92400e' }}>
-                  ➔ Für diese Personen werden beim Sync keine neuen Einträge erstellt.
+                  ➔ Für diese Personen wurden in der Vorplanung keine Schichten gefunden. Falls dies ein Versehen ist, prüfen Sie die Excel-Datei.
                 </div>
               </div>
-            )}
-
-            {/* Case C: Vollständig / Alle zugeordnet */}
-            {!hasUnknownPersonnel && !hasMissingPersonnel && personnelSyncStats && (
+            ) : personnelSyncStats ? (
               <div
                 style={{
                   padding: '10px 14px',
@@ -276,10 +226,10 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
               >
                 <span style={{ fontSize: '16px' }}>✓</span>
                 <span>
-                  <strong>Stammpersonal vollständig:</strong> Alle {personnelSyncStats.total} aktiven Mitarbeiter der Abteilung wurden in der Excel-Vorplanung gefunden und zugeordnet.
+                  <strong>Stammpersonal vollständig:</strong> Alle {personnelSyncStats.total} aktiven Mitarbeiter der Abteilung wurden in der Excel-Vorplanung gefunden und abgeglichen.
                 </span>
               </div>
-            )}
+            ) : null}
           </div>
 
           {/* Section 2: Verfügbarkeitskonflikte (Einteilung) */}

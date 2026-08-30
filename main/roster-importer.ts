@@ -559,49 +559,6 @@ export class RosterImporter {
         return Array.from(unknownNames).sort();
     }
 
-    // Sammelt unbekannte Namen aus dem Personal-Block (Stammpersonal)
-    private collectUnknownPersonnelNames(
-        worksheet: XLSX.WorkSheet,
-        layout: RosterSheetLayout,
-        year: number,
-        month: number | { start: number, end: number } | undefined,
-        personnelMaps: BlockNameMaps,
-        mapByLastName: Record<string, number>
-    ): string[] {
-        const unknownNames = new Set<string>();
-
-        for (let col = layout.firstDateCol; col < layout.firstDateCol + 2000; col++) {
-            const dateAddr = XLSX.utils.encode_cell({ r: layout.headerRow, c: col });
-            const dateCell = worksheet[dateAddr];
-            if (!dateCell || dateCell.v == null) break;
-
-            const dateValue = parseHeaderDate(dateCell.v, year);
-            if (!dateValue || dateValue.getFullYear() !== year) continue;
-            if (month !== undefined) {
-                if (typeof month === 'number') {
-                    if (dateValue.getMonth() !== month) continue;
-                } else {
-                    if (dateValue.getMonth() < month.start || dateValue.getMonth() > month.end) continue;
-                }
-            }
-
-            for (let row = layout.personnelStart; row <= layout.personnelEnd; row++) {
-                const rawName = getRosterNameFromCell(worksheet, row, layout.nameCol);
-                if (!rawName || shouldSkipRosterNameRow(row, rawName, 'person')) continue;
-
-                const valueAddr = XLSX.utils.encode_cell({ r: row, c: col });
-                const valueCell = worksheet[valueAddr];
-                const rawValue = valueCell && valueCell.v != null ? String(valueCell.v).trim() : '';
-                if (!rawValue) continue;
-
-                const match = resolvePersonMatch(rawName, personnelMaps, mapByLastName, 'person');
-                if (!match) unknownNames.add(rawName);
-            }
-        }
-
-        return Array.from(unknownNames).sort();
-    }
-
     // Parse-only preview: returns unmatched names and simple stats without writing to DB
     public async previewDutyRoster(filePath: string, year: number, month?: number | { start: number, end: number }): Promise<{ success: boolean; total: number; matched: number; unmatchedNames: string[]; overwrites: number; message?: string; }> {
         try {
@@ -705,7 +662,6 @@ export class RosterImporter {
         message: string, 
         importedCount: number, 
         unknownAzubis?: string[], 
-        unknownPersonnel?: string[],
         missingPersonnel?: Array<{ id: number; name: string; vorname: string; displayName: string }>,
         personnelSyncStats?: { total: number; matched: number; missing: number },
         unknownShiftTypes?: string[], 
@@ -727,7 +683,6 @@ export class RosterImporter {
             const entriesToImport: RosterEntry[] = [];
             const seenPersons = new Set<string>(); // "personId:personType"
             const allUnknownAzubiNames = new Set<string>();
-            const allUnknownPersonnelNames = new Set<string>();
 
             const importDept = options?.department;
             const personnel = await this.dbAdapter.getPersonnel(false, undefined, importDept);
@@ -800,15 +755,11 @@ export class RosterImporter {
 
                             const personInfo = resolvePersonMatch(rawName, maps, mapByLastName, expectedType);
                             if (!personInfo) {
-                                const dutyAddr = XLSX.utils.encode_cell({ r: row, c: col });
-                                const dutyCell = worksheet[dutyAddr];
-                                const dutyValue = dutyCell && dutyCell.v != null ? String(dutyCell.v).trim() : '';
-                                if (dutyValue) {
-                                    if (expectedType === 'azubi') {
-                                        allUnknownAzubiNames.add(rawName);
-                                    } else {
-                                        allUnknownPersonnelNames.add(rawName);
-                                    }
+                                if (expectedType === 'azubi') {
+                                    const dutyAddr = XLSX.utils.encode_cell({ r: row, c: col });
+                                    const dutyCell = worksheet[dutyAddr];
+                                    const dutyValue = dutyCell && dutyCell.v != null ? String(dutyCell.v).trim() : '';
+                                    if (dutyValue) allUnknownAzubiNames.add(rawName);
                                 }
                                 continue;
                             }
@@ -838,9 +789,6 @@ export class RosterImporter {
 
                 for (const name of this.collectUnknownAzubiNames(worksheet, layout, year, month, azubiMaps, mapByLastName)) {
                     allUnknownAzubiNames.add(name);
-                }
-                for (const name of this.collectUnknownPersonnelNames(worksheet, layout, year, month, personnelMaps, mapByLastName)) {
-                    allUnknownPersonnelNames.add(name);
                 }
             }
 
@@ -967,7 +915,6 @@ export class RosterImporter {
                 };
 
                 const unknownAzubiList = allUnknownAzubiNames.size > 0 ? Array.from(allUnknownAzubiNames).sort() : undefined;
-                const unknownPersonnelList = allUnknownPersonnelNames.size > 0 ? Array.from(allUnknownPersonnelNames).sort() : undefined;
 
                 // Wenn validateOnly oder dryRun aktiv ist: Breche vor dem Schreiben ab und gib den Prüfbericht zurück
                 if (options?.validateOnly || options?.dryRun) {
@@ -976,7 +923,6 @@ export class RosterImporter {
                         message: 'Vorprüfung erfolgreich abgeschlossen.',
                         importedCount: entriesToImport.length,
                         unknownAzubis: unknownAzubiList,
-                        unknownPersonnel: unknownPersonnelList,
                         missingPersonnel: missingPersonnel.length > 0 ? missingPersonnel : undefined,
                         personnelSyncStats,
                         availabilityConflicts: availabilityConflicts.length > 0 ? availabilityConflicts : undefined
@@ -1023,7 +969,6 @@ export class RosterImporter {
                     message: `Dienstplan erfolgreich importiert. ${result.imported} Einträge verarbeitet, ${result.skipped} geschützt/übersprungen.`,
                     importedCount: result.imported,
                     unknownAzubis: unknownAzubiList,
-                    unknownPersonnel: unknownPersonnelList,
                     missingPersonnel: missingPersonnel.length > 0 ? missingPersonnel : undefined,
                     personnelSyncStats,
                     availabilityConflicts: availabilityConflicts.length > 0 ? availabilityConflicts : undefined
@@ -1048,14 +993,12 @@ export class RosterImporter {
             };
 
             const unknownAzubiList = allUnknownAzubiNames.size > 0 ? Array.from(allUnknownAzubiNames).sort() : undefined;
-            const unknownPersonnelList = allUnknownPersonnelNames.size > 0 ? Array.from(allUnknownPersonnelNames).sort() : undefined;
 
             return { 
                 success: true, 
                 message: `Keine Einträge zum Import gefunden.`, 
                 importedCount: 0, 
                 unknownAzubis: unknownAzubiList,
-                unknownPersonnel: unknownPersonnelList,
                 missingPersonnel: missingPersonnel.length > 0 ? missingPersonnel : undefined,
                 personnelSyncStats
             };
