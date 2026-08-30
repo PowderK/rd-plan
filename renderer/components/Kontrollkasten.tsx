@@ -106,7 +106,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
         </span>
         <span 
           style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)', cursor: 'help' }}
-          title="NEF: Anzahl der eingeteilten NEF-Schichten im aktuellen Monat."
+          title="NEF: Gesamtzahl der eingeteilten NEF-Schichten im Jahr."
         >
           NEF
         </span>
@@ -136,13 +136,13 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
         )}
         <span 
           style={{ textAlign: 'center', paddingRight: 4, fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)', cursor: 'help' }}
-          title="Ges. (Jahresrest): Verbleibender Schicht-Saldo bis zum Erreichen des Jahresziels (bereinigt nach Beschäftigungsgrad/Teilzeit). Ampelfarbe: Grün = guter Puffer, Gelb = mittlerer Bereich, Rot = kritisch. Bei Ü50/LPAL ohne Restwert."
+          title="Ges. (Jahressaldo): Differenz zwischen geleisteten Ist-Schichten und Soll-Schichten im Jahr (Gesamt). Negativ = noch Schichten offen, Positiv = Jahressoll übererfüllt. Ampelfarbe: Grün = guter Puffer, Gelb = mittlerer Bereich, Rot = kritisch. Bei Ü50/LPAL ohne Restwert."
         >
           Ges.
         </span>
         <span 
           style={{ textAlign: 'center', fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)', cursor: 'help' }}
-          title="T/N | Rest: Oben: Tag/Nacht-Verhältnis (Rot links = Tag-Überhang, Blau rechts = Nacht-Überhang). Unten: Restkapazität (Rest V) im Vergleich zum Jahresrest (Grün = ausreichend Luft, Gelb = eng, Rot = kritisch)."
+          title="T/N | Rest: Oben: Tag/Nacht-Verhältnis (Rot links = Tag-Überhang, Blau rechts = Nacht-Überhang). Unten: Restkapazität (Rest V) im Vergleich zum offenen Jahresbedarf (Grün = ausreichend Luft, Gelb = eng, Rot = kritisch)."
         >
           T/N | Rest
         </span>
@@ -235,7 +235,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                 {/* NEF */}
                 <span 
                   className={styles.sidebarVal} 
-                  title={`${it.name}: ${it.nef} NEF-Schicht(en) in diesem Monat`}
+                  title={`${it.name}: ${it.nef} NEF-Schicht(en) im Jahr (Gesamt)`}
                   style={{ textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4, cursor: 'help' }}
                 >
                   {it.nef}
@@ -277,7 +277,11 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                 {!it.ue50 && !it.lpal && (
                   <span 
                     className={styles.sidebarVal} 
-                    title={`${it.name} Jahresrest: ${Number.isFinite(it.rest) ? it.rest : 0} Schicht(en) bis zum Jahresziel`}
+                    title={
+                      typeof it.rest === 'number' && it.rest < 0
+                        ? `${it.name} Jahressaldo (Gesamt): ${it.rest} Schichten (noch ${Math.abs(it.rest)} Schichten bis zum Jahresziel)`
+                        : `${it.name} Jahressaldo (Gesamt): +${it.rest || 0} Schichten (Jahresziel erreicht/übererfüllt)`
+                    }
                     style={{ ...restStyle, textAlign: 'center', fontSize: 11, borderRight: '1px solid var(--line)', paddingRight: 4, cursor: 'help' }}
                   >
                     {Number.isFinite(it.rest) ? it.rest : '–'}
@@ -382,7 +386,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                       const pres = presenceRemainingByPerson[it.key] || 0;
                       const assigned = assignedRemainingByPerson[it.key] || 0;
                       const remain = Math.max(0, pres - assigned);
-                      const needed = Math.max(0, Number(it.rest || 0));
+                      const needed = typeof it.rest === 'number' && it.rest < 0 ? Math.abs(it.rest) : 0;
                       const distance = remain - needed;
 
                       const yellowThreshold = 10;
@@ -400,7 +404,9 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                         ? 1
                         : Math.max(0, Math.min(1, distance / widthStartDistance));
 
-                      const restVTooltip = `${it.name} Restkapazität (Rest V): ${remain} freie Schichten im Restjahr verfügbar vs. ${needed} noch benötigte Schichten (Puffer: ${distance >= 0 ? `+${distance}` : distance} Schichten)`;
+                      const restVTooltip = needed <= 0
+                        ? `${it.name} Restkapazität (Rest V): ${remain} freie Schichten im Restjahr verfügbar (Jahressoll bereits erfüllt / Gesamt: ${typeof it.rest === 'number' && it.rest >= 0 ? `+${it.rest}` : it.rest}, Puffer: +${remain} Schichten)`
+                        : `${it.name} Restkapazität (Rest V): ${remain} freie Schichten im Restjahr verfügbar vs. ${needed} noch benötigte Schichten (Gesamt: ${it.rest}, Puffer: ${distance >= 0 ? `+${distance}` : distance} Schichten)`;
 
                       return (
                         <div
