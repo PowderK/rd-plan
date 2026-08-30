@@ -12,9 +12,25 @@ export interface AvailabilityConflictItem {
   reason?: string;
 }
 
+export interface MissingPersonnelItem {
+  id: number;
+  name: string;
+  vorname: string;
+  displayName: string;
+}
+
+export interface PersonnelSyncStats {
+  total: number;
+  matched: number;
+  missing: number;
+}
+
 interface SyncConflictDialogProps {
   isOpen: boolean;
-  conflicts: AvailabilityConflictItem[];
+  conflicts?: AvailabilityConflictItem[];
+  unknownPersonnel?: string[];
+  missingPersonnel?: MissingPersonnelItem[];
+  personnelSyncStats?: PersonnelSyncStats;
   title?: string;
   subtitle?: string;
   onConfirm: () => void;
@@ -24,8 +40,11 @@ interface SyncConflictDialogProps {
 
 export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
   isOpen,
-  conflicts,
-  title = 'Konflikte bei der Dienstplan-Synchronisation',
+  conflicts = [],
+  unknownPersonnel = [],
+  missingPersonnel = [],
+  personnelSyncStats,
+  title = 'Vorprüfung der Dienstplan-Synchronisation',
   subtitle,
   onConfirm,
   onCancel,
@@ -34,6 +53,10 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
   const [filterText, setFilterText] = useState('');
 
   if (!isOpen) return null;
+
+  const hasConflicts = conflicts.length > 0;
+  const hasUnknownPersonnel = unknownPersonnel.length > 0;
+  const hasMissingPersonnel = missingPersonnel.length > 0;
 
   const filteredConflicts = conflicts.filter(c => {
     if (!filterText.trim()) return true;
@@ -70,7 +93,7 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
           backgroundColor: 'var(--bg, #ffffff)',
           color: 'var(--text, #1e293b)',
           borderRadius: '12px',
-          maxWidth: '860px',
+          maxWidth: '880px',
           width: '100%',
           maxHeight: '90vh',
           display: 'flex',
@@ -83,9 +106,11 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
         {/* Header */}
         <div
           style={{
-            padding: '20px 24px',
-            background: 'linear-gradient(to right, #fffbeb, #fef3c7)',
-            borderBottom: '1px solid #fde68a',
+            padding: '18px 24px',
+            background: hasConflicts || hasUnknownPersonnel
+              ? 'linear-gradient(to right, #fffbeb, #fef3c7)'
+              : 'linear-gradient(to right, #eff6ff, #f8fafc)',
+            borderBottom: hasConflicts || hasUnknownPersonnel ? '1px solid #fde68a' : '1px solid #e2e8f0',
             display: 'flex',
             alignItems: 'center',
             gap: '14px',
@@ -96,17 +121,17 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
               width: '42px',
               height: '42px',
               borderRadius: '50%',
-              backgroundColor: '#f59e0b',
+              backgroundColor: hasConflicts || hasUnknownPersonnel ? '#f59e0b' : '#3b82f6',
               color: '#ffffff',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               fontSize: '22px',
               flexShrink: 0,
-              boxShadow: '0 2px 6px rgba(245, 158, 11, 0.35)',
+              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.15)',
             }}
           >
-            ⚠️
+            {hasConflicts || hasUnknownPersonnel ? '⚠️' : 'ℹ️'}
           </div>
           <div style={{ flex: 1 }}>
             <h3
@@ -114,7 +139,7 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
                 margin: 0,
                 fontSize: '18px',
                 fontWeight: 700,
-                color: '#92400e',
+                color: hasConflicts || hasUnknownPersonnel ? '#92400e' : '#1e3a8a',
               }}
             >
               {title}
@@ -123,165 +148,318 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
               style={{
                 margin: '3px 0 0 0',
                 fontSize: '13px',
-                color: '#b45309',
+                color: hasConflicts || hasUnknownPersonnel ? '#b45309' : '#475569',
               }}
             >
-              {subtitle || `${conflicts.length} Verfügbarkeitskonflikt(e) zwischen Vorplanung und Fahrzeug-Einteilung festgestellt.`}
+              {subtitle || (
+                hasConflicts
+                  ? `${conflicts.length} Verfügbarkeitskonflikt(e) zwischen Vorplanung und Fahrzeug-Einteilung festgestellt.`
+                  : 'Vorprüfung der Vorplanung und des Stammpersonals abgeschlossen.'
+              )}
             </p>
           </div>
         </div>
 
         {/* Content */}
         <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Explanation Box */}
-          <div
-            style={{
-              padding: '12px 16px',
-              borderRadius: '8px',
-              backgroundColor: '#f8fafc',
-              border: '1px solid #e2e8f0',
-              fontSize: '13.5px',
-              lineHeight: 1.5,
-              color: '#475569',
-            }}
-          >
-            <strong>Was bedeutet dieser Konflikt?</strong>
-            <br />
-            Die unten aufgeführten Kollegen sind aktuell auf ein Fahrzeug eingeteilt, haben jedoch in der neuen Vorplanung <strong>keinen Dienst</strong> (z.&thinsp;B. gelöscht) oder sind als <strong>nicht verfügbar</strong> (z.&thinsp;B. Krank, Urlaub, Frei) markiert.
-            <br />
-            <span style={{ color: '#dc2626', fontWeight: 600 }}>
-              ➔ Beim Fortfahren werden diese Kollegen automatisch aus der Fahrzeug-Einteilung genommen.
-            </span>
-          </div>
+          
+          {/* Section 1: Stammpersonal Synchronisations-Check */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#334155' }}>
+              👤 Stammpersonal-Abgleich:
+            </h4>
 
-          {/* Search / Filter bar if more than 4 conflicts */}
-          {conflicts.length > 4 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="text"
-                placeholder="Konflikte filtern (Name, Datum, Fahrzeug)..."
-                value={filterText}
-                onChange={(e) => setFilterText(e.target.value)}
+            {/* Case A: Unbekannte Namen in Excel (nicht in DB gefunden) */}
+            {hasUnknownPersonnel && (
+              <div
                 style={{
-                  flex: 1,
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e1',
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  backgroundColor: '#fef2f2',
+                  border: '1px solid #fecaca',
                   fontSize: '13px',
+                  color: '#991b1b',
                 }}
-              />
-              {filterText && (
-                <button
-                  onClick={() => setFilterText('')}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '6px',
-                    border: '1px solid #cbd5e1',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                  }}
-                >
-                  Zurücksetzen
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Conflicts Table */}
-          <div
-            style={{
-              border: '1px solid #e2e8f0',
-              borderRadius: '8px',
-              overflow: 'auto',
-              maxHeight: '340px',
-            }}
-          >
-            <table
-              style={{
-                width: '100%',
-                borderCollapse: 'collapse',
-                fontSize: '13px',
-                textAlign: 'left',
-              }}
-            >
-              <thead>
-                <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1' }}>
-                  <th style={{ padding: '10px 12px', fontWeight: 600, color: '#334155' }}>Datum</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 600, color: '#334155' }}>Kollege / Kollegin</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 600, color: '#334155' }}>Bisherige Einteilung</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 600, color: '#334155' }}>Vorplanung (Excel)</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 600, color: '#334155' }}>Konsequenz</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredConflicts.map((c, index) => {
-                  const isRemoved = c.conflictType === 'removed_from_roster' || !c.dutyRosterValue || c.dutyRosterValue.includes('Aus Vorplanung');
-                  
-                  return (
-                    <tr
-                      key={index}
+              >
+                <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                  <span>⚠️</span>
+                  <span>{unknownPersonnel.length} Name(n) in der Excel-Vorplanung keinem Stammpersonal zugeordnet:</span>
+                </div>
+                <div style={{ marginBottom: '8px', color: '#7f1d1d' }}>
+                  Folgende Namen wurden in der Excel-Datei gefunden, existieren jedoch nicht im Stammpersonal (z.&thinsp;B. Schreibfehler oder noch nicht angelegte Mitarbeiter):
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {unknownPersonnel.map((name, idx) => (
+                    <span
+                      key={idx}
                       style={{
-                        borderBottom: '1px solid #f1f5f9',
-                        backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8fafc',
+                        display: 'inline-block',
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        background: '#ffffff',
+                        border: '1px solid #fca5a5',
+                        fontWeight: 600,
+                        fontSize: '12px',
+                        color: '#b91c1c',
                       }}
                     >
-                      {/* Datum */}
-                      <td style={{ padding: '9px 12px', whiteSpace: 'nowrap', fontWeight: 500 }}>
-                        {c.formattedDate || c.date}
-                      </td>
+                      {name}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ marginTop: '8px', fontSize: '12px', color: '#991b1b' }}>
+                  ➔ Diese Zeilen werden beim Sync übersprungen. Falls es sich um Tippfehler handelt, korrigieren Sie die Excel-Datei und brechen Sie hier ab.
+                </div>
+              </div>
+            )}
 
-                      {/* Name */}
-                      <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>
-                        {c.personName}
-                      </td>
+            {/* Case B: Stammpersonal aus DB nicht in Excel gefunden */}
+            {hasMissingPersonnel && (
+              <div
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  backgroundColor: '#fffbeb',
+                  border: '1px solid #fde68a',
+                  fontSize: '13px',
+                  color: '#92400e',
+                }}
+              >
+                <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                  <span>ℹ️</span>
+                  <span>
+                    {missingPersonnel.length} von {personnelSyncStats?.total || (missingPersonnel.length + (personnelSyncStats?.matched || 0))} Mitarbeiter(n) aus dem Stammpersonal nicht in der Vorplanung gefunden:
+                  </span>
+                </div>
+                <div style={{ marginBottom: '8px', color: '#b45309' }}>
+                  Für folgende aktive Mitarbeiter wurden in der ausgewählten Vorplanungsdatei keine Zeilen/Dienste gefunden:
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '100px', overflowY: 'auto' }}>
+                  {missingPersonnel.map((p, idx) => (
+                    <span
+                      key={idx}
+                      style={{
+                        display: 'inline-block',
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        background: '#ffffff',
+                        border: '1px solid #fcd34d',
+                        fontWeight: 500,
+                        fontSize: '12px',
+                        color: '#78350f',
+                      }}
+                    >
+                      {p.displayName}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ marginTop: '8px', fontSize: '12px', color: '#92400e' }}>
+                  ➔ Für diese Personen werden beim Sync keine neuen Einträge erstellt.
+                </div>
+              </div>
+            )}
 
-                      {/* Einteilung */}
-                      <td style={{ padding: '9px 12px' }}>
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            padding: '3px 8px',
-                            borderRadius: '4px',
-                            background: '#eff6ff',
-                            color: '#1d4ed8',
-                            border: '1px solid #bfdbfe',
-                            fontWeight: 500,
-                            fontSize: '12px',
-                          }}
-                        >
-                          🚑 {c.einteilungValue}
-                        </span>
-                      </td>
+            {/* Case C: Vollständig / Alle zugeordnet */}
+            {!hasUnknownPersonnel && !hasMissingPersonnel && personnelSyncStats && (
+              <div
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  backgroundColor: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  fontSize: '13px',
+                  color: '#166534',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <span style={{ fontSize: '16px' }}>✓</span>
+                <span>
+                  <strong>Stammpersonal vollständig:</strong> Alle {personnelSyncStats.total} aktiven Mitarbeiter der Abteilung wurden in der Excel-Vorplanung gefunden und zugeordnet.
+                </span>
+              </div>
+            )}
+          </div>
 
-                      {/* Vorplanung */}
-                      <td style={{ padding: '9px 12px' }}>
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            padding: '3px 8px',
-                            borderRadius: '4px',
-                            background: isRemoved ? '#fef2f2' : '#fffbeb',
-                            color: isRemoved ? '#b91c1c' : '#b45309',
-                            border: `1px solid ${isRemoved ? '#fecaca' : '#fde68a'}`,
-                            fontWeight: 600,
-                            fontSize: '12px',
-                          }}
-                        >
-                          {isRemoved ? '❌ ' : '⚠️ '}
-                          {c.dutyRosterValue || 'Kein Dienst'}
-                        </span>
-                      </td>
+          {/* Section 2: Verfügbarkeitskonflikte (Einteilung) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '4px' }}>
+            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#334155' }}>
+              🚑 Fahrzeug-Einteilung Verfügbarkeits-Check:
+            </h4>
 
-                      {/* Konsequenz */}
-                      <td style={{ padding: '9px 12px', color: '#dc2626', fontSize: '12px', fontWeight: 500 }}>
-                        Wird aus Einteilung entfernt
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            {hasConflicts ? (
+              <>
+                <div
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    backgroundColor: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    fontSize: '13px',
+                    lineHeight: 1.5,
+                    color: '#475569',
+                  }}
+                >
+                  <strong>Was bedeutet dieser Konflikt?</strong>
+                  <br />
+                  Die unten aufgeführten Kollegen sind aktuell auf ein Fahrzeug eingeteilt, haben jedoch in der neuen Vorplanung <strong>keinen Dienst</strong> (z.&thinsp;B. gelöscht) oder sind als <strong>nicht verfügbar</strong> (z.&thinsp;B. Krank, Urlaub, Frei) markiert.
+                  <br />
+                  <span style={{ color: '#dc2626', fontWeight: 600 }}>
+                    ➔ Beim Fortfahren werden diese Kollegen automatisch aus der Fahrzeug-Einteilung genommen.
+                  </span>
+                </div>
+
+                {/* Filter bar if more than 4 conflicts */}
+                {conflicts.length > 4 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="text"
+                      placeholder="Konflikte filtern (Name, Datum, Fahrzeug)..."
+                      value={filterText}
+                      onChange={(e) => setFilterText(e.target.value)}
+                      style={{
+                        flex: 1,
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '13px',
+                      }}
+                    />
+                    {filterText && (
+                      <button
+                        onClick={() => setFilterText('')}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          background: '#fff',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                        }}
+                      >
+                        Zurücksetzen
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Conflicts Table */}
+                <div
+                  style={{
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    overflow: 'auto',
+                    maxHeight: '260px',
+                  }}
+                >
+                  <table
+                    style={{
+                      width: '100%',
+                      borderCollapse: 'collapse',
+                      fontSize: '13px',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1' }}>
+                        <th style={{ padding: '10px 12px', fontWeight: 600, color: '#334155' }}>Datum</th>
+                        <th style={{ padding: '10px 12px', fontWeight: 600, color: '#334155' }}>Kollege / Kollegin</th>
+                        <th style={{ padding: '10px 12px', fontWeight: 600, color: '#334155' }}>Bisherige Einteilung</th>
+                        <th style={{ padding: '10px 12px', fontWeight: 600, color: '#334155' }}>Vorplanung (Excel)</th>
+                        <th style={{ padding: '10px 12px', fontWeight: 600, color: '#334155' }}>Konsequenz</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredConflicts.map((c, index) => {
+                        const isRemoved = c.conflictType === 'removed_from_roster' || !c.dutyRosterValue || c.dutyRosterValue.includes('Aus Vorplanung');
+                        
+                        return (
+                          <tr
+                            key={index}
+                            style={{
+                              borderBottom: '1px solid #f1f5f9',
+                              backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8fafc',
+                            }}
+                          >
+                            {/* Datum */}
+                            <td style={{ padding: '9px 12px', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                              {c.formattedDate || c.date}
+                            </td>
+
+                            {/* Name */}
+                            <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>
+                              {c.personName}
+                            </td>
+
+                            {/* Einteilung */}
+                            <td style={{ padding: '9px 12px' }}>
+                              <span
+                                style={{
+                                  display: 'inline-block',
+                                  padding: '3px 8px',
+                                  borderRadius: '4px',
+                                  background: '#eff6ff',
+                                  color: '#1d4ed8',
+                                  border: '1px solid #bfdbfe',
+                                  fontWeight: 500,
+                                  fontSize: '12px',
+                                }}
+                              >
+                                🚑 {c.einteilungValue}
+                              </span>
+                            </td>
+
+                            {/* Vorplanung */}
+                            <td style={{ padding: '9px 12px' }}>
+                              <span
+                                style={{
+                                  display: 'inline-block',
+                                  padding: '3px 8px',
+                                  borderRadius: '4px',
+                                  background: isRemoved ? '#fef2f2' : '#fffbeb',
+                                  color: isRemoved ? '#b91c1c' : '#b45309',
+                                  border: `1px solid ${isRemoved ? '#fecaca' : '#fde68a'}`,
+                                  fontWeight: 600,
+                                  fontSize: '12px',
+                                }}
+                              >
+                                {isRemoved ? '❌ ' : '⚠️ '}
+                                {c.dutyRosterValue || 'Kein Dienst'}
+                              </span>
+                            </td>
+
+                            {/* Konsequenz */}
+                            <td style={{ padding: '9px 12px', color: '#dc2626', fontSize: '12px', fontWeight: 500 }}>
+                              Wird aus Einteilung entfernt
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <div
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  backgroundColor: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  fontSize: '13px',
+                  color: '#166534',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <span style={{ fontSize: '16px' }}>✓</span>
+                <span>
+                  <strong>Keine Einteilungs-Konflikte:</strong> Alle eingeteilten Kollegen sind in der Vorplanung verfügbar.
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -363,7 +541,11 @@ export const SyncConflictDialog: React.FC<SyncConflictDialogProps> = ({
                 }
               }}
             >
-              {isProcessing ? 'Synchronisiere...' : '✓ Synchronisation durchführen & Einteilung bereinigen'}
+              {isProcessing
+                ? 'Synchronisiere...'
+                : hasConflicts
+                  ? '✓ Synchronisation durchführen & Einteilung bereinigen'
+                  : '✓ Synchronisation durchführen'}
             </button>
           </div>
         </div>
