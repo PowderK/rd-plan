@@ -2854,19 +2854,18 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                     borderRadius: '12px',
                                                                     fontSize: '11px',
                                                                     fontWeight: 700,
-                                                                    background: taucherStat.free > 0 ? '#e0f2fe' : (taucherStat.total > 0 ? '#fef3c7' : '#f1f5f9'),
-                                                                    color: taucherStat.free > 0 ? '#0369a1' : (taucherStat.total > 0 ? '#b45309' : '#94a3b8'),
-                                                                    border: taucherStat.free > 0 ? '1px solid #7dd3fc' : (taucherStat.total > 0 ? '1px solid #fde68a' : '1px solid #e2e8f0'),
+                                                                    background: '#e0f2fe',
+                                                                    color: '#0284c7',
+                                                                    border: '1px solid #7dd3fc',
                                                                     marginLeft: 'auto',
                                                                     boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
                                                                     cursor: 'default',
                                                                     userSelect: 'none'
                                                                 }}
                                                             >
-                                                                <span style={{ fontSize: '13px', lineHeight: 1 }}>🤿</span>
-                                                                <span>{taucherStat.free} {taucherStat.free === 1 ? 'Taucher frei' : 'Taucher frei'}</span>
+                                                                <span>{taucherStat.free} Taucher frei</span>
                                                                 {taucherStat.total > 0 && (
-                                                                    <span style={{ fontSize: '10px', opacity: 0.8, fontWeight: 500 }}>
+                                                                    <span style={{ fontSize: '10px', opacity: 0.85, fontWeight: 600 }}>
                                                                         ({taucherStat.assigned}/{taucherStat.total} verplant)
                                                                     </span>
                                                                 )}
