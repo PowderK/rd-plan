@@ -313,7 +313,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const taucherMap: Record<number, boolean[]> = {};
                 const combinedIds = new Set<number>();
                 const lpalOnlyIds = new Set<number>();
-                for (const p of personnel) {
+                const candidateList = (personnelLookup && personnelLookup.length > 0) ? personnelLookup : personnel;
+                for (const p of candidateList) {
                     try {
                         const periods = await (window as any).api.getQualificationPeriods?.(p.id) || [];
                         const ue50Arr = Array(12).fill(false);
@@ -363,7 +364,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             } catch { setUe50Ids(new Set()); setLpalIds(new Set()); setUe50MonthlyMap({}); setLpalMonthlyMap({}); setTaucherMonthlyMap({}); }
         };
         loadUe50();
-    }, [year, personnel]);
+    }, [year, personnel, personnelLookup]);
 
     useEffect(() => {
         const load = async () => {
@@ -660,7 +661,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             return false;
         }
 
-        if (desired === 'any') return true;
         const evalMode = auswertungByType[code] || 'off';
 
         // Wenn der Auswertungsmodus 'off' ist, ist die Person nicht verfügbar
@@ -668,6 +668,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             return false;
         }
 
+        if (desired === 'any') return true;
         if (desired === 'tag') return (evalMode === 'tag' || evalMode === '24h');
         if (desired === 'nacht') return (evalMode === 'nacht' || evalMode === '24h');
         if (desired === '24h') return evalMode === '24h';
@@ -2765,7 +2766,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                     const diversAssigned: any[] = [];
                                                     const diversFree: any[] = [];
 
-                                                    (personnel || []).forEach(p => {
+                                                    const candidatePool = (personnelLookup && personnelLookup.length > 0) ? personnelLookup : personnel;
+
+                                                    (candidatePool || []).forEach((p: any) => {
                                                         const isTaucher = (p as any).taucherMonthly ? !!(p as any).taucherMonthly[currentMonth] : !!taucherMonthlyMap[p.id]?.[currentMonth];
                                                         if (!isTaucher) return;
 
@@ -2777,7 +2780,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                                                         const pKey = `p_${p.id}`;
                                                         const entry = (localRoster as any)?.[pKey]?.[d.date] || (roster as any)?.[pKey]?.[d.date];
-                                                        const isAssigned = !!(entry && entry.type && String(entry.type).trim() !== '');
+                                                        const isAssigned = !!(entry && entry.type && entry.type !== 'text' && (entry.type.startsWith('rtw') || entry.type.startsWith('nef') || entry.type.startsWith('itw')));
 
                                                         if (isAssigned) {
                                                             diversAssigned.push(p);
