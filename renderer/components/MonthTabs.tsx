@@ -69,7 +69,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [shiftTypes, setShiftTypes] = useState<{ id: number, code: string, description: string }[]>([]);
     const [auswertungByType, setAuswertungByType] = useState<Record<string, 'off' | 'tag' | 'nacht' | '24h' | 'itw'>>({});
     const [days, setDays] = useState<{ date: string; weekday: string; day: number; dayOfYear: number }[]>([]);
-    const [itwDoctors, setItwDoctors] = useState<{ id: number; name: string }[]>([]);
+    const [itwDoctors, setItwDoctors] = useState<{ id: number; name: string; vorname?: string; title?: string; anrede?: string; is_nef?: boolean | number; is_itw?: boolean | number }[]>([]);
     const [viewMode, setViewMode] = useState<'rtwnef' | 'itw'>('rtwnef');
     const [rtwNames, setRtwNames] = useState<string[]>([]);
     const [nefName, setNefName] = useState<string>('');
@@ -994,7 +994,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             }
             if (t === 'd') {
                 const d = itwDoctors.find(x => x.id === id);
-                return d ? `${d.name}` : `Arzt ${id}`;
+                if (d) {
+                    return [d.title, d.vorname, d.name].filter(Boolean).join(' ') || d.name;
+                }
+                return `Arzt ${id}`;
             }
             if (t === 'g') {
                 const g = guests.find(x => x.id === id);
@@ -3370,7 +3373,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                     .filter(a => allowedByAuswertung(getDutyCodeForDate(`a_${a.id}`, date), 'any'))
                                                     .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
                                             } else if (role === 4) {
-                                                options = (itwDoctors || []).map(d => ({ value: `d:${d.id}`, label: d.name }));
+                                                options = (itwDoctors || [])
+                                                    .filter(d => d.is_itw === 1 || d.is_itw === true || String(d.is_itw) === '1' || (d.is_itw === undefined && !d.is_nef))
+                                                    .map(d => {
+                                                        const label = [d.title, d.vorname, d.name].filter(Boolean).join(' ') || d.name;
+                                                        return { value: `d:${d.id}`, label };
+                                                    });
                                             }
                                             if (value && !options.some(o => o.value === value)) {
                                                 const label = findPersonLabelByValue(value);
