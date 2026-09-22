@@ -351,27 +351,38 @@ const ItwDienstplanTab: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {groupedPersonnel.map(({ department, members }) => (
-                            <React.Fragment key={department}>
-                                <tr>
-                                    <td 
-                                        colSpan={daysInMonth.length + 1} 
-                                        style={{ 
-                                            background: '#f1f5f9', 
-                                            fontWeight: 'bold', 
-                                            padding: '8px 12px', 
-                                            fontSize: '13px',
-                                            color: '#1e293b',
-                                            borderTop: '2px solid #cbd5e1',
-                                            borderBottom: '1px solid #cbd5e1'
-                                        }}
-                                    >
-                                        {department}
-                                    </td>
-                                </tr>
-                                {members.map(p => renderGridRow(p, 'person'))}
-                            </React.Fragment>
-                        ))}
+                        {groupedPersonnel.map(({ department, members }) => {
+                            let deptHeaderStyle: React.CSSProperties = {
+                                background: '#f1f5f9',
+                                fontWeight: 'bold',
+                                padding: '8px 12px',
+                                fontSize: '13px',
+                                color: '#1e293b',
+                                borderTop: '2px solid #cbd5e1',
+                                borderBottom: '1px solid #cbd5e1'
+                            };
+                            if (department.startsWith('1')) {
+                                deptHeaderStyle = { background: '#eff6ff', fontWeight: 'bold', padding: '8px 12px', fontSize: '13px', color: '#1d4ed8', borderTop: '2px solid #bfdbfe', borderBottom: '1px solid #bfdbfe', borderLeft: '4px solid #2563eb' };
+                            } else if (department.startsWith('2')) {
+                                deptHeaderStyle = { background: '#f0fdf4', fontWeight: 'bold', padding: '8px 12px', fontSize: '13px', color: '#15803d', borderTop: '2px solid #bbf7d0', borderBottom: '1px solid #bbf7d0', borderLeft: '4px solid #16a34a' };
+                            } else if (department.startsWith('3')) {
+                                deptHeaderStyle = { background: '#fffbeb', fontWeight: 'bold', padding: '8px 12px', fontSize: '13px', color: '#b45309', borderTop: '2px solid #fde68a', borderBottom: '1px solid #fde68a', borderLeft: '4px solid #d97706' };
+                            }
+
+                            return (
+                                <React.Fragment key={department}>
+                                    <tr>
+                                        <td 
+                                            colSpan={daysInMonth.length + 1} 
+                                            style={deptHeaderStyle}
+                                        >
+                                            {department}
+                                        </td>
+                                    </tr>
+                                    {members.map(p => renderGridRow(p, 'person'))}
+                                </React.Fragment>
+                            );
+                        })}
                         {doctors.length > 0 && (
                             <React.Fragment key="doctors">
                                 <tr>

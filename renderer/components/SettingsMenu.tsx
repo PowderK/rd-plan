@@ -136,6 +136,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
   const [weekendSundayDay, setWeekendSundayDay] = useState<boolean>(true);
   const [weekendSundayNight, setWeekendSundayNight] = useState<boolean>(true);
 
+  // ITW Abteilungs-Rotation (Phasen-Loop)
+  const [itwRotationPhases, setItwRotationPhases] = useState<{ fzf1: string; fzf2: string; maschinist: string }[]>([
+    { fzf1: '1. Abteilung', fzf2: '2. Abteilung', maschinist: '3. Abteilung' },
+    { fzf1: '3. Abteilung', fzf2: '1. Abteilung', maschinist: '2. Abteilung' },
+    { fzf1: '2. Abteilung', fzf2: '3. Abteilung', maschinist: '1. Abteilung' },
+  ]);
+
 
   const [showYearImportAzubiDialog, setShowYearImportAzubiDialog] = useState(false);
   const [yearImportUnknownAzubiNames, setYearImportUnknownAzubiNames] = useState<string[]>([]);
@@ -223,7 +230,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       colorByType: sortedColors,
       itwPatternSeqs: normalizedItwPatterns,
       deptPatternSeqs: normalizedDeptPatterns,
-      holidays: normalizedHolidays
+      holidays: normalizedHolidays,
+      itwRotationPhases
     });
   }, [
     rescueStation,
@@ -249,7 +257,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
     itwPatternSeqs,
     deptPatternSeqs,
     holidays,
-    selectedDepartment
+    selectedDepartment,
+    itwRotationPhases
   ]);
 
   useEffect(() => {
@@ -444,6 +453,17 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
         setItwFeatureEnabled(val === 'true' || val === '1');
       } catch { }
 
+      // Load ITW rotation pattern
+      try {
+        const rot = await (window as any).api.getSetting('itw_rotation_pattern');
+        if (rot) {
+          const parsed = JSON.parse(String(rot));
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setItwRotationPhases(parsed);
+          }
+        }
+      } catch { }
+
       setShiftTypesLoading(false);
       setLoading(false);
       try {
@@ -504,6 +524,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       await (window as any).api.setSetting(`feature_shift_transfers_${selectedDepartment}`, featureShiftTransfers ? 'true' : 'false');
       // ITW global speichern
       await (window as any).api.setSetting('itw', itwFeatureEnabled ? 'true' : 'false');
+      await (window as any).api.setSetting('itw_rotation_pattern', JSON.stringify(itwRotationPhases));
       // Rollen pro Abteilung speichern
       await saveRoles(true);
       setAddedRoleIds([]);
@@ -1854,6 +1875,133 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
         {/* KATEGORIE: ITW */}
         {activeCategory === 'itw' && itwFeatureEnabled && (
           <div>
+            {/* ITW Abteilungs-Rotation */}
+            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <h3 style={{ margin: 0 }}>ITW Abteilungs-Rotation (Phasen-Loop)</h3>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => {
+                      setItwRotationPhases(prev => [
+                        ...prev,
+                        { fzf1: '1. Abteilung', fzf2: '2. Abteilung', maschinist: '3. Abteilung' }
+                      ]);
+                    }}
+                    style={{ padding: '6px 12px', fontSize: '0.85em', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                  >
+                    + Phase hinzufügen
+                  </button>
+                  <button
+                    onClick={() => {
+                      setItwRotationPhases([
+                        { fzf1: '1. Abteilung', fzf2: '2. Abteilung', maschinist: '3. Abteilung' },
+                        { fzf1: '3. Abteilung', fzf2: '1. Abteilung', maschinist: '2. Abteilung' },
+                        { fzf1: '2. Abteilung', fzf2: '3. Abteilung', maschinist: '1. Abteilung' },
+                      ]);
+                    }}
+                    style={{ padding: '6px 12px', fontSize: '0.85em', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: 4, cursor: 'pointer' }}
+                  >
+                    Standard-Rotation (3 Phasen)
+                  </button>
+                </div>
+              </div>
+              <p style={{ marginTop: 0, color: '#666', fontSize: '0.9em' }}>
+                Definiere hier die Abteilungs-Zuordnung für die 3 Positionen im ersten Loop. Dieser Zyklus rotiert und überträgt sich automatisch auf alle nachfolgenden Phasen des Jahres.
+              </p>
+
+              <table className={styles.table} style={{ marginBottom: 16 }}>
+                <thead>
+                  <tr className={styles.thead}>
+                    <th style={{ width: 140, textAlign: 'left' }}>Phase im Loop</th>
+                    <th style={{ textAlign: 'left' }}>Fahrzeugführer 1</th>
+                    <th style={{ textAlign: 'left' }}>Fahrzeugführer 2</th>
+                    <th style={{ textAlign: 'left' }}>Maschinist</th>
+                    <th style={{ width: 80, textAlign: 'center' }}>Aktion</th>
+                  </tr>
+                </thead>
+                <tbody className={styles.tbody}>
+                  {itwRotationPhases.map((phase, pIdx) => {
+                    const getDeptStyle = (dept: string) => {
+                      if (dept === '1. Abteilung') return { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' };
+                      if (dept === '2. Abteilung') return { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' };
+                      if (dept === '3. Abteilung') return { background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' };
+                      return { background: '#f9fafb', color: '#374151', border: '1px solid #e5e7eb' };
+                    };
+
+                    return (
+                      <tr key={pIdx} className={styles.row}>
+                        <td style={{ fontWeight: 600 }}>
+                          Phase {pIdx + 1}
+                        </td>
+                        <td>
+                          <select
+                            value={phase.fzf1}
+                            onChange={e => {
+                              const v = e.target.value;
+                              setItwRotationPhases(prev => prev.map((item, idx) => idx === pIdx ? { ...item, fzf1: v } : item));
+                            }}
+                            style={{ ...getDeptStyle(phase.fzf1), padding: '4px 8px', borderRadius: 4, fontWeight: 600 }}
+                          >
+                            {departments.map(d => (
+                              <option key={d} value={d}>{d}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                            value={phase.fzf2}
+                            onChange={e => {
+                              const v = e.target.value;
+                              setItwRotationPhases(prev => prev.map((item, idx) => idx === pIdx ? { ...item, fzf2: v } : item));
+                            }}
+                            style={{ ...getDeptStyle(phase.fzf2), padding: '4px 8px', borderRadius: 4, fontWeight: 600 }}
+                          >
+                            {departments.map(d => (
+                              <option key={d} value={d}>{d}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                            value={phase.maschinist}
+                            onChange={e => {
+                              const v = e.target.value;
+                              setItwRotationPhases(prev => prev.map((item, idx) => idx === pIdx ? { ...item, maschinist: v } : item));
+                            }}
+                            style={{ ...getDeptStyle(phase.maschinist), padding: '4px 8px', borderRadius: 4, fontWeight: 600 }}
+                          >
+                            {departments.map(d => (
+                              <option key={d} value={d}>{d}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <button
+                            disabled={itwRotationPhases.length <= 1}
+                            onClick={() => {
+                              setItwRotationPhases(prev => prev.filter((_, idx) => idx !== pIdx));
+                            }}
+                            style={{
+                              padding: '2px 8px',
+                              fontSize: '0.8em',
+                              background: itwRotationPhases.length <= 1 ? '#e5e7eb' : '#fee2e2',
+                              color: itwRotationPhases.length <= 1 ? '#9ca3af' : '#dc2626',
+                              border: 'none',
+                              borderRadius: 4,
+                              cursor: itwRotationPhases.length <= 1 ? 'not-allowed' : 'pointer'
+                            }}
+                            title="Phase löschen"
+                          >
+                            Löschen
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
             {/* ITW Schichtfolgen */}
             <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
               <h3>ITW Schichtfolgen</h3>
