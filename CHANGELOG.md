@@ -1,16 +1,10 @@
+## Build 1503 - 2026-09-22
+
+- automated build
+
 ## Build 1502 - 2026-09-22
 
-- automated build
-
-## Build 1501 - 2026-09-22
-
-- automated build
-
-## Build 1500 - 2026-09-22
-
-- **Taucher-Verfügbarkeitsanzeige**: Anzeige der freien Taucher im Dienst abzüglich eingeteilter Taucher direkt in der Datumszeile der Einteilung (`X Taucher frei (Y/Z verplant)`).
-- **Abteilungsweiter Taucher-Abgleich**: Alle Kollegen mit Taucher-Qualifikation der Abteilung werden gezählt (auch ohne separate RTW-Qualifikation).
-- **Taucher Feature-Toggle**: Neue Einstellung unter *Features* zur Deaktivierung aller Taucher-Funktionen (Badge, blaue Kennzeichnungsstreifen im Kontrollkasten, Dienstplan & Werteübersicht).
+- **Taucher-Funktionalität konsolidiert**: Datumszeilen-Zähler entfernt; visuelle Taucher-Kennzeichnung (blauer Markierungsstrich im Kontrollkasten, Dienstplan und Werteübersicht) sowie der *Features*-Toggle bleiben wie gewohnt aktiv.
 - **Dienstplan-Auswertung**: Korrigierte Auswertung für Abwesenheiten (`off`-Status vor `any`) sowie Ausschluss importierter Textschichten aus Fahrzeugeinteilungen.
 - **macOS Klick-Optimierung**: `acceptFirstMouse: true` für direkte Klickreaktion auf Buttons und Menüs aus dem Hintergrund.
 
