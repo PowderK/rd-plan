@@ -1670,6 +1670,16 @@ export class DatabaseManager {
         console.log('[DatabaseManager] Adding title to itw_doctors');
         await db.exec("ALTER TABLE itw_doctors ADD COLUMN title TEXT DEFAULT ''");
       }
+      if (!itwDoctorsCols.some((c: any) => c.name === 'is_nef')) {
+        console.log('[DatabaseManager] Adding is_nef to itw_doctors');
+        await db.exec("ALTER TABLE itw_doctors ADD COLUMN is_nef INTEGER DEFAULT 0");
+        await db.exec("UPDATE itw_doctors SET is_nef = 0 WHERE is_nef IS NULL");
+      }
+      if (!itwDoctorsCols.some((c: any) => c.name === 'is_itw')) {
+        console.log('[DatabaseManager] Adding is_itw to itw_doctors');
+        await db.exec("ALTER TABLE itw_doctors ADD COLUMN is_itw INTEGER DEFAULT 1");
+        await db.exec("UPDATE itw_doctors SET is_itw = 1 WHERE is_itw IS NULL");
+      }
     }
     if (!personnelCols.some((c: any) => c.name === 'department')) {
       console.log('[DatabaseManager] Adding department to personnel');

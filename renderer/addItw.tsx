@@ -6,6 +6,8 @@ const AddItw: React.FC = () => {
   const [title, setTitle] = useState('');
   const [name, setName] = useState('');
   const [vorname, setVorname] = useState('');
+  const [isNef, setIsNef] = useState(false);
+  const [isItw, setIsItw] = useState(true);
   const [attemptedSave, setAttemptedSave] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -16,13 +18,24 @@ const AddItw: React.FC = () => {
         alert('Bitte alle Pflichtfelder ausfüllen: Name und Vorname.');
         return;
       }
+      if (!isNef && !isItw) {
+        alert('Bitte mindestens einen Einsatzbereich auswählen (NEF und/oder ITW).');
+        return;
+      }
       setSaving(true);
       const api = (window as any).api;
       if (!api?.addItwDoctor) {
         alert('Aktion nicht verfügbar (Preload-Bridge fehlt).');
         return;
       }
-      await api.addItwDoctor({ name: name.trim(), vorname: vorname.trim(), anrede: anrede.trim(), title: title.trim() });
+      await api.addItwDoctor({
+        name: name.trim(),
+        vorname: vorname.trim(),
+        anrede: anrede.trim(),
+        title: title.trim(),
+        is_nef: isNef,
+        is_itw: isItw
+      });
       try { if (window.opener) window.opener.postMessage('itw-updated', '*'); } catch {}
       window.close();
     } catch (e: any) {
@@ -34,7 +47,7 @@ const AddItw: React.FC = () => {
 
   return (
     <div style={{ padding: '24px', fontFamily: 'Arial, sans-serif', maxWidth: '500px', margin: '0 auto' }}>
-      <h2 style={{ marginTop: 0, marginBottom: '24px', color: '#333' }}>ITW Arzt hinzufügen</h2>
+      <h2 style={{ marginTop: 0, marginBottom: '24px', color: '#333' }}>Arzt hinzufügen</h2>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
         <div>
@@ -127,6 +140,35 @@ const AddItw: React.FC = () => {
             <div style={{ color: '#b00020', fontSize: '12px', marginTop: '4px' }}>Bitte Vorname eingeben.</div>
           )}
         </div>
+      </div>
+
+      <div style={{ marginBottom: '24px', padding: '16px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+        <label style={{ display: 'block', marginBottom: '10px', fontWeight: 600, color: '#334155' }}>
+          Einsatzbereich / Zuordnung *
+        </label>
+        <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 500 }}>
+            <input
+              type="checkbox"
+              checked={isItw}
+              onChange={e => setIsItw(e.target.checked)}
+              style={{ width: '18px', height: '18px', accentColor: '#16a34a', cursor: 'pointer' }}
+            />
+            <span>ITW-Arzt</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 500 }}>
+            <input
+              type="checkbox"
+              checked={isNef}
+              onChange={e => setIsNef(e.target.checked)}
+              style={{ width: '18px', height: '18px', accentColor: '#2563eb', cursor: 'pointer' }}
+            />
+            <span>NEF-Arzt</span>
+          </label>
+        </div>
+        {attemptedSave && !isNef && !isItw && (
+          <div style={{ color: '#b00020', fontSize: '12px', marginTop: '6px' }}>Bitte mindestens einen Einsatzbereich ankreuzen.</div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: '12px', marginTop: '32px' }}>

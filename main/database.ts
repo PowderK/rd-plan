@@ -714,7 +714,7 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         )
     `);
 
-    // Migration: add 'sort', 'anrede', 'title' columns to itw_doctors if missing
+    // Migration: add 'sort', 'anrede', 'title', 'is_nef', 'is_itw' columns to itw_doctors if missing
     const itwCols = await db.all("PRAGMA table_info('itw_doctors')");
     if (!itwCols.some((c: any) => c.name === 'sort')) {
         await db.exec("ALTER TABLE itw_doctors ADD COLUMN sort INTEGER DEFAULT 0");
@@ -725,6 +725,14 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
     }
     if (!itwCols.some((c: any) => c.name === 'title')) {
         await db.exec("ALTER TABLE itw_doctors ADD COLUMN title TEXT DEFAULT ''");
+    }
+    if (!itwCols.some((c: any) => c.name === 'is_nef')) {
+        await db.exec("ALTER TABLE itw_doctors ADD COLUMN is_nef INTEGER DEFAULT 0");
+        await db.exec("UPDATE itw_doctors SET is_nef = 0 WHERE is_nef IS NULL");
+    }
+    if (!itwCols.some((c: any) => c.name === 'is_itw')) {
+        await db.exec("ALTER TABLE itw_doctors ADD COLUMN is_itw INTEGER DEFAULT 1");
+        await db.exec("UPDATE itw_doctors SET is_itw = 1 WHERE is_itw IS NULL");
     }
 
     // --- RTW / NEF / ITW Fahrzeuge Tabellen ---
@@ -2108,22 +2116,26 @@ export const getItwDoctors = async (db: AsyncDB) => {
     return await db.all('SELECT * FROM itw_doctors ORDER BY sort ASC, id ASC');
 };
 
-export const addItwDoctor = async (db: AsyncDB, doc: { name: string, vorname: string, anrede?: string, title?: string }) => {
+export const addItwDoctor = async (db: AsyncDB, doc: { name: string, vorname: string, anrede?: string, title?: string, is_nef?: boolean | number | string, is_itw?: boolean | number | string }) => {
     const anrede = doc.anrede || '';
     const title = doc.title || '';
+    const isNef = (doc.is_nef === true || doc.is_nef === 1 || String(doc.is_nef) === '1') ? 1 : 0;
+    const isItw = (doc.is_itw === undefined || doc.is_itw === true || doc.is_itw === 1 || String(doc.is_itw) === '1') ? 1 : 0;
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM itw_doctors');
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
-        await db.run('INSERT INTO itw_doctors (name, vorname, anrede, title, sort) VALUES (?, ?, ?, ?, ?)', [doc.name, doc.vorname, anrede, title, next]);
+        await db.run('INSERT INTO itw_doctors (name, vorname, anrede, title, is_nef, is_itw, sort) VALUES (?, ?, ?, ?, ?, ?, ?)', [doc.name, doc.vorname, anrede, title, isNef, isItw, next]);
     } catch (e) {
-        await db.run('INSERT INTO itw_doctors (name, vorname, anrede, title) VALUES (?, ?, ?, ?)', [doc.name, doc.vorname, anrede, title]);
+        await db.run('INSERT INTO itw_doctors (name, vorname, anrede, title, is_nef, is_itw) VALUES (?, ?, ?, ?, ?, ?)', [doc.name, doc.vorname, anrede, title, isNef, isItw]);
     }
 };
 
-export const updateItwDoctor = async (db: AsyncDB, doc: { id: number, name: string, vorname: string, anrede?: string, title?: string }) => {
+export const updateItwDoctor = async (db: AsyncDB, doc: { id: number, name: string, vorname: string, anrede?: string, title?: string, is_nef?: boolean | number | string, is_itw?: boolean | number | string }) => {
     const anrede = doc.anrede || '';
     const title = doc.title || '';
-    await db.run('UPDATE itw_doctors SET name = ?, vorname = ?, anrede = ?, title = ? WHERE id = ?', [doc.name, doc.vorname, anrede, title, doc.id]);
+    const isNef = (doc.is_nef === true || doc.is_nef === 1 || String(doc.is_nef) === '1') ? 1 : 0;
+    const isItw = (doc.is_itw === true || doc.is_itw === 1 || String(doc.is_itw) === '1') ? 1 : 0;
+    await db.run('UPDATE itw_doctors SET name = ?, vorname = ?, anrede = ?, title = ?, is_nef = ?, is_itw = ? WHERE id = ?', [doc.name, doc.vorname, anrede, title, isNef, isItw, doc.id]);
 };
 
 export const deleteItwDoctor = async (db: AsyncDB, id: number) => {

@@ -270,7 +270,15 @@ interface Person {
 }
 
 interface Azubi { id: number; name: string; vorname: string; lehrjahr: number; active?: number | boolean; department?: string; }
-interface ItwDoctor { id: number; name: string; vorname: string; anrede?: string; title?: string }
+interface ItwDoctor {
+  id: number;
+  name: string;
+  vorname: string;
+  anrede?: string;
+  title?: string;
+  is_nef?: boolean | number;
+  is_itw?: boolean | number;
+}
 interface AzubiPeriod {
   id: number;
   azubi_id: number;
@@ -987,12 +995,14 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
         URL.revokeObjectURL(url);
       }
     } else if (tab === 'ärzte') {
-      categoryName = 'ITW_Aerzte';
+      categoryName = 'Aerzte';
       const exportData = itws.map(doc => ({
         Anrede: doc.anrede || '',
         Titel: doc.title || '',
         Name: doc.name,
-        Vorname: doc.vorname
+        Vorname: doc.vorname,
+        ITW: (doc.is_itw === undefined || doc.is_itw === true || doc.is_itw === 1 || String(doc.is_itw) === '1') ? 'Ja' : 'Nein',
+        NEF: (doc.is_nef === true || doc.is_nef === 1 || String(doc.is_nef) === '1') ? 'Ja' : 'Nein'
       }));
       if (exportData.length === 0) {
         alert('Keine Daten für den Export bei den ITW-Ärzten vorhanden.');
@@ -1330,6 +1340,11 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
           const vorname = item.vorname || item.Vorname;
           if (!name || !vorname) continue;
 
+          const isItwVal = item.itw ?? item.ITW ?? item.is_itw ?? item['ITW-Arzt'];
+          const isNefVal = item.nef ?? item.NEF ?? item.is_nef ?? item['NEF-Arzt'];
+          const parsedIsItw = isItwVal !== undefined ? (isItwVal === true || isItwVal === 1 || String(isItwVal).toLowerCase() === 'ja' || String(isItwVal) === '1') : true;
+          const parsedIsNef = isNefVal !== undefined ? (isNefVal === true || isNefVal === 1 || String(isNefVal).toLowerCase() === 'ja' || String(isNefVal) === '1') : false;
+
           const existingDoc = itws.find(d =>
             d.name.trim().toLowerCase() === name.trim().toLowerCase() && d.vorname.trim().toLowerCase() === vorname.trim().toLowerCase()
           );
@@ -1339,7 +1354,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
             if (bulkChoice) {
               actionToTake = bulkChoice;
             } else {
-              const choice = await askConflictResolution(`${vorname} ${name}`, 'ITW-Ärzte');
+              const choice = await askConflictResolution(`${vorname} ${name}`, 'Ärzte');
               if (choice.applyToAll) bulkChoice = choice.action;
               actionToTake = choice.action;
             }
@@ -1356,7 +1371,9 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
               anrede: item.anrede || item.Anrede || existingDoc.anrede || '',
               title: item.title || item.Titel || existingDoc.title || '',
               name,
-              vorname
+              vorname,
+              is_itw: isItwVal !== undefined ? parsedIsItw : existingDoc.is_itw,
+              is_nef: isNefVal !== undefined ? parsedIsNef : existingDoc.is_nef
             });
             updatedCount++;
           } else {
@@ -1364,7 +1381,9 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
               anrede: item.anrede || item.Anrede || '',
               title: item.title || item.Titel || '',
               name,
-              vorname
+              vorname,
+              is_itw: parsedIsItw,
+              is_nef: parsedIsNef
             });
             insertedCount++;
           }
@@ -2131,6 +2150,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                       <th style={{ width: 100 }}>Titel</th>
                       <th>Name</th>
                       <th>Vorname</th>
+                      <th style={{ width: 140 }}>Einsatzbereich</th>
                       <th className={styles.center}>Aktionen</th>
                     </tr>
                   </thead>
@@ -2153,6 +2173,39 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                           <td>{a.title || '—'}</td>
                           <td>{a.name}</td>
                           <td>{a.vorname}</td>
+                          <td>
+                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                              {(a.is_itw === undefined || a.is_itw === true || a.is_itw === 1 || String(a.is_itw) === '1') && (
+                                <span style={{
+                                  background: '#f0fdf4',
+                                  color: '#15803d',
+                                  border: '1px solid #bbf7d0',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: 600
+                                }}>
+                                  ITW
+                                </span>
+                              )}
+                              {(a.is_nef === true || a.is_nef === 1 || String(a.is_nef) === '1') && (
+                                <span style={{
+                                  background: '#eff6ff',
+                                  color: '#1d4ed8',
+                                  border: '1px solid #bfdbfe',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: 600
+                                }}>
+                                  NEF
+                                </span>
+                              )}
+                              {!a.is_itw && !a.is_nef && (
+                                <span style={{ color: '#94a3b8', fontSize: '11px' }}>—</span>
+                              )}
+                            </div>
+                          </td>
                           <td className={styles.center}>
                             <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                               <button

@@ -332,10 +332,14 @@ export async function initializePostgreSQLDatabase(config: PostgresConfig): Prom
             vorname VARCHAR(255) NOT NULL,
             anrede VARCHAR(50) DEFAULT '',
             title VARCHAR(100) DEFAULT '',
+            is_nef INTEGER DEFAULT 0,
+            is_itw INTEGER DEFAULT 1,
             sort INTEGER NOT NULL DEFAULT 0
         );
         await client.query("ALTER TABLE itw_doctors ADD COLUMN IF NOT EXISTS anrede VARCHAR(50) DEFAULT ''");
         await client.query("ALTER TABLE itw_doctors ADD COLUMN IF NOT EXISTS title VARCHAR(100) DEFAULT ''");
+        await client.query("ALTER TABLE itw_doctors ADD COLUMN IF NOT EXISTS is_nef INTEGER DEFAULT 0");
+        await client.query("ALTER TABLE itw_doctors ADD COLUMN IF NOT EXISTS is_itw INTEGER DEFAULT 1");
 
         -- RTW vehicles table
         CREATE TABLE IF NOT EXISTS rtw_vehicles (
