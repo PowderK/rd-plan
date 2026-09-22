@@ -7,14 +7,13 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v1.5.5** - ITW-Ärzte Vorplanung mit Copy & Paste Import, Verfügbarkeitszeiträume / Perioden für Ärzte, ITW-Phasenrotation nach Abteilung mit Farbcodierung, Taucher-Verfügbarkeitsanzeige in der Datumszeile der Einteilung sowie konfigurierbare Feature-Toggles.
+**v1.5.5** - ITW-Ärzte Vorplanung mit Copy & Paste Import, Verfügbarkeitszeiträume / Perioden für Ärzte, ITW-Phasenrotation nach Abteilung mit Farbcodierung, Taucher-Kennzeichnung mit Feature-Toggle sowie Klick-Optimierungen für macOS.
 
 ## Funktionen
 
-### Taucher-Verfügbarkeit & Sonderqualifikationen (v1.5.5+)
-- **Tagesaktuelle Verfügbarkeitsanzeige**: Zeigt in der Datumszeile der Einteilung die Anzahl der noch freien Taucher im Dienst abzüglich der bereits auf Fahrzeugen verplanten Kollegen (`X Taucher frei (Y/Z verplant)`).
-- **Abteilungsweiter Einbezug**: Berücksichtigt alle diensthabenden Kollegen mit Taucher-Qualifikation, auch wenn diese nicht in der RTW-Einteilungsliste geführt werden.
-- **Feature-Toggle**: Im Einstellungsbereich unter *Features* kann die gesamte Taucher-Funktionalität (Verfügbarkeits-Badge, blaue Kennzeichnungsstriche im Kontrollkasten, Dienstplan und Werteübersicht) bei Bedarf vollständig deaktiviert werden.
+### Taucher-Kennzeichnung & Feature-Toggle (v1.5.5+)
+- **Sonderqualifikation Taucher**: Automatische visuelle Kennzeichnung (blauer Markierungsstrich) im Kontrollkasten, im Dienstplan und in der Werte-Übersicht für Personal mit Taucher-Qualifikation im gewählten Zeitraum.
+- **Konfigurierbarer Feature-Toggle**: Im Einstellungsbereich unter *Features* kann die gesamte Taucher-Funktionalität (Kennzeichnungsstriche im Kontrollkasten, Dienstplan, Werte-Übersicht sowie die Qualifikationsauswahl) bei Bedarf vollständig deaktiviert werden.
 
 ### ITW-Planung & Ärzte-Verwaltung (v1.5.5+)
 - **Ärzte-Verfügbarkeitszeiträume (Perioden)**: Flexible Erfassung und Verwaltung von Einsatzzeiträumen für Ärzte mit automatischer Filterung in Vorplanung, Einteilung und Dienstplan.

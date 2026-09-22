@@ -2760,45 +2760,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                                                 const tooltipText = tooltipParts.join('\n');
 
-                                                const taucherStat = (() => {
-                                                    if (!featureTaucher) return null;
-                                                    const diversOnDuty: any[] = [];
-                                                    const diversAssigned: any[] = [];
-                                                    const diversFree: any[] = [];
-
-                                                    const candidatePool = (personnelLookup && personnelLookup.length > 0) ? personnelLookup : personnel;
-
-                                                    (candidatePool || []).forEach((p: any) => {
-                                                        const isTaucher = (p as any).taucherMonthly ? !!(p as any).taucherMonthly[currentMonth] : !!taucherMonthlyMap[p.id]?.[currentMonth];
-                                                        if (!isTaucher) return;
-
-                                                        const dutyCode = getDutyCodeForDate(`p_${p.id}`, d.date);
-                                                        const isOnDuty = allowedByAuswertung(dutyCode, 'any');
-                                                        if (!isOnDuty) return;
-
-                                                        diversOnDuty.push(p);
-
-                                                        const pKey = `p_${p.id}`;
-                                                        const entry = (localRoster as any)?.[pKey]?.[d.date] || (roster as any)?.[pKey]?.[d.date];
-                                                        const isAssigned = !!(entry && entry.type && entry.type !== 'text' && (entry.type.startsWith('rtw') || entry.type.startsWith('nef') || entry.type.startsWith('itw')));
-
-                                                        if (isAssigned) {
-                                                            diversAssigned.push(p);
-                                                        } else {
-                                                            diversFree.push(p);
-                                                        }
-                                                    });
-
-                                                    return {
-                                                        total: diversOnDuty.length,
-                                                        assigned: diversAssigned.length,
-                                                        free: diversFree.length,
-                                                        diversOnDuty,
-                                                        diversAssigned,
-                                                        diversFree
-                                                    };
-                                                })();
-
                                                 return (
                                                     <div
                                                         onClick={() => setSelectedAvailDate(selectedAvailDate === d.date ? null : d.date)}
@@ -2844,34 +2805,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                 }}
                                                             >
                                                                 {commentCount > 99 ? '99+' : commentCount}
-                                                            </div>
-                                                        )}
-                                                        {taucherStat && (
-                                                            <div
-                                                                title={`Taucher-Verfügbarkeit am ${label} (${d.weekday}):\n• ${taucherStat.free} verfügbar / frei${taucherStat.diversFree.length > 0 ? ': ' + taucherStat.diversFree.map((p: any) => p.name).join(', ') : ''}\n• ${taucherStat.assigned} eingeteilt${taucherStat.diversAssigned.length > 0 ? ': ' + taucherStat.diversAssigned.map((p: any) => p.name).join(', ') : ''}\n• ${taucherStat.total} Taucher im Dienst`}
-                                                                style={{
-                                                                    display: 'inline-flex',
-                                                                    alignItems: 'center',
-                                                                    gap: '4px',
-                                                                    padding: '2px 8px',
-                                                                    borderRadius: '12px',
-                                                                    fontSize: '11px',
-                                                                    fontWeight: 700,
-                                                                    background: '#e0f2fe',
-                                                                    color: '#0284c7',
-                                                                    border: '1px solid #7dd3fc',
-                                                                    marginLeft: 'auto',
-                                                                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-                                                                    cursor: 'default',
-                                                                    userSelect: 'none'
-                                                                }}
-                                                            >
-                                                                <span>{taucherStat.free} Taucher frei</span>
-                                                                {taucherStat.total > 0 && (
-                                                                    <span style={{ fontSize: '10px', opacity: 0.85, fontWeight: 600 }}>
-                                                                        ({taucherStat.assigned}/{taucherStat.total} verplant)
-                                                                    </span>
-                                                                )}
                                                             </div>
                                                         )}
                                                     </div>
