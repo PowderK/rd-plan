@@ -291,6 +291,7 @@ function openSetupWizard() {
         width: 720,
         height: 500,
         resizable: false,
+        acceptFirstMouse: true,
         icon: path.join(__dirname, '../media/Icon.icns'),
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
@@ -475,6 +476,7 @@ async function createWindow(showImmediately: boolean = false) {
         width: 1280,
         height: 800,
         show: false, // Nicht sofort anzeigen (wird gesteuert via ready-to-show)
+        acceptFirstMouse: true,
         icon: path.join(__dirname, '../media/Icon.icns'),
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
@@ -2240,6 +2242,7 @@ function openWindow(htmlFile: string, windowVar: string, width = 800, height = 6
     const win = new BrowserWindow({
         width,
         height,
+        acceptFirstMouse: true,
         icon: path.join(__dirname, '../media/Icon.icns'),
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
@@ -2262,6 +2265,7 @@ function openWindowWithQuery(htmlFile: string, windowVar: string, width = 800, h
     const win = new BrowserWindow({
         width,
         height,
+        acceptFirstMouse: true,
         icon: path.join(__dirname, '../media/Icon.icns'),
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
