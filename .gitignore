@@ -19,3 +19,6 @@ rd-plan-debug.log
 test-performance-db/
 performance-report-*.json
 comparison-*.html
+
+# Dienstplaene mit personenbezogenen Daten
+docs/2026/

@@ -7,15 +7,15 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v1.5.4** - Wertetabelle mit Ampelsystem (Soll/Ist-Vergleich) und dezenter Nullendarstellung, transparente Fallback-Zeilen für Altdaten gelöschter Mitarbeiter/Azubis, 1-Klick-Inaktivstatus für Azubis sowie einklappbarer Ordnerbaum für Einstellungen in der Seitenleiste.
+**v1.5.5** - ITW-Ärzte Vorplanung mit Copy & Paste Import, Verfügbarkeitszeiträume / Perioden für Ärzte, ITW-Phasenrotation nach Abteilung mit Farbcodierung sowie erweiterte Sonderqualifikations-Kennzeichnung im Kontrollkasten.
 
 ## Funktionen
 
-### Wertetabelle & Ampelsystem (v1.5.4+)
-- **Ampelsystem (Soll/Ist)**: Schneller Überblick über die Schichterfüllung (Grün: im Soll, Blau: Überhang/Plus, Orange: -1 Schicht, Rot: Defizit).
-- **Nullen-Kennzeichnung**: Inaktive Monate und Nullen (`0 | 0`) werden dezent in Grau dargestellt, um die Lesbarkeit aktiver Werte zu maximieren.
-- **Transparente Fallbacks**: Schichten gelöschter Azubis oder Mitarbeiter werden automatisch als Altdatenzeilen aufgeführt, sodass Summen 100% konsistent bleiben.
-- **1-Klick Azubi-Status**: Azubis können mit einem Klick auf ihren Status-Badge aktiv oder inaktiv geschaltet werden; inaktive Azubis werden standardmäßig ausgeblendet.
+### ITW-Planung & Ärzte-Verwaltung (v1.5.5+)
+- **Ärzte-Verfügbarkeitszeiträume (Perioden)**: Flexible Erfassung und Verwaltung von Einsatzzeiträumen für Ärzte mit automatischer Filterung in Vorplanung, Einteilung und Dienstplan.
+- **ITW-Ärzte Copy & Paste Import**: Schneller Import von Diensttagen und Ärzten per Zwischenablage mit automatischem Namensabgleich.
+- **ITW-Phasenrotation & Farbcodierung**: Abteilungsrotierende Besetzung der ITW-Positionen (1. Abt. Rot, 2. Abt. Blau, 3. Abt. Grün) mit abteilungsbasierten Eintragungsrechten.
+- **Erweiterte Sonderqualifikationen**: Zusätzliche konfigurierbare Sonderqualifikation mit blauer Kennzeichnung im Kontrollkasten.
 
 ### Automatische Azubi-Einteilung (v1.3.0+)
 - **One-Click Verteilung**: Weist auf Knopfdruck alle ungeplanten Azubis des Monats auf freie Slots (RTW 2 für Maschinisten, RTW 3 für normale Azubis) zu.
