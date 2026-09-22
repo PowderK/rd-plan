@@ -322,6 +322,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
   const [activePeriods, setActivePeriods] = useState<Record<number, ActivePeriod[]>>({});
   const [departmentPeriods, setDepartmentPeriods] = useState<Record<number, any[]>>({});
   const [itws, setItws] = useState<ItwDoctor[]>([]);
+  const [doctorPeriods, setDoctorPeriods] = useState<Record<number, any[]>>({});
   const [guests, setGuests] = useState<any[]>([]);
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [draggedAzubiId, setDraggedAzubiId] = useState<number | null>(null);
@@ -441,8 +442,19 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
   }, []);
 
   const loadItws = useCallback(async () => {
-    const list = await (window as any).api.getItwDoctors();
-    setItws(list);
+    try {
+      const list = await (window as any).api.getItwDoctors();
+      setItws(Array.isArray(list) ? list : []);
+      const periods = await (window as any).api.getAllDoctorPeriods?.();
+      const pMap: Record<number, any[]> = {};
+      (periods || []).forEach((p: any) => {
+        if (!pMap[p.doctor_id]) pMap[p.doctor_id] = [];
+        pMap[p.doctor_id].push(p);
+      });
+      setDoctorPeriods(pMap);
+    } catch (e) {
+      console.error('Fehler beim Laden der Ärzte/Perioden:', e);
+    }
   }, []);
 
   const loadGuests = useCallback(async () => {
@@ -784,15 +796,46 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
     });
   }, [azubis, isAzubiActive, searchQuery]);
 
-  const filteredItws = useMemo(() => {
-    if (!searchQuery.trim()) return itws;
+  const isDoctorActive = useCallback((doc: ItwDoctor) => {
+    const periods = doctorPeriods[doc.id] || [];
+    if (periods.length > 0) {
+      const now = new Date();
+      const currentDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      return periods.some(p => {
+        const start = String(p.start_date || '').slice(0, 10);
+        const end = String(p.end_date || '').slice(0, 10);
+        return start <= currentDate && end >= currentDate;
+      });
+    }
+    // Keine Perioden definiert => dauerhaft aktiv
+    return true;
+  }, [doctorPeriods]);
+
+  const filteredActiveItws = useMemo(() => {
+    const list = itws.filter(a => isDoctorActive(a));
+    if (!searchQuery.trim()) return list;
     const q = searchQuery.toLowerCase().trim();
-    return itws.filter(a => {
+    return list.filter(a => {
       const name = `${a.anrede || ''} ${a.title || ''} ${a.vorname} ${a.name}`.toLowerCase();
       const revName = `${a.name} ${a.vorname}`.toLowerCase();
       return name.includes(q) || revName.includes(q);
     });
-  }, [itws, searchQuery]);
+  }, [itws, isDoctorActive, searchQuery]);
+
+  const filteredInactiveItws = useMemo(() => {
+    const list = itws.filter(a => !isDoctorActive(a));
+    if (!searchQuery.trim()) return list;
+    const q = searchQuery.toLowerCase().trim();
+    return list.filter(a => {
+      const name = `${a.anrede || ''} ${a.title || ''} ${a.vorname} ${a.name}`.toLowerCase();
+      const revName = `${a.name} ${a.vorname}`.toLowerCase();
+      return name.includes(q) || revName.includes(q);
+    });
+  }, [itws, isDoctorActive, searchQuery]);
+
+  const filteredItws = useMemo(() => {
+    return showInactive ? itws : filteredActiveItws;
+  }, [showInactive, itws, filteredActiveItws]);
 
   const filteredGuests = useMemo(() => {
     if (!searchQuery.trim()) return guests;
@@ -1507,7 +1550,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
 
               {/* Action-Buttons Header */}
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                {(activeTab === 'stammpersonal' || activeTab === 'azubis') && (
+                {(activeTab === 'stammpersonal' || activeTab === 'azubis' || activeTab === 'ärzte') && (
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#475569', marginRight: '6px', cursor: 'pointer', userSelect: 'none' }}>
                     <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
                     Inaktive anzeigen
@@ -2142,22 +2185,28 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
             {/* Ärzte Tab */}
             {itwEnabled && activeTab === 'ärzte' && (
               <div>
-                {/* ITW Ärzte: Tabelle & Steuerelemente identisch zu Stammpersonal & Azubis */}
                 <table className={styles.table}>
                   <thead>
                     <tr className={styles.thead}>
                       <th style={{ width: 80 }}>Anrede</th>
-                      <th style={{ width: 100 }}>Titel</th>
+                      <th style={{ width: 90 }}>Titel</th>
                       <th>Name</th>
                       <th>Vorname</th>
-                      <th style={{ width: 140 }}>Einsatzbereich</th>
+                      <th style={{ width: 130 }}>Einsatzbereich</th>
+                      <th>Zeiträume</th>
+                      <th style={{ width: 90 }} className={styles.center}>Status</th>
                       <th className={styles.center}>Aktionen</th>
                     </tr>
                   </thead>
                   <tbody className={styles.tbody}>
-                    {filteredItws.map((a: ItwDoctor) => {
+                    {filteredActiveItws.map((a: ItwDoctor) => {
                       const isOver = dragContext === 'itw' && dragOverId === a.id;
                       const rowClass = [styles.row, selectedItwId === a.id ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
+                      const periods = doctorPeriods[a.id] || [];
+                      const periodsText = periods.length > 0
+                        ? periods.map(p => `${new Date(p.start_date + 'T00:00:00').toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })} - ${new Date(p.end_date + 'T00:00:00').toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })}`).join(', ')
+                        : 'Dauerhaft verfügbar';
+
                       return (
                         <tr key={a.id}
                           draggable
@@ -2206,6 +2255,35 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                               )}
                             </div>
                           </td>
+                          <td style={{ fontSize: '0.9em', color: periods.length > 0 ? '#333' : '#999', maxWidth: '220px', wordWrap: 'break-word' }}>
+                            {periodsText}
+                          </td>
+                          <td className={styles.center}>
+                            <span
+                              style={{
+                                background: '#dcfce7',
+                                color: '#166534',
+                                border: '1px solid #86efac',
+                                padding: '3px 8px',
+                                borderRadius: '12px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                userSelect: 'none'
+                              }}
+                              title="Aktiv im aktuellen Zeitraum"
+                            >
+                              <span style={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                backgroundColor: '#22c55e'
+                              }} />
+                              Aktiv
+                            </span>
+                          </td>
                           <td className={styles.center}>
                             <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                               <button
@@ -2223,7 +2301,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                                   fontSize: '11px',
                                   fontWeight: 500
                                 }}
-                                title="ITW-Arzt bearbeiten"
+                                title="Arzt bearbeiten"
                               >
                                 Bearbeiten
                               </button>
@@ -2234,6 +2312,127 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                     })}
                   </tbody>
                 </table>
+
+                {/* Inaktive Ärzte Tabelle */}
+                {showInactive && filteredInactiveItws.length > 0 && (
+                  <div style={{ marginTop: '32px' }}>
+                    <h4 style={{ color: '#666', marginBottom: '8px', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>Inaktive Ärzte</h4>
+                    <table className={styles.table} style={{ opacity: 0.75 }}>
+                      <thead>
+                        <tr className={styles.thead} style={{ color: '#666' }}>
+                          <th style={{ width: 80 }}>Anrede</th>
+                          <th style={{ width: 90 }}>Titel</th>
+                          <th>Name</th>
+                          <th>Vorname</th>
+                          <th style={{ width: 130 }}>Einsatzbereich</th>
+                          <th>Zeiträume</th>
+                          <th style={{ width: 90 }} className={styles.center}>Status</th>
+                          <th className={styles.center}>Aktionen</th>
+                        </tr>
+                      </thead>
+                      <tbody className={styles.tbody}>
+                        {filteredInactiveItws.map((a: ItwDoctor) => {
+                          const periods = doctorPeriods[a.id] || [];
+                          const periodsText = periods.length > 0
+                            ? periods.map(p => `${new Date(p.start_date + 'T00:00:00').toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })} - ${new Date(p.end_date + 'T00:00:00').toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })}`).join(', ')
+                            : 'Keine aktiven Zeiträume';
+
+                          return (
+                            <tr key={a.id} className={styles.row}>
+                              <td>{a.anrede || '—'}</td>
+                              <td>{a.title || '—'}</td>
+                              <td>{a.name}</td>
+                              <td>{a.vorname}</td>
+                              <td>
+                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                  {(a.is_itw === undefined || a.is_itw === true || a.is_itw === 1 || String(a.is_itw) === '1') && (
+                                    <span style={{
+                                      background: '#f0fdf4',
+                                      color: '#15803d',
+                                      border: '1px solid #bbf7d0',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                      fontWeight: 600
+                                    }}>
+                                      ITW
+                                    </span>
+                                  )}
+                                  {(a.is_nef === true || a.is_nef === 1 || String(a.is_nef) === '1') && (
+                                    <span style={{
+                                      background: '#eff6ff',
+                                      color: '#1d4ed8',
+                                      border: '1px solid #bfdbfe',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                      fontWeight: 600
+                                    }}>
+                                      NEF
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td style={{ fontSize: '0.9em', color: '#666', maxWidth: '220px', wordWrap: 'break-word' }}>
+                                {periodsText}
+                              </td>
+                              <td className={styles.center}>
+                                <span
+                                  style={{
+                                    background: '#f1f5f9',
+                                    color: '#64748b',
+                                    border: '1px solid #cbd5e1',
+                                    padding: '3px 8px',
+                                    borderRadius: '12px',
+                                    fontSize: '11px',
+                                    fontWeight: 500,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    userSelect: 'none'
+                                  }}
+                                  title="Außerhalb des aktiven Zeitraums"
+                                >
+                                  <span style={{
+                                    width: '6px',
+                                    height: '6px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#94a3b8'
+                                  }} />
+                                  Inaktiv
+                                </span>
+                              </td>
+                              <td className={styles.center}>
+                                <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      (window as any).api.openEditItwWindow(a.id);
+                                    }}
+                                    style={{
+                                      background: '#f1f5f9',
+                                      color: '#0f172a',
+                                      border: '1px solid #cbd5e1',
+                                      padding: '4px 8px',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontSize: '11px',
+                                      fontWeight: 500
+                                    }}
+                                    title="Arzt bearbeiten"
+                                  >
+                                    Bearbeiten
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
                 {!setFooterActions && (
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                     <button onClick={() => (window as any).api.openAddItwWindow()}>Hinzufügen</button>

@@ -70,6 +70,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [auswertungByType, setAuswertungByType] = useState<Record<string, 'off' | 'tag' | 'nacht' | '24h' | 'itw'>>({});
     const [days, setDays] = useState<{ date: string; weekday: string; day: number; dayOfYear: number }[]>([]);
     const [itwDoctors, setItwDoctors] = useState<{ id: number; name: string; vorname?: string; title?: string; anrede?: string; is_nef?: boolean | number; is_itw?: boolean | number }[]>([]);
+    const [doctorPeriods, setDoctorPeriods] = useState<Record<number, any[]>>({});
     const [viewMode, setViewMode] = useState<'rtwnef' | 'itw'>('rtwnef');
     const [rtwNames, setRtwNames] = useState<string[]>([]);
     const [nefName, setNefName] = useState<string>('');
@@ -427,6 +428,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             try {
                 const docs = await (window as any).api.getItwDoctors?.();
                 if (Array.isArray(docs)) setItwDoctors(docs);
+                const docP = await (window as any).api.getAllDoctorPeriods?.();
+                const dpMap: Record<number, any[]> = {};
+                (docP || []).forEach((p: any) => {
+                    if (!dpMap[p.doctor_id]) dpMap[p.doctor_id] = [];
+                    dpMap[p.doctor_id].push(p);
+                });
+                setDoctorPeriods(dpMap);
             } catch { }
             // Feiertage laden
             try {
@@ -521,11 +529,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     });
                     setNefVehiclePeriods(nMap);
                 } catch { }
+                try {
+                    const docs = await (window as any).api.getItwDoctors?.();
+                    if (Array.isArray(docs)) setItwDoctors(docs);
+                    const docP = await (window as any).api.getAllDoctorPeriods?.();
+                    const dpMap: Record<number, any[]> = {};
+                    (docP || []).forEach((p: any) => {
+                        if (!dpMap[p.doctor_id]) dpMap[p.doctor_id] = [];
+                        dpMap[p.doctor_id].push(p);
+                    });
+                    setDoctorPeriods(dpMap);
+                } catch { }
             } catch { }
         };
         (window as any).api?.onSettingsUpdated?.(onSettingsUpdated);
-        // Event-Handler entfernt - Parent (EinteilungPage) kümmert sich um Roster-Updates
-        return () => { (window as any).api?.offSettingsUpdated?.(onSettingsUpdated); };
+        (window as any).api?.onItwDoctorsUpdated?.(onSettingsUpdated);
+        return () => { 
+            (window as any).api?.offSettingsUpdated?.(onSettingsUpdated); 
+            (window as any).api?.offItwDoctorsUpdated?.(onSettingsUpdated);
+        };
     }, []);
 
     // Synchronisiere currentMonth mit window-Objekt für Dienstplan
@@ -3373,8 +3395,23 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                     .filter(a => allowedByAuswertung(getDutyCodeForDate(`a_${a.id}`, date), 'any'))
                                                     .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
                                             } else if (role === 4) {
+                                                const isDoctorActiveOnShiftDate = (docId: number) => {
+                                                    const periods = doctorPeriods[docId] || [];
+                                                    if (periods.length === 0) return true; // Keine Perioden definiert => dauerhaft aktiv
+                                                    const dIso = date.slice(0, 10);
+                                                    return periods.some(p => {
+                                                        const s = String(p.start_date || '').slice(0, 10);
+                                                        const e = String(p.end_date || '').slice(0, 10);
+                                                        return s <= dIso && e >= dIso;
+                                                    });
+                                                };
+
                                                 options = (itwDoctors || [])
-                                                    .filter(d => d.is_itw === 1 || d.is_itw === true || String(d.is_itw) === '1' || (d.is_itw === undefined && !d.is_nef))
+                                                    .filter(d => {
+                                                        const hasQual = d.is_itw === 1 || d.is_itw === true || String(d.is_itw) === '1' || (d.is_itw === undefined && !d.is_nef);
+                                                        if (!hasQual) return false;
+                                                        return isDoctorActiveOnShiftDate(d.id);
+                                                    })
                                                     .map(d => {
                                                         const label = [d.title, d.vorname, d.name].filter(Boolean).join(' ') || d.name;
                                                         return { value: `d:${d.id}`, label };

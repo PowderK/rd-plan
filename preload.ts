@@ -144,6 +144,14 @@ contextBridge.exposeInMainWorld('api', {
     updateItwDoctor: (doc: any) => ipcRenderer.invoke('update-itw-doctor', doc),
     deleteItwDoctor: (id: number) => ipcRenderer.invoke('delete-itw-doctor', id),
     updateItwDoctorOrder: (order: number[]) => ipcRenderer.invoke('update-itw-doctor-order', order),
+    // Doctor Periods
+    getDoctorPeriods: (doctorId: number) => ipcRenderer.invoke('get-doctor-periods', doctorId),
+    getAllDoctorPeriods: () => ipcRenderer.invoke('get-all-doctor-periods'),
+    addDoctorPeriod: (period: any) => ipcRenderer.invoke('add-doctor-period', period),
+    updateDoctorPeriod: (id: number, period: any) => ipcRenderer.invoke('update-doctor-period', id, period),
+    deleteDoctorPeriod: (id: number) => ipcRenderer.invoke('delete-doctor-period', id),
+    onItwDoctorsUpdated: (callback: () => void) => ipcRenderer.on('itw-doctors-updated', callback),
+    offItwDoctorsUpdated: (callback: () => void) => ipcRenderer.removeListener('itw-doctors-updated', callback),
     // ITW Vehicles
     getItwVehicles: () => ipcRenderer.invoke('get-itw-vehicles'),
     addItwVehicle: (v: any) => ipcRenderer.invoke('add-itw-vehicle', v),

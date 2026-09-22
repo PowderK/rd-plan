@@ -735,6 +735,20 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         await db.exec("UPDATE itw_doctors SET is_itw = 1 WHERE is_itw IS NULL");
     }
 
+    // --- Doctor Periods Tabelle ---
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS doctor_periods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            doctor_id INTEGER NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (doctor_id) REFERENCES itw_doctors(id) ON DELETE CASCADE
+        )
+    `);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_doctor_periods_doctor ON doctor_periods (doctor_id)`);
+
     // --- RTW / NEF / ITW Fahrzeuge Tabellen ---
     await db.exec(`
         CREATE TABLE IF NOT EXISTS rtw_vehicles (
@@ -2146,6 +2160,35 @@ export const updateItwDoctorOrder = async (db: AsyncDB, order: number[]) => {
     for (let i = 0; i < order.length; i++) {
         await db.run('UPDATE itw_doctors SET sort = ? WHERE id = ?', [i, order[i]]);
     }
+};
+
+// --- Doctor Periods CRUD ---
+export const getDoctorPeriods = async (db: AsyncDB, doctorId: number) => {
+    return await db.all('SELECT * FROM doctor_periods WHERE doctor_id = ? ORDER BY start_date ASC', [doctorId]);
+};
+
+export const getAllDoctorPeriods = async (db: AsyncDB) => {
+    return await db.all('SELECT * FROM doctor_periods ORDER BY doctor_id ASC, start_date ASC');
+};
+
+export const addDoctorPeriod = async (db: AsyncDB, period: { doctor_id: number, start_date: string, end_date: string, description?: string }) => {
+    const desc = period.description || '';
+    return await db.run(
+        'INSERT INTO doctor_periods (doctor_id, start_date, end_date, description) VALUES (?, ?, ?, ?)',
+        [period.doctor_id, period.start_date, period.end_date, desc]
+    );
+};
+
+export const updateDoctorPeriod = async (db: AsyncDB, period: { id: number, doctor_id: number, start_date: string, end_date: string, description?: string }) => {
+    const desc = period.description || '';
+    return await db.run(
+        'UPDATE doctor_periods SET doctor_id = ?, start_date = ?, end_date = ?, description = ? WHERE id = ?',
+        [period.doctor_id, period.start_date, period.end_date, desc, period.id]
+    );
+};
+
+export const deleteDoctorPeriod = async (db: AsyncDB, id: number) => {
+    return await db.run('DELETE FROM doctor_periods WHERE id = ?', [id]);
 };
 
 export const ensureVehicleCategoryColumns = async (db: AsyncDB) => {

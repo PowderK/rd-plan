@@ -1286,6 +1286,38 @@ ipcMain.handle('update-itw-doctor-order', async (_event, order: number[]) => {
     return true;
 });
 
+// Doctor Period handlers
+ipcMain.handle('get-doctor-periods', async (_event, doctorId: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getDoctorPeriods(doctorId);
+});
+
+ipcMain.handle('get-all-doctor-periods', async () => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getAllDoctorPeriods();
+});
+
+ipcMain.handle('add-doctor-period', async (_event, period: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addDoctorPeriod(period);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); w.webContents.send('itw-updated'); } catch { } });
+    return true;
+});
+
+ipcMain.handle('update-doctor-period', async (_event, id: number, period: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateDoctorPeriod({ ...period, id });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); w.webContents.send('itw-updated'); } catch { } });
+    return true;
+});
+
+ipcMain.handle('delete-doctor-period', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteDoctorPeriod(id);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); w.webContents.send('itw-updated'); } catch { } });
+    return true;
+});
+
 // Vehicle handlers
 ipcMain.handle('get-rtw-vehicles', async (_event, year?: number) => {
     const adapter = await ensureDatabaseAdapter();

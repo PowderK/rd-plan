@@ -87,6 +87,11 @@ export interface DatabaseAdapter {
   updateItwDoctor(doc: any): Promise<void>;
   deleteItwDoctor(id: number): Promise<void>;
   updateItwDoctorOrder(order: number[]): Promise<void>;
+  getDoctorPeriods(doctorId: number): Promise<any[]>;
+  getAllDoctorPeriods(): Promise<any[]>;
+  addDoctorPeriod(period: any): Promise<any>;
+  updateDoctorPeriod(period: any): Promise<void>;
+  deleteDoctorPeriod(id: number): Promise<void>;
 
   getRtwVehicles(year?: number): Promise<any[]>;
   addRtwVehicle(v: { name: string }): Promise<any>;
@@ -532,6 +537,31 @@ class SQLiteAdapter implements DatabaseAdapter {
   async updateItwDoctorOrder(order: number[]) {
     const { updateItwDoctorOrder } = await import('./database');
     return updateItwDoctorOrder(this.db, order);
+  }
+
+  async getDoctorPeriods(doctorId: number) {
+    const { getDoctorPeriods } = await import('./database');
+    return getDoctorPeriods(this.db, doctorId);
+  }
+
+  async getAllDoctorPeriods() {
+    const { getAllDoctorPeriods } = await import('./database');
+    return getAllDoctorPeriods(this.db);
+  }
+
+  async addDoctorPeriod(period: any) {
+    const { addDoctorPeriod } = await import('./database');
+    return addDoctorPeriod(this.db, period);
+  }
+
+  async updateDoctorPeriod(period: any) {
+    const { updateDoctorPeriod } = await import('./database');
+    return updateDoctorPeriod(this.db, period);
+  }
+
+  async deleteDoctorPeriod(id: number) {
+    const { deleteDoctorPeriod } = await import('./database');
+    return deleteDoctorPeriod(this.db, id);
   }
 
   async getRtwVehicles(year?: number) {
@@ -2281,6 +2311,16 @@ export class DatabaseManager {
             end_date TEXT NOT NULL,
             description TEXT,
             FOREIGN KEY (azubi_id) REFERENCES azubis (id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS doctor_periods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            doctor_id INTEGER NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (doctor_id) REFERENCES itw_doctors (id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS personnel_department_periods (
