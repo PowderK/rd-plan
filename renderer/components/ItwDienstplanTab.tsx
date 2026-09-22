@@ -27,6 +27,7 @@ const ItwDienstplanTab: React.FC = () => {
     
     const [personnel, setPersonnel] = useState<any[]>([]);
     const [doctors, setDoctors] = useState<any[]>([]);
+    const [doctorPeriods, setDoctorPeriods] = useState<Record<number, any[]>>({});
     const [roster, setRoster] = useState<RosterEntry[]>([]);
     const [holidays, setHolidays] = useState<string[]>([]);
     const [itwSeqs, setItwSeqs] = useState<{ startDate: string, pattern: string, department?: string }[]>([]);
@@ -36,6 +37,37 @@ const ItwDienstplanTab: React.FC = () => {
     const sortedItwSeqs = useMemo(() => {
         return [...itwSeqs].sort((a, b) => a.startDate.localeCompare(b.startDate));
     }, [itwSeqs]);
+
+    const isItwDoctor = (d: any) => {
+        return d.is_itw === 1 || d.is_itw === true || String(d.is_itw) === '1' || (d.is_itw === undefined && !d.is_nef);
+    };
+
+    const isDoctorActiveInMonth = (docId: number) => {
+        const periods = doctorPeriods[docId] || [];
+        if (periods.length === 0) return true; // Keine Perioden definiert => dauerhaft aktiv
+        const mStart = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+        const lastDay = new Date(year, month + 1, 0).getDate();
+        const mEnd = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+        return periods.some(p => {
+            const s = String(p.start_date || '').slice(0, 10);
+            const e = String(p.end_date || '').slice(0, 10);
+            return s <= mEnd && e >= mStart;
+        });
+    };
+
+    const filteredDoctors = useMemo(() => {
+        return (doctors || []).filter(d => {
+            if (!isItwDoctor(d)) return false;
+            const hasRosterInMonth = (roster || []).some(r => {
+                if (r.personType !== 'doctor' || Number(r.personId) !== Number(d.id)) return false;
+                const rMonth = Number(r.date.slice(5, 7)) - 1;
+                const rYear = Number(r.date.slice(0, 4));
+                return rYear === year && rMonth === month && (r.value === '1' || r.type === 'IW');
+            });
+            if (hasRosterInMonth) return true;
+            return isDoctorActiveInMonth(d.id);
+        });
+    }, [doctors, doctorPeriods, roster, year, month]);
 
     const formatDateString = (date: Date) => {
         const year = date.getFullYear();
@@ -120,6 +152,14 @@ const ItwDienstplanTab: React.FC = () => {
             const docs = await (window as any).api.getItwDoctors?.() || [];
             setDoctors(docs);
 
+            const docP = await (window as any).api.getAllDoctorPeriods?.() || [];
+            const dpMap: Record<number, any[]> = {};
+            (docP || []).forEach((p: any) => {
+                if (!dpMap[p.doctor_id]) dpMap[p.doctor_id] = [];
+                dpMap[p.doctor_id].push(p);
+            });
+            setDoctorPeriods(dpMap);
+
             const hols = await (window as any).api.getHolidaysForYear?.(year) || [];
             setHolidays(hols.map((h: any) => h.date));
 
@@ -186,9 +226,13 @@ const ItwDienstplanTab: React.FC = () => {
         const handleUpdate = () => loadData();
         (window as any).api?.onItwUpdated?.(handleUpdate);
         window.addEventListener('itw-duty-roster-updated', handleUpdate);
+        window.addEventListener('itw-doctors-updated', handleUpdate);
+        window.addEventListener('doctor-periods-updated', handleUpdate);
         return () => {
             (window as any).api?.offItwUpdated?.(handleUpdate);
             window.removeEventListener('itw-duty-roster-updated', handleUpdate);
+            window.removeEventListener('itw-doctors-updated', handleUpdate);
+            window.removeEventListener('doctor-periods-updated', handleUpdate);
         };
     }, [year, month]);
 
@@ -383,7 +427,7 @@ const ItwDienstplanTab: React.FC = () => {
                                 </React.Fragment>
                             );
                         })}
-                        {doctors.length > 0 && (
+                        {filteredDoctors.length > 0 && (
                             <React.Fragment key="doctors">
                                 <tr>
                                     <td 
@@ -401,7 +445,7 @@ const ItwDienstplanTab: React.FC = () => {
                                         ITW-Ärzte
                                     </td>
                                 </tr>
-                                {doctors.map(d => renderGridRow(d, 'doctor'))}
+                                {filteredDoctors.map(d => renderGridRow(d, 'doctor'))}
                             </React.Fragment>
                         )}
                     </tbody>

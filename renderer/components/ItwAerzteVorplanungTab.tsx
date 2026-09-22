@@ -47,6 +47,7 @@ const ItwAerzteVorplanungTab: React.FC = () => {
     const [year, setYear] = useState<number>(new Date().getFullYear());
     const [month, setMonth] = useState<number>(new Date().getMonth());
     const [doctors, setDoctors] = useState<Doctor[]>([]);
+    const [doctorPeriods, setDoctorPeriods] = useState<Record<number, any[]>>({});
     const [roster, setRoster] = useState<RosterEntry[]>([]);
     const [holidays, setHolidays] = useState<string[]>([]);
     const [itwSeqs, setItwSeqs] = useState<{ startDate: string, pattern: string }[]>([]);
@@ -75,6 +76,25 @@ const ItwAerzteVorplanungTab: React.FC = () => {
         }
     }, [minYear, year]);
 
+    const isItwDoctor = (d: Doctor) => {
+        return d.is_itw === 1 || d.is_itw === true || String(d.is_itw) === '1' || (d.is_itw === undefined && !d.is_nef);
+    };
+
+    const isDoctorActiveOnDate = (docId: number, dateStr: string) => {
+        const periods = doctorPeriods[docId] || [];
+        if (periods.length === 0) return true; // Keine Perioden definiert => dauerhaft verfügbar
+        const dIso = dateStr.slice(0, 10);
+        return periods.some(p => {
+            const s = String(p.start_date || '').slice(0, 10);
+            const e = String(p.end_date || '').slice(0, 10);
+            return s <= dIso && e >= dIso;
+        });
+    };
+
+    const itwDoctors = useMemo(() => {
+        return doctors.filter(isItwDoctor);
+    }, [doctors]);
+
     const formatDateString = (date: Date) => {
         const y = date.getFullYear();
         const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -101,6 +121,14 @@ const ItwAerzteVorplanungTab: React.FC = () => {
             const docs = await (window as any).api.getItwDoctors?.() || [];
             setDoctors(docs);
 
+            const docP = await (window as any).api.getAllDoctorPeriods?.() || [];
+            const dpMap: Record<number, any[]> = {};
+            (docP || []).forEach((p: any) => {
+                if (!dpMap[p.doctor_id]) dpMap[p.doctor_id] = [];
+                dpMap[p.doctor_id].push(p);
+            });
+            setDoctorPeriods(dpMap);
+
             const rosterData = await (window as any).api.getItwDutyRoster?.(year) || [];
             setRoster(rosterData);
 
@@ -123,9 +151,13 @@ const ItwAerzteVorplanungTab: React.FC = () => {
         };
         (window as any).api.onItwUpdated?.(handleUpdated);
         window.addEventListener('itw-patterns-updated', handleUpdated);
+        window.addEventListener('itw-doctors-updated', handleUpdated);
+        window.addEventListener('doctor-periods-updated', handleUpdated);
         return () => {
             (window as any).api.offItwUpdated?.(handleUpdated);
             window.removeEventListener('itw-patterns-updated', handleUpdated);
+            window.removeEventListener('itw-doctors-updated', handleUpdated);
+            window.removeEventListener('doctor-periods-updated', handleUpdated);
         };
     }, [year, month]);
 
@@ -340,7 +372,7 @@ const ItwAerzteVorplanungTab: React.FC = () => {
                 matchStatus = 'invalid_date';
                 matchReason = 'Ungültiges Datumsformat';
             } else {
-                const matchRes = matchDoctor(rawName, doctors);
+                const matchRes = matchDoctor(rawName, itwDoctors);
                 matchedDoctorId = matchRes.doctorId;
                 matchStatus = matchRes.status;
                 matchReason = matchRes.reason || '';
@@ -361,7 +393,7 @@ const ItwAerzteVorplanungTab: React.FC = () => {
         });
 
         setParsedImportRows(rows);
-    }, [importText, doctors, holidays]);
+    }, [importText, itwDoctors, holidays]);
 
     const handleExecuteImport = async () => {
         try {
@@ -659,18 +691,24 @@ const ItwAerzteVorplanungTab: React.FC = () => {
                                                     }}
                                                 >
                                                     <option value={0}>-- Kein Arzt eingeteilt --</option>
-                                                    {doctors.map(doc => {
-                                                        const parts = [];
-                                                        if (doc.anrede) parts.push(doc.anrede);
-                                                        if (doc.title) parts.push(doc.title);
-                                                        parts.push(`${doc.name}, ${doc.vorname}`);
-                                                        const label = parts.join(' ');
-                                                        return (
-                                                            <option key={doc.id} value={doc.id}>
-                                                                {label}
-                                                            </option>
-                                                        );
-                                                    })}
+                                                    {doctors
+                                                        .filter(doc => {
+                                                            if (!isItwDoctor(doc)) return false;
+                                                            if (doc.id === currentDoctorId) return true;
+                                                            return isDoctorActiveOnDate(doc.id, dateStr);
+                                                        })
+                                                        .map(doc => {
+                                                            const parts = [];
+                                                            if (doc.anrede) parts.push(doc.anrede);
+                                                            if (doc.title) parts.push(doc.title);
+                                                            parts.push(`${doc.name}, ${doc.vorname}`);
+                                                            const label = parts.join(' ');
+                                                            return (
+                                                                <option key={doc.id} value={doc.id}>
+                                                                    {label}
+                                                                </option>
+                                                            );
+                                                        })}
                                                 </select>
                                             )}
                                         </td>
@@ -877,14 +915,14 @@ const ItwAerzteVorplanungTab: React.FC = () => {
                                                                     }}
                                                                 >
                                                                     <option value={0}>-- Kein Arzt --</option>
-                                                                    {doctors.map(doc => {
+                                                                    {itwDoctors.map(doc => {
                                                                         const parts = [];
                                                                         if (doc.anrede) parts.push(doc.anrede);
                                                                         if (doc.title) parts.push(doc.title);
                                                                         parts.push(`${doc.name}, ${doc.vorname}`);
                                                                         return (
                                                                             <option key={doc.id} value={doc.id}>
-                                                                                {parts.join(' ')} {doc.is_itw ? '(ITW)' : doc.is_nef ? '(NEF)' : ''}
+                                                                                {parts.join(' ')}
                                                                             </option>
                                                                         );
                                                                     })}
