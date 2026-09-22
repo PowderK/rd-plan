@@ -483,9 +483,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         load();
     }, [year, currentMonth]);
 
-    // Separater Effekt für Settings-Listener (verhindert Listener-Leaks)
+    // Separater Effekt für Settings- und Vehicles-Listener (verhindert Listener-Leaks)
     useEffect(() => {
-        const onSettingsUpdated = async () => {
+        const reloadVehiclesAndSettings = async () => {
             try {
                 const y = await (window as any).api.getSetting('year');
                 const yearNum = Number(y || new Date().getFullYear());
@@ -522,7 +522,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     setHolidays(s);
                 } catch { }
 
-                // Neue Fahrzeug-Zeiträume neu laden
+                // Neue Fahrzeug-Zeiträume & Sondertage neu laden
                 try {
                     const rtwP = await (window as any).api.getAllRtwVehiclePeriods?.();
                     const rMap: Record<number, any[]> = {};
@@ -539,6 +539,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         nMap[p.vehicleId].push(p);
                     });
                     setNefVehiclePeriods(nMap);
+
+                    const spec = await (window as any).api.getAllVehicleSpecialDays?.(yearNum);
+                    setVehicleSpecialDays(Array.isArray(spec) ? spec : []);
                 } catch { }
                 try {
                     const featT = await (window as any).api.getSetting(`feature_taucher_${departmentName}`);
@@ -562,11 +565,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 } catch { }
             } catch { }
         };
-        (window as any).api?.onSettingsUpdated?.(onSettingsUpdated);
-        (window as any).api?.onItwDoctorsUpdated?.(onSettingsUpdated);
+        (window as any).api?.onSettingsUpdated?.(reloadVehiclesAndSettings);
+        (window as any).api?.onVehiclesUpdated?.(reloadVehiclesAndSettings);
+        (window as any).api?.onItwDoctorsUpdated?.(reloadVehiclesAndSettings);
         return () => { 
-            (window as any).api?.offSettingsUpdated?.(onSettingsUpdated); 
-            (window as any).api?.offItwDoctorsUpdated?.(onSettingsUpdated);
+            (window as any).api?.offSettingsUpdated?.(reloadVehiclesAndSettings); 
+            (window as any).api?.offVehiclesUpdated?.(reloadVehiclesAndSettings);
+            (window as any).api?.offItwDoctorsUpdated?.(reloadVehiclesAndSettings);
         };
     }, []);
 
@@ -762,9 +767,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         for (const iso of monthDays) {
             for (let rIdx = 0; rIdx < (rtwVehicles || []).length; rIdx++) {
                 const v = rtwVehicles[rIdx];
-                const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[monthIndex] !== false;
-                if (!enabled) continue;
-
                 const isReserve = v.category === 'reserve';
                 const dayStatus = isVehicleActiveOnDate(
                     iso,
@@ -810,9 +812,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
             for (let nIdx = 0; nIdx < (nefVehicles || []).length; nIdx++) {
                 const v = nefVehicles[nIdx];
-                const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[monthIndex] !== false;
-                if (!enabled) continue;
-
                 const isReserve = v.category === 'reserve';
                 const isPeriodActive = isVehicleActiveOnDate(
                     iso,
@@ -893,8 +892,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             for (const iso of monthDays) {
                 for (let rIdx = 0; rIdx < (rtwVehicles || []).length; rIdx++) {
                     const v = rtwVehicles[rIdx];
-                    const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                    if (!enabled) continue;
+                    const isReserve = v.category === 'reserve';
+                    const dayStatus = isVehicleActiveOnDate(
+                        iso,
+                        rtwVehiclePeriods[v.id] || [],
+                        (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id)),
+                        isReserve
+                    );
+                    if (!dayStatus.active) continue;
 
                     const positions = rtwMap[v.id] || [];
 
@@ -943,8 +948,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                 for (let nIdx = 0; nIdx < (nefVehicles || []).length; nIdx++) {
                     const v = nefVehicles[nIdx];
-                    const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                    if (!enabled) continue;
+                    const isReserve = v.category === 'reserve';
+                    const isPeriodActive = isVehicleActiveOnDate(
+                        iso,
+                        nefVehiclePeriods[v.id] || [],
+                        (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id)),
+                        isReserve
+                    ).active;
+                    if (!isPeriodActive) continue;
 
                     const positions = nefMap[v.id] || [];
                     if (positions.length === 0) continue;
@@ -1281,8 +1292,16 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const allAvailableFallbackSlots: { id: string; label: string }[] = [];
 
                 (rtwVehicles || []).forEach((v, rIdx) => {
-                    const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                    if (!enabled) return;
+                    const isReserve = v.category === 'reserve';
+                    const dayStatus = isVehicleActiveOnDate(
+                        DateStr,
+                        rtwVehiclePeriods[v.id] || [],
+                        (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id)),
+                        isReserve
+                    );
+                    if (!dayStatus.active) return;
+                    if (shift === 'tag' && dayStatus.shiftMode === 'nacht') return;
+                    if (shift === 'nacht' && dayStatus.shiftMode === 'tag') return;
 
                     const slot2 = shift === 'tag' ? `rtw${rIdx+1}_tag_2` : `rtw${rIdx+1}_nacht_2`;
                     const slot3 = shift === 'tag' ? `rtw${rIdx+1}_tag_3` : `rtw${rIdx+1}_nacht_3`;
@@ -1298,8 +1317,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 });
 
                 (nefVehicles || []).forEach((v, nIdx) => {
-                    const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                    if (!enabled) return;
+                    const isReserve = v.category === 'reserve';
+                    const isPeriodActive = isVehicleActiveOnDate(
+                        DateStr,
+                        nefVehiclePeriods[v.id] || [],
+                        (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id)),
+                        isReserve
+                    ).active;
+                    if (!isPeriodActive) return;
                     const slotId = nIdx === 0 ? 'nef_azubi' : `nef${nIdx+1}_azubi`;
                     if (!isSlotTakenGlobally(DateStr, slotId)) allAvailableFallbackSlots.push({ id: slotId, label: `${v.name} Azubi` });
                 });
@@ -2380,9 +2405,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         <div className={styles.container}>
                             {/* 1. REGEL-RTWS */}
                             {(rtwVehicles || []).map((v, rIdx) => ({ v, rIdx })).filter(item => item.v.category !== 'reserve').map(({ v, rIdx }) => {
-                                const enabled = (rtwActivations[v.id] ?? Array(12).fill(false))[currentMonth] === true;
-                                if (!enabled) return null;
-
                                 const monthDays = buildDepartmentDaysForMonth(currentMonth);
                                 const periods = rtwVehiclePeriods[v.id] || [];
                                 const specialDays = (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id));
@@ -2443,9 +2465,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                             })}
                             {/* 2. REGEL-NEFS */}
                             {(nefVehicles || []).map((v, nIdx) => ({ v, nIdx })).filter(item => item.v.category !== 'reserve').map(({ v, nIdx }) => {
-                                const enabled = (nefActivations[v.id] ?? Array(12).fill(false))[currentMonth] === true;
-                                if (!enabled) return null;
-
                                 const monthDays = buildDepartmentDaysForMonth(currentMonth);
                                 const periods = nefVehiclePeriods[v.id] || [];
                                 const specialDays = (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id));
@@ -2506,9 +2525,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                             })}
                             {/* 3. RESERVE-RTWS (GANZ RECHTS) */}
                             {(rtwVehicles || []).map((v, rIdx) => ({ v, rIdx })).filter(item => item.v.category === 'reserve').map(({ v, rIdx }) => {
-                                const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                                if (!enabled) return null;
-
                                 const monthDays = buildDepartmentDaysForMonth(currentMonth);
                                 const periods = rtwVehiclePeriods[v.id] || [];
                                 const specialDays = (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id));
@@ -2569,9 +2585,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                             })}
                             {/* 4. RESERVE-NEFS (GANZ RECHTS) */}
                             {(nefVehicles || []).map((v, nIdx) => ({ v, nIdx })).filter(item => item.v.category === 'reserve').map(({ v, nIdx }) => {
-                                const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                                if (!enabled) return null;
-
                                 const monthDays = buildDepartmentDaysForMonth(currentMonth);
                                 const periods = nefVehiclePeriods[v.id] || [];
                                 const specialDays = (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id));
@@ -2822,8 +2835,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                 (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id)),
                                                                 isReserve
                                                             );
-                                                            const isMonthEnabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                                                            if (!isMonthEnabled || !dayStatus.active) return null;
+                                                            if (!dayStatus.active) return null;
 
                                                             const showTag = dayStatus.shiftMode !== 'nacht';
                                                             const showNacht = dayStatus.shiftMode !== 'tag';
@@ -3004,8 +3016,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                 (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id)),
                                                                 isReserve
                                                             );
-                                                            const isMonthEnabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                                                            if (!isMonthEnabled || !dayStatus.active) return null;
+                                                            if (!dayStatus.active) return null;
                                                             const nefLabel = dayStatus.shiftMode === 'tag' ? 'Tag' : (dayStatus.shiftMode === 'nacht' ? 'Nacht' : (v.occupancy_mode === 'tag' ? 'Tag' : '24h'));
                                                             return (
                                                                 <div key={`nef_${nefIdx}`} className={styles.nefTable}>

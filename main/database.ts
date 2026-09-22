@@ -2398,26 +2398,33 @@ export const updateNefVehicleOrder = async (db: AsyncDB, order: number[]) => {
 
 // --- Vehicle monthly activation helpers (DEPRECATED - use vehicle periods instead) ---
 export const getRtwVehicleActivations = async (db: AsyncDB, year: number) => {
-    // Compatibility: Generate activation list from periods
-    // Vehicles without active periods are INACTIVE by default (e.g. reserve vehicles or unassigned)
+    // Compatibility: Generate activation list from periods and special days
+    await ensureVehicleTables(db);
     const vehicles = await getRtwVehicles(db, year);
     const results: { vehicleId: number, month: number, enabled: number }[] = [];
 
     for (const v of vehicles) {
         const periods = await db.all('SELECT * FROM rtw_vehicle_periods WHERE vehicleId = ?', [v.id]);
+        const specialDays = await db.all('SELECT * FROM vehicle_special_days WHERE vehicleType = "rtw" AND vehicleId = ?', [v.id]);
         
         for (let m = 1; m <= 12; m++) {
             const ym = `${year}-${String(m).padStart(2, '0')}`;
             
-            // If no periods exist, vehicle is inactive by default (must have valid period)
             let isActive = false;
             
             if (periods.length > 0) {
-                isActive = periods.some((p: any) =>
-                    (p.active === 1 || p.active === true) &&
-                    p.startYM <= ym &&
-                    (p.endYM === null || p.endYM === '' || p.endYM >= ym)
-                );
+                isActive = periods.some((p: any) => {
+                    const isAct = p.active === 1 || p.active === true;
+                    if (!isAct) return false;
+                    const start = (p.startYM || p.startDate || '').trim().slice(0, 7);
+                    const end = (p.endYM || p.endDate || '').trim().slice(0, 7);
+                    if (!start) return true;
+                    return start <= ym && (!end || end >= ym);
+                });
+            }
+
+            if (!isActive && specialDays.length > 0) {
+                isActive = specialDays.some((s: any) => s.action !== 'remove' && (s.date || '').startsWith(ym));
             }
             
             results.push({ vehicleId: v.id, month: m, enabled: isActive ? 1 : 0 });
@@ -2431,25 +2438,33 @@ export const setRtwVehicleActivation = async (db: AsyncDB, vehicleId: number, ye
 };
 
 export const getNefVehicleActivations = async (db: AsyncDB, year: number) => {
-    // Compatibility: Generate activation list from periods
+    // Compatibility: Generate activation list from periods and special days
+    await ensureVehicleTables(db);
     const vehicles = await getNefVehicles(db, year);
     const results: { vehicleId: number, month: number, enabled: number }[] = [];
 
     for (const v of vehicles) {
         const periods = await db.all('SELECT * FROM nef_vehicle_periods WHERE vehicleId = ?', [v.id]);
+        const specialDays = await db.all('SELECT * FROM vehicle_special_days WHERE vehicleType = "nef" AND vehicleId = ?', [v.id]);
         
         for (let m = 1; m <= 12; m++) {
             const ym = `${year}-${String(m).padStart(2, '0')}`;
             
-            // If no periods exist, vehicle is inactive by default (must have valid period)
             let isActive = false;
             
             if (periods.length > 0) {
-                isActive = periods.some((p: any) =>
-                    (p.active === 1 || p.active === true) &&
-                    p.startYM <= ym &&
-                    (p.endYM === null || p.endYM === '' || p.endYM >= ym)
-                );
+                isActive = periods.some((p: any) => {
+                    const isAct = p.active === 1 || p.active === true;
+                    if (!isAct) return false;
+                    const start = (p.startYM || p.startDate || '').trim().slice(0, 7);
+                    const end = (p.endYM || p.endDate || '').trim().slice(0, 7);
+                    if (!start) return true;
+                    return start <= ym && (!end || end >= ym);
+                });
+            }
+
+            if (!isActive && specialDays.length > 0) {
+                isActive = specialDays.some((s: any) => s.action !== 'remove' && (s.date || '').startsWith(ym));
             }
             
             results.push({ vehicleId: v.id, month: m, enabled: isActive ? 1 : 0 });
@@ -2694,49 +2709,67 @@ export const deleteNefVehiclePeriod = async (db: AsyncDB, id: number) => {
 
 // Helper: Check if RTW vehicle is active in a given month
 export const isRtwVehicleActiveInMonth = async (db: AsyncDB, vehicleId: number, yearMonth: string): Promise<boolean> => {
-    const result = await db.get(
-        `SELECT COUNT(*) as count FROM rtw_vehicle_periods 
-         WHERE vehicleId = ? AND active = 1 
-         AND startYM <= ? AND (endYM IS NULL OR endYM >= ?)`,
-        [vehicleId, yearMonth, yearMonth]
-    );
-    return result && result.count > 0;
+    await ensureVehicleTables(db);
+    const ym = yearMonth.slice(0, 7);
+    const periods = await db.all('SELECT * FROM rtw_vehicle_periods WHERE vehicleId = ?', [vehicleId]);
+    const specialDays = await db.all('SELECT * FROM vehicle_special_days WHERE vehicleType = "rtw" AND vehicleId = ?', [vehicleId]);
+
+    const hasPeriod = periods.some((p: any) => {
+        const isAct = p.active === 1 || p.active === true;
+        if (!isAct) return false;
+        const start = (p.startYM || p.startDate || '').trim().slice(0, 7);
+        const end = (p.endYM || p.endDate || '').trim().slice(0, 7);
+        if (!start) return true;
+        return start <= ym && (!end || end >= ym);
+    });
+    if (hasPeriod) return true;
+    return specialDays.some((s: any) => s.action !== 'remove' && (s.date || '').startsWith(ym));
 };
 
 // Helper: Check if NEF vehicle is active in a given month
 export const isNefVehicleActiveInMonth = async (db: AsyncDB, vehicleId: number, yearMonth: string): Promise<boolean> => {
-    const result = await db.get(
-        `SELECT COUNT(*) as count FROM nef_vehicle_periods 
-         WHERE vehicleId = ? AND active = 1 
-         AND startYM <= ? AND (endYM IS NULL OR endYM >= ?)`,
-        [vehicleId, yearMonth, yearMonth]
-    );
-    return result && result.count > 0;
+    await ensureVehicleTables(db);
+    const ym = yearMonth.slice(0, 7);
+    const periods = await db.all('SELECT * FROM nef_vehicle_periods WHERE vehicleId = ?', [vehicleId]);
+    const specialDays = await db.all('SELECT * FROM vehicle_special_days WHERE vehicleType = "nef" AND vehicleId = ?', [vehicleId]);
+
+    const hasPeriod = periods.some((p: any) => {
+        const isAct = p.active === 1 || p.active === true;
+        if (!isAct) return false;
+        const start = (p.startYM || p.startDate || '').trim().slice(0, 7);
+        const end = (p.endYM || p.endDate || '').trim().slice(0, 7);
+        if (!start) return true;
+        return start <= ym && (!end || end >= ym);
+    });
+    if (hasPeriod) return true;
+    return specialDays.some((s: any) => s.action !== 'remove' && (s.date || '').startsWith(ym));
 };
 
 // Get all active RTW vehicle periods for a specific month
 export const getActiveRtwVehiclesInMonth = async (db: AsyncDB, yearMonth: string) => {
+    const ym = yearMonth.slice(0, 7);
     return await db.all(
         `SELECT rvp.*, rv.name 
          FROM rtw_vehicle_periods rvp
          JOIN rtw_vehicles rv ON rvp.vehicleId = rv.id
          WHERE rvp.active = 1 
-         AND rvp.startYM <= ? AND (rvp.endYM IS NULL OR rvp.endYM >= ?)
+         AND SUBSTR(rvp.startYM, 1, 7) <= ? AND (rvp.endYM IS NULL OR rvp.endYM = '' OR SUBSTR(rvp.endYM, 1, 7) >= ?)
          ORDER BY rv.sort`,
-        [yearMonth, yearMonth]
+        [ym, ym]
     );
 };
 
 // Get all active NEF vehicle periods for a specific month
 export const getActiveNefVehiclesInMonth = async (db: AsyncDB, yearMonth: string) => {
+    const ym = yearMonth.slice(0, 7);
     return await db.all(
         `SELECT nvp.*, nv.name, nv.occupancy_mode 
          FROM nef_vehicle_periods nvp
          JOIN nef_vehicles nv ON nvp.vehicleId = nv.id
          WHERE nvp.active = 1 
-         AND nvp.startYM <= ? AND (nvp.endYM IS NULL OR nvp.endYM >= ?)
+         AND SUBSTR(nvp.startYM, 1, 7) <= ? AND (nvp.endYM IS NULL OR nvp.endYM = '' OR SUBSTR(nvp.endYM, 1, 7) >= ?)
          ORDER BY nv.sort`,
-        [yearMonth, yearMonth]
+        [ym, ym]
     );
 };
 

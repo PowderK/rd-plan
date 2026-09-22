@@ -73,14 +73,10 @@ export function isVehicleActiveOnDate(
 
     if (!start) return true;
 
-    if (start.length === 7) {
-      // YYYY-MM format
-      const monthStr = dateStr.slice(0, 7);
-      return start <= monthStr && (!end || end >= monthStr);
-    } else {
-      // YYYY-MM-DD format
-      return start <= dateStr && (!end || end >= dateStr);
-    }
+    const startNormalized = start.length === 7 ? `${start}-01` : start;
+    const endNormalized = end ? (end.length === 7 ? `${end}-31` : end) : '';
+
+    return startNormalized <= dateStr && (!endNormalized || endNormalized >= dateStr);
   });
 
   if (activePeriod) {

@@ -73,7 +73,14 @@ function checkVehicleActive(vid: number, mIdx: number, year: number, periods?: R
     const yearMonth = `${year}-${String(mIdx + 1).padStart(2, '0')}`;
     const p = periods?.[vid] || [];
     if (p.length > 0) {
-        return p.some(x => (x.active === 1 || x.active === true || x.active === '1') && x.startYM <= yearMonth && (!x.endYM || x.endYM >= yearMonth));
+        return p.some(x => {
+            const isAct = x.active === 1 || x.active === true || x.active === '1';
+            if (!isAct) return false;
+            const sYM = (x.startYM || x.startDate || '').trim().slice(0, 7);
+            const eYM = (x.endYM || x.endDate || '').trim().slice(0, 7);
+            if (!sYM) return true;
+            return sYM <= yearMonth && (!eYM || eYM >= yearMonth);
+        });
     }
     if (periods) {
         return false;
