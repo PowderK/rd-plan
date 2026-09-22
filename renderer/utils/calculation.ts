@@ -200,7 +200,7 @@ export function computeUe50Shifts(
 export function computeWeightedPresence(
     year: number,
     roster: any[],
-    personnel: { id: number; fahrzeugfuehrerHLFB?: boolean | number; ue50Monthly?: boolean[]; lpalMonthly?: boolean[]; rettungsdienstMonthly?: boolean[]; deptActiveMonthly?: boolean[] }[],
+    personnel: { id: number; fahrzeugfuehrerHLFB?: boolean | number; ue50Monthly?: boolean[]; lpalMonthly?: boolean[]; taucherMonthly?: boolean[]; rettungsdienstMonthly?: boolean[]; deptActiveMonthly?: boolean[] }[],
     ue50Input: Set<number> | ((personId: number, monthIndex: number) => boolean) | Record<number, boolean[]>,
     auswertungByType: Record<string, string>,
     hlfbPeriodsByPerson?: Record<number, Array<{ startYM: string; endYM?: string }>>
@@ -298,7 +298,7 @@ export interface CalculationResultDetails {
 export function calculateTargetsWithDetails(
     year: number,
     roster: any[], // Flattened roster array or similar structure
-    personnel: { id: number; fahrzeugfuehrerHLFB?: boolean | number; ue50Monthly?: boolean[]; lpalMonthly?: boolean[]; rettungsdienstMonthly?: boolean[]; deptActiveMonthly?: boolean[] }[],
+    personnel: { id: number; fahrzeugfuehrerHLFB?: boolean | number; ue50Monthly?: boolean[]; lpalMonthly?: boolean[]; taucherMonthly?: boolean[]; rettungsdienstMonthly?: boolean[]; deptActiveMonthly?: boolean[] }[],
     azubis: { id: number }[],
     ue50Input: Set<number> | ((personId: number, monthIndex: number) => boolean) | Record<number, boolean[]>,
     auswertungByType: Record<string, string>,
@@ -509,7 +509,7 @@ export function calculateTargetsWithDetails(
 export function calculateTargets(
     year: number,
     roster: any[], // Flattened roster array or similar structure
-    personnel: { id: number; fahrzeugfuehrerHLFB?: boolean | number; ue50Monthly?: boolean[]; lpalMonthly?: boolean[]; rettungsdienstMonthly?: boolean[]; deptActiveMonthly?: boolean[] }[],
+    personnel: { id: number; fahrzeugfuehrerHLFB?: boolean | number; ue50Monthly?: boolean[]; lpalMonthly?: boolean[]; taucherMonthly?: boolean[]; rettungsdienstMonthly?: boolean[]; deptActiveMonthly?: boolean[] }[],
     azubis: { id: number }[],
     ue50Input: Set<number> | ((personId: number, monthIndex: number) => boolean) | Record<number, boolean[]>,
     auswertungByType: Record<string, string>,

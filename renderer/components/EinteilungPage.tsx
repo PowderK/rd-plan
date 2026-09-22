@@ -121,6 +121,13 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
         if (setting) lpalQualName = String(setting);
       } catch { }
 
+      // Lade Taucher Qualifikationstyp aus Settings
+      let taucherQualName = 'Taucher'; // Fallback
+      try {
+        const setting = await (window as any).api.getSetting('taucher_qualification_type');
+        if (setting) taucherQualName = String(setting);
+      } catch { }
+
       // Lade RTW und NEF Fahrzeuge um die konfigurierten Qualifikationen zu ermitteln
       const rtwVehicles = await (window as any).api.getRtwVehicles?.(year) || [];
       const nefVehicles = await (window as any).api.getNefVehicles?.(year) || [];
@@ -194,9 +201,15 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
             qualificationAppliesInMonth(p, yearMonth)
           );
 
+          const hasTaucher = periods.some((p: any) =>
+            p.qualType === taucherQualName &&
+            qualificationAppliesInMonth(p, yearMonth)
+          );
+
           const hlfbMonthly = Array(12).fill(false);
           const ue50Monthly = Array(12).fill(false);
           const lpalMonthly = Array(12).fill(false);
+          const taucherMonthly = Array(12).fill(false);
           const rettungsdienstMonthly = Array(12).fill(false);
 
           const hlfbPeriods = periods.filter((per: any) => per.qualType === hlfbQualName);
@@ -207,6 +220,9 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
 
           const lpalPeriods = periods.filter((per: any) => per.qualType === lpalQualName);
           const hasLpalPeriod = lpalPeriods.length > 0;
+
+          const taucherPeriods = periods.filter((per: any) => per.qualType === taucherQualName);
+          const hasTaucherPeriod = taucherPeriods.length > 0;
 
           const rettungsdienstPeriods = periods.filter((per: any) => per.qualType === rettungsdienstQualName);
           const hasRettungsdienstPeriod = rettungsdienstPeriods.length > 0;
@@ -219,6 +235,7 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
             if (hasHlfbPeriod) hlfbMonthly[m] = qualApplies(hlfbPeriods, ym);
             if (hasUe50Period) ue50Monthly[m] = qualApplies(ue50Periods, ym);
             if (hasLpalPeriod) lpalMonthly[m] = qualApplies(lpalPeriods, ym);
+            if (hasTaucherPeriod) taucherMonthly[m] = qualApplies(taucherPeriods, ym);
             if (hasRettungsdienstPeriod) rettungsdienstMonthly[m] = qualApplies(rettungsdienstPeriods, ym);
             else rettungsdienstMonthly[m] = false;
           }
@@ -245,10 +262,12 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
             fahrzeugfuehrerHLFB: hasHLFB ? 1 : person.fahrzeugfuehrerHLFB,
             ue50: hasUe50 ? 1 : 0,  // Ü50-Status
             lpal: hasLpal ? 1 : 0,  // LPAL-Status
+            taucher: hasTaucher ? 1 : 0, // Taucher-Status
             oldRtwShifts: person.old_rtw_shifts || 0, // Aus Altsystem
             hlfbMonthly,
             ue50Monthly,
             lpalMonthly,
+            taucherMonthly,
             rettungsdienstMonthly,
             deptActiveMonthly
           };

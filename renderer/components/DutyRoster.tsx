@@ -207,6 +207,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   });
   // Freigabe-Status pro Monat
   const [releasedMonths, setReleasedMonths] = useState<boolean[]>(Array(12).fill(false));
+  const [taucherPersonIds, setTaucherPersonIds] = useState<Set<number>>(new Set());
   const [globalComments, setGlobalComments] = useState<Map<string, { id: number; comment: string }>>(new Map());
   const [personalComments, setPersonalComments] = useState<Map<string, { id: number; comment: string }>>(new Map());
   const [commentMenu, setCommentMenu] = useState<CommentMenuState | null>(null);
@@ -334,6 +335,12 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         if (val) rettungsdienstQualName = String(val);
       } catch { }
 
+      let taucherQualName = 'Taucher';
+      try {
+        const val = await (window as any).api.getSetting('taucher_qualification_type');
+        if (val) taucherQualName = String(val);
+      } catch { }
+
       const periodsByPerson: Record<number, any[]> = {};
       if (Array.isArray(allQualPeriods)) {
         allQualPeriods.forEach((p: any) => {
@@ -343,14 +350,18 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       }
 
       const yearMonth = `${year}-${String(currentMonth + 1).padStart(2, '0')}`;
+      const taucherSet = new Set<number>();
       const filteredPersonnel = (list || []).filter((p: any) => {
         const pPeriods = periodsByPerson[p.id] || [];
+        const hasTaucher = pPeriods.some((per: any) => per.qualType === taucherQualName && qualificationAppliesInMonth(per, yearMonth));
+        if (hasTaucher) taucherSet.add(p.id);
         const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
         if (rdPeriods.length === 0) return true;
         return rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
       });
 
       console.log('[DutyRoster Initial] Personnel before filter:', list?.length || 0, '| after filter:', filteredPersonnel?.length || 0);
+      setTaucherPersonIds(taucherSet);
       setPersonnel(filteredPersonnel || []);
       setAzubis(Array.isArray(azubiList) ? azubiList : []);
       setAzubiPeriods(Array.isArray(allPeriods) ? allPeriods : []);
@@ -1153,7 +1164,18 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     const allQualPeriods = await (window as any).api.getAllQualificationPeriods();
 
     // Filtere Personal: Nur Personen MIT Rettungsdienst-Qualifikation
-    const rettungsdienstQualName = 'Rettungsdienst';
+    let rettungsdienstQualName = 'Rettungsdienst';
+    try {
+      const val = await (window as any).api.getSetting('rettungsdienst_qualification_type');
+      if (val) rettungsdienstQualName = String(val);
+    } catch { }
+
+    let taucherQualName = 'Taucher';
+    try {
+      const val = await (window as any).api.getSetting('taucher_qualification_type');
+      if (val) taucherQualName = String(val);
+    } catch { }
+
     const periodsByPerson: Record<number, any[]> = {};
     if (Array.isArray(allQualPeriods)) {
       allQualPeriods.forEach((p: any) => {
@@ -1163,13 +1185,17 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     }
 
     const yearMonth = `${year}-${String(currentMonth + 1).padStart(2, '0')}`;
+    const taucherSet = new Set<number>();
     const filteredPersonnel = (list || []).filter((p: any) => {
       const pPeriods = periodsByPerson[p.id] || [];
+      const hasTaucher = pPeriods.some((per: any) => per.qualType === taucherQualName && qualificationAppliesInMonth(per, yearMonth));
+      if (hasTaucher) taucherSet.add(p.id);
       const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
       if (rdPeriods.length === 0) return true;
       return rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
     });
 
+    setTaucherPersonIds(taucherSet);
     setPersonnel(filteredPersonnel);
     setAzubis(azubiList);
     setAzubiPeriods(allPeriods);
@@ -1971,6 +1997,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               {allRows.map((person, rowIdx) => {
                 // Trennzeile vor dem ersten Azubi
                 const isFirstAzubi = person.isAzubi && (rowIdx === 0 || !allRows[rowIdx - 1].isAzubi);
+                const isTaucher = !person.isAzubi && taucherPersonIds.has(person.origId);
                 return [
                   isFirstAzubi ? (
                     <tr key="azubi-separator">
@@ -1981,7 +2008,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                   ) : null,
                   (
                     <tr key={person.id} style={{ background: rowIdx % 2 === 1 ? '#f5f9ff' : '#ffffff' }}>
-                      <td style={{ position: 'sticky', left: 0, background: rowIdx % 2 === 1 ? '#f5f9ff' : '#ffffff', zIndex: 1, borderBottom: '1px solid #e4edff', borderRight: '1px solid #dbe7ff', fontStyle: person.isAzubi ? 'italic' : undefined, color: (!person.isAzubi && !!(personnel.find(p => p.id === person.origId)?.fahrzeugfuehrerHLFB)) ? '#1565c0' : undefined }}>
+                      <td style={{ position: 'sticky', left: 0, background: rowIdx % 2 === 1 ? '#f5f9ff' : '#ffffff', zIndex: 1, borderBottom: '1px solid #e4edff', borderRight: isTaucher ? '3.5px solid #1976d2' : '1px solid #dbe7ff', fontStyle: person.isAzubi ? 'italic' : undefined, color: (!person.isAzubi && !isTaucher && !!(personnel.find(p => p.id === person.origId)?.fahrzeugfuehrerHLFB)) ? '#1565c0' : (!person.isAzubi && !!(personnel.find(p => p.id === person.origId)?.fahrzeugfuehrerHLFB)) ? '#1565c0' : undefined }}>
                         {person.name}{person.isAzubi && person.lehrjahr !== undefined ? ` (Azubi, ${person.lehrjahr}. Lj.)` : ''}
                       </td>
                       <td style={{ borderBottom: '1px solid #e4edff', textAlign: 'center', minWidth: 30 }}>

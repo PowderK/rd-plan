@@ -44,6 +44,8 @@ type PersonnelStatsRow = {
   ue50Monthly?: boolean[];
   lpal?: boolean;
   lpalMonthly?: boolean[];
+  taucher?: boolean;
+  taucherMonthly?: boolean[];
   rettungsdienst?: boolean;
   rettungsdienstMonthly?: boolean[];
   deptActiveMonthly?: boolean[];
@@ -60,19 +62,21 @@ function usePersonnel(year: number, departmentName?: string) {
   const fetch = async () => {
     try {
       const currentYear = year.toString();
-      const [rawList, allPeriods, allDeptPeriods, hlfbQualSetting, ue50QualSetting, lpalQualSetting, rdQualSetting] = await Promise.all([
+      const [rawList, allPeriods, allDeptPeriods, hlfbQualSetting, ue50QualSetting, lpalQualSetting, taucherQualSetting, rdQualSetting] = await Promise.all([
         (window as any).api.getPersonnelList?.(false, currentYear, departmentName),
         (window as any).api.getAllQualificationPeriods?.(),
         (window as any).api.getAllPersonnelDepartmentPeriods?.(),
         (window as any).api.getSetting?.('hlfb_qualification_type'),
         (window as any).api.getSetting?.('ue50_qualification_type'),
         (window as any).api.getSetting?.('lpal_qualification_type'),
+        (window as any).api.getSetting?.('taucher_qualification_type'),
         (window as any).api.getSetting?.('rettungsdienst_qualification_type'),
       ]);
 
       const hlfbQualName = String(hlfbQualSetting || 'Fahrzeugführer HLF-B');
       const ue50QualName = String(ue50QualSetting || 'Ü50');
       const lpalQualName = String(lpalQualSetting || 'LPAL');
+      const taucherQualName = String(taucherQualSetting || 'Taucher');
       const rdQualName = String(rdQualSetting || 'Rettungsdienst');
 
       const periodsByPerson: Record<number, any[]> = {};
@@ -92,11 +96,13 @@ function usePersonnel(year: number, departmentName?: string) {
         const hlfbPeriods = pPeriods.filter((per: any) => per.qualType === hlfbQualName);
         const ue50Periods = pPeriods.filter((per: any) => per.qualType === ue50QualName);
         const lpalPeriods = pPeriods.filter((per: any) => per.qualType === lpalQualName);
+        const taucherPeriods = pPeriods.filter((per: any) => per.qualType === taucherQualName);
         const rdPeriods = pPeriods.filter((per: any) => per.qualType === rdQualName);
 
         const hlfbMonthly = Array(12).fill(false);
         const ue50Monthly = Array(12).fill(false);
         const lpalMonthly = Array(12).fill(false);
+        const taucherMonthly = Array(12).fill(false);
         const rettungsdienstMonthly = Array(12).fill(false);
 
         const qualApplies = (perList: any[], ym: string) =>
@@ -107,6 +113,7 @@ function usePersonnel(year: number, departmentName?: string) {
           if (hlfbPeriods.length > 0) hlfbMonthly[m] = qualApplies(hlfbPeriods, ym);
           if (ue50Periods.length > 0) ue50Monthly[m] = qualApplies(ue50Periods, ym);
           if (lpalPeriods.length > 0) lpalMonthly[m] = qualApplies(lpalPeriods, ym);
+          if (taucherPeriods.length > 0) taucherMonthly[m] = qualApplies(taucherPeriods, ym);
           if (rdPeriods.length > 0) rettungsdienstMonthly[m] = qualApplies(rdPeriods, ym);
         }
 
@@ -132,6 +139,8 @@ function usePersonnel(year: number, departmentName?: string) {
           ue50Monthly,
           lpal: lpalMonthly.some(Boolean),
           lpalMonthly,
+          taucher: taucherMonthly.some(Boolean),
+          taucherMonthly,
           rettungsdienst: rettungsdienstMonthly.some(Boolean),
           rettungsdienstMonthly,
           deptActiveMonthly
@@ -510,7 +519,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       } catch { }
     }
 
-    const rows: { id: number; name: string; assigned: number[]; targets: number[]; isDeleted: boolean; fahrzeugfuehrerHLFB?: boolean; ue50?: boolean; vorname?: string }[] = [];
+    const rows: { id: number; name: string; assigned: number[]; targets: number[]; isDeleted: boolean; fahrzeugfuehrerHLFB?: boolean; ue50?: boolean; taucher?: boolean; vorname?: string }[] = [];
     for (const [idStr, counts] of Object.entries(deletedCounts)) {
       const pid = Number(idStr);
       if (counts.some(c => c > 0)) {
@@ -761,6 +770,23 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
             }}>
               <InfoIcon />
               <span>HLF-B Fahrzeugführer: Persönliches Gewicht wird mit 0,75 multipliziert.</span>
+            </div>
+          )}
+          {person.taucher && (
+            <div style={{
+              marginBottom: 15,
+              padding: '10px 12px',
+              backgroundColor: '#ebf5ff',
+              color: '#1565c0',
+              border: '1px solid #1976d2',
+              borderRadius: 6,
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <InfoIcon />
+              <span>Taucher: Sonderqualifikation mit Kennzeichnung (blauer Strich) im Kontrollkasten &amp; Dienstplan.</span>
             </div>
           )}
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
@@ -1063,6 +1089,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                       color: nameColor,
                       fontStyle: isDeleted ? 'italic' : undefined,
                       fontWeight: (!isDeleted && row.ue50) ? 600 : undefined,
+                      borderRight: (!isDeleted && (row as any).taucher) ? '3.5px solid #1976d2' : undefined,
                       cursor: isDeleted ? 'default' : 'pointer',
                       textDecoration: isDeleted ? 'none' : 'underline'
                     }}

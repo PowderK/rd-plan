@@ -21,7 +21,7 @@ export const AuditLogViewer: React.FC = () => {
     const loadLogs = async () => {
         setLoading(true);
         try {
-            const data = await window.api.getAuditLogs({ year: yearFilter });
+            const data = await (window as any).api.getAuditLogs({ year: yearFilter });
             setLogs(data || []);
         } catch (error) {
             console.error('Fehler beim Laden der Audit Logs:', error);

@@ -92,6 +92,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [lpalIds, setLpalIds] = useState<Set<number>>(new Set());
     const [ue50MonthlyMap, setUe50MonthlyMap] = useState<Record<number, boolean[]>>({});
     const [lpalMonthlyMap, setLpalMonthlyMap] = useState<Record<number, boolean[]>>({});
+    const [taucherMonthlyMap, setTaucherMonthlyMap] = useState<Record<number, boolean[]>>({});
     // HLF-B Perioden für korrekte Berechnung
     const [hlfbPeriodsByPerson, setHlfbPeriodsByPerson] = useState<Record<number, Array<{ startYM: string; endYM?: string }>>>({});
     // Performance: Debouncing für Roster-Updates
@@ -301,8 +302,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const lpalSetting = await (window as any).api.getSetting('lpal_qualification_type');
                 if (lpalSetting) lpalQualName = String(lpalSetting);
 
+                let taucherQualName = 'Taucher';
+                const taucherSetting = await (window as any).api.getSetting('taucher_qualification_type');
+                if (taucherSetting) taucherQualName = String(taucherSetting);
+
                 const ue50Map: Record<number, boolean[]> = {};
                 const lpalMap: Record<number, boolean[]> = {};
+                const taucherMap: Record<number, boolean[]> = {};
                 const combinedIds = new Set<number>();
                 const lpalOnlyIds = new Set<number>();
                 for (const p of personnel) {
@@ -310,6 +316,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         const periods = await (window as any).api.getQualificationPeriods?.(p.id) || [];
                         const ue50Arr = Array(12).fill(false);
                         const lpalArr = Array(12).fill(false);
+                        const taucherArr = Array(12).fill(false);
                         for (let month = 0; month < 12; month++) {
                             const yearMonth = `${year}-${String(month + 1).padStart(2, '0')}`;
                             const hasUe50 = periods.some((per: any) =>
@@ -324,8 +331,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 per.startYM <= yearMonth &&
                                 (!per.endYM || per.endYM >= yearMonth)
                             );
+                            const hasTaucher = periods.some((per: any) =>
+                                per.active &&
+                                per.qualType === taucherQualName &&
+                                per.startYM <= yearMonth &&
+                                (!per.endYM || per.endYM >= yearMonth)
+                            );
                             if (hasUe50) ue50Arr[month] = true;
                             if (hasLpal) lpalArr[month] = true;
+                            if (hasTaucher) taucherArr[month] = true;
                             if (hasUe50 || hasLpal) {
                                 combinedIds.add(p.id);
                                 if (hasLpal) lpalOnlyIds.add(p.id);
@@ -333,15 +347,18 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         }
                         ue50Map[p.id] = ue50Arr;
                         lpalMap[p.id] = lpalArr;
+                        taucherMap[p.id] = taucherArr;
                         (p as any).ue50Monthly = (p as any).ue50Monthly || ue50Arr;
                         (p as any).lpalMonthly = (p as any).lpalMonthly || lpalArr;
+                        (p as any).taucherMonthly = (p as any).taucherMonthly || taucherArr;
                     } catch { }
                 }
                 setUe50MonthlyMap(ue50Map);
                 setLpalMonthlyMap(lpalMap);
+                setTaucherMonthlyMap(taucherMap);
                 setUe50Ids(combinedIds);
                 setLpalIds(lpalOnlyIds);
-            } catch { setUe50Ids(new Set()); setLpalIds(new Set()); setUe50MonthlyMap({}); setLpalMonthlyMap({}); }
+            } catch { setUe50Ids(new Set()); setLpalIds(new Set()); setUe50MonthlyMap({}); setLpalMonthlyMap({}); setTaucherMonthlyMap({}); }
         };
         loadUe50();
     }, [year, personnel]);
@@ -3081,6 +3098,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                                         const ue50 = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[currentMonth] : !!ue50MonthlyMap[p.id]?.[currentMonth];
                                         const lpal = (p as any).lpalMonthly ? !!(p as any).lpalMonthly[currentMonth] : !!lpalMonthlyMap[p.id]?.[currentMonth];
+                                        const taucher = (p as any).taucherMonthly ? !!(p as any).taucherMonthly[currentMonth] : !!taucherMonthlyMap[p.id]?.[currentMonth];
                                         const total = tn.tag + tn.nacht + nef + itw;
                                         const oldRtwShifts = (p as any).old_rtw_shifts || 0;
                                         const weekend = perPersonWeekendInYear[key] || 0;
@@ -3092,7 +3110,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                             return ty === year && tm === (currentMonth + 1);
                                         });
 
-                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, weekend, rest, cumDiff, teilzeit, hlfb, ue50, lpal, total, oldRtwShifts, hasTransfer } as any;
+                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, weekend, rest, cumDiff, teilzeit, hlfb, ue50, lpal, taucher, total, oldRtwShifts, hasTransfer } as any;
                                     });
                                     // Farbliche Hervorhebung: nur Personen mit Monats-Soll > 0 berücksichtigen, Rest (Jahr) auf 100%-Äquivalent normalisieren
                                     const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
@@ -3479,10 +3497,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                                         const ue50 = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[currentMonth] : !!ue50MonthlyMap[p.id]?.[currentMonth];
                                         const lpal = (p as any).lpalMonthly ? !!(p as any).lpalMonthly[currentMonth] : !!lpalMonthlyMap[p.id]?.[currentMonth];
+                                        const taucher = (p as any).taucherMonthly ? !!(p as any).taucherMonthly[currentMonth] : !!taucherMonthlyMap[p.id]?.[currentMonth];
                                         const oldRtwShifts = (p as any).oldRtwShifts || 0;
                                         const weekend = perPersonWeekendInYear[key] || 0;
                                         const total = tn.tag + tn.nacht + nef + itw;
-                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, weekend, rest, cumDiff, teilzeit, hlfb, ue50, lpal, total, oldRtwShifts } as any;
+                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, weekend, rest, cumDiff, teilzeit, hlfb, ue50, lpal, taucher, total, oldRtwShifts } as any;
                                     });
                                     const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
                                     const eligible = itemsWithIndex.filter(it => typeof it.target === 'number' && (it.target as number) > 0);

@@ -30,6 +30,7 @@ interface KontrollkastenItem {
   ue50?: boolean;
   lpal?: boolean;
   hlfb?: boolean;
+  taucher?: boolean;
   teilzeit?: number;
   presenceRemainingByPerson?: number;
   oldRtwShifts?: number;
@@ -181,6 +182,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
             it.ue50 ? 'Ü50' : null,
             it.lpal ? 'LPAL' : null,
             it.hlfb ? 'HLF-B' : null,
+            it.taucher ? 'Taucher' : null,
             it.isItwExternal ? 'ITW Extern' : null,
           ].filter(Boolean).join(' • ');
 
@@ -214,7 +216,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                     textDecoration: highlightedPersonKey === it.key ? 'underline' : undefined,
                     whiteSpace: 'nowrap',
                     textAlign: 'right',
-                    borderRight: '1px solid var(--line)',
+                    borderRight: it.taucher ? '3.5px solid #1976d2' : '1px solid var(--line)',
                     paddingRight: 4,
                   }}
                 >

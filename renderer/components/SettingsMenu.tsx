@@ -120,6 +120,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
   const [ue50QualificationType, setUe50QualificationType] = useState<string>('Ü50');
   // LPAL Qualifikationszuordnung (wie Ü50, aber orange im Kontrollfeld)
   const [lpalQualificationType, setLpalQualificationType] = useState<string>('LPAL');
+  // Taucher Qualifikationszuordnung (blauer Strich rechts am Namen)
+  const [taucherQualificationType, setTaucherQualificationType] = useState<string>('Taucher');
   // Rettungsdienst Qualifikationszuordnung (Grundvoraussetzung)
   const [rettungsdienstQualificationType, setRettungsdienstQualificationType] = useState<string>('Rettungsdienst');
   // Year Import Dialog States
@@ -204,6 +206,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       hlfbQualificationType,
       ue50QualificationType,
       lpalQualificationType,
+      taucherQualificationType,
       rettungsdienstQualificationType,
       showWeekendShifts,
       weekendFridayDay,
@@ -228,6 +231,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
     hlfbQualificationType,
     ue50QualificationType,
     lpalQualificationType,
+    taucherQualificationType,
     rettungsdienstQualificationType,
     showWeekendShifts,
     weekendFridayDay,
@@ -390,6 +394,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
         // console.error('Failed to load LPAL qualification type:', e);
       }
 
+      // Load Taucher qualification type setting
+      try {
+        const taucherQual = await (window as any).api.getSetting('taucher_qualification_type');
+        if (taucherQual) setTaucherQualificationType(String(taucherQual));
+      } catch (e) {
+        // console.error('Failed to load Taucher qualification type:', e);
+      }
+
       // Load Rettungsdienst qualification type setting
       try {
         const rdQual = await (window as any).api.getSetting('rettungsdienst_qualification_type');
@@ -476,6 +488,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       await (window as any).api.setSetting('hlfb_qualification_type', hlfbQualificationType);
       await (window as any).api.setSetting('ue50_qualification_type', ue50QualificationType);
       await (window as any).api.setSetting('lpal_qualification_type', lpalQualificationType);
+      await (window as any).api.setSetting('taucher_qualification_type', taucherQualificationType);
       await (window as any).api.setSetting('rettungsdienst_qualification_type', rettungsdienstQualificationType);
       // Anzahl RTW/NEF leitet sich aus den Einträgen ab – keine separaten Settings mehr
       // ITW wird im Fahrzeuge-Menü gesetzt
@@ -2127,6 +2140,25 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
               </label>
               <p style={{ margin: '8px 0 0', fontSize: '0.9em', color: '#a04a00' }}>
                 Personen mit dieser Qualifikation werden wie Ü50 ohne Soll/Ist-Berechnung behandelt und im Kontrollfeld <strong style={{ color: '#fd7e14' }}>orange</strong> markiert.
+              </p>
+            </div>
+
+            {/* Taucher Zuordnung (blauer Strich rechts am Namen) */}
+            <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#ebf5ff', borderRadius: 6, border: '1px solid #1976d2' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <strong style={{ minWidth: 250 }}>Qualifikation für Taucher (blauer Seitenstrich):</strong>
+                <select
+                  value={taucherQualificationType}
+                  onChange={e => setTaucherQualificationType(e.target.value)}
+                  style={{ flex: 1, maxWidth: 400 }}
+                >
+                  {qualificationTypes.filter(qt => qt.active).map(qt => (
+                    <option key={qt.id} value={qt.name}>{qt.name}</option>
+                  ))}
+                </select>
+              </label>
+              <p style={{ margin: '8px 0 0', fontSize: '0.9em', color: '#1565c0' }}>
+                Personen mit dieser Qualifikation erhalten im Kontrollkasten und Dienstplan einen <strong style={{ color: '#1976d2' }}>blauen Strich</strong> an der rechten Seite ihres Namens zur schnellen Übersicht der verfügbaren Taucher.
               </p>
             </div>
 
