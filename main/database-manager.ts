@@ -2776,7 +2776,8 @@ export class DatabaseManager {
     const errors: string[] = [];
 
     const normalizeDepartment = (deptStr: string | null | undefined): string => {
-      const dept = String(deptStr || '').trim();
+      let dept = String(deptStr || '').trim();
+      dept = dept.replace(/^['"`]+|['"`]+$/g, '').trim();
       if (!dept) return '1. Abteilung';
       if (/^\d+$/.test(dept)) return `${dept}. Abteilung`;
       return dept;
@@ -2793,7 +2794,45 @@ export class DatabaseManager {
       }
     };
 
-    const legacyDepartment = normalizeDepartment(getLegacySetting('department') || '1. Abteilung');
+    const rawLegacySetting = getLegacySetting('department');
+    const legacyDepartment = normalizeDepartment(rawLegacySetting || '1. Abteilung');
+
+    const hasTable = (tableName: string) => {
+      try {
+        return !raw.prepare('SELECT name FROM sqlite_master WHERE type = ? AND name = ?').get('table', tableName);
+      } catch {
+        return false;
+      }
+    };
+
+    const getColumns = (tableName: string) => {
+      try {
+        return (raw.prepare(`PRAGMA table_info('${tableName}')`).all() as any[]).map((c: any) => String(c.name));
+      } catch {
+        return [];
+      }
+    };
+
+    // Determine if source database was a single-department database configured for legacyDepartment (e.g. 3. Abteilung)
+    // where table schema defaults caused '1. Abteilung' to be populated in columns.
+    let isSingleLegacyDeptDb = false;
+    if (legacyDepartment !== '1. Abteilung') {
+      let persDepts: string[] = [];
+      if (hasTable('personnel') && getColumns('personnel').includes('department')) {
+        persDepts = (raw.prepare('SELECT DISTINCT department FROM personnel WHERE department IS NOT NULL AND department != ""').all() as any[])
+          .map(x => normalizeDepartment(x.department));
+      }
+      if (persDepts.length <= 1) {
+        isSingleLegacyDeptDb = true;
+      }
+    }
+
+    const resolveRecordDepartment = (rawDept: string | null | undefined): string => {
+      if (isSingleLegacyDeptDb) {
+        return legacyDepartment;
+      }
+      return normalizeDepartment(rawDept || legacyDepartment);
+    };
 
     // Build existing personnel lookup
     const existingPersons = await adapter.getPersonnel();
@@ -2807,22 +2846,6 @@ export class DatabaseManager {
 
     const idMapping = new Map<number, number>(); // oldId -> newId (personnel)
     const azubiIdMapping = new Map<number, number>(); // oldId -> newId (azubis)
-
-    const hasTable = (tableName: string) => {
-      try {
-        return !!raw.prepare('SELECT name FROM sqlite_master WHERE type = ? AND name = ?').get('table', tableName);
-      } catch {
-        return false;
-      }
-    };
-
-    const getColumns = (tableName: string) => {
-      try {
-        return (raw.prepare(`PRAGMA table_info('${tableName}')`).all() as any[]).map((c: any) => String(c.name));
-      } catch {
-        return [];
-      }
-    };
 
     // Begin transaction on current DB via adapter's low-level DB if possible
     // We'll use adapter's methods for inserts
@@ -2846,6 +2869,8 @@ export class DatabaseManager {
               continue;
             }
 
+            const personDept = resolveRecordDepartment(r.department);
+
             const personObj = {
               name: r.name || '',
               vorname: r.vorname || '',
@@ -2860,7 +2885,7 @@ export class DatabaseManager {
               personnelNumber: r.personnelNumber || null,
               roleId: r.roleId || null,
               oldRtwShifts: r.old_rtw_shifts || 0,
-              department: normalizeDepartment(r.department)
+              department: personDept
             };
 
             if (matchedId && options.replaceExisting) {
@@ -2878,7 +2903,7 @@ export class DatabaseManager {
                 let assignedId: number | undefined;
                 // Try to read common return shapes
                 try {
-                  assignedId = Number((res && (res as any).lastInsertRowid) || (res && (res as any).lastInsertRowid === 0 ? 0 : undefined));
+                  assignedId = Number((res && (res as any).lastInsertRowid) || (res && (res as any).lastInsertRowid === 0 ? 0 : (typeof res === 'number' ? res : undefined)));
                 } catch {}
                 // If adapter didn't return inserted id, try to find the inserted person by personnelNumber or name/vorname
                 if (!assignedId) {
@@ -2897,7 +2922,11 @@ export class DatabaseManager {
                     // ignore lookup errors
                   }
                 }
-                if (assignedId) idMapping.set(oldId, assignedId);
+                if (assignedId) {
+                  idMapping.set(oldId, assignedId);
+                  lookupByName.set(`${String(personObj.name || '').toLowerCase()}|${String(personObj.vorname || '').toLowerCase()}`, assignedId);
+                  if (personObj.personnelNumber) lookupByNumber.set(String(personObj.personnelNumber), assignedId);
+                }
                 imported.personnel++;
               } catch (e: any) {
                 errors.push('Failed to add personnel ' + String(r.id) + ': ' + (e?.message || String(e)));
@@ -2930,9 +2959,8 @@ export class DatabaseManager {
           const rows = raw.prepare('SELECT * FROM azubis').all() as any[];
           for (const r of rows) {
             const oldId = Number(r.id);
-            const dept = azubiCols.includes('department')
-              ? normalizeDepartment(r.department || legacyDepartment)
-              : legacyDepartment;
+            const rawDept = azubiCols.includes('department') ? r.department : legacyDepartment;
+            const dept = resolveRecordDepartment(rawDept);
             const sig = `${dept}|${String(r.name || '').toLowerCase()}|${String(r.vorname || '').toLowerCase()}`;
             let matchedId = azubiLookup.get(sig);
 
@@ -3014,43 +3042,109 @@ export class DatabaseManager {
         try {
           let rows: any[] = [];
           if (hasTable('personnel_department_periods')) {
-            const cols = getColumns('personnel_department_periods');
-            if (cols.includes('department')) {
-              rows = raw.prepare('SELECT * FROM personnel_department_periods').all() as any[];
-            } else {
-              rows = (raw.prepare('SELECT person_id, start_date, end_date FROM personnel_department_periods').all() as any[])
-                .map(p => ({ ...p, department: legacyDepartment }));
+            const count = (raw.prepare('SELECT count(*) as c FROM personnel_department_periods').get() as any)?.c || 0;
+            if (count > 0) {
+              const cols = getColumns('personnel_department_periods');
+              if (cols.includes('department')) {
+                rows = raw.prepare('SELECT * FROM personnel_department_periods').all() as any[];
+              } else {
+                rows = (raw.prepare('SELECT person_id, start_date, end_date FROM personnel_department_periods').all() as any[])
+                  .map(p => ({ ...p, department: legacyDepartment }));
+              }
             }
-          } else if (hasTable('personnel')) {
+          }
+
+          if (rows.length === 0 && hasTable('personnel')) {
             const persCols = getColumns('personnel');
-            if (persCols.includes('department')) {
-              const persRows = raw.prepare('SELECT id, department FROM personnel').all() as any[];
-              rows = persRows.map(p => ({ person_id: p.id, department: p.department || legacyDepartment, start_date: '2020-01-01', end_date: null }));
-            } else {
-              const persRows = raw.prepare('SELECT id FROM personnel').all() as any[];
-              rows = persRows.map(p => ({ person_id: p.id, department: legacyDepartment, start_date: '2020-01-01', end_date: null }));
-            }
+            const persRows = raw.prepare('SELECT id' + (persCols.includes('department') ? ', department' : '') + ' FROM personnel').all() as any[];
+            rows = persRows.map(p => ({
+              person_id: p.id,
+              department: resolveRecordDepartment(p.department),
+              start_date: '2020-01-01',
+              end_date: null
+            }));
           }
 
           for (const r of rows) {
             const oldPid = Number(r.person_id || r.personId || r.person);
             const newPid = idMapping.get(oldPid);
             if (!newPid) continue; // skip if person not imported/mapped
-            const period = {
-              personId: newPid,
-              department: normalizeDepartment(r.department || legacyDepartment),
-              startDate: r.start_date || r.startDate,
-              endDate: r.end_date || r.endDate || null
-            };
+            const dept = resolveRecordDepartment(r.department);
+            const startDate = r.start_date || r.startDate || '2020-01-01';
+            const endDate = r.end_date || r.endDate || null;
+
             try {
-              await adapter.addPersonnelDepartmentPeriod(period as any);
-              imported.assignments++;
+              const existingPeriods = await adapter.getPersonnelDepartmentPeriods(newPid);
+              const exists = (existingPeriods || []).some((ep: any) =>
+                normalizeDepartment(ep.department) === dept &&
+                String(ep.start_date || ep.startDate) === String(startDate) &&
+                String(ep.end_date || ep.endDate || '') === String(endDate || '')
+              );
+              if (!exists) {
+                const period = {
+                  personId: newPid,
+                  department: dept,
+                  startDate,
+                  endDate
+                };
+                await adapter.addPersonnelDepartmentPeriod(period as any);
+                imported.assignments++;
+              }
             } catch (e: any) {
               errors.push('Failed to add personnel department period for old person ' + String(oldPid) + ': ' + (e?.message || String(e)));
             }
           }
         } catch (e: any) {
           errors.push('Assignments import failed: ' + (e?.message || String(e)));
+        }
+      }
+
+      // Personnel active periods
+      if (options.personnel && hasTable('personnel_active_periods')) {
+        try {
+          const rows = raw.prepare('SELECT * FROM personnel_active_periods').all() as any[];
+          for (const r of rows) {
+            const oldPid = Number(r.personId || r.person_id || 0);
+            const newPid = idMapping.get(oldPid);
+            if (!newPid) continue;
+            try {
+              const existingPeriods = await adapter.getPersonnelActivePeriods(newPid);
+              const exists = (existingPeriods || []).some((p: any) => 
+                String(p.startYM) === String(r.startYM) && 
+                String(p.endYM || '') === String(r.endYM || '') && 
+                (p.active === 0 ? 0 : 1) === (r.active === 0 ? 0 : 1)
+              );
+              if (!exists) {
+                await adapter.addPersonnelActivePeriod({
+                  personId: newPid,
+                  startYM: r.startYM,
+                  endYM: r.endYM || null,
+                  description: r.description || '',
+                  active: r.active === 0 ? 0 : 1
+                });
+              }
+            } catch (e: any) {
+              errors.push('Failed to add active period for person ' + String(oldPid) + ': ' + (e?.message || String(e)));
+            }
+          }
+        } catch (e: any) {
+          errors.push('Personnel active periods import failed: ' + (e?.message || String(e)));
+        }
+      }
+
+      // Shift types
+      if (hasTable('shift_types')) {
+        try {
+          const rawShiftTypes = raw.prepare('SELECT code, description FROM shift_types').all() as any[];
+          for (const st of rawShiftTypes) {
+            try {
+              await adapter.addShiftType({ code: st.code, description: st.description || st.code });
+            } catch {
+              // Ignore if already exists
+            }
+          }
+        } catch (e: any) {
+          errors.push('Shift types import failed: ' + (e?.message || String(e)));
         }
       }
 
@@ -3171,9 +3265,8 @@ export class DatabaseManager {
               newPid = idMapping.get(oldPid);
             }
             if (!newPid) continue;
-            const entryDept = dutyCols.includes('department')
-              ? normalizeDepartment(r.department || legacyDepartment)
-              : legacyDepartment;
+            const rawDept = dutyCols.includes('department') ? r.department : legacyDepartment;
+            const entryDept = resolveRecordDepartment(rawDept);
             toImport.push({
               personId: newPid,
               personType,
