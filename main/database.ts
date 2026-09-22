@@ -1658,21 +1658,40 @@ export const migrateAzubisDepartmentScope = async (db: AsyncDB): Promise<{ updat
                     );
                     targetId = ins.lastInsertRowid as number;
                     duplicated++;
-
-                    const periods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ?', [azubiId]);
-                    for (const p of periods as any[]) {
-                        await db.run(
-                            'INSERT INTO azubi_periods (azubi_id, start_date, end_date, description, lehrjahr) VALUES (?, ?, ?, ?, ?)',
-                            [targetId, p.start_date, p.end_date, p.description || '', p.lehrjahr || 1]
-                        );
-                    }
                 }
 
-                await db.run(
-                    `UPDATE duty_roster SET personId = ?
-                     WHERE personType = 'azubi' AND personId = ? AND department = ?`,
-                    [targetId, azubiId, dept]
-                );
+                if (targetId !== azubiId) {
+                    const existingPeriods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ?', [targetId]);
+                    const periods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ?', [azubiId]);
+                    for (const p of periods as any[]) {
+                        const duplicate = (existingPeriods as any[] || []).some(ep =>
+                            String(ep.start_date) === String(p.start_date) && String(ep.end_date) === String(p.end_date)
+                        );
+                        if (!duplicate) {
+                            await db.run(
+                                'INSERT INTO azubi_periods (azubi_id, start_date, end_date, description, lehrjahr) VALUES (?, ?, ?, ?, ?)',
+                                [targetId, p.start_date, p.end_date, p.description || '', p.lehrjahr || 1]
+                            );
+                        }
+                    }
+
+                    // Delete existing entries for azubiId on dates where targetId already has an entry to prevent UNIQUE constraint violation
+                    await db.run(
+                        `DELETE FROM duty_roster
+                         WHERE personType = 'azubi' AND personId = ? AND department = ?
+                           AND date IN (
+                             SELECT date FROM duty_roster
+                             WHERE personType = 'azubi' AND personId = ? AND department = ?
+                           )`,
+                        [azubiId, dept, targetId, dept]
+                    );
+
+                    await db.run(
+                        `UPDATE duty_roster SET personId = ?
+                         WHERE personType = 'azubi' AND personId = ? AND department = ?`,
+                        [targetId, azubiId, dept]
+                    );
+                }
             }
         }
     }
