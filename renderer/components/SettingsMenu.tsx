@@ -108,6 +108,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
   const [editingQualificationTypes, setEditingQualificationTypes] = useState(false);
   const [editingQualificationCategories, setEditingQualificationCategories] = useState(false);
   const [selectedQualificationTypeId, setSelectedQualificationTypeId] = useState<number | null>(null);
+  const [newlyAddedQualId, setNewlyAddedQualId] = useState<number | null>(null);
   const [originalQualificationTypes, setOriginalQualificationTypes] = useState<any[] | null>(null);
   const [originalQualificationCategories, setOriginalQualificationCategories] = useState<string[] | null>(null);
   // HLFB 75%-Regel Qualifikationszuordnung
@@ -2383,6 +2384,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                       <td>
                         {editingQualificationTypes ? (
                           <input
+                            ref={el => {
+                              if (newlyAddedQualId === qt.id && el) {
+                                el.focus();
+                                setNewlyAddedQualId(null);
+                              }
+                            }}
                             value={qt.name}
                             onChange={e => setQualificationTypes(prev => prev.map(x => x.id === qt.id ? { ...x, name: e.target.value } : x))}
                             style={{
@@ -2447,6 +2454,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                       setQualificationTypes(originalQualificationTypes ? [...originalQualificationTypes] : []);
                       setEditingQualificationTypes(false);
                       setSelectedQualificationTypeId(null);
+                      setNewlyAddedQualId(null);
                       setOriginalQualificationTypes(null);
                     }}>
                       Abbrechen
@@ -2458,13 +2466,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                       const newSort = Math.max(0, ...qualificationTypes.map(qt => qt.sort)) + 1;
                       setQualificationTypes(prev => [...prev, {
                         id: newId,
-                        name: 'Neue Qualifikation',
+                        name: '',
                         description: '',
                         category: qualificationCategories[0] || 'Sonstiges',
                         active: true,
                         sort: newSort
                       }]);
                       setSelectedQualificationTypeId(newId);
+                      setNewlyAddedQualId(newId);
                     }}>
                       Neue Qualifikation
                     </button>
