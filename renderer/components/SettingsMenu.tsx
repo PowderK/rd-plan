@@ -1876,9 +1876,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                   style={{ marginTop: 2 }}
                 />
                 <label htmlFor="featureTaucher" style={{ cursor: 'pointer', margin: 0 }}>
-                  <strong>Taucher-Verfügbarkeit & Kennzeichnung</strong>
+                  <strong>Taucher-Kennzeichnung</strong>
                   <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
-                    Zeigt in der Datumszeile der RTW/NEF-Einteilung täglich an, wie viele Taucher noch verfügbar sind (abzüglich eingeteilter Schichten) und kennzeichnet Taucher mit einem blauen Seitenstrich.
+                    Kennzeichnet Kollegen mit der Sonderqualifikation Taucher mit einem blauen Seitenstrich im Kontrollkasten, im Dienstplan und in der Werteübersicht.
                   </div>
                 </label>
               </div>
