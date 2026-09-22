@@ -88,7 +88,8 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         cacheManager = new CacheManager(dbDir, { maxAgeMinutes: 1 }); // 1 Minute Cache für DB
 
         // Verwende lokale Cache-Kopie der Datenbank für schnelleren Zugriff
-        const localDbDir = path.join(app.getPath('temp'), 'rd-plan-db');
+        const tempPath = app?.getPath ? app.getPath('temp') : os.tmpdir();
+        const localDbDir = path.join(tempPath, 'rd-plan-db');
         try {
             fs.mkdirSync(localDbDir, { recursive: true });
             effectiveDbFile = path.join(localDbDir, 'rd-plan.db');
