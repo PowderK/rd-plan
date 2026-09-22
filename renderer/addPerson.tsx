@@ -249,6 +249,8 @@ const AddPerson: React.FC = () => {
   const [department, setDepartment] = useState('1. Abteilung');
   const [personnelNumber, setPersonnelNumber] = useState('');
   const [roleId, setRoleId] = useState<number | ''>('');
+  const [oldRtwShifts, setOldRtwShifts] = useState<number>(0);
+  const [showOldRtwShiftsFeature, setShowOldRtwShiftsFeature] = useState(false);
   const [roles, setRoles] = useState<Array<{ id: number; name: string }>>([]);
   const [qualifications, setQualifications] = useState<QualificationPeriod[]>([]);
   const [departmentPeriods, setDepartmentPeriods] = useState<DepartmentPeriod[]>([]);
@@ -292,8 +294,18 @@ const AddPerson: React.FC = () => {
         setRolesLoading(false);
       }
     };
+    const loadSettings = async () => {
+      try {
+        const feat = await (window as any).api.getSetting(`feature_old_rtw_shifts_${department}`);
+        setShowOldRtwShiftsFeature(feat === 'true' || feat === true);
+      } catch (error) {
+        console.warn('Failed to load feature_old_rtw_shifts setting:', error);
+      }
+    };
+
     loadRoles();
-  }, []);
+    loadSettings();
+  }, [department]);
 
   const handleAddQualification = (qual: QualificationPeriod) => {
     if (editingIndex !== null) {
@@ -346,6 +358,7 @@ const AddPerson: React.FC = () => {
         department: departmentPeriods.length > 0 ? departmentPeriods[0].department : '1. Abteilung',
         personnelNumber: personnelNumber.trim(),
         roleId,
+        oldRtwShifts,
         fahrzeugfuehrer: false,
         fahrzeugfuehrerHLFB: false,
         nef: false,
@@ -461,6 +474,32 @@ const AddPerson: React.FC = () => {
           }}
         />
       </div>
+
+      {showOldRtwShiftsFeature && (
+        <div style={{ marginBottom: '24px', padding: '12px', border: '1px solid #dee2e6', borderRadius: '4px', background: '#f8f9fa' }}>
+          <label style={{ display: 'block', marginBottom: '6px', fontWeight: 500 }}>
+            Alte RTW-Schichten (aus Altsystem)
+          </label>
+          <input
+            type="number"
+            value={oldRtwShifts === 0 ? '' : oldRtwShifts}
+            onChange={e => setOldRtwShifts(e.target.value === '' ? 0 : Number(e.target.value))}
+            min="0"
+            placeholder="0"
+            style={{
+              width: '100%',
+              padding: '10px',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              fontSize: '14px',
+              boxSizing: 'border-box'
+            }}
+          />
+          <div style={{ fontSize: '0.85em', color: '#666', marginTop: '4px' }}>
+            Dieser Wert wird im Dienstplan angezeigt, aber <strong>nicht</strong> zur aktuellen Ist-Berechnung addiert.
+          </div>
+        </div>
+      )}
 
       <div style={{ marginBottom: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>

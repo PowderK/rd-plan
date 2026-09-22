@@ -546,8 +546,17 @@ const EditPerson: React.FC = () => {
           console.warn('Unexpected error loading roles:', error);
         }
 
+        const currentDept = person?.department || department || '1. Abteilung';
+
         try {
-          const feat = await (window as any).api.getSetting(`feature_shift_transfers_${department}`);
+          const oldRtwFeat = await (window as any).api.getSetting(`feature_old_rtw_shifts_${currentDept}`);
+          setShowOldRtwShiftsFeature(oldRtwFeat === 'true' || oldRtwFeat === true);
+        } catch (error) {
+          console.warn('Failed to load feature_old_rtw_shifts setting:', error);
+        }
+
+        try {
+          const feat = await (window as any).api.getSetting(`feature_shift_transfers_${currentDept}`);
           setShowShiftTransferFeature(feat === 'true' || feat === true);
         } catch { }
 
