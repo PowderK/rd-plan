@@ -62,7 +62,7 @@ function usePersonnel(year: number, departmentName?: string) {
   const fetch = async () => {
     try {
       const currentYear = year.toString();
-      const [rawList, allPeriods, allDeptPeriods, hlfbQualSetting, ue50QualSetting, lpalQualSetting, taucherQualSetting, rdQualSetting] = await Promise.all([
+      const [rawList, allPeriods, allDeptPeriods, hlfbQualSetting, ue50QualSetting, lpalQualSetting, taucherQualSetting, rdQualSetting, featTSetting, globTSetting] = await Promise.all([
         (window as any).api.getPersonnelList?.(false, currentYear, departmentName),
         (window as any).api.getAllQualificationPeriods?.(),
         (window as any).api.getAllPersonnelDepartmentPeriods?.(),
@@ -71,7 +71,13 @@ function usePersonnel(year: number, departmentName?: string) {
         (window as any).api.getSetting?.('lpal_qualification_type'),
         (window as any).api.getSetting?.('taucher_qualification_type'),
         (window as any).api.getSetting?.('rettungsdienst_qualification_type'),
+        (window as any).api.getSetting?.(`feature_taucher_${departmentName}`),
+        (window as any).api.getSetting?.('feature_taucher'),
       ]);
+
+      const isTaucherEnabled = featTSetting !== null && featTSetting !== undefined
+        ? featTSetting === '1' || featTSetting === true || featTSetting === 'true'
+        : (globTSetting === null || globTSetting === undefined ? true : globTSetting === '1' || globTSetting === true || globTSetting === 'true');
 
       const hlfbQualName = String(hlfbQualSetting || 'Fahrzeugführer HLF-B');
       const ue50QualName = String(ue50QualSetting || 'Ü50');
@@ -113,7 +119,7 @@ function usePersonnel(year: number, departmentName?: string) {
           if (hlfbPeriods.length > 0) hlfbMonthly[m] = qualApplies(hlfbPeriods, ym);
           if (ue50Periods.length > 0) ue50Monthly[m] = qualApplies(ue50Periods, ym);
           if (lpalPeriods.length > 0) lpalMonthly[m] = qualApplies(lpalPeriods, ym);
-          if (taucherPeriods.length > 0) taucherMonthly[m] = qualApplies(taucherPeriods, ym);
+          if (isTaucherEnabled && taucherPeriods.length > 0) taucherMonthly[m] = qualApplies(taucherPeriods, ym);
           if (rdPeriods.length > 0) rettungsdienstMonthly[m] = qualApplies(rdPeriods, ym);
         }
 
@@ -139,7 +145,7 @@ function usePersonnel(year: number, departmentName?: string) {
           ue50Monthly,
           lpal: lpalMonthly.some(Boolean),
           lpalMonthly,
-          taucher: taucherMonthly.some(Boolean),
+          taucher: isTaucherEnabled && taucherMonthly.some(Boolean),
           taucherMonthly,
           rettungsdienst: rettungsdienstMonthly.some(Boolean),
           rettungsdienstMonthly,

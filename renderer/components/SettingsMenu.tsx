@@ -151,6 +151,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
   // Feature toggles
   const [featureOldRtwShifts, setFeatureOldRtwShifts] = useState(false);
   const [featureShiftTransfers, setFeatureShiftTransfers] = useState(false);
+  const [featureTaucher, setFeatureTaucher] = useState(true);
   const [itwFeatureEnabled, setItwFeatureEnabled] = useState(false);
   const [activeCategory, setActiveCategory] = useState<'general' | 'roster' | 'features' | 'itw' | 'qualifications' | 'roles' | 'audit'>(activeCategoryProp || 'general');
 
@@ -224,6 +225,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       weekendSundayNight,
       featureOldRtwShifts,
       featureShiftTransfers,
+      featureTaucher,
       itwFeatureEnabled,
       roles: normalizedRoles,
       auswertungByType: sortedAuswertung,
@@ -250,6 +252,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
     weekendSundayNight,
     featureOldRtwShifts,
     featureShiftTransfers,
+    featureTaucher,
     itwFeatureEnabled,
     roles,
     auswertungByType,
@@ -522,6 +525,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       // Feature toggles pro Abteilung speichern
       await (window as any).api.setSetting(`feature_old_rtw_shifts_${selectedDepartment}`, featureOldRtwShifts ? 'true' : 'false');
       await (window as any).api.setSetting(`feature_shift_transfers_${selectedDepartment}`, featureShiftTransfers ? 'true' : 'false');
+      await (window as any).api.setSetting(`feature_taucher_${selectedDepartment}`, featureTaucher ? 'true' : 'false');
+      await (window as any).api.setSetting('feature_taucher', featureTaucher ? 'true' : 'false');
       // ITW global speichern
       await (window as any).api.setSetting('itw', itwFeatureEnabled ? 'true' : 'false');
       await (window as any).api.setSetting('itw_rotation_pattern', JSON.stringify(itwRotationPhases));
@@ -661,6 +666,15 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       try {
         const shiftTransfers = await (window as any).api.getSetting(`feature_shift_transfers_${selectedDepartment}`);
         setFeatureShiftTransfers(shiftTransfers === 'true');
+      } catch { }
+      try {
+        const taucherFeat = await (window as any).api.getSetting(`feature_taucher_${selectedDepartment}`);
+        if (taucherFeat !== null && taucherFeat !== undefined) {
+          setFeatureTaucher(taucherFeat === 'true' || taucherFeat === true || taucherFeat === '1');
+        } else {
+          const globT = await (window as any).api.getSetting('feature_taucher');
+          setFeatureTaucher(globT === null || globT === undefined ? true : (globT === 'true' || globT === true || globT === '1'));
+        }
       } catch { }
       try {
         // Rollen aus der neuen roles-Tabelle laden
@@ -1856,6 +1870,22 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
               <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr', columnGap: 12, alignItems: 'start' }}>
                 <input
                   type="checkbox"
+                  id="featureTaucher"
+                  checked={featureTaucher}
+                  onChange={(e) => setFeatureTaucher(e.target.checked)}
+                  style={{ marginTop: 2 }}
+                />
+                <label htmlFor="featureTaucher" style={{ cursor: 'pointer', margin: 0 }}>
+                  <strong>Taucher-Verfügbarkeit & Kennzeichnung</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                    Zeigt in der Datumszeile der RTW/NEF-Einteilung täglich an, wie viele Taucher noch verfügbar sind (abzüglich eingeteilter Schichten) und kennzeichnet Taucher mit einem blauen Seitenstrich.
+                  </div>
+                </label>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr', columnGap: 12, alignItems: 'start' }}>
+                <input
+                  type="checkbox"
                   id="featureItw"
                   checked={itwFeatureEnabled}
                   onChange={(e) => setItwFeatureEnabled(e.target.checked)}
@@ -2292,12 +2322,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
             </div>
 
             {/* Taucher Zuordnung (blauer Strich rechts am Namen) */}
-            <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#ebf5ff', borderRadius: 6, border: '1px solid #1976d2' }}>
+            <div style={{ marginBottom: 16, padding: 12, backgroundColor: featureTaucher ? '#ebf5ff' : '#f8fafc', borderRadius: 6, border: featureTaucher ? '1px solid #1976d2' : '1px solid #cbd5e1', opacity: featureTaucher ? 1 : 0.7 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <strong style={{ minWidth: 250 }}>Qualifikation für Taucher (blauer Seitenstrich):</strong>
                 <select
                   value={taucherQualificationType}
                   onChange={e => setTaucherQualificationType(e.target.value)}
+                  disabled={!featureTaucher}
                   style={{ flex: 1, maxWidth: 400 }}
                 >
                   {qualificationTypes.filter(qt => qt.active).map(qt => (
@@ -2305,8 +2336,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                   ))}
                 </select>
               </label>
-              <p style={{ margin: '8px 0 0', fontSize: '0.9em', color: '#1565c0' }}>
-                Personen mit dieser Qualifikation erhalten im Kontrollkasten und Dienstplan einen <strong style={{ color: '#1976d2' }}>blauen Strich</strong> an der rechten Seite ihres Namens zur schnellen Übersicht der verfügbaren Taucher.
+              <p style={{ margin: '8px 0 0', fontSize: '0.9em', color: featureTaucher ? '#1565c0' : '#64748b' }}>
+                {featureTaucher ? (
+                  <>Personen mit dieser Qualifikation erhalten im Kontrollkasten und Dienstplan einen <strong style={{ color: '#1976d2' }}>blauen Strich</strong> an der rechten Seite ihres Namens zur schnellen Übersicht der verfügbaren Taucher.</>
+                ) : (
+                  <><em>Hinweis: Das Taucher-Feature ist aktuell unter <strong>Features</strong> deaktiviert.</em></>
+                )}
               </p>
             </div>
 

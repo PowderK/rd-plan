@@ -94,6 +94,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [ue50MonthlyMap, setUe50MonthlyMap] = useState<Record<number, boolean[]>>({});
     const [lpalMonthlyMap, setLpalMonthlyMap] = useState<Record<number, boolean[]>>({});
     const [taucherMonthlyMap, setTaucherMonthlyMap] = useState<Record<number, boolean[]>>({});
+    const [featureTaucher, setFeatureTaucher] = useState<boolean>(true);
     // HLF-B Perioden für korrekte Berechnung
     const [hlfbPeriodsByPerson, setHlfbPeriodsByPerson] = useState<Record<number, Array<{ startYM: string; endYM?: string }>>>({});
     // Performance: Debouncing für Roster-Updates
@@ -447,6 +448,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const feat = await (window as any).api.getSetting(`feature_old_rtw_shifts_${departmentName}`);
                 setFeatureOldRtwShifts(feat === 'true' || feat === true);
             } catch { }
+            try {
+                const featT = await (window as any).api.getSetting(`feature_taucher_${departmentName}`);
+                if (featT !== null && featT !== undefined) {
+                    setFeatureTaucher(featT === 'true' || featT === true || featT === '1');
+                } else {
+                    const globT = await (window as any).api.getSetting('feature_taucher');
+                    setFeatureTaucher(globT === null || globT === undefined ? true : (globT === 'true' || globT === true || globT === '1'));
+                }
+            } catch { }
             // Neue Fahrzeug-Zeiträume laden
             try {
                 const rtwP = await (window as any).api.getAllRtwVehiclePeriods?.();
@@ -528,6 +538,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         nMap[p.vehicleId].push(p);
                     });
                     setNefVehiclePeriods(nMap);
+                } catch { }
+                try {
+                    const featT = await (window as any).api.getSetting(`feature_taucher_${departmentName}`);
+                    if (featT !== null && featT !== undefined) {
+                        setFeatureTaucher(featT === 'true' || featT === true || featT === '1');
+                    } else {
+                        const globT = await (window as any).api.getSetting('feature_taucher');
+                        setFeatureTaucher(globT === null || globT === undefined ? true : (globT === 'true' || globT === true || globT === '1'));
+                    }
                 } catch { }
                 try {
                     const docs = await (window as any).api.getItwDoctors?.();
@@ -2740,6 +2759,43 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                                                 const tooltipText = tooltipParts.join('\n');
 
+                                                const taucherStat = (() => {
+                                                    if (!featureTaucher) return null;
+                                                    const diversOnDuty: any[] = [];
+                                                    const diversAssigned: any[] = [];
+                                                    const diversFree: any[] = [];
+
+                                                    (personnel || []).forEach(p => {
+                                                        const isTaucher = (p as any).taucherMonthly ? !!(p as any).taucherMonthly[currentMonth] : !!taucherMonthlyMap[p.id]?.[currentMonth];
+                                                        if (!isTaucher) return;
+
+                                                        const dutyCode = getDutyCodeForDate(`p_${p.id}`, d.date);
+                                                        const isOnDuty = allowedByAuswertung(dutyCode, 'any');
+                                                        if (!isOnDuty) return;
+
+                                                        diversOnDuty.push(p);
+
+                                                        const pKey = `p_${p.id}`;
+                                                        const entry = (localRoster as any)?.[pKey]?.[d.date] || (roster as any)?.[pKey]?.[d.date];
+                                                        const isAssigned = !!(entry && entry.type && String(entry.type).trim() !== '');
+
+                                                        if (isAssigned) {
+                                                            diversAssigned.push(p);
+                                                        } else {
+                                                            diversFree.push(p);
+                                                        }
+                                                    });
+
+                                                    return {
+                                                        total: diversOnDuty.length,
+                                                        assigned: diversAssigned.length,
+                                                        free: diversFree.length,
+                                                        diversOnDuty,
+                                                        diversAssigned,
+                                                        diversFree
+                                                    };
+                                                })();
+
                                                 return (
                                                     <div
                                                         onClick={() => setSelectedAvailDate(selectedAvailDate === d.date ? null : d.date)}
@@ -2764,7 +2820,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                         {commentCount > 0 && (
                                                             <div
                                                                 title={tooltipText || 'Kommentare anzeigen'}
-                                                                onClick={() => {
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
                                                                     setActiveCommentsData({ dateStr: label, comments: tooltipParts });
                                                                 }}
                                                                 style={{
@@ -2784,6 +2841,35 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                 }}
                                                             >
                                                                 {commentCount > 99 ? '99+' : commentCount}
+                                                            </div>
+                                                        )}
+                                                        {taucherStat && (
+                                                            <div
+                                                                title={`Taucher-Verfügbarkeit am ${label} (${d.weekday}):\n• ${taucherStat.free} verfügbar / frei${taucherStat.diversFree.length > 0 ? ': ' + taucherStat.diversFree.map((p: any) => p.name).join(', ') : ''}\n• ${taucherStat.assigned} eingeteilt${taucherStat.diversAssigned.length > 0 ? ': ' + taucherStat.diversAssigned.map((p: any) => p.name).join(', ') : ''}\n• ${taucherStat.total} Taucher im Dienst`}
+                                                                style={{
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
+                                                                    padding: '2px 8px',
+                                                                    borderRadius: '12px',
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 700,
+                                                                    background: taucherStat.free > 0 ? '#e0f2fe' : (taucherStat.total > 0 ? '#fef3c7' : '#f1f5f9'),
+                                                                    color: taucherStat.free > 0 ? '#0369a1' : (taucherStat.total > 0 ? '#b45309' : '#94a3b8'),
+                                                                    border: taucherStat.free > 0 ? '1px solid #7dd3fc' : (taucherStat.total > 0 ? '1px solid #fde68a' : '1px solid #e2e8f0'),
+                                                                    marginLeft: 'auto',
+                                                                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                                                                    cursor: 'default',
+                                                                    userSelect: 'none'
+                                                                }}
+                                                            >
+                                                                <span style={{ fontSize: '13px', lineHeight: 1 }}>🤿</span>
+                                                                <span>{taucherStat.free} {taucherStat.free === 1 ? 'Taucher frei' : 'Taucher frei'}</span>
+                                                                {taucherStat.total > 0 && (
+                                                                    <span style={{ fontSize: '10px', opacity: 0.8, fontWeight: 500 }}>
+                                                                        ({taucherStat.assigned}/{taucherStat.total} verplant)
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         )}
                                                     </div>
@@ -3123,7 +3209,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                                         const ue50 = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[currentMonth] : !!ue50MonthlyMap[p.id]?.[currentMonth];
                                         const lpal = (p as any).lpalMonthly ? !!(p as any).lpalMonthly[currentMonth] : !!lpalMonthlyMap[p.id]?.[currentMonth];
-                                        const taucher = (p as any).taucherMonthly ? !!(p as any).taucherMonthly[currentMonth] : !!taucherMonthlyMap[p.id]?.[currentMonth];
+                                        const taucher = featureTaucher ? ((p as any).taucherMonthly ? !!(p as any).taucherMonthly[currentMonth] : !!taucherMonthlyMap[p.id]?.[currentMonth]) : false;
                                         const total = tn.tag + tn.nacht + nef + itw;
                                         const oldRtwShifts = (p as any).old_rtw_shifts || 0;
                                         const weekend = perPersonWeekendInYear[key] || 0;
@@ -3542,7 +3628,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                                         const ue50 = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[currentMonth] : !!ue50MonthlyMap[p.id]?.[currentMonth];
                                         const lpal = (p as any).lpalMonthly ? !!(p as any).lpalMonthly[currentMonth] : !!lpalMonthlyMap[p.id]?.[currentMonth];
-                                        const taucher = (p as any).taucherMonthly ? !!(p as any).taucherMonthly[currentMonth] : !!taucherMonthlyMap[p.id]?.[currentMonth];
+                                        const taucher = featureTaucher ? ((p as any).taucherMonthly ? !!(p as any).taucherMonthly[currentMonth] : !!taucherMonthlyMap[p.id]?.[currentMonth]) : false;
                                         const oldRtwShifts = (p as any).oldRtwShifts || 0;
                                         const weekend = perPersonWeekendInYear[key] || 0;
                                         const total = tn.tag + tn.nacht + nef + itw;

@@ -341,6 +341,17 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         if (val) taucherQualName = String(val);
       } catch { }
 
+      let isTaucherFeature = true;
+      try {
+        const featT = await (window as any).api.getSetting(`feature_taucher_${department}`);
+        if (featT !== null && featT !== undefined) {
+          isTaucherFeature = featT === 'true' || featT === true || featT === '1';
+        } else {
+          const globT = await (window as any).api.getSetting('feature_taucher');
+          isTaucherFeature = globT === null || globT === undefined ? true : (globT === 'true' || globT === true || globT === '1');
+        }
+      } catch { }
+
       const periodsByPerson: Record<number, any[]> = {};
       if (Array.isArray(allQualPeriods)) {
         allQualPeriods.forEach((p: any) => {
@@ -353,7 +364,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       const taucherSet = new Set<number>();
       const filteredPersonnel = (list || []).filter((p: any) => {
         const pPeriods = periodsByPerson[p.id] || [];
-        const hasTaucher = pPeriods.some((per: any) => per.qualType === taucherQualName && qualificationAppliesInMonth(per, yearMonth));
+        const hasTaucher = isTaucherFeature && pPeriods.some((per: any) => per.qualType === taucherQualName && qualificationAppliesInMonth(per, yearMonth));
         if (hasTaucher) taucherSet.add(p.id);
         const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
         if (rdPeriods.length === 0) return true;
@@ -1184,11 +1195,22 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       });
     }
 
+    let isTaucherFeature = true;
+    try {
+      const featT = await (window as any).api.getSetting(`feature_taucher_${departmentName}`);
+      if (featT !== null && featT !== undefined) {
+        isTaucherFeature = featT === 'true' || featT === true || featT === '1';
+      } else {
+        const globT = await (window as any).api.getSetting('feature_taucher');
+        isTaucherFeature = globT === null || globT === undefined ? true : (globT === 'true' || globT === true || globT === '1');
+      }
+    } catch { }
+
     const yearMonth = `${year}-${String(currentMonth + 1).padStart(2, '0')}`;
     const taucherSet = new Set<number>();
     const filteredPersonnel = (list || []).filter((p: any) => {
       const pPeriods = periodsByPerson[p.id] || [];
-      const hasTaucher = pPeriods.some((per: any) => per.qualType === taucherQualName && qualificationAppliesInMonth(per, yearMonth));
+      const hasTaucher = isTaucherFeature && pPeriods.some((per: any) => per.qualType === taucherQualName && qualificationAppliesInMonth(per, yearMonth));
       if (hasTaucher) taucherSet.add(p.id);
       const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
       if (rdPeriods.length === 0) return true;
