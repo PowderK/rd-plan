@@ -2799,7 +2799,7 @@ export class DatabaseManager {
 
     const hasTable = (tableName: string) => {
       try {
-        return !raw.prepare('SELECT name FROM sqlite_master WHERE type = ? AND name = ?').get('table', tableName);
+        return !!raw.prepare('SELECT name FROM sqlite_master WHERE type = ? AND name = ?').get('table', tableName);
       } catch {
         return false;
       }
@@ -2819,7 +2819,7 @@ export class DatabaseManager {
     if (legacyDepartment !== '1. Abteilung') {
       let persDepts: string[] = [];
       if (hasTable('personnel') && getColumns('personnel').includes('department')) {
-        persDepts = (raw.prepare('SELECT DISTINCT department FROM personnel WHERE department IS NOT NULL AND department != ""').all() as any[])
+        persDepts = (raw.prepare("SELECT DISTINCT department FROM personnel WHERE department IS NOT NULL AND department != ''").all() as any[])
           .map(x => normalizeDepartment(x.department));
       }
       if (persDepts.length <= 1) {

@@ -73,7 +73,7 @@ export type AsyncDB = {
 export const initializeDatabase = async (): Promise<AsyncDB> => {
     // Store the database in the application root under a `DB/` subfolder.
     // Use the executable path to find the app root (works for portable builds).
-    const exePath = app.getPath ? app.getPath('exe') : process.execPath;
+    const exePath = (app && typeof app.getPath === 'function') ? app.getPath('exe') : process.execPath;
     const appRoot = path.dirname(exePath);
     const dbDir = path.join(appRoot, 'DB');
     try { fs.mkdirSync(dbDir, { recursive: true }); } catch (e) { /* ignore */ }
@@ -88,7 +88,7 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         cacheManager = new CacheManager(dbDir, { maxAgeMinutes: 1 }); // 1 Minute Cache für DB
 
         // Verwende lokale Cache-Kopie der Datenbank für schnelleren Zugriff
-        const tempPath = app?.getPath ? app.getPath('temp') : os.tmpdir();
+        const tempPath = (app && typeof app.getPath === 'function') ? app.getPath('temp') : os.tmpdir();
         const localDbDir = path.join(tempPath, 'rd-plan-db');
         try {
             fs.mkdirSync(localDbDir, { recursive: true });
