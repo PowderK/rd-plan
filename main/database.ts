@@ -2421,6 +2421,8 @@ export const getRtwVehicleActivations = async (db: AsyncDB, year: number) => {
                     if (!start) return true;
                     return start <= ym && (!end || end >= ym);
                 });
+            } else if (v.category !== 'reserve') {
+                isActive = true;
             }
 
             if (!isActive && specialDays.length > 0) {
@@ -2461,6 +2463,8 @@ export const getNefVehicleActivations = async (db: AsyncDB, year: number) => {
                     if (!start) return true;
                     return start <= ym && (!end || end >= ym);
                 });
+            } else if (v.category !== 'reserve') {
+                isActive = true;
             }
 
             if (!isActive && specialDays.length > 0) {
@@ -2713,6 +2717,7 @@ export const isRtwVehicleActiveInMonth = async (db: AsyncDB, vehicleId: number, 
     const ym = yearMonth.slice(0, 7);
     const periods = await db.all('SELECT * FROM rtw_vehicle_periods WHERE vehicleId = ?', [vehicleId]);
     const specialDays = await db.all('SELECT * FROM vehicle_special_days WHERE vehicleType = "rtw" AND vehicleId = ?', [vehicleId]);
+    const v = await db.get('SELECT category FROM rtw_vehicles WHERE id = ?', [vehicleId]);
 
     const hasPeriod = periods.some((p: any) => {
         const isAct = p.active === 1 || p.active === true;
@@ -2723,7 +2728,9 @@ export const isRtwVehicleActiveInMonth = async (db: AsyncDB, vehicleId: number, 
         return start <= ym && (!end || end >= ym);
     });
     if (hasPeriod) return true;
-    return specialDays.some((s: any) => s.action !== 'remove' && (s.date || '').startsWith(ym));
+    if (specialDays.some((s: any) => s.action !== 'remove' && (s.date || '').startsWith(ym))) return true;
+    if (periods.length === 0 && v?.category !== 'reserve') return true;
+    return false;
 };
 
 // Helper: Check if NEF vehicle is active in a given month
@@ -2732,6 +2739,7 @@ export const isNefVehicleActiveInMonth = async (db: AsyncDB, vehicleId: number, 
     const ym = yearMonth.slice(0, 7);
     const periods = await db.all('SELECT * FROM nef_vehicle_periods WHERE vehicleId = ?', [vehicleId]);
     const specialDays = await db.all('SELECT * FROM vehicle_special_days WHERE vehicleType = "nef" AND vehicleId = ?', [vehicleId]);
+    const v = await db.get('SELECT category FROM nef_vehicles WHERE id = ?', [vehicleId]);
 
     const hasPeriod = periods.some((p: any) => {
         const isAct = p.active === 1 || p.active === true;
@@ -2742,7 +2750,9 @@ export const isNefVehicleActiveInMonth = async (db: AsyncDB, vehicleId: number, 
         return start <= ym && (!end || end >= ym);
     });
     if (hasPeriod) return true;
-    return specialDays.some((s: any) => s.action !== 'remove' && (s.date || '').startsWith(ym));
+    if (specialDays.some((s: any) => s.action !== 'remove' && (s.date || '').startsWith(ym))) return true;
+    if (periods.length === 0 && v?.category !== 'reserve') return true;
+    return false;
 };
 
 // Get all active RTW vehicle periods for a specific month

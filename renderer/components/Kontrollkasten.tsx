@@ -152,12 +152,12 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
       {/* Items */}
       {
         items.map((it, idx) => {
-          const isEligible = typeof it.target === 'number' && (it.target as number) > 0;
+          const isEligible = !it.ue50 && !it.lpal && !it.isItwExternal && typeof it.rest === 'number' && Number.isFinite(it.rest);
           let restStyle: React.CSSProperties | undefined = undefined;
-          if (isEligible && maxNR > minNR) {
+          if (isEligible) {
             const fte = Math.max(0.01, (it.teilzeit || 100) / 100);
             const normRest = it.rest / fte;
-            const t = (normRest - minNR) / (maxNR - minNR);
+            const t = maxNR > minNR ? (normRest - minNR) / (maxNR - minNR) : 0.5;
             const col = mixColor(t);
             const bg = `rgba(${col.r}, ${col.g}, ${col.b}, 0.18)`;
             const border = `1px solid rgba(${col.r}, ${col.g}, ${col.b}, 0.35)`;

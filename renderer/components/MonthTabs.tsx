@@ -1618,7 +1618,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 department,
                 deptPatternSeqs || [],
                 hlfbPeriodsByPerson,
-                shiftTransfers // <-- Pass loaded transfers here
+                shiftTransfers, // <-- Pass loaded transfers here
+                { rtwPeriods: rtwVehiclePeriods, nefPeriods: nefVehiclePeriods }
             );
 
             // 3. Map Targets to MonthTabs format
@@ -3171,7 +3172,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                     });
                                     // Farbliche Hervorhebung: nur Personen mit Monats-Soll > 0 berücksichtigen, Rest (Jahr) auf 100%-Äquivalent normalisieren
                                     const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
-                                    const eligible = itemsWithIndex.filter(it => typeof it.target === 'number' && (it.target as number) > 0);
+                                    const eligible = itemsWithIndex.filter(it => !it.ue50 && !it.lpal && !it.isItwExternal && typeof it.rest === 'number' && Number.isFinite(it.rest));
                                     const normRests = eligible.map(it => {
                                         const fte = Math.max(0.01, (it.teilzeit || 100) / 100);
                                         return it.rest / fte;
@@ -3581,7 +3582,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, weekend, rest, cumDiff, teilzeit, hlfb, ue50, lpal, taucher, total, oldRtwShifts } as any;
                                     });
                                     const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
-                                    const eligible = itemsWithIndex.filter(it => typeof it.target === 'number' && (it.target as number) > 0);
+                                    const eligible = itemsWithIndex.filter(it => !it.ue50 && !it.lpal && !it.isItwExternal && typeof it.rest === 'number' && Number.isFinite(it.rest));
                                     const normRests = eligible.map(it => {
                                         const fte = Math.max(0.01, (it.teilzeit || 100) / 100);
                                         return it.rest / fte;
