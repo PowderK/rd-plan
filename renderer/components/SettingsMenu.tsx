@@ -1922,9 +1922,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                 <tbody className={styles.tbody}>
                   {itwRotationPhases.map((phase, pIdx) => {
                     const getDeptStyle = (dept: string) => {
-                      if (dept === '1. Abteilung') return { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' };
-                      if (dept === '2. Abteilung') return { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' };
-                      if (dept === '3. Abteilung') return { background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' };
+                      if (dept === '1. Abteilung' || dept.startsWith('1')) return { background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' };
+                      if (dept === '2. Abteilung' || dept.startsWith('2')) return { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' };
+                      if (dept === '3. Abteilung' || dept.startsWith('3')) return { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' };
                       return { background: '#f9fafb', color: '#374151', border: '1px solid #e5e7eb' };
                     };
 

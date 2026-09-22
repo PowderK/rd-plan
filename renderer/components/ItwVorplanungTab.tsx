@@ -410,6 +410,16 @@ const ItwVorplanungTab: React.FC = () => {
         const norm = normalizeDepartmentName(dept);
         if (norm.startsWith('1')) {
             return {
+                badgeBg: '#fef2f2',
+                badgeColor: '#b91c1c',
+                badgeBorder: '#fecaca',
+                containerBg: '#fffbfb',
+                containerBorder: '#fee2e2',
+                accent: '#ef4444'
+            };
+        }
+        if (norm.startsWith('2')) {
+            return {
                 badgeBg: '#eff6ff',
                 badgeColor: '#1d4ed8',
                 badgeBorder: '#bfdbfe',
@@ -418,7 +428,7 @@ const ItwVorplanungTab: React.FC = () => {
                 accent: '#2563eb'
             };
         }
-        if (norm.startsWith('2')) {
+        if (norm.startsWith('3')) {
             return {
                 badgeBg: '#f0fdf4',
                 badgeColor: '#15803d',
@@ -426,16 +436,6 @@ const ItwVorplanungTab: React.FC = () => {
                 containerBg: '#f8fdf9',
                 containerBorder: '#dcfce7',
                 accent: '#16a34a'
-            };
-        }
-        if (norm.startsWith('3')) {
-            return {
-                badgeBg: '#fffbeb',
-                badgeColor: '#b45309',
-                badgeBorder: '#fde68a',
-                containerBg: '#fffdfa',
-                containerBorder: '#fef3c7',
-                accent: '#d97706'
             };
         }
         return {
