@@ -352,45 +352,52 @@ export class RosterImporter {
             if (!isNaN(year)) years.add(year);
         }
         
-        // Hole bestehende Fahrzeugzuweisungen (duty_roster entries mit type = 'rtw%', 'nef%', 'itw%')
-        const vehicleAssignments = new Map<string, string>(); // key: "personType_personId_date" -> vehicle assignment (type)
+        // Hole bestehende Dienstplaneinträge (Fahrzeugzuweisungen und manuelle Bearbeitungen)
+        const dbEntriesMap = new Map<string, { value: string; type: string; manual_edit: number }>();
         for (const year of years) {
             const dutyRoster = await this.dbAdapter.getDutyRoster(year, importDept);
             for (const entry of dutyRoster) {
-                // Nur Einträge mit Fahrzeugzuweisung berücksichtigen
-                if (entry.type && (entry.type.startsWith('rtw') || entry.type.startsWith('nef') || entry.type.startsWith('itw'))) {
-                    const key = `${entry.personType}_${entry.personId}_${entry.date}`;
-                    vehicleAssignments.set(key, entry.type);
-                }
+                const key = `${entry.personType}_${entry.personId}_${entry.date}`;
+                dbEntriesMap.set(key, {
+                    value: entry.value || '',
+                    type: entry.type || '',
+                    manual_edit: entry.manual_edit ? 1 : 0
+                });
             }
         }
         
-        // Prüfe Import-Einträge: Gibt es eine Fahrzeugzuweisung UND ist die neue Schichtart nicht verfügbar oder leer?
+        // Prüfe Import-Einträge: Gibt es eine Fahrzeugzuweisung UND ist die effektive Schichtart nicht verfügbar oder leer?
         for (const entry of entriesToImport) {
             const key = `${entry.personType}_${entry.personId}_${entry.date}`;
-            const vehicleAssignment = vehicleAssignments.get(key);
+            const dbEntry = dbEntriesMap.get(key);
+            const vehicleAssignment = dbEntry?.type && (dbEntry.type.startsWith('rtw') || dbEntry.type.startsWith('nef') || dbEntry.type.startsWith('itw'))
+                ? dbEntry.type
+                : undefined;
             
             if (vehicleAssignment) {
-                const rawValue = (entry.value || '').trim();
-                const auswertung = auswertungMap.get(rawValue);
+                // Wenn im Dienstplan eine schreibgeschützte / manuelle Bearbeitung vorliegt (manual_edit === 1),
+                // gilt der manuell im Dienstplan eingetragene Wert und NICHT die Excel-Datei!
+                const isManualEdit = dbEntry?.manual_edit === 1;
+                const effectiveValue = isManualEdit ? (dbEntry.value || '').trim() : (entry.value || '').trim();
+                const auswertung = auswertungMap.get(effectiveValue);
                 
                 // Wenn auswertung = 'off' oder nicht definiert (z.B. leerer Wert) → Person nicht verfügbar
                 if (!auswertung || auswertung === 'off') {
                     const personName = personMap.get(`${entry.personType}_${entry.personId}`) || `ID ${entry.personId}`;
                     const readableAssignment = vehiclePositionsMap.get(vehicleAssignment) || vehicleAssignment;
                     
-                    let dutyRosterValue = rawValue;
+                    let dutyRosterValue = effectiveValue;
                     let conflictType: 'removed_from_roster' | 'unavailable_shift' = 'unavailable_shift';
                     let reason = '';
 
-                    if (!rawValue) {
-                        dutyRosterValue = 'Aus Vorplanung entfernt (Kein Dienst)';
+                    if (!effectiveValue) {
+                        dutyRosterValue = isManualEdit ? 'Manuell gelöscht (Kein Dienst)' : 'Aus Vorplanung entfernt (Kein Dienst)';
                         conflictType = 'removed_from_roster';
-                        reason = 'In der Vorplanung gelöscht / kein Dienst eingetragen';
+                        reason = isManualEdit ? 'Im Dienstplan manuell gelöscht' : 'In der Vorplanung gelöscht / kein Dienst eingetragen';
                     } else {
-                        const desc = shiftTypeDescMap.get(rawValue);
-                        const label = desc ? `${desc} (${rawValue})` : rawValue;
-                        dutyRosterValue = label;
+                        const desc = shiftTypeDescMap.get(effectiveValue);
+                        const label = desc ? `${desc} (${effectiveValue})` : effectiveValue;
+                        dutyRosterValue = isManualEdit ? `${label} (Manuelle Änderung)` : label;
                         conflictType = 'unavailable_shift';
                         reason = `Schichtart "${label}" bedeutet nicht verfügbar`;
                     }

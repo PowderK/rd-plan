@@ -1462,10 +1462,10 @@ export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { person
                 // Prüfe ob Eintrag bereits existiert und manuell bearbeitet wurde
                 const existing = await db.get(`
                     SELECT manual_edit FROM duty_roster 
-                    WHERE personId = ? AND personType = ? AND date = ? AND department = ?
+                    WHERE personId = ? AND personType = ? AND date = ? AND COALESCE(department, '1. Abteilung') = ?
                 `, [e.personId, e.personType || 'person', e.date, dept]);
 
-                if (existing && existing.manual_edit === 1) {
+                if (existing && (existing.manual_edit === 1 || existing.manual_edit === true)) {
                     isManual = true;
                 }
             }
@@ -1482,7 +1482,7 @@ export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { person
                 if (deleteEmpty) {
                     await db.run(`
                         DELETE FROM duty_roster 
-                        WHERE personId = ? AND personType = ? AND date = ? AND department = ?
+                        WHERE personId = ? AND personType = ? AND date = ? AND COALESCE(department, '1. Abteilung') = ?
                     `, [e.personId, e.personType || 'person', e.date, dept]);
                     imported++;
                 }
@@ -1552,14 +1552,14 @@ export const deleteOrphanedDutyRosterEntries = async (
     
     let deptCondition = '';
     if (department && department !== 'all') {
-        deptCondition = ' AND department = ?';
+        deptCondition = " AND COALESCE(department, '1. Abteilung') = ?";
         params.push(normalizeDepartment(department));
     }
 
     const sql = `
         DELETE FROM duty_roster 
         WHERE ${dateCondition}
-        AND manual_edit = 0
+        AND (manual_edit = 0 OR manual_edit IS NULL)
         AND (personType = 'person' OR personType = 'azubi')
         ${deptCondition}
         AND (personId || ':' || personType) NOT IN (${placeholders})
