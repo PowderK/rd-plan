@@ -552,6 +552,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
           pattern: (s.pattern || []).map(v => (['1', '2', '3', 'IW'].includes(v) ? v : '')).join(',') 
         }));
         await (window as any).api.setItwPatterns?.(payload);
+        window.dispatchEvent(new CustomEvent('itw-patterns-updated'));
       } catch { }
       // Dept Sequenzen speichern
       try {
@@ -2171,6 +2172,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                             pattern: (s.pattern || []).map(v => (['1', '2', '3', 'IW'].includes(v) ? v : '')).join(',') 
                           })); 
                           await (window as any).api.setItwPatterns?.(payload); 
+                          window.dispatchEvent(new CustomEvent('itw-patterns-updated'));
                         } catch { } finally { 
                           setEditingItwPatterns(false); 
                           setOriginalItwPatterns(null); 

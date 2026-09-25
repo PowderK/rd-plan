@@ -122,7 +122,13 @@ const ItwVorplanungTab: React.FC = () => {
             loadData();
         };
         window.addEventListener('itw-patterns-updated', handleItwPatternsUpdated);
-        return () => window.removeEventListener('itw-patterns-updated', handleItwPatternsUpdated);
+        (window as any).api?.onItwUpdated?.(handleItwPatternsUpdated);
+        (window as any).api?.onSettingsUpdated?.(handleItwPatternsUpdated);
+        return () => {
+            window.removeEventListener('itw-patterns-updated', handleItwPatternsUpdated);
+            (window as any).api?.offItwUpdated?.(handleItwPatternsUpdated);
+            (window as any).api?.offSettingsUpdated?.(handleItwPatternsUpdated);
+        };
     }, []);
 
     const normalizeItwPattern = (pattern: string) => {
@@ -149,66 +155,67 @@ const ItwVorplanungTab: React.FC = () => {
         return activeSeq;
     };
 
-    // Generate all phases for the selected year
+    // Generate all phases for the selected year, taking into account sequence transitions
     const displayedPhases = useMemo(() => {
         if (!year || !sortedItwSeqs || sortedItwSeqs.length === 0 || year < minYear) return [];
+
+        const uniqueSeqs = Array.from(
+            new Map(sortedItwSeqs.map(s => [s.startDate, s])).values()
+        ).sort((a, b) => a.startDate.localeCompare(b.startDate));
 
         const dayMs = 24 * 60 * 60 * 1000;
         const phaseDays = 21;
         const phaseLengthMs = phaseDays * dayMs;
         const phaseDurationMs = (phaseDays - 1) * dayMs;
 
-        // Determine the active ITW sequence for the beginning of the year.
-        // This avoids using an older historic start date that no longer defines the current cycle.
-        const yearStartDateStr = `${year}-01-01`;
-        const activeSeqAtYearStart = getActiveItwSequence(yearStartDateStr) || sortedItwSeqs[0];
-        const baseTime = new Date(activeSeqAtYearStart.startDate + 'T00:00:00Z').getTime();
         const yearStartTime = new Date(`${year}-01-01T00:00:00Z`).getTime();
         const yearEndTime = new Date(`${year}-12-31T23:59:59Z`).getTime();
 
-        // Iterate from the effective sequence base and find all phases that fall within the year
-        let phaseStartTime = baseTime;
-        console.log('[ITW displayedPhases]', {
-            chosenBaseDate: activeSeqAtYearStart.startDate,
-            baseDate: new Date(baseTime).toISOString(),
-            yearStart: new Date(yearStartTime).toISOString(),
-            yearEnd: new Date(yearEndTime).toISOString(),
-            phaseDays,
-            phaseLengthMs: phaseLengthMs / dayMs + ' days'
-        });
-        
-        // Skip phases until we reach the year
-        while (phaseStartTime + phaseDurationMs < yearStartTime) {
-            phaseStartTime += phaseLengthMs;
-        }
-        
-        console.log('[ITW displayedPhases] First phase candidates:', {
-            phaseStartTime: new Date(phaseStartTime).toISOString(),
-            phaseEndTime: new Date(phaseStartTime + phaseDurationMs).toISOString()
-        });
+        let currentSeqIdx = 0;
+        let phaseStartTime = new Date(uniqueSeqs[0].startDate + 'T00:00:00Z').getTime();
 
         const phases = [];
-        while (phaseStartTime <= yearEndTime) {
+        let steps = 0;
+
+        while (steps < 2000) {
+            steps++;
             const phaseEndTime = phaseStartTime + phaseDurationMs;
-            const dStart = new Date(phaseStartTime);
-            const dEnd = new Date(phaseEndTime);
 
-            const phaseStartStr = dStart.toISOString().slice(0, 10);
-            const phaseEndStr = dEnd.toISOString().slice(0, 10);
-            const labelStr = `${phaseStartStr.slice(8,10)}.${phaseStartStr.slice(5,7)}.${phaseStartStr.slice(0,4)} - ${phaseEndStr.slice(8,10)}.${phaseEndStr.slice(5,7)}.${phaseEndStr.slice(0,4)}`;
+            if (phaseEndTime >= yearStartTime && phaseStartTime <= yearEndTime) {
+                const dStart = new Date(phaseStartTime);
+                const dEnd = new Date(phaseEndTime);
 
-            phases.push({
-                start: phaseStartStr,
-                end: phaseEndStr,
-                label: labelStr,
-                title: `Phase ${phases.length + 1}`
-            });
+                const phaseStartStr = dStart.toISOString().slice(0, 10);
+                const phaseEndStr = dEnd.toISOString().slice(0, 10);
+                const labelStr = `${phaseStartStr.slice(8, 10)}.${phaseStartStr.slice(5, 7)}.${phaseStartStr.slice(0, 4)} - ${phaseEndStr.slice(8, 10)}.${phaseEndStr.slice(5, 7)}.${phaseEndStr.slice(0, 4)}`;
+
+                phases.push({
+                    start: phaseStartStr,
+                    end: phaseEndStr,
+                    label: labelStr,
+                    title: `Phase ${phases.length + 1}`
+                });
+            }
+
+            if (phaseStartTime > yearEndTime && currentSeqIdx >= uniqueSeqs.length - 1) {
+                break;
+            }
+
+            // Check if there is a newer sequence that takes effect
+            if (currentSeqIdx + 1 < uniqueSeqs.length) {
+                const nextSeqStartMs = new Date(uniqueSeqs[currentSeqIdx + 1].startDate + 'T00:00:00Z').getTime();
+                if (nextSeqStartMs <= phaseStartTime + phaseLengthMs) {
+                    currentSeqIdx++;
+                    phaseStartTime = nextSeqStartMs;
+                    continue;
+                }
+            }
 
             phaseStartTime += phaseLengthMs;
-            if (phases.length > 40) break; // Sanity safeguard
         }
+
         return phases;
-    }, [sortedItwSeqs, year]);
+    }, [sortedItwSeqs, year, minYear]);
 
     const calculatePhaseItwDays = (phaseStartStr: string, phaseEndStr: string, department?: string) => {
         // Calculate which days in the phase are marked as "IW" in the pattern

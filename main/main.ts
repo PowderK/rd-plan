@@ -1662,6 +1662,12 @@ ipcMain.handle('set-itw-patterns', async (_event, patterns: any[]) => {
     const dbManager = getDatabaseManager();
     const adapter = await dbManager.getItwAdapter();
     await adapter.setItwPatterns(patterns);
+    BrowserWindow.getAllWindows().forEach(w => {
+        try {
+            w.webContents.send('settings-updated');
+            w.webContents.send('itw-updated');
+        } catch { }
+    });
     return true;
 });
 
