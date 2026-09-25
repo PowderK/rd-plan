@@ -549,8 +549,19 @@ const ItwVorplanungTab: React.FC = () => {
                                             selectDisabled = !isAssignedToSelf;
                                             if (selectDisabled) disabledReason = `Nur für ${department}`;
                                         } else {
-                                            selectDisabled = isOccupied && !isAssignedToSelf;
-                                            if (selectDisabled) disabledReason = 'Bereits belegt';
+                                            const ownPerson = personnel.find(p => isOwnUser(p));
+                                            const quals = ownPerson ? (activeQuals[ownPerson.id] || []) : [];
+                                            const isFzf = quals.includes('ITW Fahrzeugführer') || quals.includes('Fahrzeugführer') || quals.includes('Fahrzeugführer HLF-B');
+                                            const isMasch = quals.includes('ITW Maschinist');
+                                            const hasQual = role.startsWith('Fahrzeugführer') ? isFzf : (role === 'Maschinist' ? isMasch : true);
+
+                                            if (!hasQual && !isAssignedToSelf) {
+                                                selectDisabled = true;
+                                                disabledReason = 'Qualifikation fehlt';
+                                            } else if (isOccupied && !isAssignedToSelf) {
+                                                selectDisabled = true;
+                                                disabledReason = 'Bereits belegt';
+                                            }
                                         }
                                     } else {
                                         selectDisabled = true;
