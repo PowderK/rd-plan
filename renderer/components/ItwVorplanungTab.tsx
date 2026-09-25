@@ -135,53 +135,49 @@ const ItwVorplanungTab: React.FC = () => {
         const phaseLengthMs = phaseDays * dayMs;
         const phaseDurationMs = (phaseDays - 1) * dayMs;
 
-        const yearStartTime = new Date(`${year}-01-01T00:00:00Z`).getTime();
-        const yearEndTime = new Date(`${year}-12-31T23:59:59Z`).getTime();
+        const allPhases: { start: string; end: string; label: string; startYear: number }[] = [];
 
-        let currentSeqIdx = 0;
-        let phaseStartTime = new Date(uniqueSeqs[0].startDate + 'T00:00:00Z').getTime();
+        for (let i = 0; i < uniqueSeqs.length; i++) {
+            const seq = uniqueSeqs[i];
+            const nextSeq = uniqueSeqs[i + 1];
+            const seqStartMs = new Date(seq.startDate + 'T00:00:00Z').getTime();
+            const nextSeqStartMs = nextSeq ? new Date(nextSeq.startDate + 'T00:00:00Z').getTime() : Infinity;
 
-        const phases = [];
-        let steps = 0;
+            let phaseStartMs = seqStartMs;
+            while (phaseStartMs < nextSeqStartMs) {
+                let phaseEndMs = phaseStartMs + phaseDurationMs;
+                if (nextSeqStartMs < Infinity && phaseEndMs >= nextSeqStartMs) {
+                    phaseEndMs = nextSeqStartMs - dayMs;
+                }
 
-        while (steps < 2000) {
-            steps++;
-            const phaseEndTime = phaseStartTime + phaseDurationMs;
-
-            if (phaseEndTime >= yearStartTime && phaseStartTime <= yearEndTime) {
-                const dStart = new Date(phaseStartTime);
-                const dEnd = new Date(phaseEndTime);
+                const dStart = new Date(phaseStartMs);
+                const dEnd = new Date(phaseEndMs);
 
                 const phaseStartStr = dStart.toISOString().slice(0, 10);
                 const phaseEndStr = dEnd.toISOString().slice(0, 10);
                 const labelStr = `${phaseStartStr.slice(8, 10)}.${phaseStartStr.slice(5, 7)}.${phaseStartStr.slice(0, 4)} - ${phaseEndStr.slice(8, 10)}.${phaseEndStr.slice(5, 7)}.${phaseEndStr.slice(0, 4)}`;
 
-                phases.push({
+                const startYear = parseInt(phaseStartStr.slice(0, 4), 10);
+                allPhases.push({
                     start: phaseStartStr,
                     end: phaseEndStr,
                     label: labelStr,
-                    title: `Phase ${phases.length + 1}`
+                    startYear
                 });
-            }
 
-            if (phaseStartTime > yearEndTime && currentSeqIdx >= uniqueSeqs.length - 1) {
-                break;
+                phaseStartMs += phaseLengthMs;
+                // Safety bound to avoid infinite loop
+                if (phaseStartMs > new Date('2040-01-01T00:00:00Z').getTime()) break;
             }
-
-            // Check if there is a newer sequence that takes effect
-            if (currentSeqIdx + 1 < uniqueSeqs.length) {
-                const nextSeqStartMs = new Date(uniqueSeqs[currentSeqIdx + 1].startDate + 'T00:00:00Z').getTime();
-                if (nextSeqStartMs <= phaseStartTime + phaseLengthMs) {
-                    currentSeqIdx++;
-                    phaseStartTime = nextSeqStartMs;
-                    continue;
-                }
-            }
-
-            phaseStartTime += phaseLengthMs;
         }
 
-        return phases;
+        // Filter phases for the selected year
+        const phasesInYear = allPhases.filter(p => p.startYear === year);
+
+        return phasesInYear.map((p, idx) => ({
+            ...p,
+            title: `Phase ${idx + 1}`
+        }));
     }, [sortedItwSeqs, year, minYear]);
 
     const calculatePhaseItwDays = (phaseStartStr: string, phaseEndStr: string, department?: string) => {
