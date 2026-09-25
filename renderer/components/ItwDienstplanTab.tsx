@@ -21,10 +21,36 @@ interface RosterEntry {
 const ItwDienstplanTab: React.FC = () => {
     const { currentUser, isDevMode } = useAuth();
     const isAppAdmin = isDevMode || currentUser?.roleName?.toLowerCase() === 'administrator';
-    const canEditDienstplan = isAppAdmin || currentUser?.permissions?.itw === 'write_all';
+    const itwDienstplanPerm = isAppAdmin
+        ? 'write'
+        : (currentUser?.permissions?.itw_dienstplan || (
+            currentUser?.permissions?.itw === 'write_all' ? 'write' :
+            currentUser?.permissions?.itw === 'write' ? 'read_all' :
+            currentUser?.permissions?.itw === 'read' ? 'read' : 'none'
+        ));
+
+    const canEditDienstplan = isAppAdmin || itwDienstplanPerm === 'write' || itwDienstplanPerm === 'write_all';
+    const canReadAll = isAppAdmin || canEditDienstplan || itwDienstplanPerm === 'read_all';
+    const canReadOwn = itwDienstplanPerm === 'read';
+    const canRead = canReadAll || canReadOwn;
 
     const [year, setYear] = useState<number>(new Date().getFullYear());
     const [month, setMonth] = useState<number>(new Date().getMonth());
+
+    useEffect(() => {
+        let isMounted = true;
+        (async () => {
+            try {
+                const settingYear = await (window as any).api.getSetting?.('itw_vorplanung_year');
+                if (settingYear && !isNaN(Number(settingYear)) && isMounted) {
+                    setYear(Number(settingYear));
+                }
+            } catch (e) {
+                console.error('[ITW] Error loading itw_vorplanung_year for dienstplan:', e);
+            }
+        })();
+        return () => { isMounted = false; };
+    }, []);
     
     const [personnel, setPersonnel] = useState<any[]>([]);
     const [doctors, setDoctors] = useState<any[]>([]);
@@ -34,6 +60,18 @@ const ItwDienstplanTab: React.FC = () => {
     const [itwSeqs, setItwSeqs] = useState<{ startDate: string, pattern: string, department?: string }[]>([]);
     const [assignments, setAssignments] = useState<any[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
+
+    const isOwnUser = (p: any) => {
+        if (!currentUser) return false;
+        if (isDevMode || currentUser.userId === -1) return true;
+        if (currentUser.userId && Number(p.id) === Number(currentUser.userId)) return true;
+        if (currentUser.personnelNumber && p.personnelNumber && String(p.personnelNumber).trim().toLowerCase() === String(currentUser.personnelNumber).trim().toLowerCase()) return true;
+        if (currentUser.name && currentUser.vorname && p.name && p.vorname) {
+            return String(p.name).trim().toLowerCase() === String(currentUser.name).trim().toLowerCase() &&
+                   String(p.vorname).trim().toLowerCase() === String(currentUser.vorname).trim().toLowerCase();
+        }
+        return false;
+    };
 
     const sortedItwSeqs = useMemo(() => {
         return [...itwSeqs].sort((a, b) => a.startDate.localeCompare(b.startDate));
@@ -57,6 +95,7 @@ const ItwDienstplanTab: React.FC = () => {
     };
 
     const filteredDoctors = useMemo(() => {
+        if (!canReadAll) return [];
         return (doctors || []).filter(d => {
             if (!isItwDoctor(d)) return false;
             const hasRosterInMonth = (roster || []).some(r => {
@@ -68,7 +107,7 @@ const ItwDienstplanTab: React.FC = () => {
             if (hasRosterInMonth) return true;
             return isDoctorActiveInMonth(d.id);
         });
-    }, [doctors, doctorPeriods, roster, year, month]);
+    }, [doctors, doctorPeriods, roster, year, month, canReadAll]);
 
     const formatDateString = (date: Date) => {
         const year = date.getFullYear();
@@ -161,48 +200,50 @@ const ItwDienstplanTab: React.FC = () => {
             const rosterData = await (window as any).api.getItwDutyRoster?.(year) || [];
             setRoster(rosterData);
 
-            // Automatically transfer planned assignments to roster for the current month
-            const days = [];
-            const date = new Date(year, month, 1);
-            while (date.getMonth() === month) {
-                days.push(new Date(date));
-                date.setDate(date.getDate() + 1);
-            }
-            const transferPromises = [];
-            for (const person of persInfo) {
-                for (const d of days) {
-                    const dateStr = formatDateString(d);
-                    const planned = getPlannedCell(person.id, dateStr);
-                    const existing = rosterData.find((r: RosterEntry) => r.personId === person.id && r.personType === 'person' && r.date === dateStr);
-                    if (planned === 'IW' && !existing) {
-                        transferPromises.push(
-                            (window as any).api.setItwDutyRosterEntry?.({
-                                personId: person.id,
-                                personType: 'person',
-                                date: dateStr,
-                                value: '1',
-                                type: 'IW',
-                                manual_edit: 0
-                            })
-                        );
-                    } else if (existing && (!existing.manual_edit || existing.manual_edit === 0) && existing.type === 'IW' && planned !== 'IW') {
-                        transferPromises.push(
-                            (window as any).api.setItwDutyRosterEntry?.({
-                                personId: person.id,
-                                personType: 'person',
-                                date: dateStr,
-                                value: '',
-                                type: '',
-                                manual_edit: 0
-                            })
-                        );
+            // Automatically transfer planned assignments to roster for the current month if user has edit rights
+            if (canEditDienstplan) {
+                const days = [];
+                const date = new Date(year, month, 1);
+                while (date.getMonth() === month) {
+                    days.push(new Date(date));
+                    date.setDate(date.getDate() + 1);
+                }
+                const transferPromises = [];
+                for (const person of persInfo) {
+                    for (const d of days) {
+                        const dateStr = formatDateString(d);
+                        const planned = getPlannedCell(person.id, dateStr);
+                        const existing = rosterData.find((r: RosterEntry) => r.personId === person.id && r.personType === 'person' && r.date === dateStr);
+                        if (planned === 'IW' && !existing) {
+                            transferPromises.push(
+                                (window as any).api.setItwDutyRosterEntry?.({
+                                    personId: person.id,
+                                    personType: 'person',
+                                    date: dateStr,
+                                    value: '1',
+                                    type: 'IW',
+                                    manual_edit: 0
+                                })
+                            );
+                        } else if (existing && (!existing.manual_edit || existing.manual_edit === 0) && existing.type === 'IW' && planned !== 'IW') {
+                            transferPromises.push(
+                                (window as any).api.setItwDutyRosterEntry?.({
+                                    personId: person.id,
+                                    personType: 'person',
+                                    date: dateStr,
+                                    value: '',
+                                    type: '',
+                                    manual_edit: 0
+                                })
+                            );
+                        }
                     }
                 }
-            }
-            await Promise.all(transferPromises);
-            if (transferPromises.length > 0) {
-                const updatedRoster = await (window as any).api.getItwDutyRoster?.(year) || [];
-                setRoster(updatedRoster);
+                await Promise.all(transferPromises);
+                if (transferPromises.length > 0) {
+                    const updatedRoster = await (window as any).api.getItwDutyRoster?.(year) || [];
+                    setRoster(updatedRoster);
+                }
             }
             
         } catch (e) {
@@ -242,9 +283,19 @@ const ItwDienstplanTab: React.FC = () => {
         return days;
     }, [year, month]);
 
+    const visiblePersonnel = useMemo(() => {
+        if (canReadAll) {
+            return personnel;
+        }
+        if (canReadOwn) {
+            return personnel.filter(p => isOwnUser(p));
+        }
+        return [];
+    }, [personnel, canReadAll, canReadOwn, currentUser]);
+
     const groupedPersonnel = useMemo(() => {
         const map = new Map<string, any[]>();
-        for (const p of personnel) {
+        for (const p of visiblePersonnel) {
             const dept = p.department || '1. Abteilung';
             if (!map.has(dept)) map.set(dept, []);
             map.get(dept)!.push(p);
@@ -256,7 +307,7 @@ const ItwDienstplanTab: React.FC = () => {
             department: dept,
             members: map.get(dept)!
         }));
-    }, [personnel]);
+    }, [visiblePersonnel]);
 
 
 
@@ -351,6 +402,14 @@ const ItwDienstplanTab: React.FC = () => {
             </tr>
         );
     };
+
+    if (!canRead) {
+        return (
+            <div style={{ padding: 20, color: '#666' }}>
+                Sie haben keine Berechtigung, den ITW-Dienstplan einzusehen.
+            </div>
+        );
+    }
 
     if (loading) return <div style={{ padding: 20 }}>Lade ITW-Dienstplan...</div>;
 

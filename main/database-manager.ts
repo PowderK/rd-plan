@@ -825,14 +825,14 @@ class SQLiteAdapter implements DatabaseAdapter {
   }
 
   async getRoles() {
-    const rows = await this.db.all('SELECT id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, canViewItw, canEditItw, canEditItwAll, sort FROM roles ORDER BY sort ASC, id ASC');
+    const rows = await this.db.all('SELECT id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, canViewItw, canEditItw, canEditItwAll, canViewItwVorplanung, canEditItwVorplanung, canEditItwVorplanungAll, canViewItwAerzte, canEditItwAerzte, canViewItwDienstplan, canViewItwDienstplanAll, canEditItwDienstplan, sort FROM roles ORDER BY sort ASC, id ASC');
     return rows;
   }
 
   async addRole(role: any) {
     await this.db.run(
-      `INSERT OR IGNORE INTO roles (id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, canViewItw, canEditItw, canEditItwAll, sort)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR IGNORE INTO roles (id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, canViewItw, canEditItw, canEditItwAll, canViewItwVorplanung, canEditItwVorplanung, canEditItwVorplanungAll, canViewItwAerzte, canEditItwAerzte, canViewItwDienstplan, canViewItwDienstplanAll, canEditItwDienstplan, sort)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         role.id || null,
         role.name,
@@ -853,6 +853,14 @@ class SQLiteAdapter implements DatabaseAdapter {
         role.canViewItw ? 1 : 0,
         role.canEditItw ? 1 : 0,
         role.canEditItwAll ? 1 : 0,
+        role.canViewItwVorplanung ? 1 : 0,
+        role.canEditItwVorplanung ? 1 : 0,
+        role.canEditItwVorplanungAll ? 1 : 0,
+        role.canViewItwAerzte ? 1 : 0,
+        role.canEditItwAerzte ? 1 : 0,
+        role.canViewItwDienstplan ? 1 : 0,
+        role.canViewItwDienstplanAll ? 1 : 0,
+        role.canEditItwDienstplan ? 1 : 0,
         role.sort || 0
       ]
     );
@@ -890,14 +898,33 @@ class SQLiteAdapter implements DatabaseAdapter {
         const canViewRoster = role.permissions?.einteilung === 'read' ? 1 : 0;
         const canViewDienstplan = role.permissions?.dienstplan === 'read' ? 1 : 0;
         const canViewDienstplanAll = role.permissions?.dienstplan === 'read_all' ? 1 : 0;
-        const canViewItw = (role.permissions?.itw === 'read' || role.permissions?.itw === 'write' || role.permissions?.itw === 'write_all') ? 1 : 0;
-        const canEditItw = (role.permissions?.itw === 'write' || role.permissions?.itw === 'write_all') ? 1 : 0;
-        const canEditItwAll = role.permissions?.itw === 'write_all' ? 1 : 0;
+
+        // Granular ITW permissions
+        const vorplanungPerm = role.permissions?.itw_vorplanung || role.permissions?.itw || 'none';
+        const aerztePerm = role.permissions?.itw_aerzte || (role.permissions?.itw === 'write_all' ? 'write' : 'none');
+        const dienstplanPerm = role.permissions?.itw_dienstplan || (role.permissions?.itw === 'write_all' ? 'write' : role.permissions?.itw === 'write' ? 'read_all' : role.permissions?.itw === 'read' ? 'read' : 'none');
+
+        const canViewItwVorplanung = (vorplanungPerm === 'read' || vorplanungPerm === 'write' || vorplanungPerm === 'write_all') ? 1 : 0;
+        const canEditItwVorplanung = (vorplanungPerm === 'write' || vorplanungPerm === 'write_all') ? 1 : 0;
+        const canEditItwVorplanungAll = vorplanungPerm === 'write_all' ? 1 : 0;
+
+        const canViewItwAerzte = (aerztePerm === 'read' || aerztePerm === 'write' || aerztePerm === 'write_all') ? 1 : 0;
+        const canEditItwAerzte = (aerztePerm === 'write' || aerztePerm === 'write_all') ? 1 : 0;
+
+        const canViewItwDienstplan = (dienstplanPerm === 'read' || dienstplanPerm === 'read_all' || dienstplanPerm === 'write' || dienstplanPerm === 'write_all') ? 1 : 0;
+        const canViewItwDienstplanAll = (dienstplanPerm === 'read_all' || dienstplanPerm === 'write' || dienstplanPerm === 'write_all') ? 1 : 0;
+        const canEditItwDienstplan = (dienstplanPerm === 'write' || dienstplanPerm === 'write_all') ? 1 : 0;
+
+        // Legacy general ITW flags
+        const canViewItw = (canViewItwVorplanung || canViewItwAerzte || canViewItwDienstplan) ? 1 : 0;
+        const canEditItw = (canEditItwVorplanung || canEditItwAerzte || canEditItwDienstplan) ? 1 : 0;
+        const canEditItwAll = (canEditItwVorplanungAll || (canEditItwVorplanung && canEditItwAerzte && canEditItwDienstplan)) ? 1 : 0;
+
         const sort = typeof role.sort === 'number' ? role.sort : index;
 
         if (existingRow) {
           await this.db.run(
-            `UPDATE roles SET name = ?, description = ?, canEditPersonnel = ?, canEditVehicles = ?, canEditSettings = ?, canEditRoster = ?, canEditDienstplan = ?, canViewReports = ?, canExportData = ?, canManageUsers = ?, canEditGlobalComments = ?, canEditPersonalComments = ?, canViewRoster = ?, canViewDienstplan = ?, canViewDienstplanAll = ?, canViewItw = ?, canEditItw = ?, canEditItwAll = ?, sort = ? WHERE id = ?`,
+            `UPDATE roles SET name = ?, description = ?, canEditPersonnel = ?, canEditVehicles = ?, canEditSettings = ?, canEditRoster = ?, canEditDienstplan = ?, canViewReports = ?, canExportData = ?, canManageUsers = ?, canEditGlobalComments = ?, canEditPersonalComments = ?, canViewRoster = ?, canViewDienstplan = ?, canViewDienstplanAll = ?, canViewItw = ?, canEditItw = ?, canEditItwAll = ?, canViewItwVorplanung = ?, canEditItwVorplanung = ?, canEditItwVorplanungAll = ?, canViewItwAerzte = ?, canEditItwAerzte = ?, canViewItwDienstplan = ?, canViewItwDienstplanAll = ?, canEditItwDienstplan = ?, sort = ? WHERE id = ?`,
             [
               role.name,
               role.description || '',
@@ -917,6 +944,14 @@ class SQLiteAdapter implements DatabaseAdapter {
               canViewItw,
               canEditItw,
               canEditItwAll,
+              canViewItwVorplanung,
+              canEditItwVorplanung,
+              canEditItwVorplanungAll,
+              canViewItwAerzte,
+              canEditItwAerzte,
+              canViewItwDienstplan,
+              canViewItwDienstplanAll,
+              canEditItwDienstplan,
               sort,
               existingRow.id
             ]
@@ -924,8 +959,8 @@ class SQLiteAdapter implements DatabaseAdapter {
           keptIds.push(existingRow.id);
         } else {
           const result = await this.db.run(
-            `INSERT INTO roles (name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, canViewItw, canEditItw, canEditItwAll, sort)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+            `INSERT INTO roles (name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, canViewItw, canEditItw, canEditItwAll, canViewItwVorplanung, canEditItwVorplanung, canEditItwVorplanungAll, canViewItwAerzte, canEditItwAerzte, canViewItwDienstplan, canViewItwDienstplanAll, canEditItwDienstplan, sort)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
             [
               role.name,
               role.description || '',
@@ -945,6 +980,14 @@ class SQLiteAdapter implements DatabaseAdapter {
               canViewItw,
               canEditItw,
               canEditItwAll,
+              canViewItwVorplanung,
+              canEditItwVorplanung,
+              canEditItwVorplanungAll,
+              canViewItwAerzte,
+              canEditItwAerzte,
+              canViewItwDienstplan,
+              canViewItwDienstplanAll,
+              canEditItwDienstplan,
               sort
             ]
           );
@@ -1757,6 +1800,15 @@ export class DatabaseManager {
     const hasEditItw = tableInfo.some((c: any) => c.name === 'canEditItw');
     const hasEditItwAll = tableInfo.some((c: any) => c.name === 'canEditItwAll');
 
+    const hasViewItwVorplanung = tableInfo.some((c: any) => c.name === 'canViewItwVorplanung');
+    const hasEditItwVorplanung = tableInfo.some((c: any) => c.name === 'canEditItwVorplanung');
+    const hasEditItwVorplanungAll = tableInfo.some((c: any) => c.name === 'canEditItwVorplanungAll');
+    const hasViewItwAerzte = tableInfo.some((c: any) => c.name === 'canViewItwAerzte');
+    const hasEditItwAerzte = tableInfo.some((c: any) => c.name === 'canEditItwAerzte');
+    const hasViewItwDienstplan = tableInfo.some((c: any) => c.name === 'canViewItwDienstplan');
+    const hasViewItwDienstplanAll = tableInfo.some((c: any) => c.name === 'canViewItwDienstplanAll');
+    const hasEditItwDienstplan = tableInfo.some((c: any) => c.name === 'canEditItwDienstplan');
+
     if (!hasGlobalComments) {
       await db.exec("ALTER TABLE roles ADD COLUMN canEditGlobalComments INTEGER DEFAULT 0");
     }
@@ -1783,6 +1835,30 @@ export class DatabaseManager {
     }
     if (!hasEditItwAll) {
       await db.exec("ALTER TABLE roles ADD COLUMN canEditItwAll INTEGER DEFAULT 0");
+    }
+    if (!hasViewItwVorplanung) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canViewItwVorplanung INTEGER DEFAULT 0");
+    }
+    if (!hasEditItwVorplanung) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canEditItwVorplanung INTEGER DEFAULT 0");
+    }
+    if (!hasEditItwVorplanungAll) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canEditItwVorplanungAll INTEGER DEFAULT 0");
+    }
+    if (!hasViewItwAerzte) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canViewItwAerzte INTEGER DEFAULT 0");
+    }
+    if (!hasEditItwAerzte) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canEditItwAerzte INTEGER DEFAULT 0");
+    }
+    if (!hasViewItwDienstplan) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canViewItwDienstplan INTEGER DEFAULT 0");
+    }
+    if (!hasViewItwDienstplanAll) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canViewItwDienstplanAll INTEGER DEFAULT 0");
+    }
+    if (!hasEditItwDienstplan) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canEditItwDienstplan INTEGER DEFAULT 0");
     }
 
     // Wenn die Spalten gerade erst hinzugefügt wurden (oder schon da waren aber wir migrieren json), 

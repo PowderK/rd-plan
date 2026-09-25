@@ -280,6 +280,15 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
                     canViewDienstplanAll INTEGER DEFAULT 0,
                     canViewItw INTEGER DEFAULT 0,
                     canEditItw INTEGER DEFAULT 0,
+                    canEditItwAll INTEGER DEFAULT 0,
+                    canViewItwVorplanung INTEGER DEFAULT 0,
+                    canEditItwVorplanung INTEGER DEFAULT 0,
+                    canEditItwVorplanungAll INTEGER DEFAULT 0,
+                    canViewItwAerzte INTEGER DEFAULT 0,
+                    canEditItwAerzte INTEGER DEFAULT 0,
+                    canViewItwDienstplan INTEGER DEFAULT 0,
+                    canViewItwDienstplanAll INTEGER DEFAULT 0,
+                    canEditItwDienstplan INTEGER DEFAULT 0,
                     sort INTEGER DEFAULT 0
                 )
             `);

@@ -67,7 +67,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
             einstellungen: 'write',
             kommentar_global: 'write',
             kommentar_individuell: 'write',
-            itw: 'write_all'
+            itw: 'write_all',
+            itw_vorplanung: 'write_all',
+            itw_aerzte: 'write',
+            itw_dienstplan: 'write'
           },
           assignedDepartment: 'all'
         });

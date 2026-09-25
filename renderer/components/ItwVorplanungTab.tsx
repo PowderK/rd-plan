@@ -44,9 +44,12 @@ const ItwVorplanungTab: React.FC = () => {
 
     const { currentUser, isDevMode } = useAuth();
     const isAppAdmin = isDevMode || currentUser?.roleName?.toLowerCase() === 'administrator';
-    const itwPerm = isAppAdmin ? 'write_all' : (currentUser?.permissions?.itw || 'none');
+    const itwPerm = isAppAdmin 
+        ? 'write_all' 
+        : (currentUser?.permissions?.itw_vorplanung || currentUser?.permissions?.itw || 'none');
     const canWriteAll = itwPerm === 'write_all';
     const canWriteOwn = itwPerm === 'write';
+    const canRead = canWriteAll || canWriteOwn || itwPerm === 'read';
 
     const isOwnUser = (p: any) => {
         if (!currentUser) return false;
@@ -346,19 +349,16 @@ const ItwVorplanungTab: React.FC = () => {
     };
 
     const getAssignmentForPhase = (phaseStart: string, role: string, department?: string) => {
-        const pStart = new Date(phaseStart + 'T00:00:00Z').getTime();
         const deptNorm = department ? normalizeDepartmentName(department) : '';
         return assignments.find(a => {
+            if (a.start_date !== phaseStart) return false;
             const aRole = String(a.role || '');
-            const matchRole = (aRole === role) ||
-                (department && normalizeDepartmentName(aRole) === deptNorm) ||
-                (deptNorm === '1. Abteilung' && aRole === 'Fahrzeugführer 1') ||
-                (deptNorm === '2. Abteilung' && aRole === 'Fahrzeugführer 2') ||
-                (deptNorm === '3. Abteilung' && aRole === 'Maschinist');
-            if (!matchRole) return false;
-            const aStart = new Date(a.start_date + 'T00:00:00Z').getTime();
-            const aEnd = aStart + (21 * 24 * 3600 * 1000);
-            return pStart >= aStart && pStart < aEnd;
+            if (aRole === role) return true;
+            // Legacy match: only when a.role was saved as the department name itself
+            if (department && !['Fahrzeugführer 1', 'Fahrzeugführer 2', 'Maschinist'].includes(aRole)) {
+                return normalizeDepartmentName(aRole) === deptNorm;
+            }
+            return false;
         });
     };
 
@@ -403,6 +403,14 @@ const ItwVorplanungTab: React.FC = () => {
     };
 
     if (loading) return <div style={{ padding: 20 }}>Lade Daten...</div>;
+
+    if (!canRead) {
+        return (
+            <div style={{ padding: 20, color: '#c53030' }}>
+                Sie haben keine Berechtigung für die ITW Vorplanung.
+            </div>
+        );
+    }
 
     if (itwSeqs.length === 0) {
         return (

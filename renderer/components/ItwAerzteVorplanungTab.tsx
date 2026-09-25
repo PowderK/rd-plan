@@ -42,7 +42,11 @@ interface ParsedImportRow {
 const ItwAerzteVorplanungTab: React.FC = () => {
     const { currentUser, isDevMode } = useAuth();
     const isAppAdmin = isDevMode || currentUser?.roleName?.toLowerCase() === 'administrator';
-    const canEditDoctorAssignments = isAppAdmin || currentUser?.permissions?.itw === 'write_all';
+    const aerztePerm = isAppAdmin
+        ? 'write'
+        : (currentUser?.permissions?.itw_aerzte || (currentUser?.permissions?.itw === 'write_all' || currentUser?.permissions?.itw === 'write' ? 'write' : currentUser?.permissions?.itw === 'read' ? 'read' : 'none'));
+    const canEditDoctorAssignments = isAppAdmin || aerztePerm === 'write' || aerztePerm === 'write_all';
+    const canRead = canEditDoctorAssignments || aerztePerm === 'read';
 
     const [year, setYear] = useState<number>(2027);
     const [month, setMonth] = useState<number>(new Date().getMonth());
@@ -498,6 +502,14 @@ const ItwAerzteVorplanungTab: React.FC = () => {
             assignedDays
         };
     }, [daysInMonth, roster, holidays]);
+
+    if (!canRead) {
+        return (
+            <div style={{ padding: 20, color: '#c53030' }}>
+                Sie haben keine Berechtigung für die Ärzte Vorplanung.
+            </div>
+        );
+    }
 
     return (
         <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '1100px', margin: '0 auto' }}>

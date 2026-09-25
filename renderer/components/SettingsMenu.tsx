@@ -726,7 +726,10 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                 einstellungen: (role.canEditSettings ? 'write' : 'none') as 'none' | 'write',
                 kommentar_global: (role.canEditGlobalComments ? 'write' : 'none') as 'none' | 'write',
                 kommentar_individuell: (role.canEditPersonalComments ? 'write' : 'none') as 'none' | 'write',
-                itw: (role.canEditItwAll ? 'write_all' : role.canEditItw ? 'write' : role.canViewItw ? 'read' : 'none') as 'none' | 'read' | 'write' | 'write_all'
+                itw: (role.canEditItwAll ? 'write_all' : role.canEditItw ? 'write' : role.canViewItw ? 'read' : 'none') as 'none' | 'read' | 'write' | 'write_all',
+                itw_vorplanung: (role.canEditItwVorplanungAll ? 'write_all' : role.canEditItwVorplanung ? 'write' : role.canViewItwVorplanung ? 'read' : (role.canEditItwAll ? 'write_all' : role.canEditItw ? 'write' : role.canViewItw ? 'read' : 'none')) as 'none' | 'read' | 'write' | 'write_all',
+                itw_aerzte: (role.canEditItwAerzte ? 'write' : role.canViewItwAerzte ? 'read' : (role.canEditItwAll ? 'write' : 'none')) as 'none' | 'read' | 'write',
+                itw_dienstplan: (role.canEditItwDienstplan ? 'write' : role.canViewItwDienstplanAll ? 'read_all' : role.canViewItwDienstplan ? 'read' : (role.canEditItwAll ? 'write' : role.canEditItw ? 'read_all' : role.canViewItw ? 'read' : 'none')) as 'none' | 'read' | 'read_all' | 'write'
               }
             };
           });
@@ -1030,7 +1033,10 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
               einstellungen: (role.canEditSettings ? 'write' : 'none') as 'none' | 'write',
               kommentar_global: (role.canEditGlobalComments ? 'write' : 'none') as 'none' | 'write',
               kommentar_individuell: (role.canEditPersonalComments ? 'write' : 'none') as 'none' | 'write',
-              itw: (role.canEditItwAll ? 'write_all' : role.canEditItw ? 'write' : role.canViewItw ? 'read' : 'none') as 'none' | 'read' | 'write' | 'write_all'
+              itw: (role.canEditItwAll ? 'write_all' : role.canEditItw ? 'write' : role.canViewItw ? 'read' : 'none') as 'none' | 'read' | 'write' | 'write_all',
+              itw_vorplanung: (role.canEditItwVorplanungAll ? 'write_all' : role.canEditItwVorplanung ? 'write' : role.canViewItwVorplanung ? 'read' : (role.canEditItwAll ? 'write_all' : role.canEditItw ? 'write' : role.canViewItw ? 'read' : 'none')) as 'none' | 'read' | 'write' | 'write_all',
+              itw_aerzte: (role.canEditItwAerzte ? 'write' : role.canViewItwAerzte ? 'read' : (role.canEditItwAll ? 'write' : 'none')) as 'none' | 'read' | 'write',
+              itw_dienstplan: (role.canEditItwDienstplan ? 'write' : role.canViewItwDienstplanAll ? 'read_all' : role.canViewItwDienstplan ? 'read' : (role.canEditItwAll ? 'write' : role.canEditItw ? 'read_all' : role.canViewItw ? 'read' : 'none')) as 'none' | 'read' | 'read_all' | 'write'
             }
           };
         }));
@@ -1049,7 +1055,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
 
   const setRolePermission = (
     roleId: number,
-    areaKey: 'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge' | 'einstellungen' | 'kommentar_global' | 'kommentar_individuell' | 'itw',
+    areaKey: 'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge' | 'einstellungen' | 'kommentar_global' | 'kommentar_individuell' | 'itw' | 'itw_vorplanung' | 'itw_aerzte' | 'itw_dienstplan',
     permission: 'read' | 'read_all' | 'write' | 'write_all',
     checked: boolean
   ) => {
@@ -2781,7 +2787,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                   <th className={styles.center} colSpan={1} style={{ background: '#ffecef' }}>Einstellungen</th>
                   <th className={styles.center} colSpan={1} style={{ background: '#f1f5f9' }}>Globale Kommentare</th>
                   <th className={styles.center} colSpan={1} style={{ background: '#fef2f2' }}>Individuelle Kommentare</th>
-                  {itwFeatureEnabled && <th className={styles.center} colSpan={3} style={{ background: '#e0f2fe' }}>ITW</th>}
+                  {itwFeatureEnabled && (
+                    <>
+                      <th className={styles.center} colSpan={3} style={{ background: '#e0f2fe' }}>ITW Vorplanung</th>
+                      <th className={styles.center} colSpan={2} style={{ background: '#e0f7fa' }}>ITW Ärzte</th>
+                      <th className={styles.center} colSpan={3} style={{ background: '#e8f5e9' }}>ITW Dienstplan</th>
+                    </>
+                  )}
                   <th className={styles.center} rowSpan={2} style={{ width: 90 }}>Aktion</th>
                 </tr>
                 <tr className={styles.thead}>
@@ -2799,9 +2811,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                   <th className={styles.center} style={{ background: '#fef2f2' }}>Schreiben</th>
                   {itwFeatureEnabled && (
                     <>
-                      <th className={styles.center} style={{ background: '#e0f2fe' }}>Lesen</th>
-                      <th className={styles.center} style={{ background: '#e0f2fe' }}>Schreiben</th>
-                      <th className={styles.center} style={{ background: '#e0f2fe' }}>Schreiben alle</th>
+                      <th className={styles.center} style={{ background: '#e0f2fe' }} title="ITW Vorplanung ansehen">Lesen</th>
+                      <th className={styles.center} style={{ background: '#e0f2fe' }} title="Eigene Abteilung in ITW Vorplanung eintragen">Schreiben</th>
+                      <th className={styles.center} style={{ background: '#e0f2fe' }} title="Alle Abteilungen in ITW Vorplanung eintragen">Alle</th>
+                      <th className={styles.center} style={{ background: '#e0f7fa' }} title="Ärzte Vorplanung ansehen">Lesen</th>
+                      <th className={styles.center} style={{ background: '#e0f7fa' }} title="Ärzte Vorplanung bearbeiten">Schreiben</th>
+                      <th className={styles.center} style={{ background: '#e8f5e9' }} title="Nur sich selbst im ITW-Dienstplan sehen">Lesen</th>
+                      <th className={styles.center} style={{ background: '#e8f5e9' }} title="Alle Kollegen und Ärzte im ITW-Dienstplan sehen">Alle</th>
+                      <th className={styles.center} style={{ background: '#e8f5e9' }} title="ITW-Dienstplan bearbeiten">Schreiben</th>
                     </>
                   )}
                 </tr>
@@ -2915,22 +2932,65 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                         <td className={styles.center} style={{ background: '#f0f9ff' }}>
                           <input
                             type="checkbox"
-                            checked={(role.permissions?.itw || 'none') === 'read'}
-                            onChange={e => setRolePermission(role.id, 'itw', 'read', e.target.checked)}
+                            checked={(role.permissions?.itw_vorplanung || 'none') === 'read'}
+                            onChange={e => setRolePermission(role.id, 'itw_vorplanung', 'read', e.target.checked)}
+                            title="ITW Vorplanung ansehen"
                           />
                         </td>
                         <td className={styles.center} style={{ background: '#f0f9ff' }}>
                           <input
                             type="checkbox"
-                            checked={(role.permissions?.itw || 'none') === 'write'}
-                            onChange={e => setRolePermission(role.id, 'itw', 'write', e.target.checked)}
+                            checked={(role.permissions?.itw_vorplanung || 'none') === 'write'}
+                            onChange={e => setRolePermission(role.id, 'itw_vorplanung', 'write', e.target.checked)}
+                            title="Eigene Abteilung in ITW Vorplanung eintragen"
                           />
                         </td>
                         <td className={styles.center} style={{ background: '#f0f9ff' }}>
                           <input
                             type="checkbox"
-                            checked={(role.permissions?.itw || 'none') === 'write_all'}
-                            onChange={e => setRolePermission(role.id, 'itw', 'write_all', e.target.checked)}
+                            checked={(role.permissions?.itw_vorplanung || 'none') === 'write_all'}
+                            onChange={e => setRolePermission(role.id, 'itw_vorplanung', 'write_all', e.target.checked)}
+                            title="Alle Abteilungen in ITW Vorplanung eintragen"
+                          />
+                        </td>
+                        <td className={styles.center} style={{ background: '#f0fdfa' }}>
+                          <input
+                            type="checkbox"
+                            checked={(role.permissions?.itw_aerzte || 'none') === 'read'}
+                            onChange={e => setRolePermission(role.id, 'itw_aerzte', 'read', e.target.checked)}
+                            title="Ärzte Vorplanung ansehen"
+                          />
+                        </td>
+                        <td className={styles.center} style={{ background: '#f0fdfa' }}>
+                          <input
+                            type="checkbox"
+                            checked={(role.permissions?.itw_aerzte || 'none') === 'write'}
+                            onChange={e => setRolePermission(role.id, 'itw_aerzte', 'write', e.target.checked)}
+                            title="Ärzte Vorplanung bearbeiten"
+                          />
+                        </td>
+                        <td className={styles.center} style={{ background: '#f6fcf3' }}>
+                          <input
+                            type="checkbox"
+                            checked={(role.permissions?.itw_dienstplan || 'none') === 'read'}
+                            onChange={e => setRolePermission(role.id, 'itw_dienstplan', 'read', e.target.checked)}
+                            title="Nur sich selbst im ITW-Dienstplan sehen"
+                          />
+                        </td>
+                        <td className={styles.center} style={{ background: '#f6fcf3' }}>
+                          <input
+                            type="checkbox"
+                            checked={(role.permissions?.itw_dienstplan || 'none') === 'read_all'}
+                            onChange={e => setRolePermission(role.id, 'itw_dienstplan', 'read_all', e.target.checked)}
+                            title="Alle Kollegen und Ärzte im ITW-Dienstplan sehen"
+                          />
+                        </td>
+                        <td className={styles.center} style={{ background: '#f6fcf3' }}>
+                          <input
+                            type="checkbox"
+                            checked={(role.permissions?.itw_dienstplan || 'none') === 'write'}
+                            onChange={e => setRolePermission(role.id, 'itw_dienstplan', 'write', e.target.checked)}
+                            title="ITW-Dienstplan bearbeiten"
                           />
                         </td>
                       </>
@@ -2956,7 +3016,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
               <button onClick={() => {
                 const newId = Math.max(0, ...roles.map(r => r.id)) + 1;
-                const defaultPermissions: Record<string, 'none' | 'read' | 'read_all' | 'write'> = {
+                const defaultPermissions: Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'> = {
                   einteilung: 'none',
                   dienstplan: 'none',
                   werte: 'none',
@@ -2964,7 +3024,11 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                   fahrzeuge: 'none',
                   einstellungen: 'none',
                   kommentar_global: 'none',
-                  kommentar_individuell: 'none'
+                  kommentar_individuell: 'none',
+                  itw: 'none',
+                  itw_vorplanung: 'none',
+                  itw_aerzte: 'none',
+                  itw_dienstplan: 'none'
                 };
                 setRoles(prev => [...prev, {
                   id: newId,

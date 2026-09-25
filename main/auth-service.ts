@@ -23,7 +23,10 @@ export class AuthService {
       einstellungen: 'none',
       kommentar_global: 'none',
       kommentar_individuell: 'none',
-      itw: 'none'
+      itw: 'none',
+      itw_vorplanung: 'none',
+      itw_aerzte: 'none',
+      itw_dienstplan: 'none'
     };
   }
 
@@ -43,10 +46,32 @@ export class AuthService {
     else if (role.canViewDienstplanAll === 1 || role.canViewDienstplanAll === true) dienstplan = 'read_all';
     else if (role.canViewDienstplan === 1 || role.canViewDienstplan === true) dienstplan = 'read';
 
+    // Granular ITW Permissions with fallbacks
+    let itw_vorplanung: 'none' | 'read' | 'write' | 'write_all' = 'none';
+    if (role.canEditItwVorplanungAll === 1 || role.canEditItwVorplanungAll === true) itw_vorplanung = 'write_all';
+    else if (role.canEditItwVorplanung === 1 || role.canEditItwVorplanung === true) itw_vorplanung = 'write';
+    else if (role.canViewItwVorplanung === 1 || role.canViewItwVorplanung === true) itw_vorplanung = 'read';
+    else if (role.canEditItwAll === 1 || role.canEditItwAll === true) itw_vorplanung = 'write_all';
+    else if (role.canEditItw === 1 || role.canEditItw === true) itw_vorplanung = 'write';
+    else if (role.canViewItw === 1 || role.canViewItw === true) itw_vorplanung = 'read';
+
+    let itw_aerzte: 'none' | 'read' | 'write' = 'none';
+    if (role.canEditItwAerzte === 1 || role.canEditItwAerzte === true) itw_aerzte = 'write';
+    else if (role.canViewItwAerzte === 1 || role.canViewItwAerzte === true) itw_aerzte = 'read';
+    else if (role.canEditItwAll === 1 || role.canEditItwAll === true) itw_aerzte = 'write';
+
+    let itw_dienstplan: 'none' | 'read' | 'read_all' | 'write' = 'none';
+    if (role.canEditItwDienstplan === 1 || role.canEditItwDienstplan === true) itw_dienstplan = 'write';
+    else if (role.canViewItwDienstplanAll === 1 || role.canViewItwDienstplanAll === true) itw_dienstplan = 'read_all';
+    else if (role.canViewItwDienstplan === 1 || role.canViewItwDienstplan === true) itw_dienstplan = 'read';
+    else if (role.canEditItwAll === 1 || role.canEditItwAll === true) itw_dienstplan = 'write';
+    else if (role.canEditItw === 1 || role.canEditItw === true) itw_dienstplan = 'read_all';
+    else if (role.canViewItw === 1 || role.canViewItw === true) itw_dienstplan = 'read';
+
     let itw: 'none' | 'read' | 'write' | 'write_all' = 'none';
-    if (role.canEditItwAll === 1 || role.canEditItwAll === true) itw = 'write_all';
-    else if (role.canEditItw === 1 || role.canEditItw === true) itw = 'write';
-    else if (role.canViewItw === 1 || role.canViewItw === true) itw = 'read';
+    if (itw_vorplanung === 'write_all' || itw_dienstplan === 'write') itw = 'write_all';
+    else if (itw_vorplanung === 'write' || itw_aerzte === 'write' || itw_dienstplan === 'read_all') itw = 'write';
+    else if (itw_vorplanung === 'read' || itw_aerzte === 'read' || itw_dienstplan === 'read') itw = 'read';
 
     return {
       einteilung,
@@ -57,7 +82,10 @@ export class AuthService {
       einstellungen: role.canEditSettings ? 'write' : 'none',
       kommentar_global: role.canEditGlobalComments ? 'write' : 'none',
       kommentar_individuell: role.canEditPersonalComments ? 'write' : 'none',
-      itw
+      itw,
+      itw_vorplanung,
+      itw_aerzte,
+      itw_dienstplan
     };
   }
 
@@ -99,7 +127,10 @@ export class AuthService {
       fahrzeuge: permissions.fahrzeuge === 'none' ? 'write' : permissions.fahrzeuge,
       einteilung: permissions.einteilung === 'none' ? 'write' : permissions.einteilung,
       dienstplan: permissions.dienstplan === 'none' ? 'write' : permissions.dienstplan,
-      itw: 'write_all'
+      itw: 'write_all',
+      itw_vorplanung: 'write_all',
+      itw_aerzte: 'write',
+      itw_dienstplan: 'write'
     };
   }
 
