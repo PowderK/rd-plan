@@ -81,6 +81,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
     { fzf1: '3. Abteilung', fzf2: '1. Abteilung', maschinist: '2. Abteilung' },
     { fzf1: '2. Abteilung', fzf2: '3. Abteilung', maschinist: '1. Abteilung' },
   ]);
+  // ITW Aktuelles Vorplanungsjahr
+  const [itwVorplanungYear, setItwVorplanungYear] = useState<number>(2027);
   // Department (1/2/3) Schichtfolgen mit Gültig-ab
   const [deptPatternSeqs, setDeptPatternSeqs] = useState<{ startDate: string, pattern: string[] }[]>([]);
   const [editingDeptPatterns, setEditingDeptPatterns] = useState(false);
@@ -243,6 +245,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       colorByType: sortedColors,
       itwPatternSeqs: normalizedItwPatterns,
       itwRotationPhases,
+      itwVorplanungYear,
       deptPatternSeqs: normalizedDeptPatterns,
       holidays: normalizedHolidays
     });
@@ -270,6 +273,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
     colorByType,
     itwPatternSeqs,
     itwRotationPhases,
+    itwVorplanungYear,
     deptPatternSeqs,
     holidays,
     selectedDepartment
@@ -473,6 +477,12 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
           }
         }
       } catch { }
+      try {
+        const vYear = await (window as any).api.getSetting('itw_vorplanung_year');
+        if (vYear && !isNaN(Number(vYear))) {
+          setItwVorplanungYear(Number(vYear));
+        }
+      } catch { }
 
 
 
@@ -539,6 +549,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       // ITW global speichern
       await (window as any).api.setSetting('itw', itwFeatureEnabled ? 'true' : 'false');
       await (window as any).api.setSetting('itw_rotation_pattern', JSON.stringify(itwRotationPhases));
+      await (window as any).api.setSetting('itw_vorplanung_year', String(itwVorplanungYear));
       // Rollen pro Abteilung speichern
       await saveRoles(true);
       setAddedRoleIds([]);
@@ -1912,6 +1923,36 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
         {/* KATEGORIE: ITW */}
         {activeCategory === 'itw' && itwFeatureEnabled && (
           <div>
+            {/* ITW Vorplanungsjahr */}
+            <div style={{ padding: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <div>
+                <strong style={{ fontSize: '1.05em', color: '#1e293b' }}>Aktuelles Vorplanungsjahr</strong>
+                <div style={{ fontSize: '0.85em', color: '#64748b', marginTop: 3 }}>
+                  Legt fest, welches Jahr beim Öffnen der ITW-Vorplanung standardmäßig aktiv ist.
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  onClick={() => setItwVorplanungYear(prev => prev - 1)}
+                  style={{ padding: '6px 12px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  &lt;
+                </button>
+                <input
+                  type="number"
+                  value={itwVorplanungYear}
+                  onChange={e => setItwVorplanungYear(Number(e.target.value))}
+                  style={{ width: 80, padding: '6px 8px', textAlign: 'center', fontWeight: 'bold', fontSize: '15px', borderRadius: 4, border: '1px solid #cbd5e1' }}
+                />
+                <button
+                  onClick={() => setItwVorplanungYear(prev => prev + 1)}
+                  style={{ padding: '6px 12px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  &gt;
+                </button>
+              </div>
+            </div>
+
             {/* ITW Abteilungs-Rotation */}
             <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>

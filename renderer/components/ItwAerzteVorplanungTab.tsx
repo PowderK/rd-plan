@@ -44,8 +44,23 @@ const ItwAerzteVorplanungTab: React.FC = () => {
     const isAppAdmin = isDevMode || currentUser?.roleName?.toLowerCase() === 'administrator';
     const canEditDoctorAssignments = isAppAdmin || currentUser?.permissions?.itw === 'write_all';
 
-    const [year, setYear] = useState<number>(new Date().getFullYear());
+    const [year, setYear] = useState<number>(2027);
     const [month, setMonth] = useState<number>(new Date().getMonth());
+
+    useEffect(() => {
+        let isMounted = true;
+        (async () => {
+            try {
+                const settingYear = await (window as any).api.getSetting?.('itw_vorplanung_year');
+                if (settingYear && !isNaN(Number(settingYear)) && isMounted) {
+                    setYear(Number(settingYear));
+                }
+            } catch (e) {
+                console.error('[ITW] Error loading itw_vorplanung_year for aerzte:', e);
+            }
+        })();
+        return () => { isMounted = false; };
+    }, []);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [doctorPeriods, setDoctorPeriods] = useState<Record<number, any[]>>({});
     const [roster, setRoster] = useState<RosterEntry[]>([]);

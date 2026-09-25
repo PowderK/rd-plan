@@ -25,7 +25,22 @@ const ItwVorplanungTab: React.FC = () => {
     const [activeQuals, setActiveQuals] = useState<Record<number, string[]>>({});
     const [holidays, setHolidays] = useState<string[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
-    const [year, setYear] = useState<number>(new Date().getFullYear());
+    const [year, setYear] = useState<number>(2027);
+
+    useEffect(() => {
+        let isMounted = true;
+        (async () => {
+            try {
+                const settingYear = await (window as any).api.getSetting?.('itw_vorplanung_year');
+                if (settingYear && !isNaN(Number(settingYear)) && isMounted) {
+                    setYear(Number(settingYear));
+                }
+            } catch (e) {
+                console.error('[ITW] Error loading itw_vorplanung_year:', e);
+            }
+        })();
+        return () => { isMounted = false; };
+    }, []);
 
     const { currentUser, isDevMode } = useAuth();
     const isAppAdmin = isDevMode || currentUser?.roleName?.toLowerCase() === 'administrator';
