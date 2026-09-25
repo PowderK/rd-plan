@@ -540,6 +540,12 @@ const ItwVorplanungTab: React.FC = () => {
 
                                     const isUserInTargetDept = normalizeDepartmentName(userDept) === normalizeDepartmentName(department);
 
+                                    const ownPerson = personnel.find(p => isOwnUser(p));
+                                    const ownQuals = ownPerson ? (activeQuals[ownPerson.id] || []) : [];
+                                    const isOwnFzf = ownQuals.includes('ITW Fahrzeugführer') || ownQuals.includes('Fahrzeugführer') || ownQuals.includes('Fahrzeugführer HLF-B');
+                                    const isOwnMasch = ownQuals.includes('ITW Maschinist');
+                                    const hasRequiredQual = role.startsWith('Fahrzeugführer') ? isOwnFzf : (role === 'Maschinist' ? isOwnMasch : true);
+
                                     let selectDisabled = false;
                                     let disabledReason = '';
                                     if (canWriteAll) {
@@ -548,20 +554,12 @@ const ItwVorplanungTab: React.FC = () => {
                                         if (!isUserInTargetDept) {
                                             selectDisabled = !isAssignedToSelf;
                                             if (selectDisabled) disabledReason = `Nur für ${department}`;
+                                        } else if (!hasRequiredQual && !isAssignedToSelf) {
+                                            selectDisabled = true;
+                                            disabledReason = 'Qualifikation fehlt';
                                         } else {
-                                            const ownPerson = personnel.find(p => isOwnUser(p));
-                                            const quals = ownPerson ? (activeQuals[ownPerson.id] || []) : [];
-                                            const isFzf = quals.includes('ITW Fahrzeugführer') || quals.includes('Fahrzeugführer') || quals.includes('Fahrzeugführer HLF-B');
-                                            const isMasch = quals.includes('ITW Maschinist');
-                                            const hasQual = role.startsWith('Fahrzeugführer') ? isFzf : (role === 'Maschinist' ? isMasch : true);
-
-                                            if (!hasQual && !isAssignedToSelf) {
-                                                selectDisabled = true;
-                                                disabledReason = 'Qualifikation fehlt';
-                                            } else if (isOccupied && !isAssignedToSelf) {
-                                                selectDisabled = true;
-                                                disabledReason = 'Bereits belegt';
-                                            }
+                                            selectDisabled = isOccupied && !isAssignedToSelf;
+                                            if (selectDisabled) disabledReason = 'Bereits belegt';
                                         }
                                     } else {
                                         selectDisabled = true;
