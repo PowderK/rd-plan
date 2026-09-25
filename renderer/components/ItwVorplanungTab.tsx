@@ -513,22 +513,9 @@ const ItwVorplanungTab: React.FC = () => {
                                     <div style={{ fontWeight: 'bold', fontSize: '15px' }}>{phase.title}</div>
                                     <div style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>{phase.label}</div>
                                 </div>
-                                <span style={{ 
-                                    fontSize: '12px', 
-                                    fontWeight: 'bold', 
-                                    background: '#e2e8f0', 
-                                    color: '#334155', 
-                                    padding: '4px 8px', 
-                                    borderRadius: '12px' 
-                                }}>
-                                    Rotation #{rotIdx + 1}
-                                </span>
                             </div>
                             <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', flex: 1 }}>
                                 {phaseRoles.map(({ role, department }) => {
-                                    const deptCode = normalizeDeptCode(department);
-                                    const duties = getPhaseDepartmentDuties(phase.start, phase.end, deptCode);
-
                                     const currentAssgn = getAssignmentForPhase(phase.start, role, department);
                                     const currentId = currentAssgn ? currentAssgn.person_id : '';
                                     const isOccupied = Boolean(currentId);
@@ -540,10 +527,7 @@ const ItwVorplanungTab: React.FC = () => {
 
                                     let selectDisabled = false;
                                     let disabledReason = '';
-                                    if (duties.total === 0) {
-                                        selectDisabled = true;
-                                        disabledReason = 'Keine Dienste in dieser Phase';
-                                    } else if (canWriteAll) {
+                                    if (canWriteAll) {
                                         selectDisabled = false;
                                     } else if (canWriteOwn) {
                                         if (!isUserInTargetDept) {
@@ -567,13 +551,6 @@ const ItwVorplanungTab: React.FC = () => {
 
                                     const colors = getDepartmentColor(department);
 
-                                    const dutyText = duties.total === 0 
-                                        ? 'Keine Dienste'
-                                        : [
-                                            duties.fzfDays > 0 ? `${duties.fzfDays}× FzF` : null,
-                                            duties.maDays > 0 ? `${duties.maDays}× Ma` : null
-                                        ].filter(Boolean).join(', ');
-
                                     return (
                                         <div 
                                             key={role} 
@@ -585,38 +562,22 @@ const ItwVorplanungTab: React.FC = () => {
                                                 borderRadius: 6,
                                                 background: colors.containerBg,
                                                 border: `1px solid ${colors.containerBorder}`,
-                                                borderLeft: `4px solid ${colors.accent}`,
-                                                opacity: duties.total === 0 ? 0.65 : 1
+                                                borderLeft: `4px solid ${colors.accent}`
                                             }}
                                         >
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <label style={{ fontSize: 13, color: '#333', fontWeight: 600 }}>{role}</label>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                    <span style={{
-                                                        fontSize: '11px',
-                                                        fontWeight: 600,
-                                                        padding: '2px 8px',
-                                                        borderRadius: 12,
-                                                        background: colors.badgeBg,
-                                                        color: colors.badgeColor,
-                                                        border: `1px solid ${colors.badgeBorder}`
-                                                    }}>
-                                                        {department}
-                                                    </span>
-                                                    {duties.total > 0 && (
-                                                        <span style={{
-                                                            fontSize: '11px',
-                                                            fontWeight: 600,
-                                                            padding: '2px 6px',
-                                                            borderRadius: 12,
-                                                            background: '#f1f5f9',
-                                                            color: '#475569',
-                                                            border: '1px solid #cbd5e1'
-                                                        }}>
-                                                            {dutyText}
-                                                        </span>
-                                                    )}
-                                                </div>
+                                                <span style={{
+                                                    fontSize: '11px',
+                                                    fontWeight: 600,
+                                                    padding: '2px 8px',
+                                                    borderRadius: 12,
+                                                    background: colors.badgeBg,
+                                                    color: colors.badgeColor,
+                                                    border: `1px solid ${colors.badgeBorder}`
+                                                }}>
+                                                    {department}
+                                                </span>
                                             </div>
                                             <select
                                                 value={currentId || ''}
