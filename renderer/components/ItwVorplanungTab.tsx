@@ -15,6 +15,11 @@ const DEPARTMENTS = ['1. Abteilung', '2. Abteilung', '3. Abteilung'];
 
 const ItwVorplanungTab: React.FC = () => {
     const [itwSeqs, setItwSeqs] = useState<{ startDate: string, pattern: string, department?: string }[]>([]);
+    const [itwRotationPhases, setItwRotationPhases] = useState<{ fzf1: string; fzf2: string; maschinist: string }[]>([
+        { fzf1: '1. Abteilung', fzf2: '2. Abteilung', maschinist: '3. Abteilung' },
+        { fzf1: '3. Abteilung', fzf2: '1. Abteilung', maschinist: '2. Abteilung' },
+        { fzf1: '2. Abteilung', fzf2: '3. Abteilung', maschinist: '1. Abteilung' },
+    ]);
     const [personnel, setPersonnel] = useState<any[]>([]);
     const [assignments, setAssignments] = useState<any[]>([]);
     const [activeQuals, setActiveQuals] = useState<Record<number, string[]>>({});
@@ -62,6 +67,18 @@ const ItwVorplanungTab: React.FC = () => {
         try {
             const seqs = await (window as any).api.getItwPatterns?.() || [];
             setItwSeqs(seqs);
+
+            try {
+                const rotVal = await (window as any).api.getSetting?.('itw_rotation_pattern');
+                if (rotVal) {
+                    const parsed = JSON.parse(rotVal);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        setItwRotationPhases(parsed);
+                    }
+                }
+            } catch (e) {
+                console.error(e);
+            }
 
             const persInfo = await (window as any).api.getPersonnel?.(false, 'all') || [];
             setPersonnel(persInfo);
@@ -266,9 +283,9 @@ const ItwVorplanungTab: React.FC = () => {
         return { fzfDays, maDays, total: fzfDays + maDays };
     };
 
-    const transferSchichtToRoster = async (personId: number, phaseStartStr: string, phaseEndStr: string) => {
+    const transferSchichtToRoster = async (personId: number, phaseStartStr: string, phaseEndStr: string, department?: string) => {
         const person = personnel.find(p => Number(p.id) === Number(personId));
-        const personDept = person?.department || '1. Abteilung';
+        const personDept = department || person?.department || '1. Abteilung';
         const itwDays = calculatePhaseItwDays(phaseStartStr, phaseEndStr, personDept);
         
         if (itwDays.length === 0) {
@@ -292,9 +309,9 @@ const ItwVorplanungTab: React.FC = () => {
         }
     };
 
-    const removeSchichtFromRoster = async (personId: number, phaseStartStr: string, phaseEndStr: string) => {
+    const removeSchichtFromRoster = async (personId: number, phaseStartStr: string, phaseEndStr: string, department?: string) => {
         const person = personnel.find(p => Number(p.id) === Number(personId));
-        const personDept = person?.department || '1. Abteilung';
+        const personDept = department || person?.department || '1. Abteilung';
         const itwDays = calculatePhaseItwDays(phaseStartStr, phaseEndStr, personDept);
         
         for (const dateStr of itwDays) {
@@ -313,12 +330,13 @@ const ItwVorplanungTab: React.FC = () => {
         }
     };
 
-    const getAssignmentForPhase = (phaseStart: string, department: string) => {
+    const getAssignmentForPhase = (phaseStart: string, role: string, department?: string) => {
         const pStart = new Date(phaseStart + 'T00:00:00Z').getTime();
-        const deptNorm = normalizeDepartmentName(department);
+        const deptNorm = department ? normalizeDepartmentName(department) : '';
         return assignments.find(a => {
             const aRole = String(a.role || '');
-            const matchRole = normalizeDepartmentName(aRole) === deptNorm ||
+            const matchRole = (aRole === role) ||
+                (department && normalizeDepartmentName(aRole) === deptNorm) ||
                 (deptNorm === '1. Abteilung' && aRole === 'Fahrzeugführer 1') ||
                 (deptNorm === '2. Abteilung' && aRole === 'Fahrzeugführer 2') ||
                 (deptNorm === '3. Abteilung' && aRole === 'Maschinist');
@@ -329,28 +347,25 @@ const ItwVorplanungTab: React.FC = () => {
         });
     };
 
-    const handleAssign = async (phaseStart: string, phaseEnd: string, department: string, value: string) => {
+    const handleAssign = async (phaseStart: string, phaseEnd: string, role: string, department: string, value: string) => {
         const pId = value ? parseInt(value, 10) : null;
         
-        const oldEntry = getAssignmentForPhase(phaseStart, department);
+        const oldEntry = getAssignmentForPhase(phaseStart, role, department);
         if (oldEntry && oldEntry.person_id) {
-             await removeSchichtFromRoster(oldEntry.person_id, oldEntry.start_date, phaseEnd);
+             await removeSchichtFromRoster(oldEntry.person_id, oldEntry.start_date, phaseEnd, department);
              await (window as any).api.removeItwPhaseAssignment?.(oldEntry.start_date, oldEntry.person_id);
         }
 
         if (pId) {
-            const deptCode = normalizeDeptCode(department);
-            const duties = getPhaseDepartmentDuties(phaseStart, phaseEnd, deptCode);
-
             const quals = activeQuals[pId] || [];
             const isFzf = quals.includes('ITW Fahrzeugführer') || quals.includes('Fahrzeugführer') || quals.includes('Fahrzeugführer HLF-B');
             const isMasch = quals.includes('ITW Maschinist');
 
-            if (duties.fzfDays > 0 && !isFzf) {
+            if (role.startsWith('Fahrzeugführer') && !isFzf) {
                 alert('Mitarbeiter hat keine Fahrzeugführer Qualifikation!');
                 return;
             }
-            if (duties.maDays > 0 && !isMasch) {
+            if (role === 'Maschinist' && !isMasch) {
                 alert('Mitarbeiter hat keine Maschinist Qualifikation!');
                 return;
             }
@@ -359,9 +374,9 @@ const ItwVorplanungTab: React.FC = () => {
                 await (window as any).api.addItwPhaseAssignment?.(
                     phaseStart, 
                     pId, 
-                    department
+                    role
                 );
-                await transferSchichtToRoster(pId, phaseStart, phaseEnd);
+                await transferSchichtToRoster(pId, phaseStart, phaseEnd, department);
             } catch (e: any) {
                 console.error('[ITW] Fehler:', e);
                 alert('Fehler beim Speichern: ' + e.message);
@@ -463,7 +478,17 @@ const ItwVorplanungTab: React.FC = () => {
                 </div>
             )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', paddingBottom: 20 }}>
-                {displayedPhases.map((phase) => {
+                {displayedPhases.map((phase, phaseIdx) => {
+                    const rotCount = itwRotationPhases.length || 3;
+                    const rotIdx = phaseIdx % rotCount;
+                    const rotConfig = itwRotationPhases[rotIdx] || { fzf1: '1. Abteilung', fzf2: '2. Abteilung', maschinist: '3. Abteilung' };
+
+                    const phaseRoles = [
+                        { role: 'Fahrzeugführer 1', department: rotConfig.fzf1 },
+                        { role: 'Fahrzeugführer 2', department: rotConfig.fzf2 },
+                        { role: 'Maschinist', department: rotConfig.maschinist }
+                    ];
+
                     return (
                         <div key={phase.start} style={{ 
                             flex: '1',
@@ -478,7 +503,7 @@ const ItwVorplanungTab: React.FC = () => {
                             <div style={{ 
                                 padding: '12px 16px', 
                                 borderBottom: '1px solid #ddd', 
-                                background: '#f8f9fa',
+                                background: '#f8f9fa', 
                                 borderRadius: '8px 8px 0 0',
                                 display: 'flex',
                                 justifyContent: 'space-between',
@@ -488,20 +513,30 @@ const ItwVorplanungTab: React.FC = () => {
                                     <div style={{ fontWeight: 'bold', fontSize: '15px' }}>{phase.title}</div>
                                     <div style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>{phase.label}</div>
                                 </div>
+                                <span style={{ 
+                                    fontSize: '12px', 
+                                    fontWeight: 'bold', 
+                                    background: '#e2e8f0', 
+                                    color: '#334155', 
+                                    padding: '4px 8px', 
+                                    borderRadius: '12px' 
+                                }}>
+                                    Rotation #{rotIdx + 1}
+                                </span>
                             </div>
                             <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', flex: 1 }}>
-                                {DEPARTMENTS.map((dept) => {
-                                    const deptCode = normalizeDeptCode(dept);
+                                {phaseRoles.map(({ role, department }) => {
+                                    const deptCode = normalizeDeptCode(department);
                                     const duties = getPhaseDepartmentDuties(phase.start, phase.end, deptCode);
 
-                                    const currentAssgn = getAssignmentForPhase(phase.start, dept);
+                                    const currentAssgn = getAssignmentForPhase(phase.start, role, department);
                                     const currentId = currentAssgn ? currentAssgn.person_id : '';
                                     const isOccupied = Boolean(currentId);
                                     const isAssignedToSelf = Boolean(
                                         currentId && personnel.some(p => Number(p.id) === Number(currentId) && isOwnUser(p))
                                     );
 
-                                    const isUserInTargetDept = normalizeDepartmentName(userDept) === normalizeDepartmentName(dept);
+                                    const isUserInTargetDept = normalizeDepartmentName(userDept) === normalizeDepartmentName(department);
 
                                     let selectDisabled = false;
                                     let disabledReason = '';
@@ -513,7 +548,7 @@ const ItwVorplanungTab: React.FC = () => {
                                     } else if (canWriteOwn) {
                                         if (!isUserInTargetDept) {
                                             selectDisabled = !isAssignedToSelf;
-                                            if (selectDisabled) disabledReason = `Nur für ${dept}`;
+                                            if (selectDisabled) disabledReason = `Nur für ${department}`;
                                         } else {
                                             selectDisabled = isOccupied && !isAssignedToSelf;
                                             if (selectDisabled) disabledReason = 'Bereits belegt';
@@ -530,7 +565,7 @@ const ItwVorplanungTab: React.FC = () => {
                                             ? personnel.filter(p => (isOwnUser(p) && isUserInTargetDept) || Number(p.id) === Number(currentId))
                                             : personnel.filter(p => Number(p.id) === Number(currentId)));
 
-                                    const colors = getDepartmentColor(dept);
+                                    const colors = getDepartmentColor(department);
 
                                     const dutyText = duties.total === 0 
                                         ? 'Keine Dienste'
@@ -541,7 +576,7 @@ const ItwVorplanungTab: React.FC = () => {
 
                                     return (
                                         <div 
-                                            key={dept} 
+                                            key={role} 
                                             style={{ 
                                                 display: 'flex', 
                                                 flexDirection: 'column', 
@@ -555,23 +590,38 @@ const ItwVorplanungTab: React.FC = () => {
                                             }}
                                         >
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <label style={{ fontSize: 13, color: '#333', fontWeight: 600 }}>{dept}</label>
-                                                <span style={{
-                                                    fontSize: '11px',
-                                                    fontWeight: 600,
-                                                    padding: '2px 8px',
-                                                    borderRadius: 12,
-                                                    background: colors.badgeBg,
-                                                    color: colors.badgeColor,
-                                                    border: `1px solid ${colors.badgeBorder}`
-                                                }}>
-                                                    {dutyText}
-                                                </span>
+                                                <label style={{ fontSize: 13, color: '#333', fontWeight: 600 }}>{role}</label>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    <span style={{
+                                                        fontSize: '11px',
+                                                        fontWeight: 600,
+                                                        padding: '2px 8px',
+                                                        borderRadius: 12,
+                                                        background: colors.badgeBg,
+                                                        color: colors.badgeColor,
+                                                        border: `1px solid ${colors.badgeBorder}`
+                                                    }}>
+                                                        {department}
+                                                    </span>
+                                                    {duties.total > 0 && (
+                                                        <span style={{
+                                                            fontSize: '11px',
+                                                            fontWeight: 600,
+                                                            padding: '2px 6px',
+                                                            borderRadius: 12,
+                                                            background: '#f1f5f9',
+                                                            color: '#475569',
+                                                            border: '1px solid #cbd5e1'
+                                                        }}>
+                                                            {dutyText}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                             <select
                                                 value={currentId || ''}
                                                 disabled={selectDisabled}
-                                                onChange={e => handleAssign(phase.start, phase.end, dept, e.target.value)}
+                                                onChange={e => handleAssign(phase.start, phase.end, role, department, e.target.value)}
                                                 title={disabledReason ? disabledReason : undefined}
                                                 style={{
                                                     padding: '7px 8px',
@@ -592,13 +642,13 @@ const ItwVorplanungTab: React.FC = () => {
                                                     
                                                     let valid = true;
                                                     let missing = '';
-                                                    if (duties.fzfDays > 0 && !isFzf) {
+                                                    if (role.startsWith('Fahrzeugführer') && !isFzf) {
                                                         valid = false;
                                                         missing = 'FzF fehlt';
                                                     }
-                                                    if (duties.maDays > 0 && !isMasch) {
+                                                    if (role === 'Maschinist' && !isMasch) {
                                                         valid = false;
-                                                        missing = missing ? 'FzF & Ma fehlt' : 'Ma fehlt';
+                                                        missing = 'Ma fehlt';
                                                     }
 
                                                     const deptLabel = p.department ? ` (${p.department})` : '';
