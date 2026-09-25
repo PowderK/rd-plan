@@ -2405,7 +2405,7 @@ export const getRtwVehicleActivations = async (db: AsyncDB, year: number) => {
 
     for (const v of vehicles) {
         const periods = await db.all('SELECT * FROM rtw_vehicle_periods WHERE vehicleId = ?', [v.id]);
-        const specialDays = await db.all('SELECT * FROM vehicle_special_days WHERE vehicleType = "rtw" AND vehicleId = ?', [v.id]);
+        const specialDays = await db.all("SELECT * FROM vehicle_special_days WHERE vehicleType = 'rtw' AND vehicleId = ?", [v.id]);
         
         for (let m = 1; m <= 12; m++) {
             const ym = `${year}-${String(m).padStart(2, '0')}`;
@@ -2447,7 +2447,7 @@ export const getNefVehicleActivations = async (db: AsyncDB, year: number) => {
 
     for (const v of vehicles) {
         const periods = await db.all('SELECT * FROM nef_vehicle_periods WHERE vehicleId = ?', [v.id]);
-        const specialDays = await db.all('SELECT * FROM vehicle_special_days WHERE vehicleType = "nef" AND vehicleId = ?', [v.id]);
+        const specialDays = await db.all("SELECT * FROM vehicle_special_days WHERE vehicleType = 'nef' AND vehicleId = ?", [v.id]);
         
         for (let m = 1; m <= 12; m++) {
             const ym = `${year}-${String(m).padStart(2, '0')}`;
@@ -2716,7 +2716,7 @@ export const isRtwVehicleActiveInMonth = async (db: AsyncDB, vehicleId: number, 
     await ensureVehicleTables(db);
     const ym = yearMonth.slice(0, 7);
     const periods = await db.all('SELECT * FROM rtw_vehicle_periods WHERE vehicleId = ?', [vehicleId]);
-    const specialDays = await db.all('SELECT * FROM vehicle_special_days WHERE vehicleType = "rtw" AND vehicleId = ?', [vehicleId]);
+    const specialDays = await db.all("SELECT * FROM vehicle_special_days WHERE vehicleType = 'rtw' AND vehicleId = ?", [vehicleId]);
     const v = await db.get('SELECT category FROM rtw_vehicles WHERE id = ?', [vehicleId]);
 
     const hasPeriod = periods.some((p: any) => {
@@ -2738,7 +2738,7 @@ export const isNefVehicleActiveInMonth = async (db: AsyncDB, vehicleId: number, 
     await ensureVehicleTables(db);
     const ym = yearMonth.slice(0, 7);
     const periods = await db.all('SELECT * FROM nef_vehicle_periods WHERE vehicleId = ?', [vehicleId]);
-    const specialDays = await db.all('SELECT * FROM vehicle_special_days WHERE vehicleType = "nef" AND vehicleId = ?', [vehicleId]);
+    const specialDays = await db.all("SELECT * FROM vehicle_special_days WHERE vehicleType = 'nef' AND vehicleId = ?", [vehicleId]);
     const v = await db.get('SELECT category FROM nef_vehicles WHERE id = ?', [vehicleId]);
 
     const hasPeriod = periods.some((p: any) => {
@@ -3698,7 +3698,7 @@ export const getItwPatterns = async (db: AsyncDB, department?: string) => {
     let query = 'SELECT start_date as startDate, pattern, department FROM itw_patterns';
     const params: any[] = [];
     if (department && department !== 'all') {
-        query += ' WHERE department = ? OR department = "global" OR department IS NULL';
+        query += " WHERE department = ? OR department = 'global' OR department IS NULL";
         params.push(normalizeDepartment(department));
     }
     query += ' ORDER BY start_date ASC';
