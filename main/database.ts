@@ -3696,9 +3696,9 @@ export const getGlobalCommentsForMonth = async (db: AsyncDB, year: number, month
 // --- ITW Planning Functions ---
 export const getItwPatterns = async (db: AsyncDB, department?: string) => {
     let query = 'SELECT start_date as startDate, pattern, department FROM itw_patterns';
-    const params = [];
+    const params: any[] = [];
     if (department && department !== 'all') {
-        query += ' WHERE department = ?';
+        query += ' WHERE department = ? OR department = "global" OR department IS NULL';
         params.push(normalizeDepartment(department));
     }
     query += ' ORDER BY start_date ASC';
@@ -3706,7 +3706,7 @@ export const getItwPatterns = async (db: AsyncDB, department?: string) => {
     return rows.map((r: any) => ({ 
         startDate: String(r.startDate), 
         pattern: String(r.pattern),
-        department: normalizeDepartment(r.department || '1. Abteilung')
+        department: r.department || 'global'
     }));
 };
 
@@ -3715,12 +3715,12 @@ export const setItwPatterns = async (db: AsyncDB, patterns: { startDate: string,
     try {
         await db.run('DELETE FROM itw_patterns');
         for (const p of (patterns || [])) {
-            if (!p || !p.startDate || !p.pattern) continue;
+            if (!p || !p.startDate) continue;
             const sd = String(p.startDate).trim();
             if (!/\d{4}-\d{2}-\d{2}/.test(sd)) continue;
             const parts = String(p.pattern || '').split(',').map(s => s.trim());
-            const norm = (parts.slice(0, 21).concat(Array(21).fill(''))).slice(0, 21).map(v => (v === '1' || v === '2' || v === '3' || v === 'IW') ? v : '');
-            await db.run('INSERT INTO itw_patterns (start_date, department, pattern) VALUES (?, ?, ?)', [sd, normalizeDepartment(p.department || '1. Abteilung'), norm.join(',')]);
+            const norm = (parts.slice(0, 21).concat(Array(21).fill(''))).slice(0, 21);
+            await db.run('INSERT INTO itw_patterns (start_date, department, pattern) VALUES (?, ?, ?)', [sd, p.department || 'global', norm.join(',')]);
         }
         await db.run('COMMIT');
     } catch (e) {

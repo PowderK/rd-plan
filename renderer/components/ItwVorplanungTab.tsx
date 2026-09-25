@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { normalizeDepartmentName } from '../utils/personPeriods';
-import './SettingsMenuTables.css'; // Recycle some table styles if needed or use inline.
+import { parseItwPatternString, parseItwDay, normalizeDeptCode, deptCodeToLabel } from '../utils/itwPatternUtils';
+import './SettingsMenuTables.css';
 
 interface QualPeriod {
     qualType: string;
@@ -9,6 +10,8 @@ interface QualPeriod {
     endYM: string | null;
     active: boolean;
 }
+
+const DEPARTMENTS = ['1. Abteilung', '2. Abteilung', '3. Abteilung'];
 
 const ItwVorplanungTab: React.FC = () => {
     const [itwSeqs, setItwSeqs] = useState<{ startDate: string, pattern: string, department?: string }[]>([]);
@@ -18,11 +21,6 @@ const ItwVorplanungTab: React.FC = () => {
     const [holidays, setHolidays] = useState<string[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [year, setYear] = useState<number>(new Date().getFullYear());
-    const [itwRotationPhases, setItwRotationPhases] = useState<{ fzf1: string; fzf2: string; maschinist: string }[]>([
-        { fzf1: '1. Abteilung', fzf2: '2. Abteilung', maschinist: '3. Abteilung' },
-        { fzf1: '3. Abteilung', fzf2: '1. Abteilung', maschinist: '2. Abteilung' },
-        { fzf1: '2. Abteilung', fzf2: '3. Abteilung', maschinist: '1. Abteilung' },
-    ]);
 
     const { currentUser, isDevMode } = useAuth();
     const isAppAdmin = isDevMode || currentUser?.roleName?.toLowerCase() === 'administrator';
@@ -55,46 +53,24 @@ const ItwVorplanungTab: React.FC = () => {
     }, [itwSeqs]);
 
     const minYear = useMemo(() => {
-        if (sortedItwSeqs.length === 0) return new Date().getFullYear();
-        const y = Number(sortedItwSeqs[0].startDate.slice(0, 4));
-        return Number.isNaN(y) ? new Date().getFullYear() : y;
+        if (sortedItwSeqs.length === 0) return 1970;
+        return parseInt(sortedItwSeqs[0].startDate.slice(0, 4), 10);
     }, [sortedItwSeqs]);
-
-    useEffect(() => {
-        if (year < minYear) {
-            setYear(minYear);
-        }
-    }, [minYear, year]);
 
     const loadData = async () => {
         setLoading(true);
         try {
             const seqs = await (window as any).api.getItwPatterns?.() || [];
             setItwSeqs(seqs);
-            
+
             const persInfo = await (window as any).api.getPersonnel?.(false, 'all') || [];
             setPersonnel(persInfo);
 
             const assigns = await (window as any).api.getItwPhaseAssignments?.() || [];
             setAssignments(assigns);
 
-            // Load holidays for current year and potentially previous/next year if phase spans across years
-            const currentYearHolidays = await (window as any).api.getHolidaysForYear?.(year) || [];
-            const prevYearHolidays = await (window as any).api.getHolidaysForYear?.(year - 1) || [];
-            const nextYearHolidays = await (window as any).api.getHolidaysForYear?.(year + 1) || [];
-            const allHolidayObjects = [...prevYearHolidays, ...currentYearHolidays, ...nextYearHolidays];
-            setHolidays(allHolidayObjects.map((h: any) => h.date));
-
-            // Load rotation pattern setting
-            try {
-                const rot = await (window as any).api.getSetting?.('itw_rotation_pattern');
-                if (rot) {
-                    const parsed = JSON.parse(String(rot));
-                    if (Array.isArray(parsed) && parsed.length > 0) {
-                        setItwRotationPhases(parsed);
-                    }
-                }
-            } catch { }
+            const holis = await (window as any).api.getHolidaysForYear?.(year) || [];
+            setHolidays(holis.map((h: any) => h.date));
 
             const now = new Date();
             const yearMonth = now.toISOString().slice(0, 7);
@@ -131,21 +107,12 @@ const ItwVorplanungTab: React.FC = () => {
         };
     }, []);
 
-    const normalizeItwPattern = (pattern: string) => {
-        return String(pattern)
-            .split(',')
-            .map(item => item.trim() === 'IW' ? 'IW' : '');
-    };
+    const getActiveItwSequence = (dateStr: string) => {
+        if (sortedItwSeqs.length === 0) return null;
+        if (dateStr < sortedItwSeqs[0].startDate) return null;
 
-    const getActiveItwSequence = (dateStr: string, department?: string) => {
-        const deptNorm = normalizeDepartmentName(department || '1. Abteilung');
-        const deptSeqs = sortedItwSeqs.filter(s => normalizeDepartmentName(s.department || '1. Abteilung') === deptNorm);
-        const seqsToUse = deptSeqs.length > 0 ? deptSeqs : sortedItwSeqs;
-        if (seqsToUse.length === 0) return null;
-        if (dateStr < seqsToUse[0].startDate) return null;
-
-        let activeSeq = seqsToUse[0];
-        for (const seq of seqsToUse) {
+        let activeSeq = sortedItwSeqs[0];
+        for (const seq of sortedItwSeqs) {
             if (seq.startDate <= dateStr) {
                 activeSeq = seq;
             } else {
@@ -218,24 +185,14 @@ const ItwVorplanungTab: React.FC = () => {
     }, [sortedItwSeqs, year, minYear]);
 
     const calculatePhaseItwDays = (phaseStartStr: string, phaseEndStr: string, department?: string) => {
-        // Calculate which days in the phase are marked as "IW" in the pattern
         if (!sortedItwSeqs || sortedItwSeqs.length === 0) {
-            console.warn('[ITW] Keine itwSeqs verfügbar');
             return [];
         }
 
         const phaseStart = new Date(phaseStartStr + 'T00:00:00Z').getTime();
         const phaseEnd = new Date(phaseEndStr + 'T23:59:59Z').getTime();
         const dayMs = 24 * 60 * 60 * 1000;
-
-        console.log('[ITW] calculatePhaseItwDays:', {
-            phaseStartStr,
-            phaseEndStr,
-            department,
-            phaseStart: new Date(phaseStart).toISOString(),
-            phaseEnd: new Date(phaseEnd).toISOString(),
-            holidaysCount: holidays.length
-        });
+        const targetDeptCode = department ? normalizeDeptCode(department) : '';
 
         const itwDays: string[] = [];
         let currentTime = phaseStart;
@@ -245,59 +202,86 @@ const ItwVorplanungTab: React.FC = () => {
 
             // Skip if holiday
             if (holidays.includes(dateStr)) {
-                console.log('[ITW] Überspringe Feiertag:', dateStr);
                 currentTime += dayMs;
                 continue;
             }
 
-            const activeSeq = getActiveItwSequence(dateStr, department);
+            const activeSeq = getActiveItwSequence(dateStr);
             if (!activeSeq) {
-                console.log('[ITW] Kein aktives ITW Pattern für Datum:', dateStr);
                 currentTime += dayMs;
                 continue;
             }
 
-            const pattern = normalizeItwPattern(activeSeq.pattern);
+            const patternSlots = parseItwPatternString(activeSeq.pattern);
             const baseTime = new Date(activeSeq.startDate + 'T00:00:00Z').getTime();
             const diffMs = currentTime - baseTime;
             const diffDays = Math.round(diffMs / dayMs);
 
-            if (diffDays >= 0) {
-                const patternIndex = ((diffDays % pattern.length) + pattern.length) % pattern.length;
-                const patternValue = pattern[patternIndex];
-                console.log(`[ITW] Tag ${dateStr}: activeStart=${activeSeq.startDate}, dept=${activeSeq.department}, diffDays=${diffDays}, patternIndex=${patternIndex}, patternValue='${patternValue}'`);
+            if (diffDays >= 0 && patternSlots.length > 0) {
+                const patternIndex = ((diffDays % patternSlots.length) + patternSlots.length) % patternSlots.length;
+                const slot = patternSlots[patternIndex];
 
-                if (patternValue === 'IW') {
-                    itwDays.push(dateStr);
-                    console.log('[ITW] IW-Tag gefunden:', dateStr);
+                if (!targetDeptCode) {
+                    if (slot.fzf || slot.maschinist) {
+                        itwDays.push(dateStr);
+                    }
+                } else {
+                    if (slot.fzf === targetDeptCode || slot.maschinist === targetDeptCode) {
+                        itwDays.push(dateStr);
+                    }
                 }
-            } else {
-                console.log(`[ITW] Tag ${dateStr}: diffDays=${diffDays} < 0, überspringe`);
             }
 
             currentTime += dayMs;
         }
 
-        console.log('[ITW] Gefundene IW-Tage:', itwDays);
         return itwDays;
+    };
+
+    const getPhaseDepartmentDuties = (phaseStartStr: string, phaseEndStr: string, deptCode: string) => {
+        const phaseStart = new Date(phaseStartStr + 'T00:00:00Z').getTime();
+        const phaseEnd = new Date(phaseEndStr + 'T23:59:59Z').getTime();
+        const dayMs = 24 * 60 * 60 * 1000;
+
+        let fzfDays = 0;
+        let maDays = 0;
+        let currentTime = phaseStart;
+
+        while (currentTime <= phaseEnd) {
+            const dateStr = new Date(currentTime).toISOString().slice(0, 10);
+            if (!holidays.includes(dateStr)) {
+                const activeSeq = getActiveItwSequence(dateStr);
+                if (activeSeq) {
+                    const patternSlots = parseItwPatternString(activeSeq.pattern);
+                    const baseTime = new Date(activeSeq.startDate + 'T00:00:00Z').getTime();
+                    const diffMs = currentTime - baseTime;
+                    const diffDays = Math.round(diffMs / dayMs);
+                    if (diffDays >= 0 && patternSlots.length > 0) {
+                        const patternIndex = ((diffDays % patternSlots.length) + patternSlots.length) % patternSlots.length;
+                        const slot = patternSlots[patternIndex];
+                        if (slot.fzf === deptCode) fzfDays++;
+                        if (slot.maschinist === deptCode) maDays++;
+                    }
+                }
+            }
+            currentTime += dayMs;
+        }
+
+        return { fzfDays, maDays, total: fzfDays + maDays };
     };
 
     const transferSchichtToRoster = async (personId: number, phaseStartStr: string, phaseEndStr: string) => {
         const person = personnel.find(p => Number(p.id) === Number(personId));
         const personDept = person?.department || '1. Abteilung';
-        // Get all IW days in this phase for this person's department
         const itwDays = calculatePhaseItwDays(phaseStartStr, phaseEndStr, personDept);
-        console.log(`[ITW] Übertrage ${itwDays.length} IW-Tage für Person ${personId} (${personDept}) von ${phaseStartStr} bis ${phaseEndStr}:`, itwDays);
         
         if (itwDays.length === 0) {
-            console.warn('[ITW] Keine IW-Tage gefunden für Phase', { phaseStartStr, phaseEndStr, holidays, itwSeqs: itwSeqs[0]?.pattern });
+            console.warn('[ITW] Keine IW-Tage gefunden für Phase', { phaseStartStr, phaseEndStr, personDept });
             return;
         }
         
-        // Transfer each day to the roster
         for (const dateStr of itwDays) {
             try {
-                console.log(`[ITW] Übertrage Schicht für ${dateStr}`);
                 await (window as any).api.setItwDutyRosterEntry?.({
                     personId,
                     personType: 'person',
@@ -310,14 +294,12 @@ const ItwVorplanungTab: React.FC = () => {
                 console.error(`[ITW] Fehler beim Übertrag der Schicht für ${dateStr}:`, e);
             }
         }
-        console.log('[ITW] Schichtübertrag abgeschlossen');
     };
 
     const removeSchichtFromRoster = async (personId: number, phaseStartStr: string, phaseEndStr: string) => {
         const person = personnel.find(p => Number(p.id) === Number(personId));
         const personDept = person?.department || '1. Abteilung';
         const itwDays = calculatePhaseItwDays(phaseStartStr, phaseEndStr, personDept);
-        console.log(`[ITW] Lösche ${itwDays.length} IW-Tage für Person ${personId} (${personDept}) von ${phaseStartStr} bis ${phaseEndStr}`);
         
         for (const dateStr of itwDays) {
             try {
@@ -335,62 +317,54 @@ const ItwVorplanungTab: React.FC = () => {
         }
     };
 
-    const getAssignmentForPhase = (phaseStart: string, role: string) => {
+    const getAssignmentForPhase = (phaseStart: string, department: string) => {
         const pStart = new Date(phaseStart + 'T00:00:00Z').getTime();
+        const deptNorm = normalizeDepartmentName(department);
         return assignments.find(a => {
-            if (a.role !== role) return false;
+            const aRole = String(a.role || '');
+            const matchRole = normalizeDepartmentName(aRole) === deptNorm ||
+                (deptNorm === '1. Abteilung' && aRole === 'Fahrzeugführer 1') ||
+                (deptNorm === '2. Abteilung' && aRole === 'Fahrzeugführer 2') ||
+                (deptNorm === '3. Abteilung' && aRole === 'Maschinist');
+            if (!matchRole) return false;
             const aStart = new Date(a.start_date + 'T00:00:00Z').getTime();
             const aEnd = aStart + (21 * 24 * 3600 * 1000);
-            // An assignment "belongs" to this phase if it covers the phase start
             return pStart >= aStart && pStart < aEnd;
         });
     };
 
-    const handleAssign = async (phaseStart: string, phaseEnd: string, role: string, value: string) => {
+    const handleAssign = async (phaseStart: string, phaseEnd: string, department: string, value: string) => {
         const pId = value ? parseInt(value, 10) : null;
-        console.log('[ITW] handleAssign called:', { phaseStart, phaseEnd, role, pId, hasApi: !!(window as any).api });
         
-        // Find if someone was already assigned to this role in this phase (using overlapping logic)
-        const pStart = new Date(phaseStart + 'T00:00:00Z').getTime();
-        const oldEntry = assignments.find(a => {
-            if (a.role !== role) return false;
-            const aStart = new Date(a.start_date + 'T00:00:00Z').getTime();
-            const aEnd = aStart + (21 * 24 * 3600 * 1000);
-            return pStart >= aStart && pStart < aEnd;
-        });
-        
+        const oldEntry = getAssignmentForPhase(phaseStart, department);
         if (oldEntry && oldEntry.person_id) {
-             // Clear old roster entries
              await removeSchichtFromRoster(oldEntry.person_id, oldEntry.start_date, phaseEnd);
              await (window as any).api.removeItwPhaseAssignment?.(oldEntry.start_date, oldEntry.person_id);
         }
 
-        // If assigning someone new
         if (pId) {
-            // Check qualifications
+            const deptCode = normalizeDeptCode(department);
+            const duties = getPhaseDepartmentDuties(phaseStart, phaseEnd, deptCode);
+
             const quals = activeQuals[pId] || [];
             const isFzf = quals.includes('ITW Fahrzeugführer') || quals.includes('Fahrzeugführer') || quals.includes('Fahrzeugführer HLF-B');
             const isMasch = quals.includes('ITW Maschinist');
 
-            if (role.startsWith('Fahrzeugführer') && !isFzf) {
+            if (duties.fzfDays > 0 && !isFzf) {
                 alert('Mitarbeiter hat keine Fahrzeugführer Qualifikation!');
                 return;
             }
-            if (role === 'Maschinist' && !isMasch) {
+            if (duties.maDays > 0 && !isMasch) {
                 alert('Mitarbeiter hat keine Maschinist Qualifikation!');
                 return;
             }
 
             try {
-                console.log('[ITW] Speichere Zuweisung:', { phaseStart, pId, role });
                 await (window as any).api.addItwPhaseAssignment?.(
                     phaseStart, 
                     pId, 
-                    role
+                    department
                 );
-                console.log('[ITW] Zuweisung gespeichert, starte Schichtübertrag');
-                
-                // Transfer shift to roster
                 await transferSchichtToRoster(pId, phaseStart, phaseEnd);
             } catch (e: any) {
                 console.error('[ITW] Fehler:', e);
@@ -398,7 +372,6 @@ const ItwVorplanungTab: React.FC = () => {
             }
         }
 
-        // Reload assignments
         const assigns = await (window as any).api.getItwPhaseAssignments?.() || [];
         setAssignments(assigns);
     };
@@ -494,20 +467,7 @@ const ItwVorplanungTab: React.FC = () => {
                 </div>
             )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', paddingBottom: 20 }}>
-                {displayedPhases.map((phase, phaseIdx) => {
-                    const rotCount = itwRotationPhases.length || 1;
-                    const rotConfig = itwRotationPhases[phaseIdx % rotCount] || {
-                        fzf1: '1. Abteilung',
-                        fzf2: '2. Abteilung',
-                        maschinist: '3. Abteilung'
-                    };
-
-                    const phaseRoles = [
-                        { role: 'Fahrzeugführer 1', department: rotConfig.fzf1 || '1. Abteilung' },
-                        { role: 'Fahrzeugführer 2', department: rotConfig.fzf2 || '2. Abteilung' },
-                        { role: 'Maschinist', department: rotConfig.maschinist || '3. Abteilung' }
-                    ];
-
+                {displayedPhases.map((phase) => {
                     return (
                         <div key={phase.start} style={{ 
                             flex: '1',
@@ -532,29 +492,32 @@ const ItwVorplanungTab: React.FC = () => {
                                     <div style={{ fontWeight: 'bold', fontSize: '15px' }}>{phase.title}</div>
                                     <div style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>{phase.label}</div>
                                 </div>
-                                <span style={{ fontSize: '11px', color: '#888', background: '#e9ecef', padding: '2px 8px', borderRadius: 10 }}>
-                                    Rotation #{((phaseIdx % rotCount) + 1)}
-                                </span>
                             </div>
                             <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', flex: 1 }}>
-                                {phaseRoles.map(({ role, department }) => {
-                                    const currentAssgn = getAssignmentForPhase(phase.start, role);
+                                {DEPARTMENTS.map((dept) => {
+                                    const deptCode = normalizeDeptCode(dept);
+                                    const duties = getPhaseDepartmentDuties(phase.start, phase.end, deptCode);
+
+                                    const currentAssgn = getAssignmentForPhase(phase.start, dept);
                                     const currentId = currentAssgn ? currentAssgn.person_id : '';
                                     const isOccupied = Boolean(currentId);
                                     const isAssignedToSelf = Boolean(
                                         currentId && personnel.some(p => Number(p.id) === Number(currentId) && isOwnUser(p))
                                     );
 
-                                    const isUserInTargetDept = normalizeDepartmentName(userDept) === normalizeDepartmentName(department);
+                                    const isUserInTargetDept = normalizeDepartmentName(userDept) === normalizeDepartmentName(dept);
 
                                     let selectDisabled = false;
                                     let disabledReason = '';
-                                    if (canWriteAll) {
+                                    if (duties.total === 0) {
+                                        selectDisabled = true;
+                                        disabledReason = 'Keine Dienste in dieser Phase';
+                                    } else if (canWriteAll) {
                                         selectDisabled = false;
                                     } else if (canWriteOwn) {
                                         if (!isUserInTargetDept) {
                                             selectDisabled = !isAssignedToSelf;
-                                            if (selectDisabled) disabledReason = `Nur für ${department}`;
+                                            if (selectDisabled) disabledReason = `Nur für ${dept}`;
                                         } else {
                                             selectDisabled = isOccupied && !isAssignedToSelf;
                                             if (selectDisabled) disabledReason = 'Bereits belegt';
@@ -571,11 +534,18 @@ const ItwVorplanungTab: React.FC = () => {
                                             ? personnel.filter(p => (isOwnUser(p) && isUserInTargetDept) || Number(p.id) === Number(currentId))
                                             : personnel.filter(p => Number(p.id) === Number(currentId)));
 
-                                    const colors = getDepartmentColor(department);
+                                    const colors = getDepartmentColor(dept);
+
+                                    const dutyText = duties.total === 0 
+                                        ? 'Keine Dienste'
+                                        : [
+                                            duties.fzfDays > 0 ? `${duties.fzfDays}× FzF` : null,
+                                            duties.maDays > 0 ? `${duties.maDays}× Ma` : null
+                                        ].filter(Boolean).join(', ');
 
                                     return (
                                         <div 
-                                            key={role} 
+                                            key={dept} 
                                             style={{ 
                                                 display: 'flex', 
                                                 flexDirection: 'column', 
@@ -584,11 +554,12 @@ const ItwVorplanungTab: React.FC = () => {
                                                 borderRadius: 6,
                                                 background: colors.containerBg,
                                                 border: `1px solid ${colors.containerBorder}`,
-                                                borderLeft: `4px solid ${colors.accent}`
+                                                borderLeft: `4px solid ${colors.accent}`,
+                                                opacity: duties.total === 0 ? 0.65 : 1
                                             }}
                                         >
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <label style={{ fontSize: 13, color: '#333', fontWeight: 600 }}>{role}</label>
+                                                <label style={{ fontSize: 13, color: '#333', fontWeight: 600 }}>{dept}</label>
                                                 <span style={{
                                                     fontSize: '11px',
                                                     fontWeight: 600,
@@ -598,13 +569,13 @@ const ItwVorplanungTab: React.FC = () => {
                                                     color: colors.badgeColor,
                                                     border: `1px solid ${colors.badgeBorder}`
                                                 }}>
-                                                    {department}
+                                                    {dutyText}
                                                 </span>
                                             </div>
                                             <select
                                                 value={currentId || ''}
                                                 disabled={selectDisabled}
-                                                onChange={e => handleAssign(phase.start, phase.end, role, e.target.value)}
+                                                onChange={e => handleAssign(phase.start, phase.end, dept, e.target.value)}
                                                 title={disabledReason ? disabledReason : undefined}
                                                 style={{
                                                     padding: '7px 8px',
@@ -624,8 +595,15 @@ const ItwVorplanungTab: React.FC = () => {
                                                     const isMasch = quals.includes('ITW Maschinist');
                                                     
                                                     let valid = true;
-                                                    if (role.startsWith('Fahrzeugführer') && !isFzf) valid = false;
-                                                    if (role === 'Maschinist' && !isMasch) valid = false;
+                                                    let missing = '';
+                                                    if (duties.fzfDays > 0 && !isFzf) {
+                                                        valid = false;
+                                                        missing = 'FzF fehlt';
+                                                    }
+                                                    if (duties.maDays > 0 && !isMasch) {
+                                                        valid = false;
+                                                        missing = missing ? 'FzF & Ma fehlt' : 'Ma fehlt';
+                                                    }
 
                                                     const deptLabel = p.department ? ` (${p.department})` : '';
 
@@ -636,7 +614,7 @@ const ItwVorplanungTab: React.FC = () => {
                                                             disabled={!valid}
                                                             style={{ color: valid ? '#000' : '#ccc' }}
                                                         >
-                                                            {p.name}, {p.vorname}{deptLabel} {!valid ? '(Qualifikation fehlt)' : ''}
+                                                            {p.name}, {p.vorname}{deptLabel} {!valid ? `(${missing})` : ''}
                                                         </option>
                                                     );
                                                 })}

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { buildVehicleActivationMap, calculateTargets } from '../utils/calculation';
 import { rosterReleasedSettingKey } from '../utils/rosterRelease';
 import { isVehicleActiveOnDate } from '../utils/vehiclePeriods';
+import { parseItwDay } from '../utils/itwPatternUtils';
 import styles from './MonthTabs.module.css';
 import { Kontrollkasten } from './Kontrollkasten';
 import { AzubiAutoAssignDialog, ShiftSummary, ProposedAssignment, ConflictAzubi } from './AzubiAutoAssignDialog';
@@ -405,12 +406,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             } catch { }
             // ITW Sequenzen laden
             try {
-                const norm = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(len).fill('')).slice(0, len).map(v => (v === 'IW' ? 'IW' : ''));
+                const norm = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(len).fill('')).slice(0, len);
                 const seqs = await (window as any).api.getItwPatterns?.();
                 if (Array.isArray(seqs) && seqs.length > 0) {
                     const parsed = seqs.map((s: any) => ({ 
                         startDate: String(s.startDate), 
-                        department: s.department || '1. Abteilung',
+                        department: s.department || 'global',
                         pattern: norm(String(s.pattern).split(',').map((x: string) => x.trim()), 21) 
                     }));
                     parsed.sort((a, b) => a.startDate.localeCompare(b.startDate));
@@ -503,12 +504,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 } catch { }
                 // ITW-Sequenzen aktualisieren
                 try {
-                    const norm = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(len).fill('')).slice(0, len).map(v => (v === 'IW' ? 'IW' : ''));
+                    const norm = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(len).fill('')).slice(0, len);
                     const seqs = await (window as any).api.getItwPatterns?.();
                     if (Array.isArray(seqs) && seqs.length > 0) {
                         const parsed = seqs.map((s: any) => ({ 
                             startDate: String(s.startDate), 
-                            department: s.department || '1. Abteilung',
+                            department: s.department || 'global',
                             pattern: norm(String(s.pattern).split(',').map((x: string) => x.trim()), 21) 
                         }));
                         parsed.sort((a, b) => a.startDate.localeCompare(b.startDate));
@@ -3352,13 +3353,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                                         // 1. Musterfolge (Deaktiviert: ITW-Spalten nur anzeigen, wenn tatsächlich Einträge im Dienstplan existieren)
                                         // 1. Musterfolge (Loop-Vorschau für die aktuelle Abteilung)
-                                        const deptStr = `${department}. Abteilung`;
+                                        const myDeptCode = String(department);
                                         for (let i = 1; i <= daysInMonth; i++) {
                                             const iso = new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0, 10);
                                             if (holidays.has(iso)) continue;
 
                                             const seqs = [...(itwPatternSeqs || [])]
-                                                .filter(s => (s.department || '1. Abteilung') === deptStr || (s.department && s.department.startsWith(String(department))))
                                                 .sort((a, b) => a.startDate.localeCompare(b.startDate));
                                             if (seqs.length === 0) continue;
 
@@ -3372,7 +3372,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                             if (pat.length === 0) continue;
 
                                             const val = pat[((diffDays % pat.length) + pat.length) % pat.length];
-                                            if (val === 'IW') assignedItwDates.add(iso);
+                                            const slot = parseItwDay(val);
+                                            if (slot.fzf === myDeptCode || slot.maschinist === myDeptCode || val === 'IW') {
+                                                assignedItwDates.add(iso);
+                                            }
                                         }
 
                                         // 2. Tatsächliche Einträge

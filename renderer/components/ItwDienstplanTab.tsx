@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { normalizeDepartmentName } from '../utils/personPeriods';
-import './SettingsMenuTables.css'; // Just using basic table styles from here if any
+import { parseItwPatternString, parseItwDay, normalizeDeptCode } from '../utils/itwPatternUtils';
+import './SettingsMenuTables.css';
 
 const monthNames = [
     'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
@@ -76,21 +77,12 @@ const ItwDienstplanTab: React.FC = () => {
         return `${year}-${month}-${day}`;
     };
 
-    const normalizeItwPattern = (pattern: string) => {
-        return String(pattern)
-            .split(',')
-            .map(item => item.trim() === 'IW' ? 'IW' : '');
-    };
+    const getActiveItwSequence = (dateStr: string) => {
+        if (sortedItwSeqs.length === 0) return null;
+        if (dateStr < sortedItwSeqs[0].startDate) return null;
 
-    const getActiveItwSequence = (dateStr: string, department?: string) => {
-        const deptNorm = normalizeDepartmentName(department || '1. Abteilung');
-        const deptSeqs = sortedItwSeqs.filter(s => normalizeDepartmentName(s.department || '1. Abteilung') === deptNorm);
-        const seqsToUse = deptSeqs.length > 0 ? deptSeqs : sortedItwSeqs;
-        if (seqsToUse.length === 0) return null;
-        if (dateStr < seqsToUse[0].startDate) return null;
-
-        let activeSeq = seqsToUse[0];
-        for (const seq of seqsToUse) {
+        let activeSeq = sortedItwSeqs[0];
+        for (const seq of sortedItwSeqs) {
             if (seq.startDate <= dateStr) {
                 activeSeq = seq;
             } else {
@@ -106,13 +98,14 @@ const ItwDienstplanTab: React.FC = () => {
 
         const person = personnel.find(p => Number(p.id) === Number(personId));
         const personDept = person?.department || '1. Abteilung';
+        const deptCode = normalizeDeptCode(personDept);
 
         const targetTime = new Date(dateStr + 'T00:00:00Z').getTime();
-        const activeSeq = getActiveItwSequence(dateStr, personDept);
+        const activeSeq = getActiveItwSequence(dateStr);
         if (!activeSeq) return null;
 
-        const pattern = normalizeItwPattern(activeSeq.pattern);
-        if (!pattern || pattern.length === 0) return null;
+        const patternSlots = parseItwPatternString(activeSeq.pattern);
+        if (!patternSlots || patternSlots.length === 0) return null;
 
         const baseTime = new Date(activeSeq.startDate + 'T00:00:00Z').getTime();
         const diffMs = targetTime - baseTime;
@@ -120,8 +113,10 @@ const ItwDienstplanTab: React.FC = () => {
         
         if (diffDays < 0) return null;
 
-        const patternIndex = ((diffDays % pattern.length) + pattern.length) % pattern.length;
-        if (pattern[patternIndex] !== 'IW') return null;
+        const patternIndex = ((diffDays % patternSlots.length) + patternSlots.length) % patternSlots.length;
+        const slot = patternSlots[patternIndex];
+        const isAssignedDay = slot.fzf === deptCode || slot.maschinist === deptCode;
+        if (!isAssignedDay) return null;
 
         // Find assignment that covers this date
         const assignment = assignments.find(a => {
