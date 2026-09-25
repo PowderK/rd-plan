@@ -154,6 +154,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
   const [weekendSaturdayNight, setWeekendSaturdayNight] = useState<boolean>(true);
   const [weekendSundayDay, setWeekendSundayDay] = useState<boolean>(true);
   const [weekendSundayNight, setWeekendSundayNight] = useState<boolean>(true);
+  const [weekendHolidayDay, setWeekendHolidayDay] = useState<boolean>(false);
+  const [weekendHolidayNight, setWeekendHolidayNight] = useState<boolean>(false);
 
 
 
@@ -236,6 +238,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       weekendSaturdayNight,
       weekendSundayDay,
       weekendSundayNight,
+      weekendHolidayDay,
+      weekendHolidayNight,
       featureOldRtwShifts,
       featureShiftTransfers,
       featureTaucher,
@@ -264,6 +268,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
     weekendSaturdayNight,
     weekendSundayDay,
     weekendSundayNight,
+    weekendHolidayDay,
+    weekendHolidayNight,
     featureOldRtwShifts,
     featureShiftTransfers,
     featureTaucher,
@@ -459,6 +465,11 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
         setWeekendSundayDay(suDay !== 'false');
         const suNight = await (window as any).api.getSetting('weekend_sunday_night');
         setWeekendSundayNight(suNight !== 'false');
+        
+        const holDay = await (window as any).api.getSetting('weekend_holiday_day');
+        setWeekendHolidayDay(holDay === 'true');
+        const holNight = await (window as any).api.getSetting('weekend_holiday_night');
+        setWeekendHolidayNight(holNight === 'true');
       } catch (e) {
         // console.error('Failed to load weekend definitions settings:', e);
       }
@@ -541,6 +552,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       await (window as any).api.setSetting('weekend_saturday_night', weekendSaturdayNight ? 'true' : 'false');
       await (window as any).api.setSetting('weekend_sunday_day', weekendSundayDay ? 'true' : 'false');
       await (window as any).api.setSetting('weekend_sunday_night', weekendSundayNight ? 'true' : 'false');
+      await (window as any).api.setSetting('weekend_holiday_day', weekendHolidayDay ? 'true' : 'false');
+      await (window as any).api.setSetting('weekend_holiday_night', weekendHolidayNight ? 'true' : 'false');
       // Feature toggles pro Abteilung speichern
       await (window as any).api.setSetting(`feature_old_rtw_shifts_${selectedDepartment}`, featureOldRtwShifts ? 'true' : 'false');
       await (window as any).api.setSetting(`feature_shift_transfers_${selectedDepartment}`, featureShiftTransfers ? 'true' : 'false');
@@ -1788,6 +1801,83 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                 </>
               )}
             </div>
+
+            {/* Feiertage */}
+            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', alignItems: 'center', gap: 12, marginBottom: 12, maxWidth: 760 }}>
+                <h3 style={{ margin: 0 }}>Feiertage</h3>
+                <select
+                  value={holidaysYear}
+                  onChange={async (e) => {
+                    const newYear = Number(e.target.value);
+                    setHolidaysYear(newYear);
+                    try {
+                      const fresh = await (window as any).api.getHolidaysForYear?.(newYear);
+                      setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
+                    } catch { }
+                    setEditingHolidays(false);
+                    setOriginalHolidays(null);
+                    setSelectedHolidayIndex(null);
+                  }}
+                  style={{ padding: '4px 8px', fontSize: '1em', fontWeight: 600 }}
+                >
+                  {yearPlannings.map(yp => (
+                    <option key={yp.year} value={yp.year}>{yp.year}</option>
+                  ))}
+                </select>
+              </div>
+              <p style={{ marginTop: 0, color: '#666' }}>Verwalte hier die Feiertage für das jeweilige Jahr (relevant für Wochenend-Zählung und ITW-Dienstplan). An diesen Tagen entfällt im ITW die planmäßige Besetzung (IW).</p>
+              <table className={styles.table}>
+                <thead>
+                  <tr className={styles.thead}>
+                    <th style={{ width: 160 }}>Datum (YYYY-MM-DD)</th>
+                    <th>Name</th>
+                  </tr>
+                </thead>
+                <tbody className={styles.tbody}>
+                  {holidays.map((h, idx) => (
+                    <tr key={`${h.date}_${idx}`} className={[styles.row, selectedHolidayIndex === idx ? styles.selected : ''].filter(Boolean).join(' ')} onClick={() => setSelectedHolidayIndex(prev => prev === idx ? null : idx)}>
+                      <td>
+                        <input
+                          type="date"
+                          value={h.date}
+                          disabled={!editingHolidays}
+                          onChange={e => {
+                            if (!editingHolidays) return;
+                            const v = e.target.value;
+                            setHolidays(prev => prev.map((x, i) => i === idx ? { ...x, date: v } : x));
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          value={h.name}
+                          disabled={!editingHolidays}
+                          onChange={e => {
+                            if (!editingHolidays) return;
+                            const v = e.target.value;
+                            setHolidays(prev => prev.map((x, i) => i === idx ? { ...x, name: v } : x));
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!editingHolidays ? (
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <button onClick={() => { setEditingHolidays(true); setOriginalHolidays(JSON.parse(JSON.stringify(holidays))); setHolidays(prev => [...prev, { date: `${holidaysYear}-01-01`, name: '' }]); setSelectedHolidayIndex((holidays?.length ?? 0)); }}>Hinzufügen</button>
+                  <button onClick={() => setEditingHolidays(true)} disabled={holidays.length === 0}>Ändern</button>
+                  <button onClick={() => { if (selectedHolidayIndex != null) setHolidays(prev => prev.filter((_, i) => i !== selectedHolidayIndex)); setSelectedHolidayIndex(null); }} disabled={selectedHolidayIndex == null}>Löschen</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <button onClick={async () => { try { await (window as any).api.setHolidaysForYear?.(holidaysYear, holidays.map(h => ({ date: h.date, name: h.name }))); const fresh = await (window as any).api.getHolidaysForYear?.(holidaysYear); setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') }))); } catch { } finally { setEditingHolidays(false); setOriginalHolidays(null); setSelectedHolidayIndex(null); } }}>Speichern</button>
+                  <button onClick={() => { if (originalHolidays) setHolidays(originalHolidays); setOriginalHolidays(null); setEditingHolidays(false); setSelectedHolidayIndex(null); }}>Abbrechen</button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -1808,9 +1898,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                     Wochenend-Schichten im Kontrollkasten zählen und farblich (Ampel) anzeigen.
                   </div>
                   {showWeekendShifts && (
-                    <div style={{ marginTop: 12, padding: 12, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, maxWidth: 450 }}>
+                    <div style={{ marginTop: 12, padding: 12, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, maxWidth: 580 }}>
                       <strong style={{ fontSize: '0.9em', display: 'block', marginBottom: 8 }}>Wochenend-Definition (Schichten aktivieren):</strong>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
                         <div>
                           <div style={{ fontWeight: 600, fontSize: '0.85em', marginBottom: 6 }}>Freitag</div>
                           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer', marginBottom: 4 }}>
@@ -1841,6 +1931,17 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                           </label>
                           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer' }}>
                             <input type="checkbox" checked={weekendSundayNight} onChange={e => setWeekendSundayNight(e.target.checked)} />
+                            Nacht
+                          </label>
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '0.85em', marginBottom: 6 }}>Feiertag</div>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer', marginBottom: 4 }}>
+                            <input type="checkbox" checked={weekendHolidayDay} onChange={e => setWeekendHolidayDay(e.target.checked)} />
+                            Tag
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={weekendHolidayNight} onChange={e => setWeekendHolidayNight(e.target.checked)} />
                             Nacht
                           </label>
                         </div>
@@ -2328,84 +2429,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                 )}
               </div>
             </div>
-
-            {/* Feiertage (ITW-relevant) */}
-            <div style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', alignItems: 'center', gap: 12, marginBottom: 12, maxWidth: 760 }}>
-                <h3 style={{ margin: 0 }}>Feiertage</h3>
-                <select
-                  value={holidaysYear}
-                  onChange={async (e) => {
-                    const newYear = Number(e.target.value);
-                    setHolidaysYear(newYear);
-                    try {
-                      const fresh = await (window as any).api.getHolidaysForYear?.(newYear);
-                      setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
-                    } catch { }
-                    setEditingHolidays(false);
-                    setOriginalHolidays(null);
-                    setSelectedHolidayIndex(null);
-                  }}
-                  style={{ padding: '4px 8px', fontSize: '1em', fontWeight: 600 }}
-                >
-                  {yearPlannings.map(yp => (
-                    <option key={yp.year} value={yp.year}>{yp.year}</option>
-                  ))}
-                </select>
-              </div>
-              <p style={{ marginTop: 0, color: '#666' }}>An diesen Tagen wird der ITW nicht besetzt (IW entfällt). Du kannst Datum und (optional) Name pflegen.</p>
-              <table className={styles.table}>
-                <thead>
-                  <tr className={styles.thead}>
-                    <th style={{ width: 160 }}>Datum (YYYY-MM-DD)</th>
-                    <th>Name</th>
-                  </tr>
-                </thead>
-                <tbody className={styles.tbody}>
-                  {holidays.map((h, idx) => (
-                    <tr key={`${h.date}_${idx}`} className={[styles.row, selectedHolidayIndex === idx ? styles.selected : ''].filter(Boolean).join(' ')} onClick={() => setSelectedHolidayIndex(prev => prev === idx ? null : idx)}>
-                      <td>
-                        <input
-                          type="date"
-                          value={h.date}
-                          disabled={!editingHolidays}
-                          onChange={e => {
-                            if (!editingHolidays) return;
-                            const v = e.target.value;
-                            setHolidays(prev => prev.map((x, i) => i === idx ? { ...x, date: v } : x));
-                          }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="text"
-                          value={h.name}
-                          disabled={!editingHolidays}
-                          onChange={e => {
-                            if (!editingHolidays) return;
-                            const v = e.target.value;
-                            setHolidays(prev => prev.map((x, i) => i === idx ? { ...x, name: v } : x));
-                          }}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {!editingHolidays ? (
-                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  <button onClick={() => { setEditingHolidays(true); setOriginalHolidays(JSON.parse(JSON.stringify(holidays))); setHolidays(prev => [...prev, { date: `${holidaysYear}-01-01`, name: '' }]); setSelectedHolidayIndex((holidays?.length ?? 0)); }}>Hinzufügen</button>
-                  <button onClick={() => setEditingHolidays(true)} disabled={holidays.length === 0}>Ändern</button>
-                  <button onClick={() => { if (selectedHolidayIndex != null) setHolidays(prev => prev.filter((_, i) => i !== selectedHolidayIndex)); setSelectedHolidayIndex(null); }} disabled={selectedHolidayIndex == null}>Löschen</button>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  <button onClick={async () => { try { await (window as any).api.setHolidaysForYear?.(holidaysYear, holidays.map(h => ({ date: h.date, name: h.name }))); const fresh = await (window as any).api.getHolidaysForYear?.(holidaysYear); setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') }))); } catch { } finally { setEditingHolidays(false); setOriginalHolidays(null); setSelectedHolidayIndex(null); } }}>Speichern</button>
-                  <button onClick={() => { if (originalHolidays) setHolidays(originalHolidays); setOriginalHolidays(null); setEditingHolidays(false); setSelectedHolidayIndex(null); }}>Abbrechen</button>
-                </div>
-              )}
-            </div>
-
           </div>
         )}
 

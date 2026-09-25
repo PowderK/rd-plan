@@ -119,6 +119,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [weekendSaturdayNight, setWeekendSaturdayNight] = useState<boolean>(true);
     const [weekendSundayDay, setWeekendSundayDay] = useState<boolean>(true);
     const [weekendSundayNight, setWeekendSundayNight] = useState<boolean>(true);
+    const [weekendHolidayDay, setWeekendHolidayDay] = useState<boolean>(false);
+    const [weekendHolidayNight, setWeekendHolidayNight] = useState<boolean>(false);
     // Freigabe-Status pro Monat
     const [releasedMonths, setReleasedMonths] = useState<boolean[]>(Array(12).fill(false));
     /** Monate mit unbesetzten Pflichtpositionen (für gelbe Markierung bei Freigabe). */
@@ -388,6 +390,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 setWeekendSundayDay(suDay !== 'false');
                 const suNight = await (window as any).api.getSetting('weekend_sunday_night');
                 setWeekendSundayNight(suNight !== 'false');
+
+                const holDay = await (window as any).api.getSetting('weekend_holiday_day');
+                setWeekendHolidayDay(holDay === 'true');
+                const holNight = await (window as any).api.getSetting('weekend_holiday_night');
+                setWeekendHolidayNight(holNight === 'true');
             } catch { }
             try { const r = await (window as any).api.getRtwVehicles?.(year); if (Array.isArray(r)) setRtwVehicles(r); } catch { }
             try { const n = await (window as any).api.getNefVehicles?.(year); if (Array.isArray(n)) setNefVehicles(n); } catch { }
@@ -1764,17 +1771,27 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                             }
 
                             let matchesWeekend = false;
-                            if (dow === 5) { // Freitag
-                                if ((isTag && weekendFridayDay) || (isNacht && weekendFridayNight)) {
+                            const isHolidayDate = holidays.has(iso);
+
+                            if (isHolidayDate) {
+                                if ((isTag && weekendHolidayDay) || (isNacht && weekendHolidayNight)) {
                                     matchesWeekend = true;
                                 }
-                            } else if (dow === 6) { // Samstag
-                                if ((isTag && weekendSaturdayDay) || (isNacht && weekendSaturdayNight)) {
-                                    matchesWeekend = true;
-                                }
-                            } else if (dow === 0) { // Sonntag
-                                if ((isTag && weekendSundayDay) || (isNacht && weekendSundayNight)) {
-                                    matchesWeekend = true;
+                            }
+
+                            if (!matchesWeekend) {
+                                if (dow === 5) { // Freitag
+                                    if ((isTag && weekendFridayDay) || (isNacht && weekendFridayNight)) {
+                                        matchesWeekend = true;
+                                    }
+                                } else if (dow === 6) { // Samstag
+                                    if ((isTag && weekendSaturdayDay) || (isNacht && weekendSaturdayNight)) {
+                                        matchesWeekend = true;
+                                    }
+                                } else if (dow === 0) { // Sonntag
+                                    if ((isTag && weekendSundayDay) || (isNacht && weekendSundayNight)) {
+                                        matchesWeekend = true;
+                                    }
                                 }
                             }
 
