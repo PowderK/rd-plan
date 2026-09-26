@@ -507,12 +507,12 @@ const ItwVorplanungTab: React.FC = () => {
                     const deptShort = department.replace('. Abteilung', '. Abt');
 
                     return `
-                        <div style="padding: 3px 5px; background: ${deptColor.containerBg}; border: 1px solid ${deptColor.containerBorder}; border-left: 2.5px solid ${deptColor.accent}; border-radius: 3px; box-sizing: border-box;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1px;">
-                                <span style="font-size: 7.5px; color: #475569; font-weight: 700;">${shortRole}</span>
-                                <span style="font-size: 7px; padding: 0 3px; border-radius: 2px; background: ${deptColor.badgeBg}; color: ${deptColor.badgeColor}; font-weight: 600; white-space: nowrap;">${deptShort}</span>
+                        <div style="padding: 4px 6px; background: ${deptColor.containerBg}; border: 1px solid ${deptColor.containerBorder}; border-left: 3px solid ${deptColor.accent}; border-radius: 4px; box-sizing: border-box;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                                <span style="font-size: 8.5px; color: #475569; font-weight: 700;">${shortRole}</span>
+                                <span style="font-size: 8px; padding: 1px 4px; border-radius: 3px; background: ${deptColor.badgeBg}; color: ${deptColor.badgeColor}; font-weight: 600; white-space: nowrap;">${deptShort}</span>
                             </div>
-                            <div style="font-size: 8.5px; font-weight: ${person ? '600' : '400'}; color: ${person ? '#0f172a' : '#94a3b8'}; font-style: ${person ? 'normal' : 'italic'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.1;">
+                            <div style="font-size: 9.5px; font-weight: ${person ? '600' : '400'}; color: ${person ? '#0f172a' : '#94a3b8'}; font-style: ${person ? 'normal' : 'italic'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.15;">
                                 ${person ? `${person.name}, ${person.vorname}` : '- Nicht besetzt -'}
                             </div>
                         </div>
@@ -525,28 +525,28 @@ const ItwVorplanungTab: React.FC = () => {
                 }).length;
 
                 const statusTag = phaseGapsCount === 0
-                    ? `<span style="font-size: 7.5px; font-weight: 600; padding: 1px 4px; border-radius: 8px; background: #f0fdf4; color: #166534; border: 1px solid #dcfce7; white-space: nowrap;">Vollständig</span>`
-                    : `<span style="font-size: 7.5px; font-weight: 600; padding: 1px 4px; border-radius: 8px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; white-space: nowrap;">${phaseGapsCount} offen</span>`;
+                    ? `<span style="font-size: 8.5px; font-weight: 600; padding: 2px 6px; border-radius: 8px; background: #f0fdf4; color: #166534; border: 1px solid #dcfce7; white-space: nowrap;">Vollständig</span>`
+                    : `<span style="font-size: 8.5px; font-weight: 600; padding: 2px 6px; border-radius: 8px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; white-space: nowrap;">${phaseGapsCount} offen</span>`;
 
                 return `
-                    <div style="border: 1px solid #cbd5e1; border-radius: 4px; background: #ffffff; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; page-break-inside: avoid;">
-                        <div style="background: #f1f5f9; padding: 3px 5px; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="border: 1px solid #cbd5e1; border-radius: 5px; background: #ffffff; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; page-break-inside: avoid;">
+                        <div style="background: #f1f5f9; padding: 5px 7px; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center;">
                             <div>
-                                <span style="font-weight: 700; font-size: 9.5px; color: #0f172a;">${phase.title}</span>
-                                <span style="font-size: 7.5px; color: #64748b; margin-left: 2px;">(${phase.label})</span>
+                                <span style="font-weight: 700; font-size: 11px; color: #0f172a;">${phase.title}</span>
+                                <span style="font-size: 8.5px; color: #64748b; margin-left: 3px;">(${phase.label})</span>
                             </div>
                             <div>
                                 ${statusTag}
                             </div>
                         </div>
-                        <div style="padding: 4px; display: flex; flex-direction: column; gap: 3px; flex: 1; justify-content: space-between;">
+                        <div style="padding: 6px; display: flex; flex-direction: column; gap: 5px; flex: 1; justify-content: space-between;">
                             ${slotsHtml}
                         </div>
                     </div>
                 `;
             }).join('');
 
-            // Dept breakdown stats (compact banner)
+            // Dept breakdown stats (prominent banner)
             const deptStatsHtml = DEPARTMENTS.map(dept => {
                 const colors = getDepartmentColor(dept);
                 let reqCount = 0;
@@ -569,42 +569,42 @@ const ItwVorplanungTab: React.FC = () => {
                 });
                 const openCount = reqCount - occCount;
                 return `
-                    <div style="flex: 1; padding: 3px 8px; background: ${colors.containerBg}; border: 1px solid ${colors.containerBorder}; border-left: 3px solid ${colors.accent}; border-radius: 4px; display: flex; align-items: center; justify-content: space-between;">
-                        <span style="font-size: 9.5px; font-weight: bold; color: ${colors.badgeColor};">${dept}</span>
-                        <span style="font-size: 9.5px; font-weight: 600; color: #1f2937;">${occCount} / ${reqCount} besetzt</span>
-                        <span style="font-size: 8.5px; color: ${openCount > 0 ? '#64748b' : '#15803d'}; font-weight: 500;">${openCount === 0 ? 'Vollständig' : `${openCount} offen`}</span>
+                    <div style="flex: 1; padding: 6px 12px; background: ${colors.containerBg}; border: 1px solid ${colors.containerBorder}; border-left: 3.5px solid ${colors.accent}; border-radius: 5px; display: flex; align-items: center; justify-content: space-between;">
+                        <span style="font-size: 11px; font-weight: 700; color: ${colors.badgeColor};">${dept}</span>
+                        <span style="font-size: 11px; font-weight: 700; color: #1f2937;">${occCount} / ${reqCount} besetzt</span>
+                        <span style="font-size: 9.5px; color: ${openCount > 0 ? '#64748b' : '#15803d'}; font-weight: 600;">${openCount === 0 ? 'Vollständig' : `${openCount} offen`}</span>
                     </div>
                 `;
             }).join('');
 
             const html = `
-                <div style="padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-sizing: border-box;">
-                    <!-- Header -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0284c7; padding-bottom: 3px; margin-bottom: 5px;">
-                        <div style="display: flex; align-items: baseline; gap: 8px;">
-                            <h1 style="font-size: 14px; font-weight: 800; color: #0f172a; margin: 0;">RD-Plan &bull; ITW Phasen Vorplanung</h1>
-                            <span style="font-size: 11px; color: #0284c7; font-weight: 700;">Planungsjahr ${year}</span>
+                <div style="padding: 4px 6px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-sizing: border-box;">
+                    <!-- Prominent Header -->
+                    <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #0284c7; padding-bottom: 6px; margin-bottom: 8px;">
+                        <div style="display: flex; align-items: baseline; gap: 12px;">
+                            <h1 style="font-size: 18px; font-weight: 800; color: #0f172a; margin: 0; letter-spacing: -0.01em;">RD-Plan &bull; ITW Phasen Vorplanung</h1>
+                            <span style="font-size: 14px; color: #0284c7; font-weight: 700;">Planungsjahr ${year}</span>
                         </div>
-                        <div style="font-size: 9px; color: #475569; display: flex; gap: 10px; align-items: center;">
+                        <div style="font-size: 10px; color: #475569; display: flex; gap: 14px; align-items: center;">
                             <span>Stand: ${todayStr}</span>
-                            <span><strong>${displayedPhases.length} Phasen</strong> (${totalSlots} Slots)</span>
-                            <span style="font-weight: 600;">${occupiedSlots} / ${totalSlots} besetzt (${occupancyPercent}%) &bull; ${allGaps.length} offen</span>
+                            <span><strong>${displayedPhases.length} Phasen</strong> (${totalSlots} Schichtblöcke)</span>
+                            <span style="font-weight: 700; color: #0f172a;">${occupiedSlots} / ${totalSlots} besetzt (${occupancyPercent}%) &bull; ${allGaps.length} offen</span>
                         </div>
                     </div>
 
                     <!-- Department Stats Banner -->
-                    <div style="display: flex; gap: 6px; margin-bottom: 5px;">
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
                         ${deptStatsHtml}
                     </div>
 
                     <!-- 6-Column Grid of Phase Tiles -->
-                    <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px;">
+                    <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px;">
                         ${cardsHtml}
                     </div>
 
                     <!-- Footer -->
-                    <div style="margin-top: 4px; text-align: center; font-size: 8px; color: #94a3b8;">
-                        RD-Plan ITW-Vorplanung &bull; Jahr ${year} &bull; Seite 1 von 1
+                    <div style="margin-top: 8px; text-align: center; font-size: 8.5px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 4px;">
+                        RD-Plan ITW-Vorplanungssystem &bull; Planungsjahr ${year} &bull; Seite 1 von 1
                     </div>
                 </div>
             `;
