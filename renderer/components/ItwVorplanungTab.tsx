@@ -514,8 +514,8 @@ const ItwVorplanungTab: React.FC = () => {
                         `;
                     } else {
                         return `
-                            <div style="margin-bottom: 4px; padding: 4px 8px; background: #fff1f2; border-left: 3px solid #e11d48; border-radius: 4px; font-size: 11px; color: #be123c;">
-                                <strong>${role}:</strong> <em style="font-weight: bold; color: #dc2626;">⚠️ OFFEN / LÜCKE</em>
+                            <div style="margin-bottom: 4px; padding: 4px 8px; background: #f8fafc; border-left: 3px solid #cbd5e1; border-radius: 4px; font-size: 11px; color: #64748b;">
+                                <strong>${role}:</strong> <span style="font-style: italic; color: #94a3b8;">- Nicht besetzt -</span>
                                 <span style="display: inline-block; font-size: 9px; padding: 1px 6px; border-radius: 8px; background: ${deptColor.badgeBg}; color: ${deptColor.badgeColor}; border: 1px solid ${deptColor.badgeBorder}; margin-left: 6px; font-weight: 600;">${department}</span>
                             </div>
                         `;
@@ -528,8 +528,8 @@ const ItwVorplanungTab: React.FC = () => {
                 }).length;
 
                 const statusBadge = phaseGapsCount === 0
-                    ? `<span style="display: inline-block; padding: 3px 8px; background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; border-radius: 12px; font-size: 10px; font-weight: bold;">✓ Vollständig</span>`
-                    : `<span style="display: inline-block; padding: 3px 8px; background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 12px; font-size: 10px; font-weight: bold;">⚠️ ${phaseGapsCount} Lücke${phaseGapsCount > 1 ? 'n' : ''}</span>`;
+                    ? `<span style="display: inline-block; padding: 2px 8px; background: #f0fdf4; color: #166534; border: 1px solid #dcfce7; border-radius: 12px; font-size: 10px; font-weight: 500;">Vollständig</span>`
+                    : `<span style="display: inline-block; padding: 2px 8px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; border-radius: 12px; font-size: 10px; font-weight: 500;">${phaseGapsCount} offen</span>`;
 
                 return `
                     <tr style="border-bottom: 1px solid #e5e7eb; page-break-inside: avoid;">
@@ -570,10 +570,10 @@ const ItwVorplanungTab: React.FC = () => {
                 });
                 const openCount = reqCount - occCount;
                 return `
-                    <div style="flex: 1; padding: 8px 12px; background: ${colors.containerBg}; border: 1px solid ${colors.containerBorder}; border-left: 4px solid ${colors.accent}; border-radius: 6px;">
+                    <div style="flex: 1; padding: 8px 12px; background: ${colors.containerBg}; border: 1px solid ${colors.containerBorder}; border-left: 3px solid ${colors.accent}; border-radius: 6px;">
                         <div style="font-size: 11px; font-weight: bold; color: ${colors.badgeColor};">${dept}</div>
-                        <div style="font-size: 13px; font-weight: bold; margin-top: 2px; color: #1f2937;">${occCount} / ${reqCount} besetzt</div>
-                        <div style="font-size: 10px; color: ${openCount > 0 ? '#b91c1c' : '#15803d'}; font-weight: 600;">${openCount === 0 ? '✓ Keine Lücken' : `${openCount} offene Lücke(n)`}</div>
+                        <div style="font-size: 13px; font-weight: 600; margin-top: 2px; color: #1f2937;">${occCount} / ${reqCount} besetzt</div>
+                        <div style="font-size: 10px; color: ${openCount > 0 ? '#64748b' : '#15803d'};">${openCount === 0 ? 'Vollständig' : `${openCount} offen`}</div>
                     </div>
                 `;
             }).join('');
@@ -589,8 +589,8 @@ const ItwVorplanungTab: React.FC = () => {
                         <div style="text-align: right; font-size: 10px; color: #64748b;">
                             <div>Erstellt am: ${todayStr}</div>
                             <div>Gesamt: <strong>${displayedPhases.length} Phasen</strong> (${totalSlots} Schichtblöcke)</div>
-                            <div style="margin-top: 2px; font-weight: bold; color: ${allGaps.length === 0 ? '#15803d' : '#b91c1c'};">
-                                ${allGaps.length === 0 ? '✓ Vollständig besetzt (100%)' : `⚠️ ${occupiedSlots} / ${totalSlots} besetzt (${occupancyPercent}%) &bull; ${allGaps.length} offene Lücke(n)`}
+                            <div style="margin-top: 2px; color: #475569;">
+                                ${allGaps.length === 0 ? 'Vollständig besetzt (100%)' : `${occupiedSlots} / ${totalSlots} besetzt (${occupancyPercent}%) &bull; ${allGaps.length} offen`}
                             </div>
                         </div>
                     </div>
@@ -738,17 +738,17 @@ const ItwVorplanungTab: React.FC = () => {
                             alignItems: 'center',
                             gap: '8px',
                             padding: '4px 12px',
-                            borderRadius: '20px',
-                            background: allGaps.length === 0 ? '#dcfce7' : '#fff7ed',
-                            border: `1px solid ${allGaps.length === 0 ? '#86efac' : '#fdba74'}`,
+                            borderRadius: '16px',
+                            background: allGaps.length === 0 ? '#f0fdf4' : '#f8fafc',
+                            border: `1px solid ${allGaps.length === 0 ? '#dcfce7' : '#e2e8f0'}`,
                             fontSize: '12px',
-                            fontWeight: 600,
-                            color: allGaps.length === 0 ? '#15803d' : '#c2410c'
+                            fontWeight: 500,
+                            color: allGaps.length === 0 ? '#166534' : '#475569'
                         }}>
                             <span>{occupiedSlots} / {totalSlots} besetzt ({occupancyPercent}%)</span>
                             {allGaps.length > 0 && (
-                                <span style={{ background: '#ea580c', color: '#fff', padding: '1px 6px', borderRadius: '10px', fontSize: '10px' }}>
-                                    {allGaps.length} Lücke{allGaps.length > 1 ? 'n' : ''}
+                                <span style={{ background: '#f1f5f9', color: '#334155', padding: '1px 7px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>
+                                    {allGaps.length} offen
                                 </span>
                             )}
                         </div>
@@ -763,26 +763,26 @@ const ItwVorplanungTab: React.FC = () => {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '6px',
-                            padding: '7px 14px',
+                            padding: '6px 14px',
                             borderRadius: '6px',
-                            background: allGaps.length > 0 ? '#fff1f2' : '#f0fdf4',
-                            border: `1px solid ${allGaps.length > 0 ? '#fecdd3' : '#bbf7d0'}`,
-                            color: allGaps.length > 0 ? '#be123c' : '#166534',
-                            fontWeight: 600,
+                            background: '#ffffff',
+                            border: '1px solid #d1d5db',
+                            color: '#374151',
+                            fontWeight: 500,
                             fontSize: '13px',
                             cursor: 'pointer',
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
                             transition: 'all 0.15s'
                         }}
                     >
-                        <span>{allGaps.length > 0 ? '⚠️' : '✓'} Lücken-Übersicht</span>
+                        <span>Lücken-Übersicht</span>
                         <span style={{
                             padding: '1px 7px',
                             borderRadius: '10px',
-                            background: allGaps.length > 0 ? '#e11d48' : '#22c55e',
-                            color: '#fff',
+                            background: allGaps.length > 0 ? '#f1f5f9' : '#f0fdf4',
+                            color: allGaps.length > 0 ? '#475569' : '#166534',
                             fontSize: '11px',
-                            fontWeight: 700
+                            fontWeight: 600
                         }}>
                             {allGaps.length}
                         </span>
@@ -795,20 +795,19 @@ const ItwVorplanungTab: React.FC = () => {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '6px',
-                            padding: '7px 14px',
+                            padding: '6px 14px',
                             borderRadius: '6px',
                             background: '#0284c7',
                             border: '1px solid #0369a1',
                             color: '#ffffff',
-                            fontWeight: 600,
+                            fontWeight: 500,
                             fontSize: '13px',
                             cursor: (exportingPdf || displayedPhases.length === 0) ? 'not-allowed' : 'pointer',
                             opacity: (exportingPdf || displayedPhases.length === 0) ? 0.7 : 1,
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
                         }}
                     >
-                        <span>📄</span>
-                        <span>{exportingPdf ? 'Exportiere...' : 'Als PDF exportieren'}</span>
+                        {exportingPdf ? 'Exportiere...' : 'Als PDF exportieren'}
                     </button>
                 </div>
             </div>
@@ -850,36 +849,36 @@ const ItwVorplanungTab: React.FC = () => {
                             style={{ 
                                 flex: '1',
                                 minWidth: '320px', 
-                                border: `1px solid ${phaseGapsCount > 0 ? '#fecaca' : '#ddd'}`, 
+                                border: '1px solid #e2e8f0', 
                                 borderRadius: '8px',
                                 background: '#fff',
-                                boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
                                 display: 'flex',
                                 flexDirection: 'column'
                             }}
                         >
                             <div style={{ 
                                 padding: '12px 16px', 
-                                borderBottom: '1px solid #ddd', 
-                                background: phaseGapsCount > 0 ? '#fff5f5' : '#f8f9fa', 
+                                borderBottom: '1px solid #e2e8f0', 
+                                background: '#f8fafc', 
                                 borderRadius: '8px 8px 0 0',
                                 display: 'flex',
                                 justifyContent: 'space-between',
                                 alignItems: 'center'
                             }}>
                                 <div>
-                                    <div style={{ fontWeight: 'bold', fontSize: '15px', color: phaseGapsCount > 0 ? '#991b1b' : '#1f2937' }}>
+                                    <div style={{ fontWeight: 'bold', fontSize: '15px', color: '#1e293b' }}>
                                         {phase.title}
                                     </div>
-                                    <div style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>{phase.label}</div>
+                                    <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>{phase.label}</div>
                                 </div>
                                 {phaseGapsCount > 0 ? (
-                                    <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', background: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca' }}>
-                                        ⚠️ {phaseGapsCount} Lücke{phaseGapsCount > 1 ? 'n' : ''}
+                                    <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 8px', borderRadius: '12px', background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}>
+                                        {phaseGapsCount} offen
                                     </span>
                                 ) : (
-                                    <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0' }}>
-                                        ✓ Besetzt
+                                    <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 8px', borderRadius: '12px', background: '#f0fdf4', color: '#166534', border: '1px solid #dcfce7' }}>
+                                        Vollständig
                                     </span>
                                 )}
                             </div>
@@ -939,13 +938,13 @@ const ItwVorplanungTab: React.FC = () => {
                                                 padding: '10px 12px',
                                                 borderRadius: 6,
                                                 background: colors.containerBg,
-                                                border: `1px solid ${!isOccupied ? '#fecdd3' : colors.containerBorder}`,
-                                                borderLeft: `4px solid ${!isOccupied ? '#e11d48' : colors.accent}`
+                                                border: `1px solid ${colors.containerBorder}`,
+                                                borderLeft: `3px solid ${colors.accent}`
                                             }}
                                         >
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <label style={{ fontSize: 13, color: '#333', fontWeight: 600 }}>
-                                                    {role} {!isOccupied && <span style={{ color: '#e11d48', fontSize: '11px', fontWeight: 'bold' }}>[LÜCKE]</span>}
+                                                    {role}
                                                 </label>
                                                 <span style={{
                                                     fontSize: '11px',
@@ -967,15 +966,15 @@ const ItwVorplanungTab: React.FC = () => {
                                                 style={{
                                                     padding: '7px 8px',
                                                     borderRadius: 4,
-                                                    border: `1px solid ${!isOccupied ? '#f43f5e' : '#ccc'}`,
-                                                    backgroundColor: selectDisabled ? '#f1f5f9' : (!isOccupied ? '#fff5f5' : '#fff'),
+                                                    border: '1px solid #d1d5db',
+                                                    backgroundColor: selectDisabled ? '#f1f5f9' : '#ffffff',
                                                     cursor: selectDisabled ? 'not-allowed' : 'pointer',
                                                     fontSize: 13,
-                                                    fontWeight: !isOccupied ? 600 : 400
+                                                    color: !isOccupied ? '#64748b' : '#1f2937'
                                                 }}
                                             >
-                                                <option value="" style={{ color: '#be123c', fontWeight: 'bold' }}>
-                                                    {disabledReason && !isOccupied ? `- ${disabledReason} -` : '- Keine Zuordnung (Lücke) -'}
+                                                <option value="" style={{ color: '#64748b' }}>
+                                                    {disabledReason && !isOccupied ? `- ${disabledReason} -` : '- Nicht besetzt -'}
                                                 </option>
                                                 {availablePersonnel.map(p => {
                                                     const quals = activeQuals[p.id] || [];
@@ -1025,7 +1024,7 @@ const ItwVorplanungTab: React.FC = () => {
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                        backgroundColor: 'rgba(0, 0, 0, 0.4)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -1038,7 +1037,7 @@ const ItwVorplanungTab: React.FC = () => {
                         style={{
                             background: '#ffffff',
                             borderRadius: '12px',
-                            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
+                            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.05)',
                             width: '90%',
                             maxWidth: '850px',
                             maxHeight: '90vh',
@@ -1058,7 +1057,7 @@ const ItwVorplanungTab: React.FC = () => {
                             background: '#f8fafc'
                         }}>
                             <div>
-                                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
+                                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 600, color: '#0f172a' }}>
                                     ITW Vorplanung &bull; Lücken-Übersicht {year}
                                 </h3>
                                 <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>
@@ -1070,14 +1069,15 @@ const ItwVorplanungTab: React.FC = () => {
                                 style={{
                                     border: 'none',
                                     background: 'transparent',
-                                    fontSize: '20px',
+                                    fontSize: '13px',
+                                    fontWeight: 500,
                                     cursor: 'pointer',
                                     color: '#64748b',
                                     padding: '4px 8px',
                                     borderRadius: '6px'
                                 }}
                             >
-                                ✕
+                                Schließen
                             </button>
                         </div>
 
@@ -1087,43 +1087,43 @@ const ItwVorplanungTab: React.FC = () => {
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px' }}>
                                 <div style={{ padding: '12px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
                                     <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Gesamt-Bedarf</div>
-                                    <div style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>{totalSlots} Slots</div>
+                                    <div style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', marginTop: '4px' }}>{totalSlots} Slots</div>
                                     <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{displayedPhases.length} Phasen à 3 Rollen</div>
                                 </div>
 
-                                <div style={{ padding: '12px', borderRadius: '8px', background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                                <div style={{ padding: '12px', borderRadius: '8px', background: '#f0fdf4', border: '1px solid #dcfce7' }}>
                                     <div style={{ fontSize: '11px', fontWeight: 600, color: '#166534', textTransform: 'uppercase' }}>Besetzt</div>
-                                    <div style={{ fontSize: '20px', fontWeight: 800, color: '#15803d', marginTop: '4px' }}>
-                                        {occupiedSlots} <span style={{ fontSize: '14px', fontWeight: 600 }}>({occupancyPercent}%)</span>
+                                    <div style={{ fontSize: '18px', fontWeight: 700, color: '#166534', marginTop: '4px' }}>
+                                        {occupiedSlots} <span style={{ fontSize: '13px', fontWeight: 500 }}>({occupancyPercent}%)</span>
                                     </div>
                                     <div style={{ fontSize: '11px', color: '#166534', marginTop: '2px' }}>Zugeordnete Mitarbeiter</div>
                                 </div>
 
-                                <div style={{ padding: '12px', borderRadius: '8px', background: allGaps.length > 0 ? '#fff1f2' : '#f0fdf4', border: `1px solid ${allGaps.length > 0 ? '#fecdd3' : '#bbf7d0'}` }}>
-                                    <div style={{ fontSize: '11px', fontWeight: 600, color: allGaps.length > 0 ? '#9f1239' : '#166534', textTransform: 'uppercase' }}>Offene Lücken</div>
-                                    <div style={{ fontSize: '20px', fontWeight: 800, color: allGaps.length > 0 ? '#be123c' : '#15803d', marginTop: '4px' }}>
-                                        {allGaps.length} Lücke{allGaps.length !== 1 ? 'n' : ''}
+                                <div style={{ padding: '12px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                                    <div style={{ fontSize: '11px', fontWeight: 600, color: '#475569', textTransform: 'uppercase' }}>Offene Lücken</div>
+                                    <div style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', marginTop: '4px' }}>
+                                        {allGaps.length} <span style={{ fontSize: '13px', fontWeight: 500, color: '#64748b' }}>Slots</span>
                                     </div>
-                                    <div style={{ fontSize: '11px', color: allGaps.length > 0 ? '#9f1239' : '#166534', marginTop: '2px' }}>
-                                        {allGaps.length === 0 ? '✓ Vollständig besetzt' : 'Muss noch besetzt werden'}
+                                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                                        {allGaps.length === 0 ? 'Vollständig besetzt' : 'Noch zuzuordnen'}
                                     </div>
                                 </div>
                             </div>
 
                             {/* Department Breakdown */}
                             <div style={{ marginBottom: '20px' }}>
-                                <div style={{ fontSize: '13px', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
+                                <div style={{ fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>
                                     Lücken nach Abteilung:
                                 </div>
                                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                     <button
                                         onClick={() => setGapsDeptFilter('all')}
                                         style={{
-                                            padding: '6px 12px',
+                                            padding: '5px 12px',
                                             borderRadius: '6px',
-                                            border: gapsDeptFilter === 'all' ? '2px solid #0284c7' : '1px solid #d1d5db',
-                                            background: gapsDeptFilter === 'all' ? '#e0f2fe' : '#ffffff',
-                                            fontWeight: gapsDeptFilter === 'all' ? 700 : 500,
+                                            border: gapsDeptFilter === 'all' ? '1px solid #0284c7' : '1px solid #d1d5db',
+                                            background: gapsDeptFilter === 'all' ? '#f0f9ff' : '#ffffff',
+                                            fontWeight: gapsDeptFilter === 'all' ? 600 : 400,
                                             color: gapsDeptFilter === 'all' ? '#0369a1' : '#374151',
                                             cursor: 'pointer',
                                             fontSize: '12px'
@@ -1140,17 +1140,17 @@ const ItwVorplanungTab: React.FC = () => {
                                                 key={dept}
                                                 onClick={() => setGapsDeptFilter(dept)}
                                                 style={{
-                                                    padding: '6px 12px',
+                                                    padding: '5px 12px',
                                                     borderRadius: '6px',
-                                                    border: isSelected ? `2px solid ${colors.accent}` : '1px solid #d1d5db',
+                                                    border: isSelected ? `1px solid ${colors.accent}` : '1px solid #d1d5db',
                                                     background: isSelected ? colors.badgeBg : '#ffffff',
-                                                    fontWeight: isSelected ? 700 : 500,
+                                                    fontWeight: isSelected ? 600 : 400,
                                                     color: isSelected ? colors.badgeColor : '#374151',
                                                     cursor: 'pointer',
                                                     fontSize: '12px'
                                                 }}
                                             >
-                                                {dept} ({count} Lücke{count !== 1 ? 'n' : ''})
+                                                {dept} ({count} offen)
                                             </button>
                                         );
                                     })}
@@ -1159,7 +1159,7 @@ const ItwVorplanungTab: React.FC = () => {
 
                             {/* Role Filter */}
                             <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>Rollen-Filter:</span>
+                                <span style={{ fontSize: '13px', fontWeight: 500, color: '#334155' }}>Rolle:</span>
                                 <select
                                     value={gapsRoleFilter}
                                     onChange={e => setGapsRoleFilter(e.target.value)}
@@ -1180,23 +1180,22 @@ const ItwVorplanungTab: React.FC = () => {
                             {/* Gaps List / Table */}
                             {filteredGaps.length === 0 ? (
                                 <div style={{
-                                    padding: '30px',
+                                    padding: '24px',
                                     textAlign: 'center',
-                                    background: '#f0fdf4',
+                                    background: '#f8fafc',
                                     borderRadius: '8px',
-                                    border: '1px solid #bbf7d0',
-                                    color: '#15803d'
+                                    border: '1px solid #e2e8f0',
+                                    color: '#475569'
                                 }}>
-                                    <div style={{ fontSize: '24px', marginBottom: '8px' }}>🎉</div>
-                                    <div style={{ fontWeight: 700, fontSize: '15px' }}>Keine offenen Lücken gefunden!</div>
-                                    <div style={{ fontSize: '12px', color: '#166534', marginTop: '4px' }}>
+                                    <div style={{ fontWeight: 600, fontSize: '14px' }}>Keine offenen Lücken gefunden</div>
+                                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
                                         {allGaps.length === 0
-                                            ? 'Alle ITW-Schichtblöcke für das Jahr sind vollständig besetzt.'
+                                             ? 'Alle ITW-Schichtblöcke für das Jahr sind vollständig besetzt.'
                                             : 'Für die gewählten Filter liegen keine offenen Lücken vor.'}
                                     </div>
                                 </div>
                             ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     {filteredGaps.map((gap, idx) => {
                                         const colors = getDepartmentColor(gap.department);
                                         const isUserInTargetDept = normalizeDepartmentName(userDept) === normalizeDepartmentName(gap.department);
@@ -1234,16 +1233,16 @@ const ItwVorplanungTab: React.FC = () => {
                                                     flexWrap: 'wrap',
                                                     gap: '12px',
                                                     padding: '10px 14px',
-                                                    borderRadius: '8px',
+                                                    borderRadius: '6px',
                                                     background: '#fff',
-                                                    border: '1px solid #fed7aa',
-                                                    borderLeft: `4px solid ${colors.accent}`,
-                                                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                                                    border: '1px solid #e2e8f0',
+                                                    borderLeft: `3px solid ${colors.accent}`,
+                                                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
                                                 }}
                                             >
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '220px' }}>
                                                     <div>
-                                                        <div style={{ fontWeight: 700, fontSize: '13px', color: '#1e293b' }}>
+                                                        <div style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b' }}>
                                                             {gap.phaseTitle}
                                                         </div>
                                                         <div style={{ fontSize: '11px', color: '#64748b' }}>
@@ -1253,12 +1252,12 @@ const ItwVorplanungTab: React.FC = () => {
                                                 </div>
 
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>
+                                                    <span style={{ fontSize: '12px', fontWeight: 500, color: '#334155' }}>
                                                         {gap.role}
                                                     </span>
                                                     <span style={{
                                                         fontSize: '11px',
-                                                        fontWeight: 600,
+                                                        fontWeight: 500,
                                                         padding: '2px 8px',
                                                         borderRadius: '12px',
                                                         background: colors.badgeBg,
@@ -1308,18 +1307,18 @@ const ItwVorplanungTab: React.FC = () => {
                                                     <button
                                                         onClick={() => scrollToPhase(gap.start)}
                                                         style={{
-                                                            padding: '5px 10px',
+                                                            padding: '4px 10px',
                                                             borderRadius: '4px',
-                                                            border: '1px solid #cbd5e1',
+                                                            border: '1px solid #e2e8f0',
                                                             background: '#f8fafc',
                                                             color: '#0284c7',
                                                             fontSize: '11px',
-                                                            fontWeight: 600,
+                                                            fontWeight: 500,
                                                             cursor: 'pointer'
                                                         }}
                                                         title="Zu dieser Phase in der Übersicht springen"
                                                     >
-                                                        Zur Phase &rarr;
+                                                        Zur Phase
                                                     </button>
                                                 </div>
                                             </div>
@@ -1331,7 +1330,7 @@ const ItwVorplanungTab: React.FC = () => {
 
                         {/* Modal Footer */}
                         <div style={{
-                            padding: '14px 24px',
+                            padding: '12px 24px',
                             borderTop: '1px solid #e5e7eb',
                             display: 'flex',
                             alignItems: 'center',
@@ -1345,29 +1344,28 @@ const ItwVorplanungTab: React.FC = () => {
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '6px',
-                                    padding: '7px 14px',
+                                    padding: '6px 14px',
                                     borderRadius: '6px',
                                     background: '#0284c7',
                                     border: '1px solid #0369a1',
                                     color: '#ffffff',
-                                    fontWeight: 600,
+                                    fontWeight: 500,
                                     fontSize: '13px',
                                     cursor: exportingPdf ? 'not-allowed' : 'pointer'
                                 }}
                             >
-                                <span>📄</span>
-                                <span>{exportingPdf ? 'Exportiere...' : 'Vorplanung als PDF exportieren'}</span>
+                                {exportingPdf ? 'Exportiere...' : 'Vorplanung als PDF exportieren'}
                             </button>
 
                             <button
                                 onClick={() => setShowGapsModal(false)}
                                 style={{
-                                    padding: '7px 16px',
+                                    padding: '6px 16px',
                                     borderRadius: '6px',
                                     border: '1px solid #d1d5db',
                                     background: '#ffffff',
                                     color: '#374151',
-                                    fontWeight: 600,
+                                    fontWeight: 500,
                                     fontSize: '13px',
                                     cursor: 'pointer'
                                 }}
