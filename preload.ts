@@ -288,6 +288,7 @@ contextBridge.exposeInMainWorld('api', {
     testDirWritable: (dir: string) => ipcRenderer.invoke('test-dir-writable', dir),
     finalizeSetup: (dir: string) => ipcRenderer.invoke('finalize-setup', dir),
     notifyAllUpdated: () => ipcRenderer.invoke('notify-all-updated'),
+    exportHtmlToPdf: (options: { html: string; title?: string; defaultFileName?: string; landscape?: boolean }) => ipcRenderer.invoke('export-html-to-pdf', options),
 });
 
 // Ergänze für Electron Dialog API

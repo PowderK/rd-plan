@@ -1765,6 +1765,89 @@ ipcMain.handle('show-save-dialog', async (_event, options: any) => {
     return result;
 });
 
+ipcMain.handle('export-html-to-pdf', async (_event, options: { html: string; title?: string; defaultFileName?: string; landscape?: boolean }) => {
+    try {
+        const parent = BrowserWindow.getFocusedWindow() || (BrowserWindow.getAllWindows().length > 0 ? BrowserWindow.getAllWindows()[0] : undefined);
+        const defaultPath = options.defaultFileName || `${options.title || 'Export'}.pdf`;
+        const saveDialogOptions = {
+            title: options.title || 'Als PDF speichern',
+            defaultPath,
+            filters: [{ name: 'PDF Dokument', extensions: ['pdf'] }]
+        };
+        const { canceled, filePath } = parent
+            ? await dialog.showSaveDialog(parent, saveDialogOptions)
+            : await dialog.showSaveDialog(saveDialogOptions);
+
+        if (canceled || !filePath) {
+            return { success: false, canceled: true };
+        }
+
+        const printWindow = new BrowserWindow({
+            show: false,
+            width: 1200,
+            height: 900,
+            webPreferences: {
+                nodeIntegration: false,
+                contextIsolation: true
+            }
+        });
+
+        const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>${options.title || 'PDF Export'}</title>
+    <style>
+        @page {
+            size: A4 ${options.landscape !== false ? 'landscape' : 'portrait'};
+            margin: 8mm;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #1f2937;
+            background: #ffffff;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        * {
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    ${options.html}
+</body>
+</html>`;
+
+        await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`);
+        
+        await new Promise(res => setTimeout(res, 300));
+
+        const pdfData = await printWindow.webContents.printToPDF({
+            landscape: options.landscape !== false,
+            pageSize: 'A4',
+            printBackground: true,
+            margins: {
+                marginType: 'custom',
+                top: 0.3,
+                bottom: 0.3,
+                left: 0.3,
+                right: 0.3
+            }
+        });
+
+        fs.writeFileSync(filePath, pdfData);
+        printWindow.close();
+
+        return { success: true, filePath };
+    } catch (err: any) {
+        console.error('[PDF Export] Error:', err);
+        return { success: false, error: err?.message || String(err) };
+    }
+});
+
 // Setup IPCs
 ipcMain.handle('get-setup-defaults', async () => {
     const globalCfg = getGlobalDbConfigPath();

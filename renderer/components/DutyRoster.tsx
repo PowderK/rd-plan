@@ -705,17 +705,26 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   // Kombiniere Personal und Azubis für die Dienstplan-Tabelle
   type Row = { id: string; origId: number; name: string; vorname: string; isAzubi: boolean; lehrjahr?: number };
 
-  // Filtere Personal basierend auf Berechtigungen
-  let visiblePersonnel = personnel;
-  if ((canRead || canReadAll) && !canWrite && currentUser) {
-    // Read-Only: Zeige nur eigene Zeile, es sei denn user hat dienstplan_read_all
-    if (!canReadAll) {
-      visiblePersonnel = personnel.filter(p => p.personnelNumber === currentUser.personnelNumber);
+  const isOwnUser = (p: Person) => {
+    if (!currentUser) return false;
+    if (currentUser.userId === -1) return true; // Dev mode
+    if (currentUser.userId && Number(p.id) === Number(currentUser.userId)) return true;
+    if (currentUser.personnelNumber && p.personnelNumber && String(p.personnelNumber).trim().toLowerCase() === String(currentUser.personnelNumber).trim().toLowerCase()) return true;
+    if (currentUser.name && currentUser.vorname && p.name && p.vorname) {
+      return String(p.name).trim().toLowerCase() === String(currentUser.name).trim().toLowerCase() &&
+             String(p.vorname).trim().toLowerCase() === String(currentUser.vorname).trim().toLowerCase();
     }
+    return false;
+  };
+
+  // Filtere Personal basierend auf Berechtigungen: Wer keine Schreib- oder Read-All-Rechte hat, sieht nur die eigene Zeile
+  let visiblePersonnel = personnel;
+  if (!canWrite && !canReadAll && currentUser) {
+    visiblePersonnel = personnel.filter(p => isOwnUser(p));
   }
 
-  // Filtere Azubis: nur bei Schreibrechten anzeigen
-  const visibleAzubis = canWrite ? filteredAzubis : [];
+  // Filtere Azubis: nur bei Schreibrechten oder ReadAll anzeigen
+  const visibleAzubis = (canWrite || canReadAll) ? filteredAzubis : [];
 
   const allRows: Row[] = [
     ...visiblePersonnel.map(p => ({ id: `p_${p.id}`, origId: p.id, name: p.name, vorname: p.vorname, isAzubi: false })),
