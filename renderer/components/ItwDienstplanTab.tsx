@@ -22,17 +22,13 @@ const ItwDienstplanTab: React.FC = () => {
     const { currentUser, isDevMode } = useAuth();
     const isAppAdmin = isDevMode || currentUser?.roleName?.toLowerCase() === 'administrator';
     const itwDienstplanPerm = isAppAdmin
-        ? 'write'
-        : (currentUser?.permissions?.itw_dienstplan || (
-            currentUser?.permissions?.itw === 'write_all' ? 'write' :
-            currentUser?.permissions?.itw === 'write' ? 'read_all' :
-            currentUser?.permissions?.itw === 'read' ? 'read' : 'none'
-        ));
+        ? 'read_all'
+        : (currentUser?.permissions?.itw_dienstplan || 'none');
 
-    const canEditDienstplan = isAppAdmin || itwDienstplanPerm === 'write' || itwDienstplanPerm === 'write_all';
-    const canReadAll = isAppAdmin || canEditDienstplan || itwDienstplanPerm === 'read_all';
+    const canReadAll = isAppAdmin || itwDienstplanPerm === 'read_all';
     const canReadOwn = itwDienstplanPerm === 'read';
     const canRead = canReadAll || canReadOwn;
+    const canEditDienstplan = isAppAdmin;
 
     const [year, setYear] = useState<number>(new Date().getFullYear());
     const [month, setMonth] = useState<number>(new Date().getMonth());
@@ -63,7 +59,6 @@ const ItwDienstplanTab: React.FC = () => {
 
     const isOwnUser = (p: any) => {
         if (!currentUser) return false;
-        if (isDevMode || currentUser.userId === -1) return true;
         if (currentUser.userId && Number(p.id) === Number(currentUser.userId)) return true;
         if (currentUser.personnelNumber && p.personnelNumber && String(p.personnelNumber).trim().toLowerCase() === String(currentUser.personnelNumber).trim().toLowerCase()) return true;
         if (currentUser.name && currentUser.vorname && p.name && p.vorname) {

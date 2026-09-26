@@ -70,7 +70,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             itw: 'write_all',
             itw_vorplanung: 'write_all',
             itw_aerzte: 'write',
-            itw_dienstplan: 'write'
+            itw_dienstplan: 'read_all'
           },
           assignedDepartment: 'all'
         });

@@ -60,18 +60,14 @@ export class AuthService {
     else if (role.canViewItwAerzte === 1 || role.canViewItwAerzte === true) itw_aerzte = 'read';
     else if (role.canEditItwAll === 1 || role.canEditItwAll === true) itw_aerzte = 'write';
 
-    let itw_dienstplan: 'none' | 'read' | 'read_all' | 'write' = 'none';
-    if (role.canEditItwDienstplan === 1 || role.canEditItwDienstplan === true) itw_dienstplan = 'write';
-    else if (role.canViewItwDienstplanAll === 1 || role.canViewItwDienstplanAll === true) itw_dienstplan = 'read_all';
+    let itw_dienstplan: 'none' | 'read' | 'read_all' = 'none';
+    if (role.canViewItwDienstplanAll === 1 || role.canViewItwDienstplanAll === true || role.canEditItwDienstplan === 1 || role.canEditItwDienstplan === true) itw_dienstplan = 'read_all';
     else if (role.canViewItwDienstplan === 1 || role.canViewItwDienstplan === true) itw_dienstplan = 'read';
-    else if (role.canEditItwAll === 1 || role.canEditItwAll === true) itw_dienstplan = 'write';
-    else if (role.canEditItw === 1 || role.canEditItw === true) itw_dienstplan = 'read_all';
-    else if (role.canViewItw === 1 || role.canViewItw === true) itw_dienstplan = 'read';
 
     let itw: 'none' | 'read' | 'write' | 'write_all' = 'none';
-    if (itw_vorplanung === 'write_all' || itw_dienstplan === 'write') itw = 'write_all';
-    else if (itw_vorplanung === 'write' || itw_aerzte === 'write' || itw_dienstplan === 'read_all') itw = 'write';
-    else if (itw_vorplanung === 'read' || itw_aerzte === 'read' || itw_dienstplan === 'read') itw = 'read';
+    if (itw_vorplanung === 'write_all') itw = 'write_all';
+    else if (itw_vorplanung === 'write' || itw_aerzte === 'write') itw = 'write';
+    else if (itw_vorplanung === 'read' || itw_aerzte === 'read' || itw_dienstplan === 'read_all' || itw_dienstplan === 'read') itw = 'read';
 
     return {
       einteilung,
@@ -130,7 +126,7 @@ export class AuthService {
       itw: 'write_all',
       itw_vorplanung: 'write_all',
       itw_aerzte: 'write',
-      itw_dienstplan: 'write'
+      itw_dienstplan: 'read_all'
     };
   }
 

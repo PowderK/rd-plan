@@ -902,7 +902,7 @@ class SQLiteAdapter implements DatabaseAdapter {
         // Granular ITW permissions
         const vorplanungPerm = role.permissions?.itw_vorplanung || role.permissions?.itw || 'none';
         const aerztePerm = role.permissions?.itw_aerzte || (role.permissions?.itw === 'write_all' ? 'write' : 'none');
-        const dienstplanPerm = role.permissions?.itw_dienstplan || (role.permissions?.itw === 'write_all' ? 'write' : role.permissions?.itw === 'write' ? 'read_all' : role.permissions?.itw === 'read' ? 'read' : 'none');
+        const dienstplanPerm = role.permissions?.itw_dienstplan || 'none';
 
         const canViewItwVorplanung = (vorplanungPerm === 'read' || vorplanungPerm === 'write' || vorplanungPerm === 'write_all') ? 1 : 0;
         const canEditItwVorplanung = (vorplanungPerm === 'write' || vorplanungPerm === 'write_all') ? 1 : 0;
@@ -911,14 +911,14 @@ class SQLiteAdapter implements DatabaseAdapter {
         const canViewItwAerzte = (aerztePerm === 'read' || aerztePerm === 'write' || aerztePerm === 'write_all') ? 1 : 0;
         const canEditItwAerzte = (aerztePerm === 'write' || aerztePerm === 'write_all') ? 1 : 0;
 
-        const canViewItwDienstplan = (dienstplanPerm === 'read' || dienstplanPerm === 'read_all' || dienstplanPerm === 'write' || dienstplanPerm === 'write_all') ? 1 : 0;
-        const canViewItwDienstplanAll = (dienstplanPerm === 'read_all' || dienstplanPerm === 'write' || dienstplanPerm === 'write_all') ? 1 : 0;
-        const canEditItwDienstplan = (dienstplanPerm === 'write' || dienstplanPerm === 'write_all') ? 1 : 0;
+        const canViewItwDienstplan = (dienstplanPerm === 'read' || dienstplanPerm === 'read_all') ? 1 : 0;
+        const canViewItwDienstplanAll = (dienstplanPerm === 'read_all') ? 1 : 0;
+        const canEditItwDienstplan = 0;
 
         // Legacy general ITW flags
         const canViewItw = (canViewItwVorplanung || canViewItwAerzte || canViewItwDienstplan) ? 1 : 0;
-        const canEditItw = (canEditItwVorplanung || canEditItwAerzte || canEditItwDienstplan) ? 1 : 0;
-        const canEditItwAll = (canEditItwVorplanungAll || (canEditItwVorplanung && canEditItwAerzte && canEditItwDienstplan)) ? 1 : 0;
+        const canEditItw = (canEditItwVorplanung || canEditItwAerzte) ? 1 : 0;
+        const canEditItwAll = canEditItwVorplanungAll ? 1 : 0;
 
         const sort = typeof role.sort === 'number' ? role.sort : index;
 
