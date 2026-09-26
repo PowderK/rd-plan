@@ -1800,7 +1800,7 @@ ipcMain.handle('export-html-to-pdf', async (_event, options: { html: string; tit
     <style>
         @page {
             size: A4 ${options.landscape !== false ? 'landscape' : 'portrait'};
-            margin: 8mm;
+            margin: 6mm;
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -1831,10 +1831,10 @@ ipcMain.handle('export-html-to-pdf', async (_event, options: { html: string; tit
             printBackground: true,
             margins: {
                 marginType: 'custom',
-                top: 0.3,
-                bottom: 0.3,
-                left: 0.3,
-                right: 0.3
+                top: 0.2,
+                bottom: 0.2,
+                left: 0.2,
+                right: 0.2
             }
         });
 

@@ -488,7 +488,7 @@ const ItwVorplanungTab: React.FC = () => {
         setExportingPdf(true);
         try {
             const rotCount = itwRotationPhases.length || 3;
-            const todayStr = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            const todayStr = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
             
             const rowsHtml = displayedPhases.map((phase, phaseIdx) => {
                 const rotIdx = phaseIdx % rotCount;
@@ -499,25 +499,30 @@ const ItwVorplanungTab: React.FC = () => {
                     { role: 'Maschinist', department: rotConfig.maschinist }
                 ];
 
-                const rolesHtml = phaseRoles.map(({ role, department }) => {
+                const roleCells = phaseRoles.map(({ role, department }) => {
                     const currentAssgn = getAssignmentForPhase(phase.start, role, department);
                     const currentId = currentAssgn ? currentAssgn.person_id : null;
                     const person = currentId ? personnel.find(p => Number(p.id) === Number(currentId)) : null;
                     const deptColor = getDepartmentColor(department);
+                    const deptShort = department.replace('. Abteilung', '. Abt');
 
                     if (person) {
                         return `
-                            <div style="margin-bottom: 4px; padding: 4px 8px; background: ${deptColor.containerBg}; border-left: 3px solid ${deptColor.accent}; border-radius: 4px; font-size: 11px;">
-                                <strong>${role}:</strong> ${person.name}, ${person.vorname}
-                                <span style="display: inline-block; font-size: 9px; padding: 1px 6px; border-radius: 8px; background: ${deptColor.badgeBg}; color: ${deptColor.badgeColor}; border: 1px solid ${deptColor.badgeBorder}; margin-left: 6px; font-weight: 600;">${department}</span>
-                            </div>
+                            <td style="padding: 3px 6px; vertical-align: middle; border-right: 1px solid #e2e8f0; font-size: 10px;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px;">
+                                    <span style="font-weight: 600; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${person.name}, ${person.vorname}</span>
+                                    <span style="display: inline-block; font-size: 8px; padding: 1px 4px; border-radius: 3px; background: ${deptColor.badgeBg}; color: ${deptColor.badgeColor}; border: 1px solid ${deptColor.badgeBorder}; font-weight: 600; white-space: nowrap;">${deptShort}</span>
+                                </div>
+                            </td>
                         `;
                     } else {
                         return `
-                            <div style="margin-bottom: 4px; padding: 4px 8px; background: #f8fafc; border-left: 3px solid #cbd5e1; border-radius: 4px; font-size: 11px; color: #64748b;">
-                                <strong>${role}:</strong> <span style="font-style: italic; color: #94a3b8;">- Nicht besetzt -</span>
-                                <span style="display: inline-block; font-size: 9px; padding: 1px 6px; border-radius: 8px; background: ${deptColor.badgeBg}; color: ${deptColor.badgeColor}; border: 1px solid ${deptColor.badgeBorder}; margin-left: 6px; font-weight: 600;">${department}</span>
-                            </div>
+                            <td style="padding: 3px 6px; vertical-align: middle; border-right: 1px solid #e2e8f0; font-size: 10px;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px;">
+                                    <span style="color: #94a3b8; font-style: italic; white-space: nowrap;">- Nicht besetzt -</span>
+                                    <span style="display: inline-block; font-size: 8px; padding: 1px 4px; border-radius: 3px; background: ${deptColor.badgeBg}; color: ${deptColor.badgeColor}; border: 1px solid ${deptColor.badgeBorder}; font-weight: 600; white-space: nowrap;">${deptShort}</span>
+                                </div>
+                            </td>
                         `;
                     }
                 }).join('');
@@ -528,26 +533,27 @@ const ItwVorplanungTab: React.FC = () => {
                 }).length;
 
                 const statusBadge = phaseGapsCount === 0
-                    ? `<span style="display: inline-block; padding: 2px 8px; background: #f0fdf4; color: #166534; border: 1px solid #dcfce7; border-radius: 12px; font-size: 10px; font-weight: 500;">Vollständig</span>`
-                    : `<span style="display: inline-block; padding: 2px 8px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; border-radius: 12px; font-size: 10px; font-weight: 500;">${phaseGapsCount} offen</span>`;
+                    ? `<span style="display: inline-block; padding: 1px 6px; background: #f0fdf4; color: #166534; border: 1px solid #dcfce7; border-radius: 10px; font-size: 9px; font-weight: 600; white-space: nowrap;">Vollständig</span>`
+                    : `<span style="display: inline-block; padding: 1px 6px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 9px; font-weight: 600; white-space: nowrap;">${phaseGapsCount} offen</span>`;
+
+                const isEven = phaseIdx % 2 === 1;
+                const rowBg = isEven ? '#f8fafc' : '#ffffff';
 
                 return `
-                    <tr style="border-bottom: 1px solid #e5e7eb; page-break-inside: avoid;">
-                        <td style="padding: 8px 10px; vertical-align: top; font-weight: bold; width: 140px;">
-                            <div style="font-size: 12px; color: #111827;">${phase.title}</div>
-                            <div style="font-size: 10px; color: #6b7280; margin-top: 2px;">${phase.label}</div>
+                    <tr style="border-bottom: 1px solid #e2e8f0; background: ${rowBg}; page-break-inside: avoid; height: 22px;">
+                        <td style="padding: 3px 6px; vertical-align: middle; border-right: 1px solid #e2e8f0; white-space: nowrap; width: 140px;">
+                            <span style="font-weight: 700; font-size: 10px; color: #0f172a;">${phase.title}</span>
+                            <span style="font-size: 9px; color: #64748b; margin-left: 4px;">(${phase.label})</span>
                         </td>
-                        <td style="padding: 6px 10px; vertical-align: top;">
-                            ${rolesHtml}
-                        </td>
-                        <td style="padding: 8px 10px; vertical-align: middle; text-align: center; width: 110px;">
+                        ${roleCells}
+                        <td style="padding: 3px 6px; vertical-align: middle; text-align: center; width: 85px;">
                             ${statusBadge}
                         </td>
                     </tr>
                 `;
             }).join('');
 
-            // Dept breakdown stats
+            // Dept breakdown stats (compact banner)
             const deptStatsHtml = DEPARTMENTS.map(dept => {
                 const colors = getDepartmentColor(dept);
                 let reqCount = 0;
@@ -570,43 +576,43 @@ const ItwVorplanungTab: React.FC = () => {
                 });
                 const openCount = reqCount - occCount;
                 return `
-                    <div style="flex: 1; padding: 8px 12px; background: ${colors.containerBg}; border: 1px solid ${colors.containerBorder}; border-left: 3px solid ${colors.accent}; border-radius: 6px;">
-                        <div style="font-size: 11px; font-weight: bold; color: ${colors.badgeColor};">${dept}</div>
-                        <div style="font-size: 13px; font-weight: 600; margin-top: 2px; color: #1f2937;">${occCount} / ${reqCount} besetzt</div>
-                        <div style="font-size: 10px; color: ${openCount > 0 ? '#64748b' : '#15803d'};">${openCount === 0 ? 'Vollständig' : `${openCount} offen`}</div>
+                    <div style="flex: 1; padding: 4px 10px; background: ${colors.containerBg}; border: 1px solid ${colors.containerBorder}; border-left: 3px solid ${colors.accent}; border-radius: 4px; display: flex; align-items: center; justify-content: space-between;">
+                        <span style="font-size: 10px; font-weight: bold; color: ${colors.badgeColor};">${dept}</span>
+                        <span style="font-size: 10px; font-weight: 600; color: #1f2937;">${occCount} / ${reqCount} besetzt</span>
+                        <span style="font-size: 9px; color: ${openCount > 0 ? '#64748b' : '#15803d'}; font-weight: 500;">${openCount === 0 ? 'Vollständig' : `${openCount} offen`}</span>
                     </div>
                 `;
             }).join('');
 
             const html = `
-                <div style="padding: 10px 15px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-                    <!-- Header -->
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0284c7; padding-bottom: 10px; margin-bottom: 12px;">
-                        <div>
-                            <h1 style="font-size: 20px; font-weight: 800; color: #0f172a; margin: 0;">RD-Plan &bull; ITW Phasen Vorplanung</h1>
-                            <div style="font-size: 13px; color: #0284c7; font-weight: 600; margin-top: 3px;">Planungsjahr ${year}</div>
+                <div style="padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; height: 100%; box-sizing: border-box;">
+                    <!-- Compact Header -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0284c7; padding-bottom: 4px; margin-bottom: 6px;">
+                        <div style="display: flex; align-items: baseline; gap: 10px;">
+                            <h1 style="font-size: 15px; font-weight: 800; color: #0f172a; margin: 0;">RD-Plan &bull; ITW Phasen Vorplanung</h1>
+                            <span style="font-size: 12px; color: #0284c7; font-weight: 700;">Planungsjahr ${year}</span>
                         </div>
-                        <div style="text-align: right; font-size: 10px; color: #64748b;">
-                            <div>Erstellt am: ${todayStr}</div>
-                            <div>Gesamt: <strong>${displayedPhases.length} Phasen</strong> (${totalSlots} Schichtblöcke)</div>
-                            <div style="margin-top: 2px; color: #475569;">
-                                ${allGaps.length === 0 ? 'Vollständig besetzt (100%)' : `${occupiedSlots} / ${totalSlots} besetzt (${occupancyPercent}%) &bull; ${allGaps.length} offen`}
-                            </div>
+                        <div style="font-size: 9.5px; color: #475569; display: flex; gap: 12px; align-items: center;">
+                            <span>Stand: ${todayStr}</span>
+                            <span><strong>${displayedPhases.length} Phasen</strong> (${totalSlots} Slots)</span>
+                            <span style="font-weight: 600;">${occupiedSlots} / ${totalSlots} besetzt (${occupancyPercent}%) &bull; ${allGaps.length} offen</span>
                         </div>
                     </div>
 
                     <!-- Department Stats Banner -->
-                    <div style="display: flex; gap: 10px; margin-bottom: 14px;">
+                    <div style="display: flex; gap: 8px; margin-bottom: 6px;">
                         ${deptStatsHtml}
                     </div>
 
-                    <!-- Table -->
-                    <table style="width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden;">
+                    <!-- 1-Page Compact Table -->
+                    <table style="width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; overflow: hidden; table-layout: fixed;">
                         <thead>
-                            <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1; text-align: left; font-size: 11px; color: #334155;">
-                                <th style="padding: 8px 10px;">Phase & Zeitraum</th>
-                                <th style="padding: 8px 10px;">Besetzung (Rolle &bull; Mitarbeiter &bull; Abteilung)</th>
-                                <th style="padding: 8px 10px; text-align: center;">Status</th>
+                            <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1; text-align: left; font-size: 10px; color: #334155; height: 22px;">
+                                <th style="padding: 3px 6px; width: 140px; border-right: 1px solid #cbd5e1;">Phase & Zeitraum</th>
+                                <th style="padding: 3px 6px; border-right: 1px solid #cbd5e1;">Fahrzeugführer 1</th>
+                                <th style="padding: 3px 6px; border-right: 1px solid #cbd5e1;">Fahrzeugführer 2</th>
+                                <th style="padding: 3px 6px; border-right: 1px solid #cbd5e1;">Maschinist</th>
+                                <th style="padding: 3px 6px; text-align: center; width: 85px;">Status</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -614,9 +620,9 @@ const ItwVorplanungTab: React.FC = () => {
                         </tbody>
                     </table>
 
-                    <!-- Footer -->
-                    <div style="margin-top: 14px; text-align: center; font-size: 9px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 6px;">
-                        RD-Plan ITW-Vorplanungssystem &bull; ${year}
+                    <!-- Minimal Footer -->
+                    <div style="margin-top: 4px; text-align: center; font-size: 8.5px; color: #94a3b8;">
+                        RD-Plan ITW-Vorplanung &bull; Jahr ${year} &bull; Seite 1 von 1
                     </div>
                 </div>
             `;
