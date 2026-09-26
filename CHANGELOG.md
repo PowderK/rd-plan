@@ -1,3 +1,18 @@
+## Build 1538 - 2026-09-26
+
+- automated build
+
+## Version 1.5.6 - 2026-09-26
+
+- **ITW-Vorplanung**:
+  - **Lücken-Übersicht (Gaps-Modal)**: Übersicht aller unbesetzten ITW-Phasen mit Filterung nach Abteilung/Rolle, direkter Schnelleinteilung und Klick-Sprung zur Phase.
+  - **1-Seiten PDF-Export**: Vollständiger PDF-Export der Vorplanung im responsiven Kachel-Layout mit Farbcodierung und optimierter Platznutzung auf genau einer Seite.
+  - **Dropdown-Filterung nach ITW-Qualifikation**: Mitarbeiter ohne ITW-Qualifikation (weder ITW-Fahrzeugführer noch ITW-Maschinist) werden vollständig aus dem Zuweisungs-Dropdown ausgeblendet.
+  - **Qualifikations-Übersteuerung für Planer (`canWriteAll`)**: Benutzer mit vollen Schreibrechten können Kollegen bei Bedarf flexibel übersteuern; fehlende Teilqualifikationen werden optisch hervorgehoben (`FzF fehlt` / `Ma fehlt`) und beim Zuweisen mit einem Bestätigungshinweis versehen.
+- **ITW-Dienstplan & Rechteverwaltung**:
+  - Rollenrechte für ITW-Dienstplan auf `Lesen` (nur eigene Zeile) und `Alle Lesen` (alle Zeilen) umgestellt.
+  - Berechtigungsprüfung im `auth-service` und `database-manager` überarbeitet, sodass Benutzer mit reinem Leserecht nur ihre eigene Zeile sehen.
+
 ## Build 1537 - 2026-09-26
 
 - automated build

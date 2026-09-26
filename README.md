@@ -7,9 +7,16 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v1.5.5** - ITW-Ärzte Vorplanung mit Copy & Paste Import, Verfügbarkeitszeiträume / Perioden für Ärzte, ITW-Phasenrotation nach Abteilung mit Farbcodierung, Taucher-Kennzeichnung mit Feature-Toggle sowie Klick-Optimierungen für macOS.
+**v1.5.6** - ITW-Vorplanung mit Lücken-Übersicht & PDF-Export im 1-Seiten-Kachel-Raster, flexibler Dropdown-Filterung nach ITW-Qualifikation, Warnhinweis bei Qualifikationsübersteuerung sowie optimierter Rollen- und Rechteverwaltung für den ITW-Dienstplan (Lesen / Alle Lesen).
 
 ## Funktionen
+
+### ITW-Vorplanung & Dienstplan-Rechte (v1.5.6+)
+- **Lücken-Übersicht (Gaps-Modal)**: Schnelle Übersicht aller unbesetzten Phasen nach Abteilung und Rolle mit direkter Zuweisungsmöglichkeit und Schnellnavigation zur Phase.
+- **1-Seiten PDF-Export**: Kompakter, sauber strukturierter Vorplanungs-Export im responsiven Kachel-Raster mit Abteilungs-Farbcodierung.
+- **Smarte Dropdown-Filterung**: Kollegen ohne ITW-Qualifikation werden automatisch aus dem Auswahl-Dropdown ausgeblendet.
+- **Rollen-Flexibilität für Admins/Planer**: Benutzer mit Schreibrechten Alle können Kollegen bei Bedarf flexibel übersteuern (mit Bestätigungshinweis und optischer Kennzeichnung fehlender Teilqualifikationen).
+- **Feingranulare ITW-Dienstplan-Rechte**: Berechtigungsstufen auf *Lesen* (nur eigene Zeile) und *Alle Lesen* angepasst.
 
 ### Taucher-Kennzeichnung & Feature-Toggle (v1.5.5+)
 - **Sonderqualifikation Taucher**: Automatische visuelle Kennzeichnung (blauer Markierungsstrich) im Kontrollkasten, im Dienstplan und in der Werte-Übersicht für Personal mit Taucher-Qualifikation im gewählten Zeitraum.
