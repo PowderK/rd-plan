@@ -362,6 +362,20 @@ const ItwVorplanungTab: React.FC = () => {
         });
     };
 
+    const hasItwFzfQual = (pId: number) => {
+        const quals = activeQuals[pId] || [];
+        return quals.includes('ITW Fahrzeugführer') || quals.includes('Fahrzeugführer') || quals.includes('Fahrzeugführer HLF-B');
+    };
+
+    const hasItwMaschQual = (pId: number) => {
+        const quals = activeQuals[pId] || [];
+        return quals.includes('ITW Maschinist');
+    };
+
+    const hasAnyItwQual = (pId: number) => {
+        return hasItwFzfQual(pId) || hasItwMaschQual(pId);
+    };
+
     const handleAssign = async (phaseStart: string, phaseEnd: string, role: string, department: string, value: string) => {
         const pId = value ? parseInt(value, 10) : null;
         
@@ -372,17 +386,26 @@ const ItwVorplanungTab: React.FC = () => {
         }
 
         if (pId) {
-            const quals = activeQuals[pId] || [];
-            const isFzf = quals.includes('ITW Fahrzeugführer') || quals.includes('Fahrzeugführer') || quals.includes('Fahrzeugführer HLF-B');
-            const isMasch = quals.includes('ITW Maschinist');
+            const isFzf = hasItwFzfQual(pId);
+            const isMasch = hasItwMaschQual(pId);
+            const assignedPerson = personnel.find(p => Number(p.id) === Number(pId));
+            const pName = assignedPerson ? `${assignedPerson.name}, ${assignedPerson.vorname}` : 'Mitarbeiter';
 
+            let missingQual = '';
             if (role.startsWith('Fahrzeugführer') && !isFzf) {
-                alert('Mitarbeiter hat keine Fahrzeugführer Qualifikation!');
-                return;
+                missingQual = 'Fahrzeugführer-Qualifikation';
+            } else if (role === 'Maschinist' && !isMasch) {
+                missingQual = 'Maschinist-Qualifikation';
             }
-            if (role === 'Maschinist' && !isMasch) {
-                alert('Mitarbeiter hat keine Maschinist Qualifikation!');
-                return;
+
+            if (missingQual) {
+                if (canWriteAll) {
+                    const proceed = window.confirm(`Hinweis: ${pName} besitzt keine ${missingQual}!\n\nTrotzdem für die Rolle "${role}" einteilen?`);
+                    if (!proceed) return;
+                } else {
+                    alert(`Mitarbeiter hat keine ${missingQual}!`);
+                    return;
+                }
             }
 
             try {
@@ -907,11 +930,11 @@ const ItwVorplanungTab: React.FC = () => {
                                         disabledReason = 'Keine Schreibrechte';
                                     }
 
-                                    // Filter personnel for dropdown
+                                    // Filter personnel for dropdown: only colleagues with at least one ITW qualification (FzF or Masch) are shown
                                     const availablePersonnel = canWriteAll
-                                        ? personnel
+                                        ? personnel.filter(p => hasAnyItwQual(p.id) || Number(p.id) === Number(currentId))
                                         : (canWriteOwn
-                                            ? personnel.filter(p => (isOwnUser(p) && isUserInTargetDept) || Number(p.id) === Number(currentId))
+                                            ? personnel.filter(p => ((isOwnUser(p) && isUserInTargetDept && hasAnyItwQual(p.id)) || Number(p.id) === Number(currentId)))
                                             : personnel.filter(p => Number(p.id) === Number(currentId)));
 
                                     const colors = getDepartmentColor(department);
@@ -965,9 +988,8 @@ const ItwVorplanungTab: React.FC = () => {
                                                     {disabledReason && !isOccupied ? `- ${disabledReason} -` : '- Nicht besetzt -'}
                                                 </option>
                                                 {availablePersonnel.map(p => {
-                                                    const quals = activeQuals[p.id] || [];
-                                                    const isFzf = quals.includes('ITW Fahrzeugführer') || quals.includes('Fahrzeugführer') || quals.includes('Fahrzeugführer HLF-B');
-                                                    const isMasch = quals.includes('ITW Maschinist');
+                                                    const isFzf = hasItwFzfQual(p.id);
+                                                    const isMasch = hasItwMaschQual(p.id);
                                                     
                                                     let valid = true;
                                                     let missing = '';
@@ -981,13 +1003,14 @@ const ItwVorplanungTab: React.FC = () => {
                                                     }
 
                                                     const deptLabel = p.department ? ` (${p.department})` : '';
+                                                    const isOptionDisabled = canWriteAll ? false : !valid;
 
                                                     return (
                                                         <option 
                                                             key={p.id} 
                                                             value={p.id}
-                                                            disabled={!valid}
-                                                            style={{ color: valid ? '#000' : '#ccc' }}
+                                                            disabled={isOptionDisabled}
+                                                            style={{ color: valid ? '#000' : (canWriteAll ? '#d97706' : '#ccc') }}
                                                         >
                                                             {p.name}, {p.vorname}{deptLabel} {!valid ? `(${missing})` : ''}
                                                         </option>
@@ -1206,9 +1229,9 @@ const ItwVorplanungTab: React.FC = () => {
                                         }
 
                                         const availablePersonnel = canWriteAll
-                                            ? personnel
+                                            ? personnel.filter(p => hasAnyItwQual(p.id))
                                             : (canWriteOwn
-                                                ? personnel.filter(p => isOwnUser(p) && isUserInTargetDept)
+                                                ? personnel.filter(p => isOwnUser(p) && isUserInTargetDept && hasAnyItwQual(p.id))
                                                 : []);
 
                                         return (
@@ -1276,16 +1299,29 @@ const ItwVorplanungTab: React.FC = () => {
                                                         >
                                                             <option value="">- Jetzt zuordnen -</option>
                                                             {availablePersonnel.map(p => {
-                                                                const quals = activeQuals[p.id] || [];
-                                                                const isFzf = quals.includes('ITW Fahrzeugführer') || quals.includes('Fahrzeugführer') || quals.includes('Fahrzeugführer HLF-B');
-                                                                const isMasch = quals.includes('ITW Maschinist');
+                                                                const isFzf = hasItwFzfQual(p.id);
+                                                                const isMasch = hasItwMaschQual(p.id);
                                                                 let valid = true;
-                                                                if (gap.role.startsWith('Fahrzeugführer') && !isFzf) valid = false;
-                                                                if (gap.role === 'Maschinist' && !isMasch) valid = false;
+                                                                let missing = '';
+                                                                if (gap.role.startsWith('Fahrzeugführer') && !isFzf) {
+                                                                    valid = false;
+                                                                    missing = 'FzF fehlt';
+                                                                }
+                                                                if (gap.role === 'Maschinist' && !isMasch) {
+                                                                    valid = false;
+                                                                    missing = 'Ma fehlt';
+                                                                }
+
+                                                                const isOptionDisabled = canWriteAll ? false : !valid;
 
                                                                 return (
-                                                                    <option key={p.id} value={p.id} disabled={!valid}>
-                                                                        {p.name}, {p.vorname} {!valid ? '(Quali fehlt)' : ''}
+                                                                    <option 
+                                                                        key={p.id} 
+                                                                        value={p.id} 
+                                                                        disabled={isOptionDisabled}
+                                                                        style={{ color: valid ? '#000' : (canWriteAll ? '#d97706' : '#ccc') }}
+                                                                    >
+                                                                        {p.name}, {p.vorname} {!valid ? `(${missing})` : ''}
                                                                     </option>
                                                                 );
                                                             })}
