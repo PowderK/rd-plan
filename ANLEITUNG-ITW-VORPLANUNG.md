@@ -37,14 +37,21 @@ Jede Kachel steht für eine **3-wöchige ITW-Phase (21 Tage)** mit genauem Datum
 
 ---
 
-### Schritt 5: Eintragen für eine Phase
+### Schritt 5: Schnelleinteilung über den Button „Freie Phasen“
+* Oben rechts findest du den Button **„Freie Phasen“** mit einem Zähler für alle noch offenen Slots deiner Abteilung.
+* Ein Klick darauf öffnet eine kompakte Übersicht aller freien Schichtblöcke, die **zu deiner Abteilung und deiner Qualifikation passen**.
+* Mit dem Button **„Mich eintragen“** kannst du dich mit einem Klick direkt für die Phase einteilen, oder über **„Zur Phase“** direkt zur Karte in der Gesamtansicht springen.
+
+---
+
+### Schritt 6: Manuelles Eintragen in den Phasenkarten
 1. Suche die Phase und die freie Position deiner Abteilung heraus.
 2. Öffne das Dropdown-Feld der Position.
 3. Wähle deinen Namen aus.
 
 ---
 
-### Schritt 6: Automatische Übernahme in den Dienstplan
+### Schritt 7: Automatische Übernahme in den Dienstplan
 * Sobald du deinen Namen ausgewählt hast, wird der Eintrag sofort gespeichert.
 * **Automatisch:** Alle ITW-Dienste (`IW`) deiner Abteilung innerhalb dieser 3 Wochen werden direkt in deinen persönlichen ITW-Dienstplan übertragen (Feiertage ausgenommen).
 
