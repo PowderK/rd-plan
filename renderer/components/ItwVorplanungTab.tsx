@@ -63,13 +63,17 @@ const ItwVorplanungTab: React.FC = () => {
         return false;
     };
 
+    const ownPerson = useMemo(() => personnel.find(p => isOwnUser(p)), [personnel, currentUser]);
+    const ownQuals = useMemo(() => ownPerson ? (activeQuals[ownPerson.id] || []) : [], [ownPerson, activeQuals]);
+    const isOwnFzf = useMemo(() => ownQuals.includes('ITW Fahrzeugführer') || ownQuals.includes('Fahrzeugführer') || ownQuals.includes('Fahrzeugführer HLF-B'), [ownQuals]);
+    const isOwnMasch = useMemo(() => ownQuals.includes('ITW Maschinist'), [ownQuals]);
+
     const userDept = useMemo(() => {
         if (currentUser?.assignedDepartment && currentUser.assignedDepartment !== 'all') {
             return currentUser.assignedDepartment;
         }
-        const ownPerson = personnel.find(p => isOwnUser(p));
         return ownPerson?.department || (currentUser?.assignedDepartment === 'all' ? '1. Abteilung' : '1. Abteilung');
-    }, [currentUser, personnel]);
+    }, [currentUser, ownPerson]);
 
     const sortedItwSeqs = useMemo(() => {
         return [...itwSeqs].sort((a, b) => a.startDate.localeCompare(b.startDate));
@@ -479,6 +483,21 @@ const ItwVorplanungTab: React.FC = () => {
     const occupiedSlots = totalSlots - allGaps.length;
     const occupancyPercent = totalSlots > 0 ? Math.round((occupiedSlots / totalSlots) * 100) : 0;
 
+    const userRelevantGaps = useMemo<ItwGap[]>(() => {
+        return allGaps.filter(gap => {
+            if (normalizeDepartmentName(gap.department) !== normalizeDepartmentName(userDept)) {
+                return false;
+            }
+            if (gap.role.startsWith('Fahrzeugführer') && !isOwnFzf) {
+                return false;
+            }
+            if (gap.role === 'Maschinist' && !isOwnMasch) {
+                return false;
+            }
+            return true;
+        });
+    }, [allGaps, userDept, isOwnFzf, isOwnMasch]);
+
     const filteredGaps = useMemo(() => {
         return allGaps.filter(gap => {
             if (gapsDeptFilter !== 'all' && normalizeDepartmentName(gap.department) !== normalizeDepartmentName(gapsDeptFilter)) {
@@ -490,6 +509,13 @@ const ItwVorplanungTab: React.FC = () => {
             return true;
         });
     }, [allGaps, gapsDeptFilter, gapsRoleFilter]);
+
+    const displayedGapsInModal = useMemo<ItwGap[]>(() => {
+        if (!canWriteAll) {
+            return userRelevantGaps;
+        }
+        return filteredGaps;
+    }, [canWriteAll, userRelevantGaps, filteredGaps]);
 
     const scrollToPhase = (phaseStart: string) => {
         setShowGapsModal(false);
@@ -786,40 +812,42 @@ const ItwVorplanungTab: React.FC = () => {
                             transition: 'all 0.15s'
                         }}
                     >
-                        <span>Lücken-Übersicht</span>
+                        <span>{canWriteAll ? 'Lücken-Übersicht' : 'Freie Phasen'}</span>
                         <span style={{
                             padding: '1px 7px',
                             borderRadius: '10px',
-                            background: allGaps.length > 0 ? '#f1f5f9' : '#f0fdf4',
-                            color: allGaps.length > 0 ? '#475569' : '#166534',
+                            background: (canWriteAll ? allGaps.length : userRelevantGaps.length) > 0 ? '#f1f5f9' : '#f0fdf4',
+                            color: (canWriteAll ? allGaps.length : userRelevantGaps.length) > 0 ? '#475569' : '#166534',
                             fontSize: '11px',
                             fontWeight: 600
                         }}>
-                            {allGaps.length}
+                            {canWriteAll ? allGaps.length : userRelevantGaps.length}
                         </span>
                     </button>
 
-                    <button
-                        onClick={handleExportPdf}
-                        disabled={exportingPdf || displayedPhases.length === 0}
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '6px 14px',
-                            borderRadius: '6px',
-                            background: '#0284c7',
-                            border: '1px solid #0369a1',
-                            color: '#ffffff',
-                            fontWeight: 500,
-                            fontSize: '13px',
-                            cursor: (exportingPdf || displayedPhases.length === 0) ? 'not-allowed' : 'pointer',
-                            opacity: (exportingPdf || displayedPhases.length === 0) ? 0.7 : 1,
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
-                        }}
-                    >
-                        {exportingPdf ? 'Exportiere...' : 'Als PDF exportieren'}
-                    </button>
+                    {canWriteAll && (
+                        <button
+                            onClick={handleExportPdf}
+                            disabled={exportingPdf || displayedPhases.length === 0}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '6px 14px',
+                                borderRadius: '6px',
+                                background: '#0284c7',
+                                border: '1px solid #0369a1',
+                                color: '#ffffff',
+                                fontWeight: 500,
+                                fontSize: '13px',
+                                cursor: (exportingPdf || displayedPhases.length === 0) ? 'not-allowed' : 'pointer',
+                                opacity: (exportingPdf || displayedPhases.length === 0) ? 0.7 : 1,
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                            }}
+                        >
+                            {exportingPdf ? 'Exportiere...' : 'Als PDF exportieren'}
+                        </button>
+                    )}
                 </div>
             </div>
             
@@ -1069,10 +1097,12 @@ const ItwVorplanungTab: React.FC = () => {
                         }}>
                             <div>
                                 <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 600, color: '#0f172a' }}>
-                                    ITW Vorplanung &bull; Lücken-Übersicht {year}
+                                    {canWriteAll ? `ITW Vorplanung • Lücken-Übersicht ${year}` : `Freie ITW-Phasen (${userDept}) • ${year}`}
                                 </h3>
                                 <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>
-                                    Übersicht aller unbesetzten ITW-Schichtblöcke für das Planungsjahr
+                                    {canWriteAll
+                                        ? 'Übersicht aller unbesetzten ITW-Schichtblöcke für das Planungsjahr'
+                                        : 'Offene Schichtblöcke, die zu deiner Abteilung und Qualifikation passen'}
                                 </div>
                             </div>
                             <button
@@ -1095,126 +1125,153 @@ const ItwVorplanungTab: React.FC = () => {
                         {/* Modal Body */}
                         <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
                             {/* KPI Stat Cards */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px' }}>
-                                <div style={{ padding: '12px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                                    <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Gesamt-Bedarf</div>
-                                    <div style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', marginTop: '4px' }}>{totalSlots} Slots</div>
-                                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{displayedPhases.length} Phasen à 3 Rollen</div>
-                                </div>
-
-                                <div style={{ padding: '12px', borderRadius: '8px', background: '#f0fdf4', border: '1px solid #dcfce7' }}>
-                                    <div style={{ fontSize: '11px', fontWeight: 600, color: '#166534', textTransform: 'uppercase' }}>Besetzt</div>
-                                    <div style={{ fontSize: '18px', fontWeight: 700, color: '#166534', marginTop: '4px' }}>
-                                        {occupiedSlots} <span style={{ fontSize: '13px', fontWeight: 500 }}>({occupancyPercent}%)</span>
+                            {canWriteAll ? (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+                                    <div style={{ padding: '12px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                                        <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Gesamt-Bedarf</div>
+                                        <div style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', marginTop: '4px' }}>{totalSlots} Slots</div>
+                                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{displayedPhases.length} Phasen à 3 Rollen</div>
                                     </div>
-                                    <div style={{ fontSize: '11px', color: '#166534', marginTop: '2px' }}>Zugeordnete Mitarbeiter</div>
-                                </div>
 
-                                <div style={{ padding: '12px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                                    <div style={{ fontSize: '11px', fontWeight: 600, color: '#475569', textTransform: 'uppercase' }}>Offene Lücken</div>
-                                    <div style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', marginTop: '4px' }}>
-                                        {allGaps.length} <span style={{ fontSize: '13px', fontWeight: 500, color: '#64748b' }}>Slots</span>
+                                    <div style={{ padding: '12px', borderRadius: '8px', background: '#f0fdf4', border: '1px solid #dcfce7' }}>
+                                        <div style={{ fontSize: '11px', fontWeight: 600, color: '#166534', textTransform: 'uppercase' }}>Besetzt</div>
+                                        <div style={{ fontSize: '18px', fontWeight: 700, color: '#166534', marginTop: '4px' }}>
+                                            {occupiedSlots} <span style={{ fontSize: '13px', fontWeight: 500 }}>({occupancyPercent}%)</span>
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: '#166534', marginTop: '2px' }}>Zugeordnete Mitarbeiter</div>
                                     </div>
-                                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                                        {allGaps.length === 0 ? 'Vollständig besetzt' : 'Noch zuzuordnen'}
-                                    </div>
-                                </div>
-                            </div>
 
-                            {/* Department Breakdown */}
-                            <div style={{ marginBottom: '20px' }}>
-                                <div style={{ fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>
-                                    Lücken nach Abteilung:
+                                    <div style={{ padding: '12px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                                        <div style={{ fontSize: '11px', fontWeight: 600, color: '#475569', textTransform: 'uppercase' }}>Offene Lücken</div>
+                                        <div style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', marginTop: '4px' }}>
+                                            {allGaps.length} <span style={{ fontSize: '13px', fontWeight: 500, color: '#64748b' }}>Slots</span>
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                                            {allGaps.length === 0 ? 'Vollständig besetzt' : 'Noch zuzuordnen'}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                    <button
-                                        onClick={() => setGapsDeptFilter('all')}
-                                        style={{
-                                            padding: '5px 12px',
-                                            borderRadius: '6px',
-                                            border: gapsDeptFilter === 'all' ? '1px solid #0284c7' : '1px solid #d1d5db',
-                                            background: gapsDeptFilter === 'all' ? '#f0f9ff' : '#ffffff',
-                                            fontWeight: gapsDeptFilter === 'all' ? 600 : 400,
-                                            color: gapsDeptFilter === 'all' ? '#0369a1' : '#374151',
-                                            cursor: 'pointer',
-                                            fontSize: '12px'
-                                        }}
-                                    >
-                                        Alle Abteilungen ({allGaps.length})
-                                    </button>
-                                    {DEPARTMENTS.map(dept => {
-                                        const count = allGaps.filter(g => normalizeDepartmentName(g.department) === normalizeDepartmentName(dept)).length;
-                                        const colors = getDepartmentColor(dept);
-                                        const isSelected = normalizeDepartmentName(gapsDeptFilter) === normalizeDepartmentName(dept);
-                                        return (
+                            ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+                                    <div style={{ padding: '12px', borderRadius: '8px', background: '#f0f9ff', border: '1px solid #bae6fd' }}>
+                                        <div style={{ fontSize: '11px', fontWeight: 600, color: '#0369a1', textTransform: 'uppercase' }}>Verfügbare Phasen</div>
+                                        <div style={{ fontSize: '18px', fontWeight: 700, color: '#0284c7', marginTop: '4px' }}>
+                                            {userRelevantGaps.length} <span style={{ fontSize: '13px', fontWeight: 500 }}>Slots frei</span>
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: '#0369a1', marginTop: '2px' }}>Passend für deine Qualifikation</div>
+                                    </div>
+
+                                    <div style={{ padding: '12px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                                        <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Deine Abteilung</div>
+                                        <div style={{ fontSize: '16px', fontWeight: 700, color: '#1e293b', marginTop: '4px' }}>{userDept}</div>
+                                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>Automatische Filterung aktiv</div>
+                                    </div>
+
+                                    <div style={{ padding: '12px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                                        <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Deine ITW-Qualifikation</div>
+                                        <div style={{ fontSize: '14px', fontWeight: 600, color: '#334155', marginTop: '6px' }}>
+                                            {isOwnFzf && isOwnMasch ? 'FzF & Maschinist' : (isOwnFzf ? 'Fahrzeugführer' : (isOwnMasch ? 'Maschinist' : 'Keine ITW-Qualifikation'))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Department & Role Filters (Only for Admins / Planers with write_all) */}
+                            {canWriteAll && (
+                                <>
+                                    <div style={{ marginBottom: '20px' }}>
+                                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>
+                                            Lücken nach Abteilung:
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                             <button
-                                                key={dept}
-                                                onClick={() => setGapsDeptFilter(dept)}
+                                                onClick={() => setGapsDeptFilter('all')}
                                                 style={{
                                                     padding: '5px 12px',
                                                     borderRadius: '6px',
-                                                    border: isSelected ? `1px solid ${colors.accent}` : '1px solid #d1d5db',
-                                                    background: isSelected ? colors.badgeBg : '#ffffff',
-                                                    fontWeight: isSelected ? 600 : 400,
-                                                    color: isSelected ? colors.badgeColor : '#374151',
+                                                    border: gapsDeptFilter === 'all' ? '1px solid #0284c7' : '1px solid #d1d5db',
+                                                    background: gapsDeptFilter === 'all' ? '#f0f9ff' : '#ffffff',
+                                                    fontWeight: gapsDeptFilter === 'all' ? 600 : 400,
+                                                    color: gapsDeptFilter === 'all' ? '#0369a1' : '#374151',
                                                     cursor: 'pointer',
                                                     fontSize: '12px'
                                                 }}
                                             >
-                                                {dept} ({count} offen)
+                                                Alle Abteilungen ({allGaps.length})
                                             </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
+                                            {DEPARTMENTS.map(dept => {
+                                                const count = allGaps.filter(g => normalizeDepartmentName(g.department) === normalizeDepartmentName(dept)).length;
+                                                const colors = getDepartmentColor(dept);
+                                                const isSelected = normalizeDepartmentName(gapsDeptFilter) === normalizeDepartmentName(dept);
+                                                return (
+                                                    <button
+                                                        key={dept}
+                                                        onClick={() => setGapsDeptFilter(dept)}
+                                                        style={{
+                                                            padding: '5px 12px',
+                                                            borderRadius: '6px',
+                                                            border: isSelected ? `1px solid ${colors.accent}` : '1px solid #d1d5db',
+                                                            background: isSelected ? colors.badgeBg : '#ffffff',
+                                                            fontWeight: isSelected ? 600 : 400,
+                                                            color: isSelected ? colors.badgeColor : '#374151',
+                                                            cursor: 'pointer',
+                                                            fontSize: '12px'
+                                                        }}
+                                                    >
+                                                        {dept} ({count} offen)
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
 
-                            {/* Role Filter */}
-                            <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ fontSize: '13px', fontWeight: 500, color: '#334155' }}>Rolle:</span>
-                                <select
-                                    value={gapsRoleFilter}
-                                    onChange={e => setGapsRoleFilter(e.target.value)}
-                                    style={{
-                                        padding: '4px 8px',
-                                        borderRadius: '4px',
-                                        border: '1px solid #d1d5db',
-                                        fontSize: '12px'
-                                    }}
-                                >
-                                    <option value="all">Alle Rollen</option>
-                                    <option value="Fahrzeugführer 1">Fahrzeugführer 1</option>
-                                    <option value="Fahrzeugführer 2">Fahrzeugführer 2</option>
-                                    <option value="Maschinist">Maschinist</option>
-                                </select>
-                            </div>
+                                    <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '13px', fontWeight: 500, color: '#334155' }}>Rolle:</span>
+                                        <select
+                                            value={gapsRoleFilter}
+                                            onChange={e => setGapsRoleFilter(e.target.value)}
+                                            style={{
+                                                padding: '4px 8px',
+                                                borderRadius: '4px',
+                                                border: '1px solid #d1d5db',
+                                                fontSize: '12px'
+                                            }}
+                                        >
+                                            <option value="all">Alle Rollen</option>
+                                            <option value="Fahrzeugführer 1">Fahrzeugführer 1</option>
+                                            <option value="Fahrzeugführer 2">Fahrzeugführer 2</option>
+                                            <option value="Maschinist">Maschinist</option>
+                                        </select>
+                                    </div>
+                                </>
+                            )}
 
                             {/* Gaps List / Table */}
-                            {filteredGaps.length === 0 ? (
+                            {displayedGapsInModal.length === 0 ? (
                                 <div style={{
-                                    padding: '24px',
+                                    padding: '28px',
                                     textAlign: 'center',
                                     background: '#f8fafc',
                                     borderRadius: '8px',
                                     border: '1px solid #e2e8f0',
                                     color: '#475569'
                                 }}>
-                                    <div style={{ fontWeight: 600, fontSize: '14px' }}>Keine offenen Lücken gefunden</div>
+                                    <div style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b' }}>
+                                        {!canWriteAll ? 'Keine offenen Phasen für deine Abteilung und Qualifikation' : 'Keine offenen Lücken gefunden'}
+                                    </div>
                                     <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                                        {allGaps.length === 0
-                                             ? 'Alle ITW-Schichtblöcke für das Jahr sind vollständig besetzt.'
-                                            : 'Für die gewählten Filter liegen keine offenen Lücken vor.'}
+                                        {!canWriteAll
+                                            ? 'Alle Schichtblöcke deiner Abteilung sind bereits belegt oder es liegen keine passenden Qualifikationen vor.'
+                                            : (allGaps.length === 0
+                                                ? 'Alle ITW-Schichtblöcke für das Jahr sind vollständig besetzt.'
+                                                : 'Für die gewählten Filter liegen keine offenen Lücken vor.')}
                                     </div>
                                 </div>
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    {filteredGaps.map((gap, idx) => {
+                                    {displayedGapsInModal.map((gap, idx) => {
                                         const colors = getDepartmentColor(gap.department);
                                         const isUserInTargetDept = normalizeDepartmentName(userDept) === normalizeDepartmentName(gap.department);
-
-                                        const ownPerson = personnel.find(p => isOwnUser(p));
-                                        const ownQuals = ownPerson ? (activeQuals[ownPerson.id] || []) : [];
-                                        const isOwnFzf = ownQuals.includes('ITW Fahrzeugführer') || ownQuals.includes('Fahrzeugführer') || ownQuals.includes('Fahrzeugführer HLF-B');
-                                        const isOwnMasch = ownQuals.includes('ITW Maschinist');
                                         const hasRequiredQual = gap.role.startsWith('Fahrzeugführer') ? isOwnFzf : (gap.role === 'Maschinist' ? isOwnMasch : true);
 
                                         let selectDisabled = false;
@@ -1281,7 +1338,26 @@ const ItwVorplanungTab: React.FC = () => {
 
                                                 {/* Direct Assign or Jump Action */}
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    {!selectDisabled && availablePersonnel.length > 0 ? (
+                                                    {!selectDisabled && !canWriteAll && ownPerson ? (
+                                                        <button
+                                                            onClick={() => handleAssign(gap.start, gap.end, gap.role, gap.department, String(ownPerson.id))}
+                                                            style={{
+                                                                padding: '5px 12px',
+                                                                borderRadius: '4px',
+                                                                background: '#0284c7',
+                                                                border: '1px solid #0369a1',
+                                                                color: '#ffffff',
+                                                                fontSize: '12px',
+                                                                fontWeight: 500,
+                                                                cursor: 'pointer',
+                                                                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                                                            }}
+                                                        >
+                                                            Mich eintragen
+                                                        </button>
+                                                    ) : null}
+
+                                                    {!selectDisabled && canWriteAll && availablePersonnel.length > 0 ? (
                                                         <select
                                                             defaultValue=""
                                                             onChange={e => {
@@ -1358,28 +1434,30 @@ const ItwVorplanungTab: React.FC = () => {
                             borderTop: '1px solid #e5e7eb',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'space-between',
+                            justifyContent: canWriteAll ? 'space-between' : 'flex-end',
                             background: '#f8fafc'
                         }}>
-                            <button
-                                onClick={handleExportPdf}
-                                disabled={exportingPdf}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    padding: '6px 14px',
-                                    borderRadius: '6px',
-                                    background: '#0284c7',
-                                    border: '1px solid #0369a1',
-                                    color: '#ffffff',
-                                    fontWeight: 500,
-                                    fontSize: '13px',
-                                    cursor: exportingPdf ? 'not-allowed' : 'pointer'
-                                }}
-                            >
-                                {exportingPdf ? 'Exportiere...' : 'Vorplanung als PDF exportieren'}
-                            </button>
+                            {canWriteAll && (
+                                <button
+                                    onClick={handleExportPdf}
+                                    disabled={exportingPdf}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '6px 14px',
+                                        borderRadius: '6px',
+                                        background: '#0284c7',
+                                        border: '1px solid #0369a1',
+                                        color: '#ffffff',
+                                        fontWeight: 500,
+                                        fontSize: '13px',
+                                        cursor: exportingPdf ? 'not-allowed' : 'pointer'
+                                    }}
+                                >
+                                    {exportingPdf ? 'Exportiere...' : 'Vorplanung als PDF exportieren'}
+                                </button>
+                            )}
 
                             <button
                                 onClick={() => setShowGapsModal(false)}
