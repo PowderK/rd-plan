@@ -380,6 +380,37 @@ const ItwVorplanungTab: React.FC = () => {
         return hasItwFzfQual(pId) || hasItwMaschQual(pId);
     };
 
+    const groupAndSortPersonnelByDept = (list: any[]) => {
+        const deptOrder = ['1. Abteilung', '2. Abteilung', '3. Abteilung'];
+        const groups: { dept: string; members: any[] }[] = [];
+        
+        deptOrder.forEach(dept => {
+            const members = list
+                .filter(p => normalizeDepartmentName(p.department) === normalizeDepartmentName(dept))
+                .sort((a, b) => {
+                    const nameCmp = (a.name || '').localeCompare(b.name || '', 'de', { sensitivity: 'base' });
+                    if (nameCmp !== 0) return nameCmp;
+                    return (a.vorname || '').localeCompare(b.vorname || '', 'de', { sensitivity: 'base' });
+                });
+            if (members.length > 0) {
+                groups.push({ dept, members });
+            }
+        });
+
+        const others = list
+            .filter(p => !deptOrder.some(dept => normalizeDepartmentName(p.department) === normalizeDepartmentName(dept)))
+            .sort((a, b) => {
+                const nameCmp = (a.name || '').localeCompare(b.name || '', 'de', { sensitivity: 'base' });
+                if (nameCmp !== 0) return nameCmp;
+                return (a.vorname || '').localeCompare(b.vorname || '', 'de', { sensitivity: 'base' });
+            });
+        if (others.length > 0) {
+            groups.push({ dept: 'Weitere / Ohne Abteilung', members: others });
+        }
+
+        return groups;
+    };
+
     const handleAssign = async (phaseStart: string, phaseEnd: string, role: string, department: string, value: string) => {
         const pId = value ? parseInt(value, 10) : null;
         
@@ -1015,35 +1046,38 @@ const ItwVorplanungTab: React.FC = () => {
                                                 <option value="" style={{ color: '#64748b' }}>
                                                     {disabledReason && !isOccupied ? `- ${disabledReason} -` : '- Nicht besetzt -'}
                                                 </option>
-                                                {availablePersonnel.map(p => {
-                                                    const isFzf = hasItwFzfQual(p.id);
-                                                    const isMasch = hasItwMaschQual(p.id);
-                                                    
-                                                    let valid = true;
-                                                    let missing = '';
-                                                    if (role.startsWith('Fahrzeugführer') && !isFzf) {
-                                                        valid = false;
-                                                        missing = 'FzF fehlt';
-                                                    }
-                                                    if (role === 'Maschinist' && !isMasch) {
-                                                        valid = false;
-                                                        missing = 'Ma fehlt';
-                                                    }
+                                                {groupAndSortPersonnelByDept(availablePersonnel).map(group => (
+                                                    <optgroup key={group.dept} label={group.dept}>
+                                                        {group.members.map(p => {
+                                                            const isFzf = hasItwFzfQual(p.id);
+                                                            const isMasch = hasItwMaschQual(p.id);
+                                                            
+                                                            let valid = true;
+                                                            let missing = '';
+                                                            if (role.startsWith('Fahrzeugführer') && !isFzf) {
+                                                                valid = false;
+                                                                missing = 'FzF fehlt';
+                                                            }
+                                                            if (role === 'Maschinist' && !isMasch) {
+                                                                valid = false;
+                                                                missing = 'Ma fehlt';
+                                                            }
 
-                                                    const deptLabel = p.department ? ` (${p.department})` : '';
-                                                    const isOptionDisabled = canWriteAll ? false : !valid;
+                                                            const isOptionDisabled = canWriteAll ? false : !valid;
 
-                                                    return (
-                                                        <option 
-                                                            key={p.id} 
-                                                            value={p.id}
-                                                            disabled={isOptionDisabled}
-                                                            style={{ color: valid ? '#000' : (canWriteAll ? '#d97706' : '#ccc') }}
-                                                        >
-                                                            {p.name}, {p.vorname}{deptLabel} {!valid ? `(${missing})` : ''}
-                                                        </option>
-                                                    );
-                                                })}
+                                                            return (
+                                                                <option 
+                                                                    key={p.id} 
+                                                                    value={p.id}
+                                                                    disabled={isOptionDisabled}
+                                                                    style={{ color: valid ? '#000' : (canWriteAll ? '#d97706' : '#ccc') }}
+                                                                >
+                                                                    {p.name}, {p.vorname} {!valid ? `(${missing})` : ''}
+                                                                </option>
+                                                            );
+                                                        })}
+                                                    </optgroup>
+                                                ))}
                                             </select>
                                         </div>
                                     );
@@ -1374,33 +1408,37 @@ const ItwVorplanungTab: React.FC = () => {
                                                             }}
                                                         >
                                                             <option value="">- Jetzt zuordnen -</option>
-                                                            {availablePersonnel.map(p => {
-                                                                const isFzf = hasItwFzfQual(p.id);
-                                                                const isMasch = hasItwMaschQual(p.id);
-                                                                let valid = true;
-                                                                let missing = '';
-                                                                if (gap.role.startsWith('Fahrzeugführer') && !isFzf) {
-                                                                    valid = false;
-                                                                    missing = 'FzF fehlt';
-                                                                }
-                                                                if (gap.role === 'Maschinist' && !isMasch) {
-                                                                    valid = false;
-                                                                    missing = 'Ma fehlt';
-                                                                }
+                                                            {groupAndSortPersonnelByDept(availablePersonnel).map(group => (
+                                                                <optgroup key={group.dept} label={group.dept}>
+                                                                    {group.members.map(p => {
+                                                                        const isFzf = hasItwFzfQual(p.id);
+                                                                        const isMasch = hasItwMaschQual(p.id);
+                                                                        let valid = true;
+                                                                        let missing = '';
+                                                                        if (gap.role.startsWith('Fahrzeugführer') && !isFzf) {
+                                                                            valid = false;
+                                                                            missing = 'FzF fehlt';
+                                                                        }
+                                                                        if (gap.role === 'Maschinist' && !isMasch) {
+                                                                            valid = false;
+                                                                            missing = 'Ma fehlt';
+                                                                        }
 
-                                                                const isOptionDisabled = canWriteAll ? false : !valid;
+                                                                        const isOptionDisabled = canWriteAll ? false : !valid;
 
-                                                                return (
-                                                                    <option 
-                                                                        key={p.id} 
-                                                                        value={p.id} 
-                                                                        disabled={isOptionDisabled}
-                                                                        style={{ color: valid ? '#000' : (canWriteAll ? '#d97706' : '#ccc') }}
-                                                                    >
-                                                                        {p.name}, {p.vorname} {!valid ? `(${missing})` : ''}
-                                                                    </option>
-                                                                );
-                                                            })}
+                                                                        return (
+                                                                            <option 
+                                                                                key={p.id} 
+                                                                                value={p.id} 
+                                                                                disabled={isOptionDisabled}
+                                                                                style={{ color: valid ? '#000' : (canWriteAll ? '#d97706' : '#ccc') }}
+                                                                            >
+                                                                                {p.name}, {p.vorname} {!valid ? `(${missing})` : ''}
+                                                                            </option>
+                                                                        );
+                                                                    })}
+                                                                </optgroup>
+                                                            ))}
                                                         </select>
                                                     ) : null}
 
