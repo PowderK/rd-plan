@@ -1588,7 +1588,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     // ==========================================================
     // GEMEINSAME SOLL-BERECHNUNG für RTW-Tab und ITW-Tab
     // ==========================================================
-    useMemo(() => {
+    const sharedTargets = useMemo(() => {
         const computeSharedTargets = () => {
             // 1. Flatten Roster for Shared Calculation
             const flattenedRoster: any[] = [];
@@ -1904,10 +1904,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
         const result = computeSharedTargets();
         (window as any).__sharedTargets = result;
+        return result;
 
-    }, [year, roster, localRoster, personnel, azubis, ue50Ids, auswertungByType,
-        rtwVehicles, nefVehicles, rtwActivations, nefActivations, department,
-        deptPatternSeqs, hlfbPeriodsByPerson, shiftTransfers, currentMonth]);
+    }, [year, roster, localRoster, personnel, azubis, ue50Ids, ue50MonthlyMap, lpalMonthlyMap, taucherMonthlyMap, auswertungByType,
+        rtwVehicles, nefVehicles, rtwActivations, nefActivations, rtwVehiclePeriods, nefVehiclePeriods, department,
+        deptPatternSeqs, hlfbPeriodsByPerson, shiftTransfers, currentMonth, holidays,
+        weekendFridayDay, weekendFridayNight, weekendSaturdayDay, weekendSaturdayNight, weekendSundayDay, weekendSundayNight,
+        weekendHolidayDay, weekendHolidayNight, itwEnabled, featureTaucher, getNefAssistWeight]);
 
     const availablePersonKeys = React.useMemo(() => {
         if (!selectedAvailDate) return undefined;
@@ -3141,17 +3144,17 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 {(() => {
                                     // Kontrollkasten-Berechnungen (Monatsbasis) - jetzt zentralisiert
                                     const {
-                                        targetYearMap,
-                                        drivenYearMap,
-                                        allocTargetsInMonth,
-                                        perPersonAssignedWeightedInMonth,
-                                        perPersonNefInMonth,
-                                        perPersonItwInMonth,
-                                        perPersonRtwTagNightYear,
-                                        perPersonWeekendInYear,
-                                        targetCumulativeMap,
-                                        drivenCumulativeMap
-                                    } = (window as any).__sharedTargets || {};
+                                        targetYearMap = {},
+                                        drivenYearMap = {},
+                                        allocTargetsInMonth = {},
+                                        perPersonAssignedWeightedInMonth = {},
+                                        perPersonNefInMonth = {},
+                                        perPersonItwInMonth = {},
+                                        perPersonRtwTagNightYear = {},
+                                        perPersonWeekendInYear = {},
+                                        targetCumulativeMap = {},
+                                        drivenCumulativeMap = {}
+                                    } = sharedTargets || {};
 
                                     const items = (personnel || []).map(p => {
                                         const key = `p_${p.id}`;
@@ -3554,28 +3557,18 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 {(() => {
                                     // Kontrollkasten-Berechnungen (Monatsbasis) – identisch wie in RTW/NEF-Ansicht (mit Präsenz & HLF‑B Gewichtung)
                                     // Verwende gemeinsame SOLL-Berechnung (ITW-Tab)
-                                    const sharedTargets = (window as any).__sharedTargets || {
-                                        targetYearMap: {},
-                                        drivenYearMap: {},
-                                        allocTargetsInMonth: {},
-                                        perPersonAssignedWeightedInMonth: {},
-                                        perPersonNefInMonth: {},
-                                        perPersonItwInMonth: {},
-                                        perPersonRtwTagNightYear: {},
-                                        perPersonWeekendInYear: {}
-                                    };
                                     const {
-                                        targetYearMap,
-                                        drivenYearMap,
-                                        allocTargetsInMonth,
-                                        perPersonAssignedWeightedInMonth,
-                                        perPersonNefInMonth,
-                                        perPersonItwInMonth,
-                                        perPersonRtwTagNightYear,
-                                        perPersonWeekendInYear,
-                                        targetCumulativeMap,
-                                        drivenCumulativeMap
-                                    } = sharedTargets;
+                                        targetYearMap = {},
+                                        drivenYearMap = {},
+                                        allocTargetsInMonth = {},
+                                        perPersonAssignedWeightedInMonth = {},
+                                        perPersonNefInMonth = {},
+                                        perPersonItwInMonth = {},
+                                        perPersonRtwTagNightYear = {},
+                                        perPersonWeekendInYear = {},
+                                        targetCumulativeMap = {},
+                                        drivenCumulativeMap = {}
+                                    } = sharedTargets || {};
                                     const items = (personnel || []).map(p => {
                                         const key = `p_${p.id}`;
                                         const target = (allocTargetsInMonth[key] ?? 0) || '';
