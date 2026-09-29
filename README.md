@@ -7,16 +7,16 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v1.5.6** - ITW-Vorplanung mit Lücken-Übersicht & PDF-Export im 1-Seiten-Kachel-Raster, flexibler Dropdown-Filterung nach ITW-Qualifikation, Warnhinweis bei Qualifikationsübersteuerung sowie optimierter Rollen- und Rechteverwaltung für den ITW-Dienstplan (Lesen / Alle Lesen).
+**v1.6.0** - ITW-Vorplanung mit maßgeschneiderter Mitarbeiter-Lückenübersicht (1-Klick-Selbsteintragung), 1-Seiten-PDF-Export für Planer, smarter Qualifikationsfilterung und entkoppeltem Rechtesystem für den ITW-Dienstplan (Lesen / Alle Lesen).
 
 ## Funktionen
 
-### ITW-Vorplanung & Dienstplan-Rechte (v1.5.6+)
-- **Lücken-Übersicht (Gaps-Modal)**: Schnelle Übersicht aller unbesetzten Phasen nach Abteilung und Rolle mit direkter Zuweisungsmöglichkeit und Schnellnavigation zur Phase.
-- **1-Seiten PDF-Export**: Kompakter, sauber strukturierter Vorplanungs-Export im responsiven Kachel-Raster mit Abteilungs-Farbcodierung.
-- **Smarte Dropdown-Filterung**: Kollegen ohne ITW-Qualifikation werden automatisch aus dem Auswahl-Dropdown ausgeblendet.
-- **Rollen-Flexibilität für Admins/Planer**: Benutzer mit Schreibrechten Alle können Kollegen bei Bedarf flexibel übersteuern (mit Bestätigungshinweis und optischer Kennzeichnung fehlender Teilqualifikationen).
-- **Feingranulare ITW-Dienstplan-Rechte**: Berechtigungsstufen auf *Lesen* (nur eigene Zeile) und *Alle Lesen* angepasst.
+### ITW-Vorplanung & Mitarbeiter-Self-Service (v1.6.0+)
+- **Personalisierte Lücken-Übersicht für Mitarbeiter**: Zeigt Mitarbeitern mit Selbsteintragungsrechten (`write`) ausschließlich die offenen Schichtblöcke der eigenen Abteilung mit passender Qualifikation (Fahrzeugführer / Maschinist) inklusive 1-Klick-Einteilung (*„Mich eintragen“*).
+- **Vollständige Lücken-Übersicht für Planer**: ITW-Planer und Administratoren (`write_all`) haben Zugriff auf alle Abteilungen, erweiterte Filter nach Rolle/Abteilung und Direktzuweisungen.
+- **1-Seiten-PDF-Export**: Kompakter, sauber strukturierter Vorplanungs-Export im responsiven Kachel-Raster mit Abteilungs-Farbcodierung für Aushänge.
+- **Smarte Dropdown-Filterung & Admin-Übersteuerung**: Nicht-qualifiziertes Personal wird automatisch ausgeblendet; Planer können Kollegen bei Bedarf mit Warnhinweis flexibel für andere ITW-Rollen zuteilen.
+- **Feingranulare ITW-Dienstplan-Rechte**: Trennung der Berechtigungsstufen in *Lesen* (nur eigene Zeile) und *Alle Lesen* (vollständige Ansicht).
 
 ### Taucher-Kennzeichnung & Feature-Toggle (v1.5.5+)
 - **Sonderqualifikation Taucher**: Automatische visuelle Kennzeichnung (blauer Markierungsstrich) im Kontrollkasten, im Dienstplan und in der Werte-Übersicht für Personal mit Taucher-Qualifikation im gewählten Zeitraum.

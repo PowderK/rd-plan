@@ -1,3 +1,20 @@
+## Build 1540 - 2026-09-29
+
+- automated build
+
+## Version 1.6.0 - 2026-09-29
+
+- **ITW-Vorplanung & Mitarbeiter-Self-Service**:
+  - **Personalisierte Lücken-Übersicht**: Mitarbeiter mit Selbsteintragungsrechten (`canWriteOwn`) sehen im Modal und im Header-Zähler ausschließlich die freien Phasen der eigenen Abteilung, für die sie qualifiziert sind.
+  - **1-Klick-Selbsteintragung**: Direktes Eintragen über den Button *„Mich eintragen“* in der Lücken-Übersicht.
+  - **Reduzierte Oberfläche für Mitarbeiter**: Ausblenden irrelevanter Filter (Abteilung/Rolle) und des PDF-Export-Buttons bei einfachen Schreibrechten für maximale Übersichtlichkeit.
+  - **1-Seiten-PDF-Export für Planer**: Kompakter DIN-A4-Export der Vorplanung im Kachel-Design mit Phasen- und Abteilungsfarben.
+  - **Qualifikationsfilterung & Admin-Übersteuerung**: Intelligente Ausblendung unqualifizierter Mitarbeiter im Dropdown und Übersteuerungsmöglichkeit mit Bestätigungshinweis für Planer (`canWriteAll`).
+- **Rollen & Rechte**:
+  - Rollenrechte für den ITW-Dienstplan auf `Lesen` (nur eigene Zeile) und `Alle Lesen` (alle Zeilen) umgestellt.
+- **Dokumentation**:
+  - Neuer Planer-Leitfaden [ANLEITUNG-ITW-PLANER.md](file:///Users/benni/RD-Plan/ANLEITUNG-ITW-PLANER.md) und überarbeitete Mitarbeiter-Anleitung [ANLEITUNG-ITW-VORPLANUNG.md](file:///Users/benni/RD-Plan/ANLEITUNG-ITW-VORPLANUNG.md).
+
 ## Build 1539 - 2026-09-27
 
 - automated build
