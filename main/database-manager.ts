@@ -221,10 +221,10 @@ export interface DatabaseAdapter {
   setItwPatterns(patterns: any[]): Promise<void>;
   generateItwPlanningsForYear(year: number, holidayDates?: string[]): Promise<void>;
   getItwPhaseAssignments(startDate?: string): Promise<any[]>;
-  addItwPhaseAssignment(startDate: string, personId: number, role: string): Promise<void>;
-  removeItwPhaseAssignment(startDate: string, personId: number): Promise<void>;
+  addItwPhaseAssignment(startDate: string, personId: number, role: string, auditUser?: { id: number; name: string }): Promise<void>;
+  removeItwPhaseAssignment(startDate: string, personId: number, auditUser?: { id: number; name: string }): Promise<void>;
   getItwDutyRoster(year: number): Promise<any[]>;
-  setItwDutyRosterEntry(entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number }): Promise<void>;
+  setItwDutyRosterEntry(entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number; auditUser?: { id: number; name: string } }): Promise<void>;
 
   getUniqueDepartments(): Promise<string[]>;
 
@@ -1238,14 +1238,14 @@ class SQLiteAdapter implements DatabaseAdapter {
     return getItwPhaseAssignments(this.db, startDate);
   }
 
-  async addItwPhaseAssignment(startDate: string, personId: number, role: string) {
+  async addItwPhaseAssignment(startDate: string, personId: number, role: string, auditUser?: { id: number; name: string }) {
     const { addItwPhaseAssignment } = await import('./database');
-    return addItwPhaseAssignment(this.db, startDate, personId, role);
+    return addItwPhaseAssignment(this.db, startDate, personId, role, auditUser);
   }
 
-  async removeItwPhaseAssignment(startDate: string, personId: number) {
+  async removeItwPhaseAssignment(startDate: string, personId: number, auditUser?: { id: number; name: string }) {
     const { removeItwPhaseAssignment } = await import('./database');
-    return removeItwPhaseAssignment(this.db, startDate, personId);
+    return removeItwPhaseAssignment(this.db, startDate, personId, auditUser);
   }
 
   async getItwDutyRoster(year: number) {
@@ -1253,7 +1253,7 @@ class SQLiteAdapter implements DatabaseAdapter {
     return getItwDutyRoster(this.db, year);
   }
 
-  async setItwDutyRosterEntry(entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number }) {
+  async setItwDutyRosterEntry(entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number; auditUser?: { id: number; name: string } }) {
     const { setItwDutyRosterEntry } = await import('./database');
     return setItwDutyRosterEntry(this.db, entry);
   }
@@ -1297,14 +1297,14 @@ class ItwPlanningAdapter {
     return getItwPhaseAssignments(this.db, startDate);
   }
 
-  async addItwPhaseAssignment(startDate: string, personId: number, role: string) {
+  async addItwPhaseAssignment(startDate: string, personId: number, role: string, auditUser?: { id: number; name: string }) {
     const { addItwPhaseAssignment } = await import('./database');
-    return addItwPhaseAssignment(this.db, startDate, personId, role);
+    return addItwPhaseAssignment(this.db, startDate, personId, role, auditUser);
   }
 
-  async removeItwPhaseAssignment(startDate: string, personId: number) {
+  async removeItwPhaseAssignment(startDate: string, personId: number, auditUser?: { id: number; name: string }) {
     const { removeItwPhaseAssignment } = await import('./database');
-    return removeItwPhaseAssignment(this.db, startDate, personId);
+    return removeItwPhaseAssignment(this.db, startDate, personId, auditUser);
   }
 
   async getItwDutyRoster(year: number) {
@@ -1312,7 +1312,7 @@ class ItwPlanningAdapter {
     return getItwDutyRoster(this.db, year);
   }
 
-  async setItwDutyRosterEntry(entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number }) {
+  async setItwDutyRosterEntry(entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number; auditUser?: { id: number; name: string } }) {
     const { setItwDutyRosterEntry } = await import('./database');
     return setItwDutyRosterEntry(this.db, entry);
   }

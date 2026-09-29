@@ -3831,14 +3831,65 @@ export const getItwPhaseAssignments = async (db: AsyncDB, startDate?: string) =>
     return db.all(query, params);
 };
 
-export const addItwPhaseAssignment = async (db: AsyncDB, startDate: string, personId: number, role: string) => {
+export const addItwPhaseAssignment = async (db: AsyncDB, startDate: string, personId: number, role: string, auditUser?: { id: number; name: string }) => {
+    if (auditUser) {
+        try {
+            const pName = await getPersonName(db, personId, 'person');
+            const existingInSlot = await db.get(
+                'SELECT person_id FROM itw_phase_assignments WHERE start_date = ? AND role = ? AND person_id != ?',
+                [startDate, role, personId]
+            );
+            let oldName = '-';
+            if (existingInSlot && existingInSlot.person_id) {
+                oldName = await getPersonName(db, existingInSlot.person_id, 'person');
+            }
+
+            await addAuditLog(db, {
+                user_id: auditUser.id || 0,
+                user_name: auditUser.name || 'System',
+                action_type: existingInSlot ? 'update' : 'create',
+                entity_type: 'itw_phase_assignment',
+                entity_ref: `ITW Phase ${startDate} (${role})`,
+                old_value: oldName,
+                new_value: pName,
+                details: `ITW-Vorplanung: ${pName} für Phase ab ${startDate} (${role}) eingeteilt`
+            });
+        } catch (err) {
+            console.error('[Database] Fehler beim Loggen des ITW Phase Assignments:', err);
+        }
+    }
+
     await db.run(
         'INSERT OR REPLACE INTO itw_phase_assignments (start_date, person_id, role) VALUES (?, ?, ?)',
         [startDate, personId, role]
     );
 };
 
-export const removeItwPhaseAssignment = async (db: AsyncDB, startDate: string, personId: number) => {
+export const removeItwPhaseAssignment = async (db: AsyncDB, startDate: string, personId: number, auditUser?: { id: number; name: string }) => {
+    if (auditUser) {
+        try {
+            const existing = await db.get(
+                'SELECT role FROM itw_phase_assignments WHERE start_date = ? AND person_id = ?',
+                [startDate, personId]
+            );
+            const role = existing?.role || 'Phase';
+            const pName = await getPersonName(db, personId, 'person');
+
+            await addAuditLog(db, {
+                user_id: auditUser.id || 0,
+                user_name: auditUser.name || 'System',
+                action_type: 'delete',
+                entity_type: 'itw_phase_assignment',
+                entity_ref: `ITW Phase ${startDate} (${role})`,
+                old_value: pName,
+                new_value: '-',
+                details: `ITW-Vorplanung: ${pName} aus Phase ab ${startDate} (${role}) entfernt`
+            });
+        } catch (err) {
+            console.error('[Database] Fehler beim Loggen des ITW Phase Removals:', err);
+        }
+    }
+
     await db.run(
         'DELETE FROM itw_phase_assignments WHERE start_date = ? AND person_id = ?',
         [startDate, personId]
@@ -3853,8 +3904,36 @@ export const getItwDutyRoster = async (db: AsyncDB, year: number) => {
     );
 };
 
-export const setItwDutyRosterEntry = async (db: AsyncDB, entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number }) => {
+export const setItwDutyRosterEntry = async (db: AsyncDB, entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number; auditUser?: { id: number; name: string } }) => {
     const personType = entry.personType || 'person';
+
+    if (entry.auditUser && entry.manual_edit === 1) {
+        try {
+            const existing = await db.get(
+                'SELECT value, type FROM itw_duty_roster WHERE personId = ? AND personType = ? AND date = ?',
+                [entry.personId, personType, entry.date]
+            );
+            const oldValue = existing ? `${existing.value || ''}${existing.type ? ` (${existing.type})` : ''}` : '-';
+            const newValue = `${entry.value || ''}${entry.type ? ` (${entry.type})` : ''}` || '-';
+
+            if (oldValue !== newValue) {
+                const pName = await getPersonName(db, entry.personId, personType);
+                await addAuditLog(db, {
+                    user_id: entry.auditUser.id || 0,
+                    user_name: entry.auditUser.name || 'System',
+                    action_type: !entry.value && !entry.type ? 'delete' : (existing ? 'update' : 'create'),
+                    entity_type: 'itw_duty_roster',
+                    entity_ref: `${pName} (${entry.date})`,
+                    old_value: oldValue,
+                    new_value: newValue,
+                    details: `ITW-Dienstplan manuell bearbeitet`
+                });
+            }
+        } catch (err) {
+            console.error('[Database] Fehler beim Loggen des ITW Duty Roster Eintrags:', err);
+        }
+    }
+
     if (!entry.value && !entry.type) {
         await db.run(
             `DELETE FROM itw_duty_roster WHERE personId = ? AND personType = ? AND date = ?`,

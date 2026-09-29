@@ -1704,16 +1704,34 @@ ipcMain.handle('get-itw-phase-assignments', async (_event, startDate?: string) =
 });
 
 ipcMain.handle('add-itw-phase-assignment', async (_event, startDate: string, personId: number, role: string) => {
+    let auditUser: { id: number; name: string } | undefined;
+    try {
+        const auth = getAuthService();
+        const currentUser = auth.getCurrentUser();
+        if (currentUser) {
+            auditUser = { id: currentUser.userId, name: `${currentUser.vorname} ${currentUser.name}`.trim() };
+        }
+    } catch { }
+
     const dbManager = getDatabaseManager();
     const adapter = await dbManager.getItwAdapter();
-    await adapter.addItwPhaseAssignment(startDate, personId, role);
+    await adapter.addItwPhaseAssignment(startDate, personId, role, auditUser);
     return true;
 });
 
 ipcMain.handle('remove-itw-phase-assignment', async (_event, startDate: string, personId: number) => {
+    let auditUser: { id: number; name: string } | undefined;
+    try {
+        const auth = getAuthService();
+        const currentUser = auth.getCurrentUser();
+        if (currentUser) {
+            auditUser = { id: currentUser.userId, name: `${currentUser.vorname} ${currentUser.name}`.trim() };
+        }
+    } catch { }
+
     const dbManager = getDatabaseManager();
     const adapter = await dbManager.getItwAdapter();
-    await adapter.removeItwPhaseAssignment(startDate, personId);
+    await adapter.removeItwPhaseAssignment(startDate, personId, auditUser);
     return true;
 });
 
@@ -1723,7 +1741,17 @@ ipcMain.handle('get-itw-duty-roster', async (_event, year: number) => {
     return await adapter.getItwDutyRoster(year);
 });
 
-ipcMain.handle('set-itw-duty-roster-entry', async (_event, entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number }) => {
+ipcMain.handle('set-itw-duty-roster-entry', async (_event, entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number; auditUser?: { id: number; name: string } }) => {
+    try {
+        if (!entry.auditUser) {
+            const auth = getAuthService();
+            const currentUser = auth.getCurrentUser();
+            if (currentUser) {
+                entry.auditUser = { id: currentUser.userId, name: `${currentUser.vorname} ${currentUser.name}`.trim() };
+            }
+        }
+    } catch { }
+
     const dbManager = getDatabaseManager();
     const adapter = await dbManager.getItwAdapter();
     await adapter.setItwDutyRosterEntry(entry);
