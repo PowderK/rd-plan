@@ -666,6 +666,14 @@ ipcMain.handle('set-setting', async (_event, key: string, value: string) => {
         } else if (['year', 'rescueStation', 'department'].includes(key)) {
             // UI-State Parameter dürfen von jedem geändert werden, der die App nutzt
             // Ggf. könnte man hier prüfen, ob der User eingeloggt ist, aber auth-check ist implizit
+        } else if (key === 'itw_phase_dept_overrides') {
+            // ITW-Planer (write_all auf itw_vorplanung bzw. itw) oder Administrator
+            const user = auth.getCurrentUser();
+            const isAppAdmin = (auth as any).isDevMode?.() || user?.roleName?.toLowerCase() === 'administrator';
+            const itwPerm = isAppAdmin ? 'write_all' : (user?.permissions?.itw_vorplanung || user?.permissions?.itw || 'none');
+            if (!isAppAdmin && itwPerm !== 'write_all') {
+                throw new Error('PERMISSION_DENIED: Nur ITW-Planer dürfen Phasen-Zuordnungen manuell ändern.');
+            }
         } else {
             // Alle anderen Settings benötigen einstellungen:write
             auth.requirePermission('einstellungen', 'write');
@@ -678,6 +686,13 @@ ipcMain.handle('set-setting', async (_event, key: string, value: string) => {
             await auth.refreshCurrentSession();
             await applyRoleBasedMenuVisibility();
             BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch { } });
+        } else if (key === 'itw_phase_dept_overrides') {
+            BrowserWindow.getAllWindows().forEach(w => { 
+                try { 
+                    w.webContents.send('settings-updated'); 
+                    w.webContents.send('itw-updated');
+                } catch { } 
+            });
         }
 
         return true;

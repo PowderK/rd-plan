@@ -288,8 +288,8 @@ export class AuthService {
     const userLevel = this.currentSession.permissions[area] || 'none';
     
     if (userLevel === 'none') return false;
-    if (requiredLevel === 'read') return userLevel === 'read' || userLevel === 'read_all' || userLevel === 'write';
-    if (requiredLevel === 'write') return userLevel === 'write';
+    if (requiredLevel === 'read') return userLevel === 'read' || userLevel === 'read_all' || userLevel === 'write' || userLevel === 'write_all';
+    if (requiredLevel === 'write') return userLevel === 'write' || userLevel === 'write_all';
     
     return false;
   }

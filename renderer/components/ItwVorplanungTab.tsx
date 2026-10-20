@@ -22,6 +22,7 @@ const ItwVorplanungTab: React.FC = () => {
     ]);
     const [personnel, setPersonnel] = useState<any[]>([]);
     const [assignments, setAssignments] = useState<any[]>([]);
+    const [phaseOverrides, setPhaseOverrides] = useState<Record<string, { fzf1?: string; fzf2?: string; maschinist?: string }>>({});
     const [activeQuals, setActiveQuals] = useState<Record<number, string[]>>({});
     const [holidays, setHolidays] = useState<string[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
@@ -100,6 +101,23 @@ const ItwVorplanungTab: React.FC = () => {
                 }
             } catch (e) {
                 console.error(e);
+            }
+
+            try {
+                const overridesVal = await (window as any).api.getSetting?.('itw_phase_dept_overrides');
+                if (overridesVal) {
+                    const parsed = JSON.parse(overridesVal);
+                    if (parsed && typeof parsed === 'object') {
+                        setPhaseOverrides(parsed);
+                    } else {
+                        setPhaseOverrides({});
+                    }
+                } else {
+                    setPhaseOverrides({});
+                }
+            } catch (e) {
+                console.error('[ITW] Error loading itw_phase_dept_overrides:', e);
+                setPhaseOverrides({});
             }
 
             const persInfo = await (window as any).api.getPersonnel?.(false, 'all') || [];
@@ -460,6 +478,73 @@ const ItwVorplanungTab: React.FC = () => {
         setAssignments(assigns);
     };
 
+    const handleDepartmentChange = async (
+        phaseStart: string,
+        phaseEnd: string,
+        role: string,
+        roleKey: 'fzf1' | 'fzf2' | 'maschinist',
+        newDept: string,
+        currentDept: string,
+        defaultDept: string
+    ) => {
+        if (newDept === currentDept) return;
+
+        const currentAssgn = getAssignmentForPhase(phaseStart, role, currentDept);
+        if (currentAssgn && currentAssgn.person_id) {
+            const person = personnel.find(p => Number(p.id) === Number(currentAssgn.person_id));
+            const pName = person ? `${person.name}, ${person.vorname}` : 'Mitarbeiter';
+            const proceed = window.confirm(
+                `Für "${role}" ist aktuell ${pName} eingeteilt.\n\nSoll die zuständige Abteilung von "${currentDept}" auf "${newDept}" geändert werden?\nDie ITW-Schichten (IW) im Dienstplan werden für ${pName} automatisch auf die Schichttage der neuen Abteilung übertragen.`
+            );
+            if (!proceed) return;
+
+            try {
+                await removeSchichtFromRoster(currentAssgn.person_id, phaseStart, phaseEnd, currentDept);
+                await transferSchichtToRoster(currentAssgn.person_id, phaseStart, phaseEnd, newDept);
+            } catch (err) {
+                console.error('[ITW] Fehler beim Anpassen der Dienstplan-Schichten:', err);
+            }
+        }
+
+        const updated = { ...phaseOverrides };
+        if (!updated[phaseStart]) {
+            updated[phaseStart] = {};
+        } else {
+            updated[phaseStart] = { ...updated[phaseStart] };
+        }
+
+        if (newDept === defaultDept) {
+            delete updated[phaseStart][roleKey];
+            if (Object.keys(updated[phaseStart]).length === 0) {
+                delete updated[phaseStart];
+            }
+        } else {
+            updated[phaseStart][roleKey] = newDept;
+        }
+
+        setPhaseOverrides(updated);
+
+        try {
+            await (window as any).api.setSetting?.('itw_phase_dept_overrides', JSON.stringify(updated));
+            window.dispatchEvent(new CustomEvent('itw-patterns-updated'));
+            window.dispatchEvent(new CustomEvent('itw-duty-roster-updated'));
+        } catch (e: any) {
+            console.error('[ITW] Fehler beim Speichern der Phasen-Abteilungszuordnung:', e);
+            alert('Fehler beim Speichern der Abteilungszuordnung: ' + (e?.message || e));
+        }
+    };
+
+    const handleResetDepartmentOverride = async (
+        phaseStart: string,
+        phaseEnd: string,
+        role: string,
+        roleKey: 'fzf1' | 'fzf2' | 'maschinist',
+        defaultDept: string,
+        currentDept: string
+    ) => {
+        await handleDepartmentChange(phaseStart, phaseEnd, role, roleKey, defaultDept, currentDept, defaultDept);
+    };
+
     const [showGapsModal, setShowGapsModal] = useState<boolean>(false);
     const [gapsDeptFilter, setGapsDeptFilter] = useState<string>('all');
     const [gapsRoleFilter, setGapsRoleFilter] = useState<string>('all');
@@ -484,10 +569,11 @@ const ItwVorplanungTab: React.FC = () => {
         displayedPhases.forEach((phase, phaseIdx) => {
             const rotIdx = phaseIdx % rotCount;
             const rotConfig = itwRotationPhases[rotIdx] || { fzf1: '1. Abteilung', fzf2: '2. Abteilung', maschinist: '3. Abteilung' };
+            const override = phaseOverrides[phase.start] || {};
             const phaseRoles = [
-                { role: 'Fahrzeugführer 1', department: rotConfig.fzf1 },
-                { role: 'Fahrzeugführer 2', department: rotConfig.fzf2 },
-                { role: 'Maschinist', department: rotConfig.maschinist }
+                { role: 'Fahrzeugführer 1', department: override.fzf1 || rotConfig.fzf1 },
+                { role: 'Fahrzeugführer 2', department: override.fzf2 || rotConfig.fzf2 },
+                { role: 'Maschinist', department: override.maschinist || rotConfig.maschinist }
             ];
 
             phaseRoles.forEach(({ role, department }) => {
@@ -508,7 +594,23 @@ const ItwVorplanungTab: React.FC = () => {
         });
 
         return gapsList;
-    }, [displayedPhases, itwRotationPhases, assignments]);
+    }, [displayedPhases, itwRotationPhases, phaseOverrides, assignments]);
+
+    const overriddenSlotsCount = useMemo(() => {
+        let count = 0;
+        const rotCount = itwRotationPhases.length || 3;
+        displayedPhases.forEach((phase, phaseIdx) => {
+            const rotIdx = phaseIdx % rotCount;
+            const rotConfig = itwRotationPhases[rotIdx] || { fzf1: '1. Abteilung', fzf2: '2. Abteilung', maschinist: '3. Abteilung' };
+            const override = phaseOverrides[phase.start];
+            if (override) {
+                if (override.fzf1 && override.fzf1 !== rotConfig.fzf1) count++;
+                if (override.fzf2 && override.fzf2 !== rotConfig.fzf2) count++;
+                if (override.maschinist && override.maschinist !== rotConfig.maschinist) count++;
+            }
+        });
+        return count;
+    }, [displayedPhases, itwRotationPhases, phaseOverrides]);
 
     const totalSlots = displayedPhases.length * 3;
     const occupiedSlots = totalSlots - allGaps.length;
@@ -573,10 +675,11 @@ const ItwVorplanungTab: React.FC = () => {
             const cardsHtml = displayedPhases.map((phase, phaseIdx) => {
                 const rotIdx = phaseIdx % rotCount;
                 const rotConfig = itwRotationPhases[rotIdx] || { fzf1: '1. Abteilung', fzf2: '2. Abteilung', maschinist: '3. Abteilung' };
+                const override = phaseOverrides[phase.start] || {};
                 const phaseRoles = [
-                    { role: 'Fahrzeugführer 1', shortRole: 'FzF 1', department: rotConfig.fzf1 },
-                    { role: 'Fahrzeugführer 2', shortRole: 'FzF 2', department: rotConfig.fzf2 },
-                    { role: 'Maschinist', shortRole: 'Maschinist', department: rotConfig.maschinist }
+                    { role: 'Fahrzeugführer 1', shortRole: 'FzF 1', department: override.fzf1 || rotConfig.fzf1 },
+                    { role: 'Fahrzeugführer 2', shortRole: 'FzF 2', department: override.fzf2 || rotConfig.fzf2 },
+                    { role: 'Maschinist', shortRole: 'Maschinist', department: override.maschinist || rotConfig.maschinist }
                 ];
 
                 const slotsHtml = phaseRoles.map(({ role, shortRole, department }) => {
@@ -634,10 +737,11 @@ const ItwVorplanungTab: React.FC = () => {
                 displayedPhases.forEach((phase, phaseIdx) => {
                     const rotIdx = phaseIdx % rotCount;
                     const rotConfig = itwRotationPhases[rotIdx] || { fzf1: '1. Abteilung', fzf2: '2. Abteilung', maschinist: '3. Abteilung' };
+                    const override = phaseOverrides[phase.start] || {};
                     const phaseRoles = [
-                        { role: 'Fahrzeugführer 1', department: rotConfig.fzf1 },
-                        { role: 'Fahrzeugführer 2', department: rotConfig.fzf2 },
-                        { role: 'Maschinist', department: rotConfig.maschinist }
+                        { role: 'Fahrzeugführer 1', department: override.fzf1 || rotConfig.fzf1 },
+                        { role: 'Fahrzeugführer 2', department: override.fzf2 || rotConfig.fzf2 },
+                        { role: 'Maschinist', department: override.maschinist || rotConfig.maschinist }
                     ];
                     phaseRoles.forEach(({ role, department }) => {
                         if (normalizeDepartmentName(department) === normalizeDepartmentName(dept)) {
@@ -819,6 +923,14 @@ const ItwVorplanungTab: React.FC = () => {
                                     {allGaps.length} offen
                                 </span>
                             )}
+                            {overriddenSlotsCount > 0 && (
+                                <span 
+                                    title="Manuell gegenüber dem Standard-Loop geänderte Abteilungs-Zuordnungen"
+                                    style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '1px 7px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}
+                                >
+                                    {overriddenSlotsCount} manuell angepasst
+                                </span>
+                            )}
                         </div>
                     )}
                 </div>
@@ -900,11 +1012,36 @@ const ItwVorplanungTab: React.FC = () => {
                     const rotCount = itwRotationPhases.length || 3;
                     const rotIdx = phaseIdx % rotCount;
                     const rotConfig = itwRotationPhases[rotIdx] || { fzf1: '1. Abteilung', fzf2: '2. Abteilung', maschinist: '3. Abteilung' };
+                    const override = phaseOverrides[phase.start] || {};
 
-                    const phaseRoles = [
-                        { role: 'Fahrzeugführer 1', department: rotConfig.fzf1 },
-                        { role: 'Fahrzeugführer 2', department: rotConfig.fzf2 },
-                        { role: 'Maschinist', department: rotConfig.maschinist }
+                    const phaseRoles: {
+                        role: string;
+                        roleKey: 'fzf1' | 'fzf2' | 'maschinist';
+                        department: string;
+                        defaultDept: string;
+                        isOverridden: boolean;
+                    }[] = [
+                        { 
+                            role: 'Fahrzeugführer 1', 
+                            roleKey: 'fzf1', 
+                            department: override.fzf1 || rotConfig.fzf1,
+                            defaultDept: rotConfig.fzf1,
+                            isOverridden: Boolean(override.fzf1 && override.fzf1 !== rotConfig.fzf1)
+                        },
+                        { 
+                            role: 'Fahrzeugführer 2', 
+                            roleKey: 'fzf2', 
+                            department: override.fzf2 || rotConfig.fzf2,
+                            defaultDept: rotConfig.fzf2,
+                            isOverridden: Boolean(override.fzf2 && override.fzf2 !== rotConfig.fzf2)
+                        },
+                        { 
+                            role: 'Maschinist', 
+                            roleKey: 'maschinist', 
+                            department: override.maschinist || rotConfig.maschinist,
+                            defaultDept: rotConfig.maschinist,
+                            isOverridden: Boolean(override.maschinist && override.maschinist !== rotConfig.maschinist)
+                        }
                     ];
 
                     const phaseGapsCount = phaseRoles.filter(({ role, department }) => {
@@ -953,7 +1090,7 @@ const ItwVorplanungTab: React.FC = () => {
                                 )}
                             </div>
                             <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', flex: 1 }}>
-                                {phaseRoles.map(({ role, department }) => {
+                                {phaseRoles.map(({ role, roleKey, department, defaultDept, isOverridden }) => {
                                     const currentAssgn = getAssignmentForPhase(phase.start, role, department);
                                     const currentId = currentAssgn ? currentAssgn.person_id : '';
                                     const isOccupied = Boolean(currentId);
@@ -1016,17 +1153,69 @@ const ItwVorplanungTab: React.FC = () => {
                                                 <label style={{ fontSize: 13, color: '#333', fontWeight: 600 }}>
                                                     {role}
                                                 </label>
-                                                <span style={{
-                                                    fontSize: '11px',
-                                                    fontWeight: 600,
-                                                    padding: '2px 8px',
-                                                    borderRadius: 12,
-                                                    background: colors.badgeBg,
-                                                    color: colors.badgeColor,
-                                                    border: `1px solid ${colors.badgeBorder}`
-                                                }}>
-                                                    {department}
-                                                </span>
+                                                {canWriteAll ? (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <select
+                                                            value={department}
+                                                            onChange={e => handleDepartmentChange(phase.start, phase.end, role, roleKey, e.target.value, department, defaultDept)}
+                                                            title={isOverridden ? `Manuell angepasst (Standard: ${defaultDept})` : `Zuständige Abteilung (Loop: ${defaultDept})`}
+                                                            style={{
+                                                                fontSize: '11px',
+                                                                fontWeight: 600,
+                                                                padding: '2px 8px',
+                                                                borderRadius: 12,
+                                                                background: colors.badgeBg,
+                                                                color: colors.badgeColor,
+                                                                border: isOverridden ? `1.5px solid ${colors.accent}` : `1px solid ${colors.badgeBorder}`,
+                                                                cursor: 'pointer',
+                                                                outline: 'none',
+                                                                boxShadow: isOverridden ? `0 0 0 1px ${colors.accent}40` : 'none',
+                                                                transition: 'all 0.15s ease'
+                                                            }}
+                                                        >
+                                                            {DEPARTMENTS.map(d => (
+                                                                <option key={d} value={d} style={{ background: '#ffffff', color: '#1e293b' }}>
+                                                                    {d}{d === defaultDept ? ' (Loop)' : ''}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        {isOverridden && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleResetDepartmentOverride(phase.start, phase.end, role, roleKey, defaultDept, department)}
+                                                                title={`Auf Loop-Standard (${defaultDept}) zurücksetzen`}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    cursor: 'pointer',
+                                                                    color: '#64748b',
+                                                                    padding: '1px 3px',
+                                                                    fontSize: '12px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    borderRadius: '3px'
+                                                                }}
+                                                                onMouseEnter={e => (e.currentTarget.style.color = '#0284c7')}
+                                                                onMouseLeave={e => (e.currentTarget.style.color = '#64748b')}
+                                                            >
+                                                                ↺
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <span style={{
+                                                        fontSize: '11px',
+                                                        fontWeight: 600,
+                                                        padding: '2px 8px',
+                                                        borderRadius: 12,
+                                                        background: colors.badgeBg,
+                                                        color: colors.badgeColor,
+                                                        border: `1px solid ${colors.badgeBorder}`
+                                                    }}>
+                                                        {department}
+                                                    </span>
+                                                )}
                                             </div>
                                             <select
                                                 value={currentId || ''}

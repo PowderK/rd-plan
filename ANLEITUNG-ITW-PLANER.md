@@ -46,6 +46,14 @@ In RD-Plan wird die ITW-Planung über differenzierte Berechtigungen gesteuert:
   * 🔵 **2. Abteilung**: Blauer Akzent
   * 🟢 **3. Abteilung**: Grüner Akzent
 
+### Manuelle Anpassung der Abteilungs-Zuordnung (Übersteuerung des Loops)
+* Standardmäßig wird die zuständige Abteilung jeder Position (FzF 1, FzF 2, Maschinist) aus dem in den Einstellungen definierten **ITW-Loop** berechnet.
+* Als **ITW-Planer** (`write_all`) kannst du die Abteilungszuordnung jeder einzelnen Position direkt auf der Phasenkarte über das **Abteilungs-Dropdown** manuell ändern (z. B. bei Abweichungen im Dienststellen-Aushang oder Ausnahmen).
+* **Unabhängiger Grund-Loop:** Der konfigurierte ITW-Rotations-Loop in den Einstellungen bleibt dabei vollständig unberührt und unabhängig.
+* **Optische Kennzeichnung:** Manuell geänderte Positionen werden mit einem hervorgehobenen Rahmen und einem Reset-Symbol `↺` gekennzeichnet.
+* **Zurücksetzen:** Über das `↺`-Symbol oder die erneute Auswahl von `... (Loop)` im Dropdown kann eine Position jederzeit wieder auf den Standard-Loop zurückgesetzt werden.
+* **Automatische Dienstplananpassung:** Falls für eine Position bereits ein Kollege eingeteilt ist, wird beim Ändern der Abteilung nach einer Bestätigung gefragt und die Dienstplan-Schichten (IW) werden automatisch auf die Schichttage der neuen Abteilung aktualisiert.
+
 ---
 
 ## 3. Phasenbesetzung & Qualifikationslogik
