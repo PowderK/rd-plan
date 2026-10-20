@@ -291,6 +291,7 @@ function openSetupWizard() {
         width: 720,
         height: 500,
         resizable: false,
+        acceptFirstMouse: true,
         icon: path.join(__dirname, '../media/Icon.icns'),
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
@@ -475,6 +476,7 @@ async function createWindow(showImmediately: boolean = false) {
         width: 1280,
         height: 800,
         show: false, // Nicht sofort anzeigen (wird gesteuert via ready-to-show)
+        acceptFirstMouse: true,
         icon: path.join(__dirname, '../media/Icon.icns'),
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
@@ -664,6 +666,14 @@ ipcMain.handle('set-setting', async (_event, key: string, value: string) => {
         } else if (['year', 'rescueStation', 'department'].includes(key)) {
             // UI-State Parameter dürfen von jedem geändert werden, der die App nutzt
             // Ggf. könnte man hier prüfen, ob der User eingeloggt ist, aber auth-check ist implizit
+        } else if (key === 'itw_phase_dept_overrides') {
+            // ITW-Planer (write_all auf itw_vorplanung bzw. itw) oder Administrator
+            const user = auth.getCurrentUser();
+            const isAppAdmin = (auth as any).isDevMode?.() || user?.roleName?.toLowerCase() === 'administrator';
+            const itwPerm = isAppAdmin ? 'write_all' : (user?.permissions?.itw_vorplanung || user?.permissions?.itw || 'none');
+            if (!isAppAdmin && itwPerm !== 'write_all') {
+                throw new Error('PERMISSION_DENIED: Nur ITW-Planer dürfen Phasen-Zuordnungen manuell ändern.');
+            }
         } else {
             // Alle anderen Settings benötigen einstellungen:write
             auth.requirePermission('einstellungen', 'write');
@@ -676,6 +686,13 @@ ipcMain.handle('set-setting', async (_event, key: string, value: string) => {
             await auth.refreshCurrentSession();
             await applyRoleBasedMenuVisibility();
             BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('settings-updated'); } catch { } });
+        } else if (key === 'itw_phase_dept_overrides') {
+            BrowserWindow.getAllWindows().forEach(w => { 
+                try { 
+                    w.webContents.send('settings-updated'); 
+                    w.webContents.send('itw-updated');
+                } catch { } 
+            });
         }
 
         return true;
@@ -691,8 +708,10 @@ ipcMain.handle('get-personnel', async (_event, includeInactive?: boolean, depart
     const user = auth.getCurrentUser();
     const adapter = await ensureDatabaseAdapter();
     
-    let targetDept = user?.assignedDepartment;
-    if (targetDept === 'all' && department) {
+    let targetDept: string | undefined = user?.assignedDepartment === 'all' ? undefined : user?.assignedDepartment;
+    if (department === 'all') {
+        targetDept = undefined;
+    } else if (department) {
         targetDept = department;
     }
 
@@ -983,17 +1002,38 @@ ipcMain.handle('assign-slot', async (_event, entry: { personId: number, personTy
 });
 
 // Azubi handlers
-ipcMain.handle('get-azubi-list', async (_event, department?: string) => {
+ipcMain.handle('get-azubi-list', async (_event, includeInactiveOrDept?: boolean | string, department?: string) => {
     const auth = getAuthService();
     const user = auth.getCurrentUser();
     const adapter = await ensureDatabaseAdapter();
 
-    let targetDept = user?.assignedDepartment;
-    if (targetDept === 'all' && department) {
-        targetDept = department;
+    let incInactive = false;
+    let dept: string | undefined = undefined;
+    if (typeof includeInactiveOrDept === 'boolean') {
+        incInactive = includeInactiveOrDept;
+        if (typeof department === 'string') dept = department;
+    } else if (typeof includeInactiveOrDept === 'string') {
+        dept = includeInactiveOrDept;
     }
 
-    return await adapter.getAzubiList(targetDept);
+    let targetDept = user?.assignedDepartment;
+    if (targetDept === 'all' && dept) {
+        targetDept = dept;
+    } else if (!targetDept && dept) {
+        targetDept = dept;
+    }
+
+    return await adapter.getAzubiList(targetDept, incInactive);
+});
+
+// Set azubi active/inactive
+ipcMain.handle('set-azubi-active', async (_event, id: number, active: boolean) => {
+    const auth = getAuthService();
+    auth.requirePermission('personal', 'write');
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.setAzubiActive(id, !!active);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('azubi-updated'); w.webContents.send('azubis-updated'); } catch { } });
+    return true;
 });
 
 ipcMain.handle('add-azubi', async (_event, azubi: any) => {
@@ -1263,6 +1303,38 @@ ipcMain.handle('update-itw-doctor-order', async (_event, order: number[]) => {
     return true;
 });
 
+// Doctor Period handlers
+ipcMain.handle('get-doctor-periods', async (_event, doctorId: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getDoctorPeriods(doctorId);
+});
+
+ipcMain.handle('get-all-doctor-periods', async () => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getAllDoctorPeriods();
+});
+
+ipcMain.handle('add-doctor-period', async (_event, period: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.addDoctorPeriod(period);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); w.webContents.send('itw-updated'); } catch { } });
+    return true;
+});
+
+ipcMain.handle('update-doctor-period', async (_event, id: number, period: any) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.updateDoctorPeriod({ ...period, id });
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); w.webContents.send('itw-updated'); } catch { } });
+    return true;
+});
+
+ipcMain.handle('delete-doctor-period', async (_event, id: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.deleteDoctorPeriod(id);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('itw-doctors-updated'); w.webContents.send('itw-updated'); } catch { } });
+    return true;
+});
+
 // Vehicle handlers
 ipcMain.handle('get-rtw-vehicles', async (_event, year?: number) => {
     const adapter = await ensureDatabaseAdapter();
@@ -1271,9 +1343,9 @@ ipcMain.handle('get-rtw-vehicles', async (_event, year?: number) => {
 
 ipcMain.handle('add-rtw-vehicle', async (_event, v: any) => {
     const adapter = await ensureDatabaseAdapter();
-    await adapter.addRtwVehicle(v);
+    const vehicleId = await adapter.addRtwVehicle(v);
     BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
-    return true;
+    return vehicleId;
 });
 
 ipcMain.handle('update-rtw-vehicle', async (_event, v: any) => {
@@ -1306,9 +1378,9 @@ ipcMain.handle('get-nef-vehicles', async (_event, year?: number) => {
 
 ipcMain.handle('add-nef-vehicle', async (_event, v: any) => {
     const adapter = await ensureDatabaseAdapter();
-    await adapter.addNefVehicle(v);
+    const vehicleId = await adapter.addNefVehicle(v);
     BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
-    return true;
+    return vehicleId;
 });
 
 ipcMain.handle('update-nef-vehicle', async (_event, v: any) => {
@@ -1342,11 +1414,11 @@ ipcMain.handle('get-itw-vehicles', async (_event, year?: number) => {
 
 ipcMain.handle('add-itw-vehicle', async (_event, v: { name: string }) => {
     const adapter = await ensureDatabaseAdapter();
-    await adapter.addItwVehicle(v);
+    const vehicleId = await adapter.addItwVehicle(v);
     // Auto-enable ITW if a vehicle is added
     await adapter.setSetting('itw', 'true');
     BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
-    return true;
+    return vehicleId;
 });
 
 ipcMain.handle('update-itw-vehicle', async (_event, v: { id: number, name: string }) => {
@@ -1486,6 +1558,31 @@ ipcMain.handle('delete-itw-vehicle-period', async (_event, id: number) => {
     return true;
 });
 
+// Vehicle Special Days & Peak Coverage IPC Handlers
+ipcMain.handle('get-vehicle-special-days', async (_event, vehicleType: string, vehicleId: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getVehicleSpecialDays(vehicleType, vehicleId);
+});
+
+ipcMain.handle('get-all-vehicle-special-days', async (_event, year?: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getAllVehicleSpecialDays(year);
+});
+
+ipcMain.handle('set-vehicle-special-days', async (_event, vehicleType: string, vehicleId: number, specialDays: any[]) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.setVehicleSpecialDays(vehicleType, vehicleId, specialDays);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
+    return true;
+});
+
+ipcMain.handle('set-vehicle-periods', async (_event, vehicleType: string, vehicleId: number, periods: any[]) => {
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.setVehiclePeriodsGeneric(vehicleType, vehicleId, periods);
+    BrowserWindow.getAllWindows().forEach(w => { try { w.webContents.send('vehicles-updated'); } catch { } });
+    return true;
+});
+
 ipcMain.handle('set-nef-occupancy', async (_event, id: number, mode: '24h' | 'tag') => {
     const adapter = await ensureDatabaseAdapter();
     await adapter.setNefOccupancyMode(id, mode);
@@ -1580,6 +1677,12 @@ ipcMain.handle('set-itw-patterns', async (_event, patterns: any[]) => {
     const dbManager = getDatabaseManager();
     const adapter = await dbManager.getItwAdapter();
     await adapter.setItwPatterns(patterns);
+    BrowserWindow.getAllWindows().forEach(w => {
+        try {
+            w.webContents.send('settings-updated');
+            w.webContents.send('itw-updated');
+        } catch { }
+    });
     return true;
 });
 
@@ -1616,16 +1719,34 @@ ipcMain.handle('get-itw-phase-assignments', async (_event, startDate?: string) =
 });
 
 ipcMain.handle('add-itw-phase-assignment', async (_event, startDate: string, personId: number, role: string) => {
+    let auditUser: { id: number; name: string } | undefined;
+    try {
+        const auth = getAuthService();
+        const currentUser = auth.getCurrentUser();
+        if (currentUser) {
+            auditUser = { id: currentUser.userId, name: `${currentUser.vorname} ${currentUser.name}`.trim() };
+        }
+    } catch { }
+
     const dbManager = getDatabaseManager();
     const adapter = await dbManager.getItwAdapter();
-    await adapter.addItwPhaseAssignment(startDate, personId, role);
+    await adapter.addItwPhaseAssignment(startDate, personId, role, auditUser);
     return true;
 });
 
 ipcMain.handle('remove-itw-phase-assignment', async (_event, startDate: string, personId: number) => {
+    let auditUser: { id: number; name: string } | undefined;
+    try {
+        const auth = getAuthService();
+        const currentUser = auth.getCurrentUser();
+        if (currentUser) {
+            auditUser = { id: currentUser.userId, name: `${currentUser.vorname} ${currentUser.name}`.trim() };
+        }
+    } catch { }
+
     const dbManager = getDatabaseManager();
     const adapter = await dbManager.getItwAdapter();
-    await adapter.removeItwPhaseAssignment(startDate, personId);
+    await adapter.removeItwPhaseAssignment(startDate, personId, auditUser);
     return true;
 });
 
@@ -1635,7 +1756,17 @@ ipcMain.handle('get-itw-duty-roster', async (_event, year: number) => {
     return await adapter.getItwDutyRoster(year);
 });
 
-ipcMain.handle('set-itw-duty-roster-entry', async (_event, entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number }) => {
+ipcMain.handle('set-itw-duty-roster-entry', async (_event, entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number; auditUser?: { id: number; name: string } }) => {
+    try {
+        if (!entry.auditUser) {
+            const auth = getAuthService();
+            const currentUser = auth.getCurrentUser();
+            if (currentUser) {
+                entry.auditUser = { id: currentUser.userId, name: `${currentUser.vorname} ${currentUser.name}`.trim() };
+            }
+        }
+    } catch { }
+
     const dbManager = getDatabaseManager();
     const adapter = await dbManager.getItwAdapter();
     await adapter.setItwDutyRosterEntry(entry);
@@ -1675,6 +1806,89 @@ ipcMain.handle('show-open-dialog', async (_event, options: any) => {
 ipcMain.handle('show-save-dialog', async (_event, options: any) => {
     const result = await dialog.showSaveDialog(options);
     return result;
+});
+
+ipcMain.handle('export-html-to-pdf', async (_event, options: { html: string; title?: string; defaultFileName?: string; landscape?: boolean }) => {
+    try {
+        const parent = BrowserWindow.getFocusedWindow() || (BrowserWindow.getAllWindows().length > 0 ? BrowserWindow.getAllWindows()[0] : undefined);
+        const defaultPath = options.defaultFileName || `${options.title || 'Export'}.pdf`;
+        const saveDialogOptions = {
+            title: options.title || 'Als PDF speichern',
+            defaultPath,
+            filters: [{ name: 'PDF Dokument', extensions: ['pdf'] }]
+        };
+        const { canceled, filePath } = parent
+            ? await dialog.showSaveDialog(parent, saveDialogOptions)
+            : await dialog.showSaveDialog(saveDialogOptions);
+
+        if (canceled || !filePath) {
+            return { success: false, canceled: true };
+        }
+
+        const printWindow = new BrowserWindow({
+            show: false,
+            width: 1200,
+            height: 900,
+            webPreferences: {
+                nodeIntegration: false,
+                contextIsolation: true
+            }
+        });
+
+        const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>${options.title || 'PDF Export'}</title>
+    <style>
+        @page {
+            size: A4 ${options.landscape !== false ? 'landscape' : 'portrait'};
+            margin: 6mm;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #1f2937;
+            background: #ffffff;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        * {
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    ${options.html}
+</body>
+</html>`;
+
+        await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`);
+        
+        await new Promise(res => setTimeout(res, 300));
+
+        const pdfData = await printWindow.webContents.printToPDF({
+            landscape: options.landscape !== false,
+            pageSize: 'A4',
+            printBackground: true,
+            margins: {
+                marginType: 'custom',
+                top: 0.2,
+                bottom: 0.2,
+                left: 0.2,
+                right: 0.2
+            }
+        });
+
+        fs.writeFileSync(filePath, pdfData);
+        printWindow.close();
+
+        return { success: true, filePath };
+    } catch (err: any) {
+        console.error('[PDF Export] Error:', err);
+        return { success: false, error: err?.message || String(err) };
+    }
 });
 
 // Setup IPCs
@@ -1786,6 +2000,28 @@ ipcMain.handle('get-backup-summary', async (_event, backupDir: string, year?: nu
     }
 });
 
+function broadcastAllDataUpdated() {
+    BrowserWindow.getAllWindows().forEach(w => {
+        try {
+            w.webContents.send('personnel-updated');
+            w.webContents.send('vehicles-updated');
+            w.webContents.send('duty-roster-updated');
+            w.webContents.send('settings-updated');
+            w.webContents.send('azubis-updated');
+            w.webContents.send('azubi-updated');
+            w.webContents.send('itw-doctors-updated');
+            w.webContents.send('itw-updated');
+            w.webContents.send('guests-updated');
+            w.webContents.send('holidays-updated');
+        } catch { }
+    });
+}
+
+ipcMain.handle('notify-all-updated', async () => {
+    broadcastAllDataUpdated();
+    return { success: true };
+});
+
 ipcMain.handle('restore-backup', async (_event, backupDir: string) => {
     try {
         await restoreDatabaseFromBackup(backupDir);
@@ -1802,6 +2038,7 @@ ipcMain.handle('restore-backup', async (_event, backupDir: string) => {
 ipcMain.handle('import-backup', async (_event, backupDbPath: string, options?: { personnel?: boolean; azubis?: boolean; assignments?: boolean; qualifications?: boolean; individualSettings?: boolean; dutyRoster?: boolean; replaceExisting?: boolean }) => {
     try {
         const res = await importFromBackup(backupDbPath, options);
+        broadcastAllDataUpdated();
         return { success: true, result: res };
     } catch (e: any) {
         return { success: false, message: e?.message || String(e) };
@@ -1865,9 +2102,7 @@ ipcMain.handle('import-settings-json', async (_event, filePath: string, replaceE
         const result = await adapter.importSettingsFromJson(filePath, replaceExisting);
 
         // Notify all windows about settings update
-        BrowserWindow.getAllWindows().forEach(w => {
-            try { w.webContents.send('settings-updated'); } catch { }
-        });
+        broadcastAllDataUpdated();
 
         return result;
     } catch (error) {
@@ -1912,10 +2147,7 @@ ipcMain.handle('import-duty-roster', async (_event, filePath: string, year: numb
         const result = await adapter.importDutyRoster(filePath, year, month, options);
 
         if (result.success) {
-            // Notify all windows about the update
-            BrowserWindow.getAllWindows().forEach(w => {
-                try { w.webContents.send('duty-roster-updated'); } catch { }
-            });
+            broadcastAllDataUpdated();
         }
 
         return result;
@@ -2142,6 +2374,7 @@ function openWindow(htmlFile: string, windowVar: string, width = 800, height = 6
     const win = new BrowserWindow({
         width,
         height,
+        acceptFirstMouse: true,
         icon: path.join(__dirname, '../media/Icon.icns'),
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
@@ -2164,6 +2397,7 @@ function openWindowWithQuery(htmlFile: string, windowVar: string, width = 800, h
     const win = new BrowserWindow({
         width,
         height,
+        acceptFirstMouse: true,
         icon: path.join(__dirname, '../media/Icon.icns'),
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
@@ -2313,15 +2547,15 @@ ipcMain.on('open-edit-itw-window', (_ev, id: number) => {
 });
 
 ipcMain.on('open-add-rtw-window', () => {
-    openWindow('addRtw.html', 'addRtwWindow', 560, 360);
+    openWindow('addRtw.html', 'addRtwWindow', 960, 680);
 });
 
 ipcMain.on('open-add-nef-window', () => {
-    openWindow('addNef.html', 'addNefWindow', 560, 360);
+    openWindow('addNef.html', 'addNefWindow', 960, 680);
 });
 
 ipcMain.on('open-add-itw-vehicle-window', () => {
-    openWindow('addItwVehicle.html', 'addItwVehicleWindow', 560, 360);
+    openWindow('addItwVehicle.html', 'addItwVehicleWindow', 960, 680);
 });
 
 // App quit handler

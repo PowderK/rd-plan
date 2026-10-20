@@ -77,6 +77,13 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
       setPersonnelResult(importResult);
       setImporting(false);
 
+      if (importResult && importResult.success !== false) {
+        try { (window as any).api?.notifyAllUpdated?.(); } catch {}
+        window.dispatchEvent(new CustomEvent('personnel-updated'));
+        window.dispatchEvent(new CustomEvent('duty-roster-updated'));
+        window.dispatchEvent(new CustomEvent('settings-updated'));
+      }
+
       if (onImportComplete) {
         onImportComplete(importResult);
       }
@@ -145,6 +152,14 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
 
       setSettingsResult(importResult);
       setImporting(false);
+
+      if (importResult && importResult.success !== false) {
+        try { (window as any).api?.notifyAllUpdated?.(); } catch {}
+        window.dispatchEvent(new CustomEvent('settings-updated'));
+        window.dispatchEvent(new CustomEvent('personnel-updated'));
+        window.dispatchEvent(new CustomEvent('vehicles-updated'));
+        window.dispatchEvent(new CustomEvent('duty-roster-updated'));
+      }
 
       if (onImportComplete) {
         onImportComplete(importResult);
@@ -506,12 +521,17 @@ const SettingsImportExport: React.FC<SettingsImportExportProps> = ({ onImportCom
                         if (!confirm || confirm.response !== 1) return;
                       }
 
-                      setImporting(true);
                       try {
                         const res = await (window as any).api.importBackup?.(selectedBackup, { personnel: optPersonnel, azubis: optAzubis, assignments: optAssignments, qualifications: optQualifications, individualSettings: optIndividualSettings, dutyRoster: optDutyRoster, replaceExisting: replaceExistingBackup });
                         const resultObj = res?.result || res;
                         setBackupImportResult(resultObj);
                         setImporting(false);
+                        try { (window as any).api?.notifyAllUpdated?.(); } catch {}
+                        window.dispatchEvent(new CustomEvent('personnel-updated'));
+                        window.dispatchEvent(new CustomEvent('vehicles-updated'));
+                        window.dispatchEvent(new CustomEvent('duty-roster-updated'));
+                        window.dispatchEvent(new CustomEvent('settings-updated'));
+                        window.dispatchEvent(new CustomEvent('azubis-updated'));
                       } catch (err) {
                         setBackupImportResult({ success: false, imported: {}, errors: [err instanceof Error ? err.message : String(err)] });
                         setImporting(false);

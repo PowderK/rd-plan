@@ -1,3 +1,379 @@
+## Build 1544 - 2026-10-20
+
+- **ITW-Vorplanung**: Manuelle Abteilungszuordnung je Phase für ITW-Planer
+  - ITW-Planer (`write_all`) können nun über ein Dropdown direkt an jeder einzelnen ITW-Phase und Planstelle (FzF 1, FzF 2, Maschinist) die zuständige Abteilung manuell anpassen.
+  - Der in den Einstellungen hinterlegte Grund-Loop (`itw_rotation_pattern`) bleibt davon unberührt und unabhängig.
+  - Manuell geänderte Positionen werden optisch hervorgehoben und können per `↺`-Button jederzeit wieder auf den Standard-Loop zurückgesetzt werden.
+  - Bei bereits eingeteiltem Personal werden die Dienstplan-Schichten (IW) nach Bestätigung automatisch auf die Schichttage der neuen Abteilung aktualisiert.
+
+## Build 1543 - 2026-09-29
+
+- automated build
+
+## Build 1542 - 2026-09-29
+
+- automated build
+
+## Build 1541 - 2026-09-29
+
+- automated build
+
+## Build 1540 - 2026-09-29
+
+- automated build
+
+## Version 1.6.0 - 2026-09-29
+
+- **ITW-Vorplanung & Mitarbeiter-Self-Service**:
+  - **Personalisierte Lücken-Übersicht**: Mitarbeiter mit Selbsteintragungsrechten (`canWriteOwn`) sehen im Modal und im Header-Zähler ausschließlich die freien Phasen der eigenen Abteilung, für die sie qualifiziert sind.
+  - **1-Klick-Selbsteintragung**: Direktes Eintragen über den Button *„Mich eintragen“* in der Lücken-Übersicht.
+  - **Reduzierte Oberfläche für Mitarbeiter**: Ausblenden irrelevanter Filter (Abteilung/Rolle) und des PDF-Export-Buttons bei einfachen Schreibrechten für maximale Übersichtlichkeit.
+  - **1-Seiten-PDF-Export für Planer**: Kompakter DIN-A4-Export der Vorplanung im Kachel-Design mit Phasen- und Abteilungsfarben.
+  - **Qualifikationsfilterung & Admin-Übersteuerung**: Intelligente Ausblendung unqualifizierter Mitarbeiter im Dropdown und Übersteuerungsmöglichkeit mit Bestätigungshinweis für Planer (`canWriteAll`).
+- **Rollen & Rechte**:
+  - Rollenrechte für den ITW-Dienstplan auf `Lesen` (nur eigene Zeile) und `Alle Lesen` (alle Zeilen) umgestellt.
+- **Dokumentation**:
+  - Neuer Planer-Leitfaden [ANLEITUNG-ITW-PLANER.md](file:///Users/benni/RD-Plan/ANLEITUNG-ITW-PLANER.md) und überarbeitete Mitarbeiter-Anleitung [ANLEITUNG-ITW-VORPLANUNG.md](file:///Users/benni/RD-Plan/ANLEITUNG-ITW-VORPLANUNG.md).
+
+## Build 1539 - 2026-09-27
+
+- automated build
+
+## Build 1538 - 2026-09-26
+
+- automated build
+
+## Version 1.5.6 - 2026-09-26
+
+- **ITW-Vorplanung**:
+  - **Lücken-Übersicht (Gaps-Modal)**: Übersicht aller unbesetzten ITW-Phasen mit Filterung nach Abteilung/Rolle, direkter Schnelleinteilung und Klick-Sprung zur Phase.
+  - **1-Seiten PDF-Export**: Vollständiger PDF-Export der Vorplanung im responsiven Kachel-Layout mit Farbcodierung und optimierter Platznutzung auf genau einer Seite.
+  - **Dropdown-Filterung nach ITW-Qualifikation**: Mitarbeiter ohne ITW-Qualifikation (weder ITW-Fahrzeugführer noch ITW-Maschinist) werden vollständig aus dem Zuweisungs-Dropdown ausgeblendet.
+  - **Qualifikations-Übersteuerung für Planer (`canWriteAll`)**: Benutzer mit vollen Schreibrechten können Kollegen bei Bedarf flexibel übersteuern; fehlende Teilqualifikationen werden optisch hervorgehoben (`FzF fehlt` / `Ma fehlt`) und beim Zuweisen mit einem Bestätigungshinweis versehen.
+- **ITW-Dienstplan & Rechteverwaltung**:
+  - Rollenrechte für ITW-Dienstplan auf `Lesen` (nur eigene Zeile) und `Alle Lesen` (alle Zeilen) umgestellt.
+  - Berechtigungsprüfung im `auth-service` und `database-manager` überarbeitet, sodass Benutzer mit reinem Leserecht nur ihre eigene Zeile sehen.
+
+## Build 1537 - 2026-09-26
+
+- automated build
+
+## Build 1536 - 2026-09-26
+
+- automated build
+
+## Build 1535 - 2026-09-26
+
+- automated build
+
+## Build 1534 - 2026-09-26
+
+- automated build
+
+## Build 1533 - 2026-09-26
+
+- automated build
+
+## Build 1532 - 2026-09-26
+
+- automated build
+
+## Build 1531 - 2026-09-26
+
+- automated build
+
+## Build 1530 - 2026-09-25
+
+- automated build
+
+## Build 1529 - 2026-09-25
+
+- automated build
+
+## Build 1528 - 2026-09-25
+
+- automated build
+
+## Build 1527 - 2026-09-25
+
+- automated build
+
+## Build 1526 - 2026-09-25
+
+- automated build
+
+## Build 1525 - 2026-09-25
+
+- automated build
+
+## Build 1524 - 2026-09-25
+
+- automated build
+
+## Build 1523 - 2026-09-25
+
+- automated build
+
+## Build 1522 - 2026-09-25
+
+- automated build
+
+## Build 1521 - 2026-09-25
+
+- automated build
+
+## Build 1520 - 2026-09-25
+
+- automated build
+
+## Build 1519 - 2026-09-22
+
+- automated build
+
+## Build 1518 - 2026-09-22
+
+- automated build
+
+## Build 1517 - 2026-09-22
+
+- automated build
+
+## Build 1516 - 2026-09-22
+
+- automated build
+
+## Build 1515 - 2026-09-22
+
+- automated build
+
+## Build 1514 - 2026-09-22
+
+- automated build
+
+## Build 1513 - 2026-09-22
+
+- automated build
+
+## Build 1512 - 2026-09-22
+
+- automated build
+
+## Build 1511 - 2026-09-22
+
+- automated build
+
+## Build 1510 - 2026-09-22
+
+- automated build
+
+## Build 1509 - 2026-09-22
+
+- automated build
+
+## Build 1508 - 2026-09-22
+
+- automated build
+
+## Build 1507 - 2026-09-22
+
+- automated build
+
+## Build 1506 - 2026-09-22
+
+- automated build
+
+## Build 1505 - 2026-09-22
+
+- automated build
+
+## Build 1504 - 2026-09-22
+
+- automated build
+
+## Build 1503 - 2026-09-22
+
+- automated build
+
+## Build 1502 - 2026-09-22
+
+- **Taucher-Funktionalität konsolidiert**: Datumszeilen-Zähler entfernt; visuelle Taucher-Kennzeichnung (blauer Markierungsstrich im Kontrollkasten, Dienstplan und Werteübersicht) sowie der *Features*-Toggle bleiben wie gewohnt aktiv.
+- **Dienstplan-Auswertung**: Korrigierte Auswertung für Abwesenheiten (`off`-Status vor `any`) sowie Ausschluss importierter Textschichten aus Fahrzeugeinteilungen.
+- **macOS Klick-Optimierung**: `acceptFirstMouse: true` für direkte Klickreaktion auf Buttons und Menüs aus dem Hintergrund.
+
+## Build 1499 - 2026-09-22
+
+- automated build
+
+## Build 1498 - 2026-09-22
+
+- automated build
+
+## Build 1497 - 2026-09-22
+
+- automated build
+
+## Build 1496 - 2026-09-22
+
+- automated build
+
+## Build 1495 - 2026-09-22
+
+- automated build
+
+## Build 1494 - 2026-09-22
+
+- automated build
+
+## Build 1493 - 2026-09-22
+
+- automated build
+
+## Build 1492 - 2026-09-22
+
+- automated build
+
+## Build 1491 - 2026-09-22
+
+- automated build
+
+## Build 1490 - 2026-09-22
+
+- automated build
+
+## Build 1489 - 2026-09-22
+
+- automated build
+
+## Build 1488 - 2026-09-22
+
+- automated build
+
+## Build 1487 - 2026-09-22
+
+- automated build
+
+## Build 1486 - 2026-09-22
+
+- automated build
+
+## Build 1485 - 2026-09-22
+
+- automated build
+
+## Build 1484 - 2026-09-22
+
+- automated build
+
+## Build 1483 - 2026-08-30
+
+- automated build
+
+## Build 1482 - 2026-08-30
+
+- automated build
+
+## Build 1481 - 2026-08-30
+
+- automated build
+
+## Build 1480 - 2026-08-30
+
+- automated build
+
+## Build 1479 - 2026-08-30
+
+- automated build
+
+## Build 1478 - 2026-08-30
+
+- automated build
+
+## Build 1477 - 2026-08-24
+
+- **Azubi-Verwaltung – Automatische zeitraumgesteuerte Aktivierung**:
+  - **Vollautomatische Statusberechnung**: Azubis werden nun basierend auf ihren Ausbildungszeiträumen (`azubi_periods`) automatisch als *Aktiv* bzw. *Inaktiv* eingestuft.
+  - **Automatisches Auslaufen**: Endet der aktuelle Zeitraum und liegt kein weiterer Zeitraum vor, wird der Azubi automatisch als inaktiv geführt.
+  - **Erweiterung & Reaktivierung**: Sobald ein neuer Zeitraum (weiteres Lehrjahr oder Praktikum) angelegt oder verlängert wird und das aktuelle Datum umfasst, ist der Azubi sofort wieder aktiv.
+  - **Reine Statusanzeige**: Die manuelle Umschaltung wurde durch eine dezente, übersichtliche Statusanzeige (Badge `Aktiv` bzw. `Inaktiv`) in der Personalübersicht abgelöst.
+  - **Datenbank & Migration**: Korrektur der SQLite- und PostgreSQL-Schemas sowie automatischer Tabellenmigrationen für die Spalte `active` in der Tabelle `azubis`.
+
+## Build 1473 - 2026-08-24
+
+- automated build
+
+## Build 1472 - 2026-08-24
+
+- automated build
+
+## Build 1471 - 2026-08-24
+
+- **Wertetabelle – Ampelsystem & Nullen-Kennzeichnung**:
+  - Farbliche Ampelkennzeichnung für `Soll | Ist`-Werte:
+    - 🟢 **Grün**: Soll exakt erreicht (`Ist == Soll` bei Soll > 0).
+    - 🔵 **Blau**: Plus-Schichten / Überhang (`Ist > Soll`).
+    - 🟠 **Orange**: Geringes Defizit (`Ist == Soll - 1`).
+    - 🔴 **Rot**: Größeres Defizit (`Ist < Soll - 1` oder `0` geleistet bei Soll > 0).
+    - ⚪ **Grau (`#94a3b8`)**: Dezent graue Darstellung für Nullen (`0 | 0`) und dienstfreie Monate für eine aufgeräumte, kontraststarke Übersicht.
+    - 🟣 **Indigo**: Zusatzschichten ohne festes Monatssoll.
+  - Kompakte Ampel-Legende im Seitenkopf der Wertetabelle.
+  - Detaillierte Mouseover-Tooltips mit Delta-Angaben je Zelle.
+- **Wertetabelle – Fallback-Zeilen für gelöschte Kollegen & Azubis**:
+  - Vollständige Erhaltung aller Schichtdaten in der Datenbank ohne Datenbereinigung.
+  - Automatische, transparente Fallback-Zeilen (`Gelöschter Azubi (ID X)` und `Gelöschter Mitarbeiter (ID X)`) für alle Schichten im Dienstplan, deren IDs keinem aktiven Datensatz mehr zugeordnet sind.
+  - Exakte Übereinstimmung aller Einzelzeilen mit den berechneten Gesamt-KPIs.
+- **Personalverwaltung – 1-Klick Inaktivschaltung für Azubis**:
+  - Neuer Status `Aktiv` / `Inaktiv` für Azubis (inkl. Datenbankmigration `active INTEGER DEFAULT 1` auf der Tabelle `azubis`).
+  - 1-Klick-Statusbadge in der Azubi-Tabelle zum schnellen Umschalten.
+  - Standardmäßiges Ausblenden inaktiver Azubis zur Verkürzung der Liste; Einblenden und Reaktivieren über Checkbox *„Inaktive anzeigen“*.
+
+## Build 1469 - 2026-08-22
+
+- automated build
+
+## Version 1.5.4 (Build 1468) - 2026-08-22
+
+- **ITW-Schichtfolgen & Abteilungszuordnung**:
+  - Behebung der ITW-Musterzuordnung im ITW-Dienstplan (`ItwDienstplanTab.tsx`) und in der ITW-Vorplanung (`ItwVorplanungTab.tsx`): Kollegen unterschiedlicher Abteilungen erhalten bei einer Phasenzuweisung nun exakt die ITW-Schichtfolge ihrer jeweiligen Abteilung.
+  - Fehlerbereinigung beim Speichern von ITW-Schichtfolgen in den Einstellungen (`department`-Attribut wird nun konsistent gespeichert und normalisiert).
+  - Automatisches Bereinigen fehlerhafter automatischer ITW-Einträge bei Abteilungsänderungen.
+- **Einstellungsmenü & Seitenleiste**:
+  - Einstellungskategorien (Allgemein, Dienstplan, Features, ITW, Qualifikationen, Rollen & Rechte, Verlauf) wurden als einklappbarer Ordnerbaum direkt in die Seitenleiste integriert.
+  - Das Einstellungs-Untermenü ist standardmäßig eingeklappt und öffnet sich bei Aktivierung der Einstellungen oder per Klick auf den Pfeil-Button.
+  - Die redundante horizontale Reiterleiste am oberen Rand der Einstellungsseite wurde entfernt für maximale Übersichtlichkeit und Arbeitsfläche.
+  - Entfernung des redundanten Abteilungs-Umschalters im ITW-Einstellungsreiter (es gilt automatisch die im Hauptmenü ausgewählte Abteilung).
+- **Personal- und Fahrzeugmenü**:
+  - Personal und Fahrzeuge sind als eigenständige Hauptmenüpunkte direkt im Seitenmenü verankert.
+
+## Build 1464 - 2026-08-20
+
+- automated build
+
+## Build 1463 - 2026-08-20
+
+- **Wertetabelle & Soll/Ist-Berechnung**:
+  - Vereinheitlichung der Berechnungslogik zwischen Kontrollkasten und Wertetabelle (`ValuesPage.tsx`) über `calculateTargetsWithDetails` und `computeAssignedShiftsPerPerson`.
+  - Behebung des Schichtmuster-Parsings (`p.pattern.split(',')`) und der UTC-Datumsverarbeitung in der Wertetabelle, sodass alle Abteilungstage vollständig erfasst werden.
+  - Spaltenreihenfolge in Abschnitt 2 der Wertetabelle einheitlich auf `Soll | Ist` angepasst (passend zum Kontrollkasten).
+  - Transparente Detailaufschlüsselung der Hamilton-Berechnung im Popup beim Klick auf den Namen.
+- **Fahrzeug-Validierung & Zeiträume (Reserveretter-Support)**:
+  - Striktes Fallback in Datenbank-Adapter (`getRtwVehicleActivations` / `getNefVehicleActivations`) und Berechnungs-Engine: Fahrzeuge ohne hinterlegte aktive Zeiträume sind standardmäßig inaktiv und fließen nicht in die Soll-Positionen ein.
+  - In `MonthTabs.tsx` prüfen Regel- und Reserve-Fahrzeuge einheitlich `isActiveInMonth`, um leere Tabellenspalten zu vermeiden.
+- **DB-Validierungsskript**:
+  - Neues Skript `scripts/validate-calculations.js` (`npm run validate`) zur automatisierten Validierung aller Soll/Ist-Werte, Qualifikationen und Fahrzeugzeiträume direkt gegen die SQLite-Datenbank.
+
+
+## Build 1460 - 2026-08-15
+
+- automated build
+
+## Build 1459 - 2026-08-15
+
+- automated build
+
+## Build 1458 - 2026-08-05
+
+- automated build
+
 ## Build 1457 - 2026-07-26
 
 - automated build

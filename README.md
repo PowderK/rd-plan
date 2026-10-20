@@ -7,9 +7,26 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v1.3.0** - Neue Automatik zur Azubi-Einteilung inkl. interaktiver Konfliktlösung und erweiterter Kontrollkasten-Ansicht.
+**v1.6.0** - ITW-Vorplanung mit maßgeschneiderter Mitarbeiter-Lückenübersicht (1-Klick-Selbsteintragung), 1-Seiten-PDF-Export für Planer, smarter Qualifikationsfilterung und entkoppeltem Rechtesystem für den ITW-Dienstplan (Lesen / Alle Lesen).
 
 ## Funktionen
+
+### ITW-Vorplanung & Mitarbeiter-Self-Service (v1.6.0+)
+- **Personalisierte Lücken-Übersicht für Mitarbeiter**: Zeigt Mitarbeitern mit Selbsteintragungsrechten (`write`) ausschließlich die offenen Schichtblöcke der eigenen Abteilung mit passender Qualifikation (Fahrzeugführer / Maschinist) inklusive 1-Klick-Einteilung (*„Mich eintragen“*).
+- **Vollständige Lücken-Übersicht für Planer**: ITW-Planer und Administratoren (`write_all`) haben Zugriff auf alle Abteilungen, erweiterte Filter nach Rolle/Abteilung und Direktzuweisungen.
+- **1-Seiten-PDF-Export**: Kompakter, sauber strukturierter Vorplanungs-Export im responsiven Kachel-Raster mit Abteilungs-Farbcodierung für Aushänge.
+- **Smarte Dropdown-Filterung & Admin-Übersteuerung**: Nicht-qualifiziertes Personal wird automatisch ausgeblendet; Planer können Kollegen bei Bedarf mit Warnhinweis flexibel für andere ITW-Rollen zuteilen.
+- **Feingranulare ITW-Dienstplan-Rechte**: Trennung der Berechtigungsstufen in *Lesen* (nur eigene Zeile) und *Alle Lesen* (vollständige Ansicht).
+
+### Taucher-Kennzeichnung & Feature-Toggle (v1.5.5+)
+- **Sonderqualifikation Taucher**: Automatische visuelle Kennzeichnung (blauer Markierungsstrich) im Kontrollkasten, im Dienstplan und in der Werte-Übersicht für Personal mit Taucher-Qualifikation im gewählten Zeitraum.
+- **Konfigurierbarer Feature-Toggle**: Im Einstellungsbereich unter *Features* kann die gesamte Taucher-Funktionalität (Kennzeichnungsstriche im Kontrollkasten, Dienstplan, Werte-Übersicht sowie die Qualifikationsauswahl) bei Bedarf vollständig deaktiviert werden.
+
+### ITW-Planung & Ärzte-Verwaltung (v1.5.5+)
+- **Ärzte-Verfügbarkeitszeiträume (Perioden)**: Flexible Erfassung und Verwaltung von Einsatzzeiträumen für Ärzte mit automatischer Filterung in Vorplanung, Einteilung und Dienstplan.
+- **ITW-Ärzte Copy & Paste Import**: Schneller Import von Diensttagen und Ärzten per Zwischenablage mit automatischem Namensabgleich.
+- **ITW-Phasenrotation & Farbcodierung**: Abteilungsrotierende Besetzung der ITW-Positionen (1. Abt. Rot, 2. Abt. Blau, 3. Abt. Grün) mit abteilungsbasierten Eintragungsrechten.
+- **Erweiterte Sonderqualifikationen**: Zusätzliche konfigurierbare Sonderqualifikation mit blauer Kennzeichnung im Kontrollkasten.
 
 ### Automatische Azubi-Einteilung (v1.3.0+)
 - **One-Click Verteilung**: Weist auf Knopfdruck alle ungeplanten Azubis des Monats auf freie Slots (RTW 2 für Maschinisten, RTW 3 für normale Azubis) zu.
@@ -77,8 +94,10 @@ RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die 
 	- ITW-Tab: Dezente gelbe Hinterlegung bei RTW/NEF-Einteilungen
 	- Verbessert Navigation zwischen verschiedenen Dienstbereichen
 - **Abteilungsfilter**: In der RTW/NEF-Ansicht werden nur Tage der eingestellten Abteilung angezeigt
-- **Fahrzeug- und Musterverwaltung** (RTW/NEF/ITW) mit monatlicher Aktivierung
+- **Fahrzeug- und Musterverwaltung** (RTW/NEF/ITW) mit monatlicher Aktivierung und strikter Validierung von Einsatzzeiträumen
 - **Feiertagsverwaltung** mit automatischer Berechnung für Niedersachsen
+- **Wertetabelle & Soll/Ist-Berechnung**: Einheitliche Hamilton-Verteilung, transparente Berechnungsschritte und detailgetreue Erfassung aller Netto-Schichten
+- **Datenbank- & Berechnungs-Validierung**: Integriertes Validierungs-Skript (`npm run validate`) zur automatisierten Konsistenzprüfung direkt gegen die Datenbank
 
 ### Technische Basis
 - Electron + React + TypeScript + Vite
@@ -314,7 +333,15 @@ Die Schichtübernahme ermöglicht es, SOLL-Schichten gezielt zwischen Mitarbeite
 - ✅ **Sichere IPC**: Erweiterte Electron preload APIs für Auth-Kommunikation
 - ✅ **UI-Verbesserungen**: Login-Seite, Benutzer-Anzeige in Header, Logout-Funktion
 
-### Version 1.2.0 (März 2026) - Aktuell
+### Version 1.5.3 (August 2026) - Aktuell
+- ✅ **Kategorienbasierter Multi-Sheet Import/Export**: Vollständiger JSON & Excel (`.xlsx`) Import/Export für Personal und Fahrzeuge inklusive aller Unterzeiträume und Schicht-Positionen.
+- ✅ **Bereinigte Datenstruktur**: Entfernung obsolet gewordener Qualifikations-Booleans und Dienstfähigkeits-Zeiträume; Fokus auf echte Qualifikationszeiträume und Abteilungszugehörigkeiten.
+- ✅ **Duplikat-Konfliktbehandlung**: Interaktiver Dialog bei vorhandenen Einträgen beim Import mit Checkbox *"Auswahl für alle übernehmen"*.
+- ✅ **Globale UI-Vereinheitlichung der Steuerungselemente**: Platzierung von Live-Suche, Hinzufügen-, Import-, Export- und Speichern-Schaltflächen in der fixierten Header-Leiste über den Tabs (Personal & Fahrzeuge).
+- ✅ **ITW-Modul Redesign & Dynamischer Status**: Anpassung des ITW-Tab-Designs an den globalen Standard sowie dynamische Farbindikation (Grün bei vollständiger Einteilung, Rot bei fehlenden Ärzten inkl. visueller Tabellen-Hervorhebung).
+- ✅ **Rollen- & Login-Fixes**: Behebung des SQLite-ID Speichers in Rollen und automatischer Redirect beim Login auf den jeweils berechtigten Funktionsbereich.
+
+### Version 1.2.0 (März 2026)
 - ✅ **Optimierte horizontale Navigation**: Migration der horizontalen Scrollbalken in ein fixiertes Footer-System (Dienstplan & Einteilung)
 - ✅ **Zwei-Schichten-Footer-Architektur**: Ergonomische Platzierung der Scrollleiste mit Abstand zum Bildschirmrand für bessere Bedienbarkeit
 - ✅ **Globale Layout-Synchronisation**: Dynamische Ausrichtung aller fixierten UI-Elemente an der Sidebar via CSS-Variablen

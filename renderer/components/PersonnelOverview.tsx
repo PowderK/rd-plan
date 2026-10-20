@@ -1,6 +1,8 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import styles from './PersonnelOverview.module.css';
+import { normalizeDepartmentName } from '../utils/personPeriods';
+import * as XLSX from 'xlsx';
 
 // Zeiträume Manager Komponente
 const AzubiPeriodsManager: React.FC<{ azubi: Azubi; onClose: () => void }> = ({ azubi, onClose }) => {
@@ -267,14 +269,23 @@ interface Person {
   department?: string;
 }
 
-interface Azubi { id: number; name: string; vorname: string; lehrjahr: number }
-interface ItwDoctor { id: number; name: string; vorname: string }
+interface Azubi { id: number; name: string; vorname: string; lehrjahr: number; active?: number | boolean; department?: string; }
+interface ItwDoctor {
+  id: number;
+  name: string;
+  vorname: string;
+  anrede?: string;
+  title?: string;
+  is_nef?: boolean | number;
+  is_itw?: boolean | number;
+}
 interface AzubiPeriod {
   id: number;
   azubi_id: number;
   start_date: string;
   end_date: string;
   description?: string;
+  lehrjahr?: number;
 }
 
 interface QualificationPeriod {
@@ -311,6 +322,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
   const [activePeriods, setActivePeriods] = useState<Record<number, ActivePeriod[]>>({});
   const [departmentPeriods, setDepartmentPeriods] = useState<Record<number, any[]>>({});
   const [itws, setItws] = useState<ItwDoctor[]>([]);
+  const [doctorPeriods, setDoctorPeriods] = useState<Record<number, any[]>>({});
   const [guests, setGuests] = useState<any[]>([]);
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [draggedAzubiId, setDraggedAzubiId] = useState<number | null>(null);
@@ -329,6 +341,11 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
   const [originalItws, setOriginalItws] = useState<ItwDoctor[] | null>(null);
 
   const [showInactive, setShowInactive] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [formatModal, setFormatModal] = useState<{ action: 'import' | 'export'; category: 'stammpersonal' | 'azubis' | 'ärzte' | 'gäste' } | null>(null);
+  const [conflictModal, setConflictModal] = useState<{ name: string; category: string; onResolve: (action: 'update' | 'skip', applyToAll: boolean) => void } | null>(null);
+  const [conflictApplyToAll, setConflictApplyToAll] = useState<boolean>(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Rollen für Dropdown
   const [roles, setRoles] = useState<{ id: number; name: string }[]>([]);
@@ -394,12 +411,12 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
   }, []);
 
   const loadAzubis = useCallback(async () => {
-    const list = await (window as any).api.getAzubiList(departmentName);
-    setAzubis(list);
+    const list = await (window as any).api.getAzubiList(true, departmentName);
+    setAzubis(list || []);
     // Lade Zeiträume für alle Azubis
     const allPeriods = await (window as any).api.getAllAzubiPeriods();
     const periodsByAzubi: Record<number, AzubiPeriod[]> = {};
-    allPeriods.forEach((period: AzubiPeriod) => {
+    (allPeriods || []).forEach((period: AzubiPeriod) => {
       if (!periodsByAzubi[period.azubi_id]) {
         periodsByAzubi[period.azubi_id] = [];
       }
@@ -425,8 +442,19 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
   }, []);
 
   const loadItws = useCallback(async () => {
-    const list = await (window as any).api.getItwDoctors();
-    setItws(list);
+    try {
+      const list = await (window as any).api.getItwDoctors();
+      setItws(Array.isArray(list) ? list : []);
+      const periods = await (window as any).api.getAllDoctorPeriods?.();
+      const pMap: Record<number, any[]> = {};
+      (periods || []).forEach((p: any) => {
+        if (!pMap[p.doctor_id]) pMap[p.doctor_id] = [];
+        pMap[p.doctor_id].push(p);
+      });
+      setDoctorPeriods(pMap);
+    } catch (e) {
+      console.error('Fehler beim Laden der Ärzte/Perioden:', e);
+    }
   }, []);
 
   const loadGuests = useCallback(async () => {
@@ -672,17 +700,18 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
     // 1. Check department periods
     // In 'all' view, we don't filter by department activity
     if (departmentName && departmentName !== 'all') {
+      const targetDept = normalizeDepartmentName(departmentName);
       const dPeriods = departmentPeriods[p.id] || [];
       if (dPeriods.length > 0) {
         const inDept = dPeriods.some((per: any) => 
-          per.department === departmentName &&
+          normalizeDepartmentName(per.department) === targetDept &&
           per.startDate <= currentDate &&
           (!per.endDate || per.endDate >= currentDate)
         );
         if (!inDept) return false;
       } else {
         // Fallback to legacy department flag if no periods exist
-        if (p.department !== departmentName) return false;
+        if (normalizeDepartmentName(p.department) !== targetDept) return false;
       }
     }
 
@@ -700,8 +729,755 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
     return !!(p.active ?? 1);
   };
 
-  const activePersonnel = personnel.filter(p => isPersonActive(p));
-  const inactivePersonnel = personnel.filter(p => !isPersonActive(p));
+  const filteredActivePersonnel = useMemo(() => {
+    const list = personnel.filter(p => isPersonActive(p));
+    if (!searchQuery.trim()) return list;
+    const q = searchQuery.toLowerCase().trim();
+    return list.filter(p => {
+      const name = `${p.vorname} ${p.name}`.toLowerCase();
+      const revName = `${p.name} ${p.vorname}`.toLowerCase();
+      const pNum = (p.personnelNumber || '').toLowerCase();
+      const roleName = (roles.find(r => r.id === p.roleId)?.name || '').toLowerCase();
+      return name.includes(q) || revName.includes(q) || pNum.includes(q) || roleName.includes(q);
+    });
+  }, [personnel, isPersonActive, searchQuery, roles]);
+
+  const filteredInactivePersonnel = useMemo(() => {
+    const list = personnel.filter(p => !isPersonActive(p));
+    if (!searchQuery.trim()) return list;
+    const q = searchQuery.toLowerCase().trim();
+    return list.filter(p => {
+      const name = `${p.vorname} ${p.name}`.toLowerCase();
+      const revName = `${p.name} ${p.vorname}`.toLowerCase();
+      const pNum = (p.personnelNumber || '').toLowerCase();
+      const roleName = (roles.find(r => r.id === p.roleId)?.name || '').toLowerCase();
+      return name.includes(q) || revName.includes(q) || pNum.includes(q) || roleName.includes(q);
+    });
+  }, [personnel, isPersonActive, searchQuery, roles]);
+
+  const isAzubiActive = useCallback((a: Azubi) => {
+    // Zeiträume prüfen: aktiv nur, wenn der heutige Tag in einem definierten Zeitraum liegt (oder noch keine Zeiträume definiert sind)
+    const periods = azubiPeriods[a.id] || [];
+    if (periods.length > 0) {
+      const now = new Date();
+      const currentDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      return periods.some(p => {
+        const start = String(p.start_date || '').slice(0, 10);
+        const end = String(p.end_date || '').slice(0, 10);
+        return start <= currentDate && end >= currentDate;
+      });
+    }
+
+    // Fallback, falls noch keine Zeiträume definiert sind
+    return true;
+  }, [azubiPeriods]);
+
+  const filteredActiveAzubis = useMemo(() => {
+    const list = azubis.filter(a => isAzubiActive(a));
+    if (!searchQuery.trim()) return list;
+    const q = searchQuery.toLowerCase().trim();
+    return list.filter(a => {
+      const name = `${a.vorname} ${a.name}`.toLowerCase();
+      const revName = `${a.name} ${a.vorname}`.toLowerCase();
+      const lj = String(a.lehrjahr || '');
+      return name.includes(q) || revName.includes(q) || lj.includes(q);
+    });
+  }, [azubis, isAzubiActive, searchQuery]);
+
+  const filteredInactiveAzubis = useMemo(() => {
+    const list = azubis.filter(a => !isAzubiActive(a));
+    if (!searchQuery.trim()) return list;
+    const q = searchQuery.toLowerCase().trim();
+    return list.filter(a => {
+      const name = `${a.vorname} ${a.name}`.toLowerCase();
+      const revName = `${a.name} ${a.vorname}`.toLowerCase();
+      const lj = String(a.lehrjahr || '');
+      return name.includes(q) || revName.includes(q) || lj.includes(q);
+    });
+  }, [azubis, isAzubiActive, searchQuery]);
+
+  const isDoctorActive = useCallback((doc: ItwDoctor) => {
+    const periods = doctorPeriods[doc.id] || [];
+    if (periods.length > 0) {
+      const now = new Date();
+      const currentDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      return periods.some(p => {
+        const start = String(p.start_date || '').slice(0, 10);
+        const end = String(p.end_date || '').slice(0, 10);
+        return start <= currentDate && end >= currentDate;
+      });
+    }
+    // Keine Perioden definiert => dauerhaft aktiv
+    return true;
+  }, [doctorPeriods]);
+
+  const filteredActiveItws = useMemo(() => {
+    const list = itws.filter(a => isDoctorActive(a));
+    if (!searchQuery.trim()) return list;
+    const q = searchQuery.toLowerCase().trim();
+    return list.filter(a => {
+      const name = `${a.anrede || ''} ${a.title || ''} ${a.vorname} ${a.name}`.toLowerCase();
+      const revName = `${a.name} ${a.vorname}`.toLowerCase();
+      return name.includes(q) || revName.includes(q);
+    });
+  }, [itws, isDoctorActive, searchQuery]);
+
+  const filteredInactiveItws = useMemo(() => {
+    const list = itws.filter(a => !isDoctorActive(a));
+    if (!searchQuery.trim()) return list;
+    const q = searchQuery.toLowerCase().trim();
+    return list.filter(a => {
+      const name = `${a.anrede || ''} ${a.title || ''} ${a.vorname} ${a.name}`.toLowerCase();
+      const revName = `${a.name} ${a.vorname}`.toLowerCase();
+      return name.includes(q) || revName.includes(q);
+    });
+  }, [itws, isDoctorActive, searchQuery]);
+
+  const filteredItws = useMemo(() => {
+    return showInactive ? itws : filteredActiveItws;
+  }, [showInactive, itws, filteredActiveItws]);
+
+  const filteredGuests = useMemo(() => {
+    if (!searchQuery.trim()) return guests;
+    const q = searchQuery.toLowerCase().trim();
+    return guests.filter(g => {
+      const n = (g.name || '').toLowerCase();
+      const r = (g.remark || '').toLowerCase();
+      return n.includes(q) || r.includes(q);
+    });
+  }, [guests, searchQuery]);
+
+  const handleCategoryExport = (tab: 'stammpersonal' | 'azubis' | 'ärzte' | 'gäste', format: 'json' | 'excel') => {
+    let categoryName = '';
+
+    if (tab === 'stammpersonal') {
+      categoryName = 'Stammpersonal';
+      if (personnel.length === 0) {
+        alert('Keine Daten für den Export im Stammpersonal vorhanden.');
+        return;
+      }
+
+      if (format === 'json') {
+        const fullExportData = personnel.map(p => ({
+          name: p.name,
+          vorname: p.vorname,
+          personnelNumber: p.personnelNumber || '',
+          roleName: roles.find(r => r.id === p.roleId)?.name || '',
+          roleId: p.roleId || null,
+          teilzeit: p.teilzeit || 100,
+          department: p.department || departmentName || 'Rettungsdienst',
+          active: p.active !== false,
+          street: p.street || '',
+          postalCode: p.postalCode || '',
+          city: p.city || '',
+          phone: p.phone || '',
+          mobile: p.mobile || '',
+          email: p.email || '',
+          qualificationPeriods: (qualificationPeriods[p.id] || []).map(q => ({
+            qualType: q.qualType,
+            startYM: q.startYM,
+            endYM: q.endYM || '',
+            active: q.active !== false
+          })),
+          departmentPeriods: (departmentPeriods[p.id] || []).map(d => ({
+            department: d.department,
+            startDate: d.startDate,
+            endDate: d.endDate || ''
+          }))
+        }));
+
+        const jsonStr = JSON.stringify(fullExportData, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `RD-Plan_Stammpersonal_Export_${new Date().toISOString().slice(0, 10)}.json`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } else {
+        // Multi-Sheet Excel Export
+        const wb = XLSX.utils.book_new();
+
+        // Sheet 1: Stammpersonal (Nur echte Kerndaten)
+        const mainRows = personnel.map(p => ({
+          Personalnummer: p.personnelNumber || '',
+          Name: p.name,
+          Vorname: p.vorname,
+          Nutzerrolle: roles.find(r => r.id === p.roleId)?.name || '',
+          Teilzeit: p.teilzeit || 100,
+          Abteilung: p.department || departmentName || 'Rettungsdienst',
+          Status: p.active !== false ? 'Aktiv' : 'Inaktiv',
+          Strasse: p.street || '',
+          PLZ: p.postalCode || '',
+          Ort: p.city || '',
+          Telefon: p.phone || '',
+          Mobil: p.mobile || '',
+          Email: p.email || ''
+        }));
+        const ws1 = XLSX.utils.json_to_sheet(mainRows);
+        XLSX.utils.book_append_sheet(wb, ws1, 'Stammpersonal');
+
+        // Sheet 2: Qualifikationen (Tatsächliche Qualifikationszeiträume)
+        const qualRows: any[] = [];
+        personnel.forEach(p => {
+          (qualificationPeriods[p.id] || []).forEach(q => {
+            qualRows.push({
+              Personalnummer: p.personnelNumber || '',
+              Name: p.name,
+              Vorname: p.vorname,
+              Qualifikation: q.qualType,
+              Start_YM: q.startYM,
+              Ende_YM: q.endYM || '',
+              Aktiv: q.active !== false ? 'Ja' : 'Nein'
+            });
+          });
+        });
+        const ws2 = XLSX.utils.json_to_sheet(qualRows.length > 0 ? qualRows : [{ Personalnummer: '', Name: '', Vorname: '', Qualifikation: '', Start_YM: '', Ende_YM: '', Aktiv: '' }]);
+        XLSX.utils.book_append_sheet(wb, ws2, 'Qualifikationen');
+
+        // Sheet 3: Abteilungs_Zeitraeume (Abteilungszugehörigkeiten)
+        const deptRows: any[] = [];
+        personnel.forEach(p => {
+          (departmentPeriods[p.id] || []).forEach(d => {
+            deptRows.push({
+              Personalnummer: p.personnelNumber || '',
+              Name: p.name,
+              Vorname: p.vorname,
+              Abteilung: d.department,
+              Start_Datum: d.startDate,
+              Ende_Datum: d.endDate || ''
+            });
+          });
+        });
+        const ws3 = XLSX.utils.json_to_sheet(deptRows.length > 0 ? deptRows : [{ Personalnummer: '', Name: '', Vorname: '', Abteilung: '', Start_Datum: '', Ende_Datum: '' }]);
+        XLSX.utils.book_append_sheet(wb, ws3, 'Abteilungs_Zeitraeume');
+
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `RD-Plan_Stammpersonal_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+    } else if (tab === 'azubis') {
+      categoryName = 'Azubis';
+      if (azubis.length === 0) {
+        alert('Keine Daten für den Export bei den Azubis vorhanden.');
+        return;
+      }
+
+      if (format === 'json') {
+        const fullExportData = azubis.map(a => ({
+          name: a.name,
+          vorname: a.vorname,
+          lehrjahr: a.lehrjahr || 1,
+          department: departmentName || 'Rettungsdienst',
+          periods: (azubiPeriods[a.id] || []).map(p => ({
+            start_date: p.start_date,
+            end_date: p.end_date,
+            description: p.description || '',
+            lehrjahr: p.lehrjahr || 1
+          }))
+        }));
+
+        const jsonStr = JSON.stringify(fullExportData, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `RD-Plan_Azubis_Export_${new Date().toISOString().slice(0, 10)}.json`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } else {
+        const wb = XLSX.utils.book_new();
+
+        // Sheet 1: Azubis
+        const mainRows = azubis.map(a => ({
+          Name: a.name,
+          Vorname: a.vorname,
+          Lehrjahr: a.lehrjahr || 1,
+          Abteilung: departmentName || 'Rettungsdienst'
+        }));
+        const ws1 = XLSX.utils.json_to_sheet(mainRows);
+        XLSX.utils.book_append_sheet(wb, ws1, 'Azubis');
+
+        // Sheet 2: Ausbildungs_Zeitraeume
+        const periodRows: any[] = [];
+        azubis.forEach(a => {
+          (azubiPeriods[a.id] || []).forEach(p => {
+            periodRows.push({
+              Name: a.name,
+              Vorname: a.vorname,
+              Startdatum: p.start_date,
+              Enddatum: p.end_date,
+              Lehrjahr: p.lehrjahr || 1,
+              Beschreibung: p.description || ''
+            });
+          });
+        });
+        const ws2 = XLSX.utils.json_to_sheet(periodRows.length > 0 ? periodRows : [{ Name: '', Vorname: '', Startdatum: '', Enddatum: '', Lehrjahr: '', Beschreibung: '' }]);
+        XLSX.utils.book_append_sheet(wb, ws2, 'Ausbildungs_Zeitraeume');
+
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `RD-Plan_Azubis_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+    } else if (tab === 'ärzte') {
+      categoryName = 'Aerzte';
+      const exportData = itws.map(doc => ({
+        Anrede: doc.anrede || '',
+        Titel: doc.title || '',
+        Name: doc.name,
+        Vorname: doc.vorname,
+        ITW: (doc.is_itw === undefined || doc.is_itw === true || doc.is_itw === 1 || String(doc.is_itw) === '1') ? 'Ja' : 'Nein',
+        NEF: (doc.is_nef === true || doc.is_nef === 1 || String(doc.is_nef) === '1') ? 'Ja' : 'Nein'
+      }));
+      if (exportData.length === 0) {
+        alert('Keine Daten für den Export bei den ITW-Ärzten vorhanden.');
+        return;
+      }
+      if (format === 'json') {
+        const jsonStr = JSON.stringify(exportData, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `RD-Plan_ITW_Aerzte_Export_${new Date().toISOString().slice(0, 10)}.json`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } else {
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, categoryName);
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `RD-Plan_ITW_Aerzte_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+    } else if (tab === 'gäste') {
+      categoryName = 'Gaeste';
+      const exportData = guests.map(g => ({
+        Datum: g.date,
+        Enddatum: g.end_date || g.endDate || '',
+        Name: g.name,
+        Bemerkung: g.remark || ''
+      }));
+      if (exportData.length === 0) {
+        alert('Keine Daten für den Export bei den Gästen vorhanden.');
+        return;
+      }
+      if (format === 'json') {
+        const jsonStr = JSON.stringify(exportData, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `RD-Plan_Gaeste_Export_${new Date().toISOString().slice(0, 10)}.json`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } else {
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, categoryName);
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `RD-Plan_Gaeste_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+    }
+  };
+
+  const askConflictResolution = (name: string, category: string): Promise<{ action: 'update' | 'skip'; applyToAll: boolean }> => {
+    setConflictApplyToAll(false);
+    return new Promise((resolve) => {
+      setConflictModal({
+        name,
+        category,
+        onResolve: (action, applyToAll) => {
+          setConflictModal(null);
+          resolve({ action, applyToAll });
+        }
+      });
+    });
+  };
+
+  const triggerCategoryImport = (format: 'json' | 'excel') => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.accept = format === 'json' ? '.json' : '.xlsx,.xls,.csv';
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      let importedItems: any[] = [];
+      let qualRows: any[] = [];
+      let deptRows: any[] = [];
+      let azubiPeriodRows: any[] = [];
+
+      const fileName = file.name.toLowerCase();
+
+      if (fileName.endsWith('.json')) {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        importedItems = Array.isArray(parsed) ? parsed : [parsed];
+      } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls') || fileName.endsWith('.csv')) {
+        const arrayBuffer = await file.arrayBuffer();
+        const wb = XLSX.read(arrayBuffer, { type: 'array' });
+        const firstSheetName = wb.SheetNames[0];
+        importedItems = XLSX.utils.sheet_to_json(wb.Sheets[firstSheetName]);
+
+        if (wb.SheetNames.includes('Qualifikationen')) {
+          qualRows = XLSX.utils.sheet_to_json(wb.Sheets['Qualifikationen']);
+        }
+        if (wb.SheetNames.includes('Abteilungs_Zeitraeume')) {
+          deptRows = XLSX.utils.sheet_to_json(wb.Sheets['Abteilungs_Zeitraeume']);
+        }
+        if (wb.SheetNames.includes('Ausbildungs_Zeitraeume')) {
+          azubiPeriodRows = XLSX.utils.sheet_to_json(wb.Sheets['Ausbildungs_Zeitraeume']);
+        }
+      } else {
+        alert('Bitte eine gültige .json, .xlsx oder .csv Datei auswählen.');
+        return;
+      }
+
+      if (importedItems.length === 0) {
+        alert('Keine gültigen Daten zum Importieren gefunden.');
+        return;
+      }
+
+      let insertedCount = 0;
+      let updatedCount = 0;
+      let skippedCount = 0;
+      let bulkChoice: 'update' | 'skip' | null = null;
+
+      if (activeTab === 'stammpersonal') {
+        for (const item of importedItems) {
+          const name = item.name || item.Name;
+          const vorname = item.vorname || item.Vorname;
+          if (!name || !vorname) continue;
+          const pNum = item.personnelNumber || item.PersonnelNumber || item.Personalnummer || item.personalnummer || '';
+          const tz = Number(item.teilzeit || item.Teilzeit) || 100;
+          const matchedRole = roles.find(r => r.name === item.roleName || r.name === item.Nutzerrolle || r.id === item.roleId);
+
+          // Prüfe, ob die Person bereits existiert
+          const existingPerson = personnel.find(p =>
+            (pNum && p.personnelNumber && p.personnelNumber.trim() === pNum.trim()) ||
+            (p.name.trim().toLowerCase() === name.trim().toLowerCase() && p.vorname.trim().toLowerCase() === vorname.trim().toLowerCase())
+          );
+
+          let actionToTake: 'add' | 'update' | 'skip' = 'add';
+
+          if (existingPerson) {
+            if (bulkChoice) {
+              actionToTake = bulkChoice;
+            } else {
+              const choice = await askConflictResolution(`${vorname} ${name}`, 'Stammpersonal');
+              if (choice.applyToAll) {
+                bulkChoice = choice.action;
+              }
+              actionToTake = choice.action;
+            }
+          }
+
+          if (actionToTake === 'skip') {
+            skippedCount++;
+            continue;
+          }
+
+          let targetPersonId: number | null = null;
+
+          if (actionToTake === 'update' && existingPerson) {
+            targetPersonId = existingPerson.id;
+            await (window as any).api.updatePerson({
+              id: existingPerson.id,
+              name,
+              vorname,
+              personnelNumber: pNum || existingPerson.personnelNumber,
+              roleId: matchedRole?.id || item.roleId || existingPerson.roleId,
+              teilzeit: tz,
+              department: item.department || item.Abteilung || departmentName || 'Rettungsdienst',
+              street: item.street || item.Strasse || existingPerson.street,
+              postalCode: item.postalCode || item.PLZ || existingPerson.postalCode,
+              city: item.city || item.Ort || existingPerson.city,
+              phone: item.phone || item.Telefon || existingPerson.phone,
+              mobile: item.mobile || item.Mobil || existingPerson.mobile,
+              email: item.email || item.Email || existingPerson.email
+            });
+            updatedCount++;
+          } else {
+            const res = await (window as any).api.addPerson({
+              name,
+              vorname,
+              personnelNumber: pNum,
+              roleId: matchedRole?.id || item.roleId || null,
+              teilzeit: tz,
+              department: item.department || item.Abteilung || departmentName || 'Rettungsdienst',
+              street: item.street || item.Strasse || '',
+              postalCode: item.postalCode || item.PLZ || '',
+              city: item.city || item.Ort || '',
+              phone: item.phone || item.Telefon || '',
+              mobile: item.mobile || item.Mobil || '',
+              email: item.email || item.Email || ''
+            });
+            insertedCount++;
+
+            targetPersonId = res?.lastInsertRowid || res?.lastID;
+            if (!targetPersonId) {
+              const currentList = await (window as any).api.getPersonnelList(true, undefined, departmentName);
+              const found = currentList.find((p: any) => p.name === name && p.vorname === vorname);
+              if (found) targetPersonId = found.id;
+            }
+          }
+
+          if (targetPersonId) {
+            // 1. Qualifikationszeiträume importieren
+            const qList = item.qualificationPeriods || qualRows.filter(r =>
+              (pNum && (r.Personalnummer === pNum || r.personalnummer === pNum)) ||
+              ((r.Name || r.name) === name && (r.Vorname || r.vorname) === vorname)
+            ).map(r => ({
+              qualType: r.Qualifikation || r.qualType,
+              startYM: String(r.Start_YM || r.startYM || ''),
+              endYM: String(r.Ende_YM || r.endYM || ''),
+              active: r.Aktiv === 'Ja' || r.active === true || r.Aktiv === true
+            }));
+
+            if (Array.isArray(qList)) {
+              for (const q of qList) {
+                if (q.qualType && q.startYM) {
+                  await (window as any).api.addQualificationPeriod({
+                    personId: targetPersonId,
+                    qualType: q.qualType,
+                    startYM: q.startYM,
+                    endYM: q.endYM || '',
+                    active: q.active !== false
+                  });
+                }
+              }
+            }
+
+            // 2. Abteilungszeiträume importieren
+            const dList = item.departmentPeriods || deptRows.filter(r =>
+              (pNum && (r.Personalnummer === pNum || r.personalnummer === pNum)) ||
+              ((r.Name || r.name) === name && (r.Vorname || r.vorname) === vorname)
+            ).map(r => ({
+              department: r.Abteilung || r.department,
+              startDate: String(r.Start_Datum || r.startDate || ''),
+              endDate: String(r.Ende_Datum || r.endDate || '')
+            }));
+
+            if (Array.isArray(dList)) {
+              for (const d of dList) {
+                if (d.department && d.startDate) {
+                  await (window as any).api.addPersonnelDepartmentPeriod({
+                    personId: targetPersonId,
+                    department: d.department,
+                    startDate: d.startDate,
+                    endDate: d.endDate || ''
+                  });
+                }
+              }
+            }
+          }
+        }
+        await loadPersonnel();
+        await loadQualificationPeriods();
+        await loadAllDepartmentPeriods();
+        alert(`Import beendet: ${insertedCount} neu angelegt, ${updatedCount} aktualisiert, ${skippedCount} übersprungen.`);
+      } else if (activeTab === 'azubis') {
+        for (const item of importedItems) {
+          const name = item.name || item.Name;
+          const vorname = item.vorname || item.Vorname;
+          if (!name || !vorname) continue;
+          const lj = Number(item.lehrjahr || item.Lehrjahr) || 1;
+
+          const existingAzubi = azubis.find(a =>
+            a.name.trim().toLowerCase() === name.trim().toLowerCase() && a.vorname.trim().toLowerCase() === vorname.trim().toLowerCase()
+          );
+
+          let actionToTake: 'add' | 'update' | 'skip' = 'add';
+          if (existingAzubi) {
+            if (bulkChoice) {
+              actionToTake = bulkChoice;
+            } else {
+              const choice = await askConflictResolution(`${vorname} ${name}`, 'Azubis');
+              if (choice.applyToAll) bulkChoice = choice.action;
+              actionToTake = choice.action;
+            }
+          }
+
+          if (actionToTake === 'skip') {
+            skippedCount++;
+            continue;
+          }
+
+          const pList = item.periods || azubiPeriodRows.filter(r =>
+            (r.Name || r.name) === name && (r.Vorname || r.vorname) === vorname
+          ).map(r => ({
+            start_date: String(r.Startdatum || r.start_date || ''),
+            end_date: String(r.Enddatum || r.end_date || ''),
+            description: r.Beschreibung || r.description || '',
+            lehrjahr: Number(r.Lehrjahr || r.lehrjahr) || 1
+          }));
+
+          if (actionToTake === 'update' && existingAzubi) {
+            await (window as any).api.updateAzubi({
+              id: existingAzubi.id,
+              name,
+              vorname,
+              lehrjahr: lj,
+              department: item.department || item.Abteilung || departmentName || 'Rettungsdienst'
+            });
+            updatedCount++;
+          } else {
+            await (window as any).api.addAzubi({
+              name,
+              vorname,
+              lehrjahr: lj,
+              department: item.department || item.Abteilung || departmentName || 'Rettungsdienst',
+              periods: Array.isArray(pList) ? pList : []
+            });
+            insertedCount++;
+          }
+        }
+        await loadAzubis();
+        alert(`Import beendet: ${insertedCount} neu angelegt, ${updatedCount} aktualisiert, ${skippedCount} übersprungen.`);
+      } else if (activeTab === 'ärzte') {
+        for (const item of importedItems) {
+          const name = item.name || item.Name;
+          const vorname = item.vorname || item.Vorname;
+          if (!name || !vorname) continue;
+
+          const isItwVal = item.itw ?? item.ITW ?? item.is_itw ?? item['ITW-Arzt'];
+          const isNefVal = item.nef ?? item.NEF ?? item.is_nef ?? item['NEF-Arzt'];
+          const parsedIsItw = isItwVal !== undefined ? (isItwVal === true || isItwVal === 1 || String(isItwVal).toLowerCase() === 'ja' || String(isItwVal) === '1') : true;
+          const parsedIsNef = isNefVal !== undefined ? (isNefVal === true || isNefVal === 1 || String(isNefVal).toLowerCase() === 'ja' || String(isNefVal) === '1') : false;
+
+          const existingDoc = itws.find(d =>
+            d.name.trim().toLowerCase() === name.trim().toLowerCase() && d.vorname.trim().toLowerCase() === vorname.trim().toLowerCase()
+          );
+
+          let actionToTake: 'add' | 'update' | 'skip' = 'add';
+          if (existingDoc) {
+            if (bulkChoice) {
+              actionToTake = bulkChoice;
+            } else {
+              const choice = await askConflictResolution(`${vorname} ${name}`, 'Ärzte');
+              if (choice.applyToAll) bulkChoice = choice.action;
+              actionToTake = choice.action;
+            }
+          }
+
+          if (actionToTake === 'skip') {
+            skippedCount++;
+            continue;
+          }
+
+          if (actionToTake === 'update' && existingDoc) {
+            await (window as any).api.updateItwDoctor({
+              id: existingDoc.id,
+              anrede: item.anrede || item.Anrede || existingDoc.anrede || '',
+              title: item.title || item.Titel || existingDoc.title || '',
+              name,
+              vorname,
+              is_itw: isItwVal !== undefined ? parsedIsItw : existingDoc.is_itw,
+              is_nef: isNefVal !== undefined ? parsedIsNef : existingDoc.is_nef
+            });
+            updatedCount++;
+          } else {
+            await (window as any).api.addItwDoctor({
+              anrede: item.anrede || item.Anrede || '',
+              title: item.title || item.Titel || '',
+              name,
+              vorname,
+              is_itw: parsedIsItw,
+              is_nef: parsedIsNef
+            });
+            insertedCount++;
+          }
+        }
+        await loadItws();
+        alert(`Import beendet: ${insertedCount} neu angelegt, ${updatedCount} aktualisiert, ${skippedCount} übersprungen.`);
+      } else if (activeTab === 'gäste') {
+        for (const item of importedItems) {
+          const name = item.name || item.Name;
+          const dt = item.date || item.Datum || item.datum;
+          if (!name || !dt) continue;
+
+          const existingGuest = guests.find(g =>
+            (g.name || '').trim().toLowerCase() === name.trim().toLowerCase() && (g.date || g.date) === dt
+          );
+
+          let actionToTake: 'add' | 'update' | 'skip' = 'add';
+          if (existingGuest) {
+            if (bulkChoice) {
+              actionToTake = bulkChoice;
+            } else {
+              const choice = await askConflictResolution(`${name} (${dt})`, 'Gäste');
+              if (choice.applyToAll) bulkChoice = choice.action;
+              actionToTake = choice.action;
+            }
+          }
+
+          if (actionToTake === 'skip') {
+            skippedCount++;
+            continue;
+          }
+
+          await (window as any).api.addGuest({
+            date: dt,
+            end_date: item.end_date || item.endDate || item.Enddatum || '',
+            name,
+            remark: item.remark || item.Bemerkung || ''
+          });
+          insertedCount++;
+        }
+        await loadGuests();
+        alert(`Import beendet: ${insertedCount} neu angelegt, ${skippedCount} übersprungen.`);
+      }
+    } catch (err: any) {
+      console.error('Import Fehler:', err);
+      alert('Fehler beim Importieren: ' + err.message);
+    }
+  };
+
+  const activePersonnel = filteredActivePersonnel;
+  const inactivePersonnel = filteredInactivePersonnel;
 
   return (
     <div className="page-container">
@@ -710,11 +1486,202 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
       ) : (
         <>
 
-          {/* Sticky Container für Header + Tabs */}
+          {/* Sticky Container für Header + Controls + Tabs */}
           <div className="sticky-header-container">
             <h2 className="page-header">Personal</h2>
+
+            {/* Steuerungselemente Header (Über den Tabs) */}
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingBottom: '12px',
+              borderBottom: '1px solid #e2e8f0',
+              marginBottom: '12px'
+            }}>
+              {/* Live-Suche Input */}
+              <div style={{ position: 'relative', flex: '1', maxWidth: '320px' }}>
+                <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder={`${activeTab === 'stammpersonal' ? 'Stammpersonal' : activeTab === 'azubis' ? 'Azubis' : activeTab === 'ärzte' ? 'Ärzte' : 'Gäste'} suchen...`}
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '6px 28px 6px 34px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '13px',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    style={{
+                      position: 'absolute',
+                      right: 8,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: '#94a3b8',
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}
+                    title="Suche zurücksetzen"
+                  >
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+
+              {/* Action-Buttons Header */}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {(activeTab === 'stammpersonal' || activeTab === 'azubis' || activeTab === 'ärzte') && (
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#475569', marginRight: '6px', cursor: 'pointer', userSelect: 'none' }}>
+                    <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
+                    Inaktive anzeigen
+                  </label>
+                )}
+
+                <button
+                  onClick={handleFooterAdd}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: '#0ea5e9',
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  Hinzufügen
+                </button>
+
+                <button
+                  onClick={() => setFormatModal({ action: 'import', category: activeTab })}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#334155',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  Import
+                </button>
+
+                <button
+                  onClick={() => setFormatModal({ action: 'export', category: activeTab })}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#334155',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Export
+                </button>
+
+                {activeTab === 'azubis' && editingAzubis && (
+                  <button
+                    onClick={saveEditingAzubis}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 14px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: '#22c55e',
+                      color: 'white',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Speichern
+                  </button>
+                )}
+                {activeTab === 'azubis' && editingAzubis && (
+                  <button
+                    onClick={cancelEditingAzubis}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 14px',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      background: '#fff',
+                      color: '#64748b',
+                      fontSize: '13px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                    Abbrechen
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Tab Navigation - GRÜN */}
-            <div className="tab-navigation">
+            <div className="tab-navigation" style={{ paddingTop: 0, paddingBottom: 0 }}>
               <button
                 onClick={() => setActiveTab('stammpersonal')}
                 style={{
@@ -780,14 +1747,18 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
           {/* Content - GRAU */}
           <div style={{ paddingTop: 16 }}>
 
+            {/* Verstecktes File-Input für Kategorie-Import */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+              accept=".json,.csv,.xlsx"
+              onChange={handleFileImport}
+            />
+
             {/* Stammpersonal Tab */}
             {activeTab === 'stammpersonal' && (
               <div>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Inaktive anzeigen
-                  </label>
-                </div>
 
                 {/* Aktives Personal Tabelle */}
                 <table className={styles.table}>
@@ -802,7 +1773,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                     </tr>
                   </thead>
                   <tbody className={styles.tbody}>
-                    {activePersonnel.map(person => {
+                    {activePersonnel.map((person: Person) => {
                       const selected = person.id === selectedPersonId;
                       const isOver = dragContext === 'person' && dragOverId === person.id;
                       const rowClass = [styles.row, selected ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
@@ -912,7 +1883,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                         </tr>
                       </thead>
                       <tbody className={styles.tbody}>
-                        {inactivePersonnel.map(person => {
+                        {inactivePersonnel.map((person: Person) => {
                           const selected = person.id === selectedPersonId;
                           const rowClass = [styles.row, selected ? styles.selected : ''].filter(Boolean).join(' ');
                           return (
@@ -974,17 +1945,18 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                                       (window as any).api.openEditPersonWindow(person.id);
                                     }}
                                     style={{
-                                      background: '#6c757d',
-                                      color: 'white',
-                                      border: 'none',
+                                      background: '#f1f5f9',
+                                      color: '#0f172a',
+                                      border: '1px solid #cbd5e1',
                                       padding: '4px 8px',
-                                      borderRadius: '3px',
+                                      borderRadius: '4px',
                                       cursor: 'pointer',
-                                      fontSize: '11px'
+                                      fontSize: '11px',
+                                      fontWeight: 500
                                     }}
                                     title="Person bearbeiten"
                                   >
-                                    ✏️
+                                    Bearbeiten
                                   </button>
                                 </div>
                               </td>
@@ -1018,12 +1990,12 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                       <th>Vorname</th>
                       <th className={styles.narrow}>Lehrjahr</th>
                       <th>Zeiträume</th>
+                      <th style={{ width: 90 }} className={styles.center}>Status</th>
                       <th className={styles.center}>Aktionen</th>
-                      <th className={styles.center} style={{ width: 60 }}>#</th>
                     </tr>
                   </thead>
                   <tbody className={styles.tbody}>
-                    {azubis.map(a => {
+                    {filteredActiveAzubis.map((a: Azubi) => {
                       const isOver = dragContext === 'azubi' && dragOverId === a.id;
                       const rowClass = [styles.row, selectedAzubiId === a.id ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
                       const periods = azubiPeriods[a.id] || [];
@@ -1048,6 +2020,32 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                             {periodsText}
                           </td>
                           <td className={styles.center}>
+                            <span
+                              style={{
+                                background: '#dcfce7',
+                                color: '#166534',
+                                border: '1px solid #86efac',
+                                padding: '3px 8px',
+                                borderRadius: '12px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                userSelect: 'none'
+                              }}
+                              title="Aktiv im aktuellen Zeitraum"
+                            >
+                              <span style={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                backgroundColor: '#22c55e'
+                              }} />
+                              Aktiv
+                            </span>
+                          </td>
+                          <td className={styles.center}>
                             <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                               <button
                                 onClick={(e) => {
@@ -1055,27 +2053,120 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                                   (window as any).api.openEditAzubiWindow(a.id);
                                 }}
                                 style={{
-                                  background: '#007bff',
-                                  color: 'white',
-                                  border: 'none',
+                                  background: '#f1f5f9',
+                                  color: '#0f172a',
+                                  border: '1px solid #cbd5e1',
                                   padding: '4px 8px',
-                                  borderRadius: '3px',
+                                  borderRadius: '4px',
                                   cursor: 'pointer',
-                                  fontSize: '11px'
+                                  fontSize: '11px',
+                                  fontWeight: 500
                                 }}
                                 title="Azubi bearbeiten"
                               >
-                                ✏️
+                                Bearbeiten
                               </button>
-                              {/* Zeiträume-Button entfernt - jetzt über Qualifikationssystem */}
                             </div>
                           </td>
-                          <td className={styles.center}>{selectedAzubiId === a.id ? '✓' : ''}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
+
+                {/* Inaktive Azubis Tabelle */}
+                {showInactive && filteredInactiveAzubis.length > 0 && (
+                  <div style={{ marginTop: '32px' }}>
+                    <h4 style={{ color: '#666', marginBottom: '8px', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>Inaktive Azubis</h4>
+                    <table className={styles.table} style={{ opacity: 0.75 }}>
+                      <thead>
+                        <tr className={styles.thead} style={{ color: '#666' }}>
+                          <th>Name</th>
+                          <th>Vorname</th>
+                          <th className={styles.narrow}>Lehrjahr</th>
+                          <th>Zeiträume</th>
+                          <th style={{ width: 90 }} className={styles.center}>Status</th>
+                          <th className={styles.center}>Aktionen</th>
+                        </tr>
+                      </thead>
+                      <tbody className={styles.tbody}>
+                        {filteredInactiveAzubis.map((a: Azubi) => {
+                          const selected = selectedAzubiId === a.id;
+                          const rowClass = [styles.row, selected ? styles.selected : ''].filter(Boolean).join(' ');
+                          const periods = azubiPeriods[a.id] || [];
+                          const periodsText = periods.length > 0
+                            ? periods.map(p => `${new Date(p.start_date).toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })} - ${new Date(p.end_date).toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })} `).join(', ')
+                            : 'Keine Zeiträume definiert';
+
+                          return (
+                            <tr
+                              key={a.id}
+                              onClick={() => handleAzubiRowClick(a.id)}
+                              className={rowClass}
+                              style={{ color: '#666' }}
+                            >
+                              <td>{a.name}</td>
+                              <td>{a.vorname}</td>
+                              <td className={styles.narrow}>{a.lehrjahr}</td>
+                              <td style={{ fontSize: '0.9em', color: '#999', maxWidth: '200px', wordWrap: 'break-word' }}>
+                                {periodsText}
+                              </td>
+                              <td className={styles.center}>
+                                <span
+                                  style={{
+                                    background: '#f1f5f9',
+                                    color: '#64748b',
+                                    border: '1px solid #cbd5e1',
+                                    padding: '3px 8px',
+                                    borderRadius: '12px',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    userSelect: 'none'
+                                  }}
+                                  title="Inaktiv (Zeitraum abgelaufen oder kein aktueller Zeitraum hinterlegt)"
+                                >
+                                  <span style={{
+                                    width: '6px',
+                                    height: '6px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#94a3b8'
+                                  }} />
+                                  Inaktiv
+                                </span>
+                              </td>
+                              <td className={styles.center}>
+                                <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      (window as any).api.openEditAzubiWindow(a.id);
+                                    }}
+                                    style={{
+                                      background: '#f1f5f9',
+                                      color: '#0f172a',
+                                      border: '1px solid #cbd5e1',
+                                      padding: '4px 8px',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontSize: '11px',
+                                      fontWeight: 500
+                                    }}
+                                    title="Azubi bearbeiten"
+                                  >
+                                    Bearbeiten
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
                 {!editingAzubis ? (
                   !setFooterActions ? (
                     <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -1094,47 +2185,257 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
             {/* Ärzte Tab */}
             {itwEnabled && activeTab === 'ärzte' && (
               <div>
-                {/* ITW Ärzte: Buttons unter der Tabelle */}
                 <table className={styles.table}>
                   <thead>
                     <tr className={styles.thead}>
+                      <th style={{ width: 80 }}>Anrede</th>
+                      <th style={{ width: 90 }}>Titel</th>
                       <th>Name</th>
                       <th>Vorname</th>
-                      <th className={styles.center} style={{ width: 60 }}>#</th>
+                      <th style={{ width: 130 }}>Einsatzbereich</th>
+                      <th>Zeiträume</th>
+                      <th style={{ width: 90 }} className={styles.center}>Status</th>
+                      <th className={styles.center}>Aktionen</th>
                     </tr>
                   </thead>
                   <tbody className={styles.tbody}>
-                    {itws.map(a => {
+                    {filteredActiveItws.map((a: ItwDoctor) => {
                       const isOver = dragContext === 'itw' && dragOverId === a.id;
                       const rowClass = [styles.row, selectedItwId === a.id ? styles.selected : '', isOver && dragPosition === 'above' ? styles.dropAbove : '', isOver && dragPosition === 'below' ? styles.dropBelow : ''].filter(Boolean).join(' ');
+                      const periods = doctorPeriods[a.id] || [];
+                      const periodsText = periods.length > 0
+                        ? periods.map(p => `${new Date(p.start_date + 'T00:00:00').toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })} - ${new Date(p.end_date + 'T00:00:00').toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })}`).join(', ')
+                        : 'Dauerhaft verfügbar';
+
                       return (
                         <tr key={a.id}
-                          draggable={!editingItw}
-                          onDragStart={() => !editingItw && onItwDragStart(a.id)}
-                          onDragOver={(e) => !editingItw && onDragOver(e, a.id, 'itw')}
-                          onDragLeave={() => !editingItw && onDragLeave()}
-                          onDrop={() => !editingItw && onItwDrop(a.id)}
+                          draggable
+                          onDragStart={() => onItwDragStart(a.id)}
+                          onDragOver={(e) => onDragOver(e, a.id, 'itw')}
+                          onDragLeave={() => onDragLeave()}
+                          onDrop={() => onItwDrop(a.id)}
                           onClick={() => handleItwRowClick(a.id)}
+                          onDoubleClick={() => (window as any).api.openEditItwWindow(a.id)}
                           className={rowClass}
-                          style={{ cursor: editingItw ? 'default' : 'move' }}>
-                          <td>{editingItw ? <input value={a.name} onChange={e => updateItwField(a.id, 'name', e.target.value)} /> : a.name}</td>
-                          <td>{editingItw ? <input value={a.vorname} onChange={e => updateItwField(a.id, 'vorname', e.target.value)} /> : a.vorname}</td>
-                          <td className={styles.center}>{selectedItwId === a.id ? '✓' : ''}</td>
+                          style={{ cursor: 'move' }}>
+                          <td>{a.anrede || '—'}</td>
+                          <td>{a.title || '—'}</td>
+                          <td>{a.name}</td>
+                          <td>{a.vorname}</td>
+                          <td>
+                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                              {(a.is_itw === undefined || a.is_itw === true || a.is_itw === 1 || String(a.is_itw) === '1') && (
+                                <span style={{
+                                  background: '#f0fdf4',
+                                  color: '#15803d',
+                                  border: '1px solid #bbf7d0',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: 600
+                                }}>
+                                  ITW
+                                </span>
+                              )}
+                              {(a.is_nef === true || a.is_nef === 1 || String(a.is_nef) === '1') && (
+                                <span style={{
+                                  background: '#eff6ff',
+                                  color: '#1d4ed8',
+                                  border: '1px solid #bfdbfe',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: 600
+                                }}>
+                                  NEF
+                                </span>
+                              )}
+                              {!a.is_itw && !a.is_nef && (
+                                <span style={{ color: '#94a3b8', fontSize: '11px' }}>—</span>
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ fontSize: '0.9em', color: periods.length > 0 ? '#333' : '#999', maxWidth: '220px', wordWrap: 'break-word' }}>
+                            {periodsText}
+                          </td>
+                          <td className={styles.center}>
+                            <span
+                              style={{
+                                background: '#dcfce7',
+                                color: '#166534',
+                                border: '1px solid #86efac',
+                                padding: '3px 8px',
+                                borderRadius: '12px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                userSelect: 'none'
+                              }}
+                              title="Aktiv im aktuellen Zeitraum"
+                            >
+                              <span style={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                backgroundColor: '#22c55e'
+                              }} />
+                              Aktiv
+                            </span>
+                          </td>
+                          <td className={styles.center}>
+                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  (window as any).api.openEditItwWindow(a.id);
+                                }}
+                                style={{
+                                  background: '#f1f5f9',
+                                  color: '#0f172a',
+                                  border: '1px solid #cbd5e1',
+                                  padding: '4px 8px',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '11px',
+                                  fontWeight: 500
+                                }}
+                                title="Arzt bearbeiten"
+                              >
+                                Bearbeiten
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
-                {!editingItw ? (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    {!setFooterActions && <button onClick={() => (window as any).api.openAddItwWindow()}>Hinzufügen</button>}
-                    <button onClick={startEditingItw} disabled={itws.length === 0}>Ändern</button>
-                    <button onClick={handleDeleteSelectedItw} disabled={selectedItwId == null}>Löschen</button>
+
+                {/* Inaktive Ärzte Tabelle */}
+                {showInactive && filteredInactiveItws.length > 0 && (
+                  <div style={{ marginTop: '32px' }}>
+                    <h4 style={{ color: '#666', marginBottom: '8px', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>Inaktive Ärzte</h4>
+                    <table className={styles.table} style={{ opacity: 0.75 }}>
+                      <thead>
+                        <tr className={styles.thead} style={{ color: '#666' }}>
+                          <th style={{ width: 80 }}>Anrede</th>
+                          <th style={{ width: 90 }}>Titel</th>
+                          <th>Name</th>
+                          <th>Vorname</th>
+                          <th style={{ width: 130 }}>Einsatzbereich</th>
+                          <th>Zeiträume</th>
+                          <th style={{ width: 90 }} className={styles.center}>Status</th>
+                          <th className={styles.center}>Aktionen</th>
+                        </tr>
+                      </thead>
+                      <tbody className={styles.tbody}>
+                        {filteredInactiveItws.map((a: ItwDoctor) => {
+                          const periods = doctorPeriods[a.id] || [];
+                          const periodsText = periods.length > 0
+                            ? periods.map(p => `${new Date(p.start_date + 'T00:00:00').toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })} - ${new Date(p.end_date + 'T00:00:00').toLocaleDateString('de-DE', { month: '2-digit', year: 'numeric' })}`).join(', ')
+                            : 'Keine aktiven Zeiträume';
+
+                          return (
+                            <tr key={a.id} className={styles.row}>
+                              <td>{a.anrede || '—'}</td>
+                              <td>{a.title || '—'}</td>
+                              <td>{a.name}</td>
+                              <td>{a.vorname}</td>
+                              <td>
+                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                  {(a.is_itw === undefined || a.is_itw === true || a.is_itw === 1 || String(a.is_itw) === '1') && (
+                                    <span style={{
+                                      background: '#f0fdf4',
+                                      color: '#15803d',
+                                      border: '1px solid #bbf7d0',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                      fontWeight: 600
+                                    }}>
+                                      ITW
+                                    </span>
+                                  )}
+                                  {(a.is_nef === true || a.is_nef === 1 || String(a.is_nef) === '1') && (
+                                    <span style={{
+                                      background: '#eff6ff',
+                                      color: '#1d4ed8',
+                                      border: '1px solid #bfdbfe',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                      fontWeight: 600
+                                    }}>
+                                      NEF
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td style={{ fontSize: '0.9em', color: '#666', maxWidth: '220px', wordWrap: 'break-word' }}>
+                                {periodsText}
+                              </td>
+                              <td className={styles.center}>
+                                <span
+                                  style={{
+                                    background: '#f1f5f9',
+                                    color: '#64748b',
+                                    border: '1px solid #cbd5e1',
+                                    padding: '3px 8px',
+                                    borderRadius: '12px',
+                                    fontSize: '11px',
+                                    fontWeight: 500,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    userSelect: 'none'
+                                  }}
+                                  title="Außerhalb des aktiven Zeitraums"
+                                >
+                                  <span style={{
+                                    width: '6px',
+                                    height: '6px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#94a3b8'
+                                  }} />
+                                  Inaktiv
+                                </span>
+                              </td>
+                              <td className={styles.center}>
+                                <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      (window as any).api.openEditItwWindow(a.id);
+                                    }}
+                                    style={{
+                                      background: '#f1f5f9',
+                                      color: '#0f172a',
+                                      border: '1px solid #cbd5e1',
+                                      padding: '4px 8px',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontSize: '11px',
+                                      fontWeight: 500
+                                    }}
+                                    title="Arzt bearbeiten"
+                                  >
+                                    Bearbeiten
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                ) : (
+                )}
+
+                {!setFooterActions && (
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    <button onClick={saveEditingItw}>Speichern</button>
-                    <button onClick={cancelEditingItw}>Abbrechen</button>
+                    <button onClick={() => (window as any).api.openAddItwWindow()}>Hinzufügen</button>
                   </div>
                 )}
               </div>
@@ -1153,7 +2454,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                     </tr>
                   </thead>
                   <tbody className={styles.tbody}>
-                    {guests.map(g => (
+                    {filteredGuests.map((g: any) => (
                       <tr key={g.id} className={styles.row}>
                         <td>
                           {g.end_date || g.endDate ? (
@@ -1191,6 +2492,188 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
 
           </div>
           {/* Ende Content */}
+
+          {/* Modal zur Formatauswahl (JSON / Excel) */}
+          {formatModal && (
+            <div style={{
+              position: 'fixed',
+              top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.4)',
+              zIndex: 1100,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <div style={{
+                backgroundColor: '#ffffff',
+                borderRadius: '8px',
+                padding: '24px',
+                width: '380px',
+                boxShadow: '0 10px 25px rgba(0,0,0,0.2)'
+              }}>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: 600, color: '#0f172a' }}>
+                  {formatModal.action === 'import' ? 'Import-Format wählen' : 'Export-Format wählen'}
+                </h3>
+                <p style={{ fontSize: '13px', color: '#475569', marginBottom: '16px', lineHeight: '1.4' }}>
+                  Bitte wählen Sie das gewünschte Dateiformat für den {formatModal.action === 'import' ? 'Import' : 'Export'} von <strong>{activeTab === 'stammpersonal' ? 'Stammpersonal' : activeTab === 'azubis' ? 'Azubis' : activeTab === 'ärzte' ? 'Ärzte' : 'Gäste'}</strong>:
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
+                  <button
+                    onClick={() => {
+                      const action = formatModal.action;
+                      const category = formatModal.category;
+                      setFormatModal(null);
+                      if (action === 'export') {
+                        handleCategoryExport(category, 'json');
+                      } else {
+                        triggerCategoryImport('json');
+                      }
+                    }}
+                    style={{
+                      padding: '10px 16px',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      color: '#0f172a',
+                      fontWeight: 500,
+                      fontSize: '13px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}
+                  >
+                    <span>JSON-Datei (*.json)</span>
+                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>JSON</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const action = formatModal.action;
+                      const category = formatModal.category;
+                      setFormatModal(null);
+                      if (action === 'export') {
+                        handleCategoryExport(category, 'excel');
+                      } else {
+                        triggerCategoryImport('excel');
+                      }
+                    }}
+                    style={{
+                      padding: '10px 16px',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      color: '#0f172a',
+                      fontWeight: 500,
+                      fontSize: '13px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}
+                  >
+                    <span>Excel-Datei (*.xlsx)</span>
+                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>XLSX</span>
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => setFormatModal(null)}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '4px',
+                      border: '1px solid #cbd5e1',
+                      background: '#fff',
+                      color: '#475569',
+                      fontSize: '12px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Abbrechen
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal bei Duplikat-Konflikt */}
+          {conflictModal && (
+            <div style={{
+              position: 'fixed',
+              top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              zIndex: 1200,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <div style={{
+                backgroundColor: '#ffffff',
+                borderRadius: '8px',
+                padding: '24px',
+                width: '420px',
+                boxShadow: '0 10px 25px rgba(0,0,0,0.25)'
+              }}>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: 600, color: '#0f172a' }}>
+                  Eintrag bereits vorhanden
+                </h3>
+                <p style={{ fontSize: '13px', color: '#334155', marginBottom: '16px', lineHeight: '1.4' }}>
+                  Der Eintrag <strong>"{conflictModal.name}"</strong> existiert bereits in der Datenbank.
+                  <br />
+                  Wie möchten Sie fortfahren?
+                </p>
+
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#475569', cursor: 'pointer', userSelect: 'none' }}>
+                    <input
+                      type="checkbox"
+                      checked={conflictApplyToAll}
+                      onChange={e => setConflictApplyToAll(e.target.checked)}
+                    />
+                    Auswahl für alle weiteren Konflikte übernehmen
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => conflictModal.onResolve('skip', conflictApplyToAll)}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      color: '#475569',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Überspringen
+                  </button>
+
+                  <button
+                    onClick={() => conflictModal.onResolve('update', conflictApplyToAll)}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: '#0ea5e9',
+                      color: '#ffffff',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Aktualisieren / Überschreiben
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
         </>
       )}

@@ -73,7 +73,7 @@ export type AsyncDB = {
 export const initializeDatabase = async (): Promise<AsyncDB> => {
     // Store the database in the application root under a `DB/` subfolder.
     // Use the executable path to find the app root (works for portable builds).
-    const exePath = app.getPath ? app.getPath('exe') : process.execPath;
+    const exePath = (app && typeof app.getPath === 'function') ? app.getPath('exe') : process.execPath;
     const appRoot = path.dirname(exePath);
     const dbDir = path.join(appRoot, 'DB');
     try { fs.mkdirSync(dbDir, { recursive: true }); } catch (e) { /* ignore */ }
@@ -88,7 +88,8 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         cacheManager = new CacheManager(dbDir, { maxAgeMinutes: 1 }); // 1 Minute Cache für DB
 
         // Verwende lokale Cache-Kopie der Datenbank für schnelleren Zugriff
-        const localDbDir = path.join(app.getPath('temp'), 'rd-plan-db');
+        const tempPath = (app && typeof app.getPath === 'function') ? app.getPath('temp') : os.tmpdir();
+        const localDbDir = path.join(tempPath, 'rd-plan-db');
         try {
             fs.mkdirSync(localDbDir, { recursive: true });
             effectiveDbFile = path.join(localDbDir, 'rd-plan.db');
@@ -277,6 +278,17 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
                     canViewRoster INTEGER DEFAULT 0,
                     canViewDienstplan INTEGER DEFAULT 0,
                     canViewDienstplanAll INTEGER DEFAULT 0,
+                    canViewItw INTEGER DEFAULT 0,
+                    canEditItw INTEGER DEFAULT 0,
+                    canEditItwAll INTEGER DEFAULT 0,
+                    canViewItwVorplanung INTEGER DEFAULT 0,
+                    canEditItwVorplanung INTEGER DEFAULT 0,
+                    canEditItwVorplanungAll INTEGER DEFAULT 0,
+                    canViewItwAerzte INTEGER DEFAULT 0,
+                    canEditItwAerzte INTEGER DEFAULT 0,
+                    canViewItwDienstplan INTEGER DEFAULT 0,
+                    canViewItwDienstplanAll INTEGER DEFAULT 0,
+                    canEditItwDienstplan INTEGER DEFAULT 0,
                     sort INTEGER DEFAULT 0
                 )
             `);
@@ -567,6 +579,10 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
     if (!azubiCols.some((c: any) => c.name === 'department')) {
         await db.exec("ALTER TABLE azubis ADD COLUMN department TEXT NOT NULL DEFAULT '1. Abteilung'");
     }
+    if (!azubiCols.some((c: any) => c.name === 'active')) {
+        await db.exec("ALTER TABLE azubis ADD COLUMN active INTEGER DEFAULT 1");
+        await db.exec("UPDATE azubis SET active = 1 WHERE active IS NULL");
+    }
 
     // --- Azubi Periods Tabelle ---
     await db.exec(`
@@ -708,12 +724,40 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         )
     `);
 
-    // Migration: add 'sort' column to itw_doctors if missing
+    // Migration: add 'sort', 'anrede', 'title', 'is_nef', 'is_itw' columns to itw_doctors if missing
     const itwCols = await db.all("PRAGMA table_info('itw_doctors')");
     if (!itwCols.some((c: any) => c.name === 'sort')) {
         await db.exec("ALTER TABLE itw_doctors ADD COLUMN sort INTEGER DEFAULT 0");
         await db.exec("UPDATE itw_doctors SET sort = 0 WHERE sort IS NULL");
     }
+    if (!itwCols.some((c: any) => c.name === 'anrede')) {
+        await db.exec("ALTER TABLE itw_doctors ADD COLUMN anrede TEXT DEFAULT ''");
+    }
+    if (!itwCols.some((c: any) => c.name === 'title')) {
+        await db.exec("ALTER TABLE itw_doctors ADD COLUMN title TEXT DEFAULT ''");
+    }
+    if (!itwCols.some((c: any) => c.name === 'is_nef')) {
+        await db.exec("ALTER TABLE itw_doctors ADD COLUMN is_nef INTEGER DEFAULT 0");
+        await db.exec("UPDATE itw_doctors SET is_nef = 0 WHERE is_nef IS NULL");
+    }
+    if (!itwCols.some((c: any) => c.name === 'is_itw')) {
+        await db.exec("ALTER TABLE itw_doctors ADD COLUMN is_itw INTEGER DEFAULT 1");
+        await db.exec("UPDATE itw_doctors SET is_itw = 1 WHERE is_itw IS NULL");
+    }
+
+    // --- Doctor Periods Tabelle ---
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS doctor_periods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            doctor_id INTEGER NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (doctor_id) REFERENCES itw_doctors(id) ON DELETE CASCADE
+        )
+    `);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_doctor_periods_doctor ON doctor_periods (doctor_id)`);
 
     // --- RTW / NEF / ITW Fahrzeuge Tabellen ---
     await db.exec(`
@@ -865,6 +909,30 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         await db.exec(`CREATE INDEX idx_itw_vehicle_periods_vehicle ON itw_vehicle_periods (vehicleId)`);
     }
 
+    // --- Sondertage & Spitzenabdeckung (Fahrzeuge) ---
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS vehicle_special_days (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vehicleType TEXT NOT NULL,
+            vehicleId INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            reason TEXT,
+            shiftMode TEXT DEFAULT '24h',
+            action TEXT DEFAULT 'add',
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(vehicleType, vehicleId, date)
+        )
+    `);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_vehicle_special_days_lookup ON vehicle_special_days (vehicleType, vehicleId, date)`);
+
+    // Ensure note column in vehicle period tables
+    for (const table of ['rtw_vehicle_periods', 'nef_vehicle_periods', 'itw_vehicle_periods']) {
+        const cols = await db.all(`PRAGMA table_info('${table}')`);
+        if (!cols.some((c: any) => c.name === 'note')) {
+            try { await db.exec(`ALTER TABLE ${table} ADD COLUMN note TEXT`); } catch { }
+        }
+    }
+
     // --- Jahresspezifische Vorplanungsdateien ---
     const yearPlanningsExists = await db.get(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='year_plannings'"
@@ -953,16 +1021,26 @@ export const getPersonnel = async (db: AsyncDB, includeInactive: boolean = false
     // If no date is provided, use legacy behavior (active flag only)
     if (!date) {
         const list = await db.all('SELECT * FROM personnel ORDER BY sort ASC, id ASC');
+        const currentDate = new Date().toISOString().slice(0, 10);
         const result = [];
         for (const p of list) {
             // Check department
             if (department && department !== 'all') {
-                const period = await db.get(
-                    'SELECT department FROM personnel_department_periods WHERE person_id = ? ORDER BY start_date DESC LIMIT 1',
+                const hasDeptPeriods = await db.get(
+                    'SELECT 1 FROM personnel_department_periods WHERE person_id = ? LIMIT 1',
                     [p.id]
                 );
-                const currentDept = period?.department || p.department;
-                if (normalizeDepartment(currentDept) !== normalizeDepartment(department)) continue;
+                if (hasDeptPeriods) {
+                    const period = await db.get(
+                        `SELECT department FROM personnel_department_periods 
+                         WHERE person_id = ? AND start_date <= ? AND (end_date IS NULL OR end_date >= ?) 
+                         ORDER BY start_date DESC LIMIT 1`,
+                        [p.id, currentDate, currentDate]
+                    );
+                    if (!period || normalizeDepartment(period.department) !== normalizeDepartment(department)) continue;
+                } else {
+                    if (normalizeDepartment(p.department || '1. Abteilung') !== normalizeDepartment(department)) continue;
+                }
             }
             
             // Check active (unless including inactive)
@@ -1044,15 +1122,25 @@ export const getPersonnel = async (db: AsyncDB, includeInactive: boolean = false
                 deptEndLimit = `${ym}-01`;
             }
 
-            const period = await db.get(
-                `SELECT department FROM personnel_department_periods 
-                 WHERE person_id = ? AND start_date <= ? AND (end_date IS NULL OR end_date >= ?) 
-                 ORDER BY start_date DESC LIMIT 1`,
-                [p.id, deptStartLimit, deptEndLimit]
+            const hasDeptPeriods = await db.get(
+                'SELECT 1 FROM personnel_department_periods WHERE person_id = ? LIMIT 1',
+                [p.id]
             );
-            const currentDept = period?.department || p.department;
-            if (normalizeDepartment(currentDept) !== normalizeDepartment(department)) {
-                continue;
+
+            if (hasDeptPeriods) {
+                const period = await db.get(
+                    `SELECT department FROM personnel_department_periods 
+                     WHERE person_id = ? AND start_date <= ? AND (end_date IS NULL OR end_date >= ?) 
+                     ORDER BY start_date DESC LIMIT 1`,
+                    [p.id, deptStartLimit, deptEndLimit]
+                );
+                if (!period || normalizeDepartment(period.department) !== normalizeDepartment(department)) {
+                    continue;
+                }
+            } else {
+                if (normalizeDepartment(p.department || '1. Abteilung') !== normalizeDepartment(department)) {
+                    continue;
+                }
             }
         }
 
@@ -1383,10 +1471,10 @@ export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { person
                 // Prüfe ob Eintrag bereits existiert und manuell bearbeitet wurde
                 const existing = await db.get(`
                     SELECT manual_edit FROM duty_roster 
-                    WHERE personId = ? AND personType = ? AND date = ? AND department = ?
+                    WHERE personId = ? AND personType = ? AND date = ? AND COALESCE(department, '1. Abteilung') = ?
                 `, [e.personId, e.personType || 'person', e.date, dept]);
 
-                if (existing && existing.manual_edit === 1) {
+                if (existing && (existing.manual_edit === 1 || existing.manual_edit === true)) {
                     isManual = true;
                 }
             }
@@ -1403,7 +1491,7 @@ export const bulkImportDutyRosterEntries = async (db: AsyncDB, entries: { person
                 if (deleteEmpty) {
                     await db.run(`
                         DELETE FROM duty_roster 
-                        WHERE personId = ? AND personType = ? AND date = ? AND department = ?
+                        WHERE personId = ? AND personType = ? AND date = ? AND COALESCE(department, '1. Abteilung') = ?
                     `, [e.personId, e.personType || 'person', e.date, dept]);
                     imported++;
                 }
@@ -1473,14 +1561,14 @@ export const deleteOrphanedDutyRosterEntries = async (
     
     let deptCondition = '';
     if (department && department !== 'all') {
-        deptCondition = ' AND department = ?';
+        deptCondition = " AND COALESCE(department, '1. Abteilung') = ?";
         params.push(normalizeDepartment(department));
     }
 
     const sql = `
         DELETE FROM duty_roster 
         WHERE ${dateCondition}
-        AND manual_edit = 0
+        AND (manual_edit = 0 OR manual_edit IS NULL)
         AND (personType = 'person' OR personType = 'azubi')
         ${deptCondition}
         AND (personId || ':' || personType) NOT IN (${placeholders})
@@ -1579,21 +1667,40 @@ export const migrateAzubisDepartmentScope = async (db: AsyncDB): Promise<{ updat
                     );
                     targetId = ins.lastInsertRowid as number;
                     duplicated++;
-
-                    const periods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ?', [azubiId]);
-                    for (const p of periods as any[]) {
-                        await db.run(
-                            'INSERT INTO azubi_periods (azubi_id, start_date, end_date, description, lehrjahr) VALUES (?, ?, ?, ?, ?)',
-                            [targetId, p.start_date, p.end_date, p.description || '', p.lehrjahr || 1]
-                        );
-                    }
                 }
 
-                await db.run(
-                    `UPDATE duty_roster SET personId = ?
-                     WHERE personType = 'azubi' AND personId = ? AND department = ?`,
-                    [targetId, azubiId, dept]
-                );
+                if (targetId !== azubiId) {
+                    const existingPeriods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ?', [targetId]);
+                    const periods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ?', [azubiId]);
+                    for (const p of periods as any[]) {
+                        const duplicate = (existingPeriods as any[] || []).some(ep =>
+                            String(ep.start_date) === String(p.start_date) && String(ep.end_date) === String(p.end_date)
+                        );
+                        if (!duplicate) {
+                            await db.run(
+                                'INSERT INTO azubi_periods (azubi_id, start_date, end_date, description, lehrjahr) VALUES (?, ?, ?, ?, ?)',
+                                [targetId, p.start_date, p.end_date, p.description || '', p.lehrjahr || 1]
+                            );
+                        }
+                    }
+
+                    // Delete existing entries for azubiId on dates where targetId already has an entry to prevent UNIQUE constraint violation
+                    await db.run(
+                        `DELETE FROM duty_roster
+                         WHERE personType = 'azubi' AND personId = ? AND department = ?
+                           AND date IN (
+                             SELECT date FROM duty_roster
+                             WHERE personType = 'azubi' AND personId = ? AND department = ?
+                           )`,
+                        [azubiId, dept, targetId, dept]
+                    );
+
+                    await db.run(
+                        `UPDATE duty_roster SET personId = ?
+                         WHERE personType = 'azubi' AND personId = ? AND department = ?`,
+                        [targetId, azubiId, dept]
+                    );
+                }
             }
         }
     }
@@ -1682,26 +1789,34 @@ export const migrateRosterReleasedPerDepartment = async (
     return { migrated, skipped: false };
 };
 
-export const getAzubiList = async (db: AsyncDB, department?: string) => {
+export const getAzubiList = async (db: AsyncDB, department?: string, includeInactive: boolean = false) => {
     let query = 'SELECT * FROM azubis';
     const params: any[] = [];
+    const conditions: string[] = [];
+
     if (department && department !== 'all') {
-        query += ' WHERE department = ?';
+        conditions.push('department = ?');
         params.push(normalizeDepartment(department));
+    }
+    if (conditions.length > 0) {
+        query += ' WHERE ' + conditions.join(' AND ');
     }
     query += ' ORDER BY sort ASC, id ASC';
     const azubis = await db.all(query, params);
     const currentDate = new Date();
+    const currentDateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
 
-    // Für jeden Azubi das aktuelle Lehrjahr aus den Zeiträumen berechnen
+    const result: any[] = [];
+
+    // Für jeden Azubi das aktuelle Lehrjahr und den Aktivitätsstatus aus den Zeiträumen berechnen
     for (const azubi of azubis) {
         const periods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ? ORDER BY start_date ASC', [azubi.id]);
 
         // Finde den aktuellen Zeitraum
         const currentPeriod = periods.find((period: any) => {
-            const startDate = new Date(period.start_date);
-            const endDate = new Date(period.end_date);
-            return currentDate >= startDate && currentDate <= endDate;
+            const startDateStr = String(period.start_date || '').slice(0, 10);
+            const endDateStr = String(period.end_date || '').slice(0, 10);
+            return currentDateStr >= startDateStr && currentDateStr <= endDateStr;
         });
 
         if (currentPeriod && currentPeriod.lehrjahr) {
@@ -1714,9 +1829,25 @@ export const getAzubiList = async (db: AsyncDB, department?: string) => {
             }
             // Ansonsten bleibt das Lehrjahr aus der azubis-Tabelle bestehen
         }
+
+        // Dynamischer Aktivitätsstatus (rein über Zeiträume gesteuert):
+        // 1. Zeiträume gepflegt -> aktiv nur, wenn der heutige Tag in einem Zeitraum liegt
+        // 2. Keine Zeiträume gepflegt -> Fallback aktiv
+        const isDynamicallyActive = periods.length > 0 ? !!currentPeriod : true;
+
+        azubi.active = isDynamicallyActive ? 1 : 0;
+        azubi.isActive = isDynamicallyActive;
+
+        if (includeInactive || isDynamicallyActive) {
+            result.push(azubi);
+        }
     }
 
-    return azubis;
+    return result;
+};
+
+export const setAzubiActive = async (db: AsyncDB, id: number, active: boolean) => {
+    await db.run('UPDATE azubis SET active = ? WHERE id = ?', [active ? 1 : 0, id]);
 };
 
 export const getAzubi = async (db: AsyncDB, id: number) => {
@@ -1724,13 +1855,14 @@ export const getAzubi = async (db: AsyncDB, id: number) => {
     if (!azubi) return null;
 
     const currentDate = new Date();
+    const currentDateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
     const periods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ? ORDER BY start_date ASC', [id]);
 
     // Finde den aktuellen Zeitraum
     const currentPeriod = periods.find((period: any) => {
-        const startDate = new Date(period.start_date);
-        const endDate = new Date(period.end_date);
-        return currentDate >= startDate && currentDate <= endDate;
+        const startDateStr = String(period.start_date || '').slice(0, 10);
+        const endDateStr = String(period.end_date || '').slice(0, 10);
+        return currentDateStr >= startDateStr && currentDateStr <= endDateStr;
     });
 
     if (currentPeriod && currentPeriod.lehrjahr) {
@@ -1742,6 +1874,10 @@ export const getAzubi = async (db: AsyncDB, id: number) => {
             azubi.lehrjahr = latestPeriod.lehrjahr;
         }
     }
+
+    const isDynamicallyActive = periods.length > 0 ? !!currentPeriod : true;
+    azubi.active = isDynamicallyActive ? 1 : 0;
+    azubi.isActive = isDynamicallyActive;
 
     return azubi;
 };
@@ -1795,18 +1931,102 @@ export const getAzubiPeriods = async (db: AsyncDB, azubiId: number) => {
     return await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ? ORDER BY start_date ASC', [azubiId]);
 };
 
+export const consolidateAzubiPeriods = async (db: AsyncDB, azubiId: number) => {
+    try {
+        const periods = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ? ORDER BY lehrjahr ASC, start_date ASC', [azubiId]) as any[];
+        if (!periods || periods.length < 2) return;
+
+        const ONE_DAY_MS = 24 * 60 * 60 * 1000 + 1000;
+
+        let current = periods[0];
+
+        for (let i = 1; i < periods.length; i++) {
+            const next = periods[i];
+
+            const sameLehrjahr = (current.lehrjahr || 1) === (next.lehrjahr || 1);
+
+            if (sameLehrjahr) {
+                const dEndCur = new Date(current.end_date + 'T00:00:00Z').getTime();
+                const dStartNext = new Date(next.start_date + 'T00:00:00Z').getTime();
+
+                // Check if contiguous or overlapping
+                if (dStartNext <= dEndCur + ONE_DAY_MS) {
+                    if (next.end_date > current.end_date) {
+                        current.end_date = next.end_date;
+                    }
+                    if (next.start_date < current.start_date) {
+                        current.start_date = next.start_date;
+                    }
+                    await db.run('UPDATE azubi_periods SET start_date = ?, end_date = ? WHERE id = ?', [current.start_date, current.end_date, current.id]);
+                    await db.run('DELETE FROM azubi_periods WHERE id = ?', [next.id]);
+                    continue;
+                }
+            }
+
+            current = next;
+        }
+    } catch (err) {
+        console.warn('[Database] Fehler bei consolidateAzubiPeriods:', err);
+    }
+};
+
+export const consolidateAllAzubiPeriods = async (db: AsyncDB) => {
+    try {
+        const azubis = await db.all('SELECT id FROM azubis') as Array<{ id: number }>;
+        for (const a of azubis) {
+            await consolidateAzubiPeriods(db, a.id);
+        }
+    } catch (err) {
+        console.warn('[Database] Fehler bei consolidateAllAzubiPeriods:', err);
+    }
+};
+
 export const getAllAzubiPeriods = async (db: AsyncDB) => {
+    await consolidateAllAzubiPeriods(db);
     return await db.all('SELECT * FROM azubi_periods ORDER BY azubi_id, start_date ASC');
 };
 
 export const addAzubiPeriod = async (db: AsyncDB, period: { azubi_id: number, start_date: string, end_date: string, description?: string, lehrjahr?: number }) => {
-    await db.run('INSERT INTO azubi_periods (azubi_id, start_date, end_date, description, lehrjahr) VALUES (?, ?, ?, ?, ?)',
-        [period.azubi_id, period.start_date, period.end_date, period.description || '', period.lehrjahr || 1]);
+    const lehrjahr = period.lehrjahr || 1;
+    const existing = await db.all('SELECT * FROM azubi_periods WHERE azubi_id = ? AND lehrjahr = ?', [period.azubi_id, lehrjahr]) as any[];
+    
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000 + 1000;
+    const dNewStart = new Date(period.start_date + 'T00:00:00Z').getTime();
+    const dNewEnd = new Date(period.end_date + 'T00:00:00Z').getTime();
+
+    const matching = (existing || []).filter(p => {
+        const dStart = new Date(p.start_date + 'T00:00:00Z').getTime();
+        const dEnd = new Date(p.end_date + 'T00:00:00Z').getTime();
+        return (dNewStart <= dEnd + ONE_DAY_MS && dNewEnd >= dStart - ONE_DAY_MS);
+    });
+
+    if (matching.length > 0) {
+        const target = matching[0];
+        let minStart = period.start_date;
+        let maxEnd = period.end_date;
+
+        for (const p of matching) {
+            if (p.start_date < minStart) minStart = p.start_date;
+            if (p.end_date > maxEnd) maxEnd = p.end_date;
+        }
+
+        await db.run('UPDATE azubi_periods SET start_date = ?, end_date = ? WHERE id = ?', [minStart, maxEnd, target.id]);
+
+        for (let i = 1; i < matching.length; i++) {
+            await db.run('DELETE FROM azubi_periods WHERE id = ?', [matching[i].id]);
+        }
+    } else {
+        await db.run('INSERT INTO azubi_periods (azubi_id, start_date, end_date, description, lehrjahr) VALUES (?, ?, ?, ?, ?)',
+            [period.azubi_id, period.start_date, period.end_date, period.description || '', lehrjahr]);
+    }
+
+    await consolidateAzubiPeriods(db, period.azubi_id);
 };
 
 export const updateAzubiPeriod = async (db: AsyncDB, period: { id: number, azubi_id: number, start_date: string, end_date: string, description?: string, lehrjahr?: number }) => {
     await db.run('UPDATE azubi_periods SET azubi_id = ?, start_date = ?, end_date = ?, description = ?, lehrjahr = ? WHERE id = ?',
         [period.azubi_id, period.start_date, period.end_date, period.description || '', period.lehrjahr || 1, period.id]);
+    await consolidateAzubiPeriods(db, period.azubi_id);
 };
 
 export const deleteAzubiPeriod = async (db: AsyncDB, id: number) => {
@@ -1939,18 +2159,26 @@ export const getItwDoctors = async (db: AsyncDB) => {
     return await db.all('SELECT * FROM itw_doctors ORDER BY sort ASC, id ASC');
 };
 
-export const addItwDoctor = async (db: AsyncDB, doc: { name: string, vorname: string }) => {
+export const addItwDoctor = async (db: AsyncDB, doc: { name: string, vorname: string, anrede?: string, title?: string, is_nef?: boolean | number | string, is_itw?: boolean | number | string }) => {
+    const anrede = doc.anrede || '';
+    const title = doc.title || '';
+    const isNef = (doc.is_nef === true || doc.is_nef === 1 || String(doc.is_nef) === '1') ? 1 : 0;
+    const isItw = (doc.is_itw === undefined || doc.is_itw === true || doc.is_itw === 1 || String(doc.is_itw) === '1') ? 1 : 0;
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM itw_doctors');
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
-        await db.run('INSERT INTO itw_doctors (name, vorname, sort) VALUES (?, ?, ?)', [doc.name, doc.vorname, next]);
+        await db.run('INSERT INTO itw_doctors (name, vorname, anrede, title, is_nef, is_itw, sort) VALUES (?, ?, ?, ?, ?, ?, ?)', [doc.name, doc.vorname, anrede, title, isNef, isItw, next]);
     } catch (e) {
-        await db.run('INSERT INTO itw_doctors (name, vorname) VALUES (?, ?)', [doc.name, doc.vorname]);
+        await db.run('INSERT INTO itw_doctors (name, vorname, anrede, title, is_nef, is_itw) VALUES (?, ?, ?, ?, ?, ?)', [doc.name, doc.vorname, anrede, title, isNef, isItw]);
     }
 };
 
-export const updateItwDoctor = async (db: AsyncDB, doc: { id: number, name: string, vorname: string }) => {
-    await db.run('UPDATE itw_doctors SET name = ?, vorname = ? WHERE id = ?', [doc.name, doc.vorname, doc.id]);
+export const updateItwDoctor = async (db: AsyncDB, doc: { id: number, name: string, vorname: string, anrede?: string, title?: string, is_nef?: boolean | number | string, is_itw?: boolean | number | string }) => {
+    const anrede = doc.anrede || '';
+    const title = doc.title || '';
+    const isNef = (doc.is_nef === true || doc.is_nef === 1 || String(doc.is_nef) === '1') ? 1 : 0;
+    const isItw = (doc.is_itw === true || doc.is_itw === 1 || String(doc.is_itw) === '1') ? 1 : 0;
+    await db.run('UPDATE itw_doctors SET name = ?, vorname = ?, anrede = ?, title = ?, is_nef = ?, is_itw = ? WHERE id = ?', [doc.name, doc.vorname, anrede, title, isNef, isItw, doc.id]);
 };
 
 export const deleteItwDoctor = async (db: AsyncDB, id: number) => {
@@ -1963,22 +2191,65 @@ export const updateItwDoctorOrder = async (db: AsyncDB, order: number[]) => {
     }
 };
 
+// --- Doctor Periods CRUD ---
+export const getDoctorPeriods = async (db: AsyncDB, doctorId: number) => {
+    return await db.all('SELECT * FROM doctor_periods WHERE doctor_id = ? ORDER BY start_date ASC', [doctorId]);
+};
+
+export const getAllDoctorPeriods = async (db: AsyncDB) => {
+    return await db.all('SELECT * FROM doctor_periods ORDER BY doctor_id ASC, start_date ASC');
+};
+
+export const addDoctorPeriod = async (db: AsyncDB, period: { doctor_id: number, start_date: string, end_date: string, description?: string }) => {
+    const desc = period.description || '';
+    return await db.run(
+        'INSERT INTO doctor_periods (doctor_id, start_date, end_date, description) VALUES (?, ?, ?, ?)',
+        [period.doctor_id, period.start_date, period.end_date, desc]
+    );
+};
+
+export const updateDoctorPeriod = async (db: AsyncDB, period: { id: number, doctor_id: number, start_date: string, end_date: string, description?: string }) => {
+    const desc = period.description || '';
+    return await db.run(
+        'UPDATE doctor_periods SET doctor_id = ?, start_date = ?, end_date = ?, description = ? WHERE id = ?',
+        [period.doctor_id, period.start_date, period.end_date, desc, period.id]
+    );
+};
+
+export const deleteDoctorPeriod = async (db: AsyncDB, id: number) => {
+    return await db.run('DELETE FROM doctor_periods WHERE id = ?', [id]);
+};
+
+export const ensureVehicleCategoryColumns = async (db: AsyncDB) => {
+    for (const table of ['rtw_vehicles', 'nef_vehicles', 'itw_vehicles']) {
+        try {
+            const cols = await db.all(`PRAGMA table_info('${table}')`);
+            if (cols.length > 0 && !cols.some((c: any) => c.name === 'category')) {
+                await db.exec(`ALTER TABLE ${table} ADD COLUMN category TEXT NOT NULL DEFAULT 'regular'`);
+            }
+        } catch { }
+    }
+};
+
 // --- RTW Vehicles CRUD ---
 export const getRtwVehicles = async (db: AsyncDB, year?: number) => {
+    await ensureVehicleCategoryColumns(db);
     if (typeof year === 'number') {
-        return await db.all('SELECT * FROM rtw_vehicles WHERE archived_year IS NULL OR archived_year >= ? ORDER BY sort ASC, id ASC', [year]);
+        return await db.all("SELECT id, name, sort, archived_year, COALESCE(category, 'regular') as category FROM rtw_vehicles WHERE archived_year IS NULL OR archived_year >= ? ORDER BY CASE WHEN COALESCE(category, 'regular') = 'reserve' THEN 1 ELSE 0 END ASC, sort ASC, id ASC", [year]);
     }
-    return await db.all('SELECT * FROM rtw_vehicles WHERE archived_year IS NULL ORDER BY sort ASC, id ASC');
+    return await db.all("SELECT id, name, sort, archived_year, COALESCE(category, 'regular') as category FROM rtw_vehicles WHERE archived_year IS NULL ORDER BY CASE WHEN COALESCE(category, 'regular') = 'reserve' THEN 1 ELSE 0 END ASC, sort ASC, id ASC");
 };
-export const addRtwVehicle = async (db: AsyncDB, v: { name: string }) => {
+export const addRtwVehicle = async (db: AsyncDB, v: { name: string, category?: string, periods?: any[] }) => {
+    await ensureVehicleCategoryColumns(db);
     let vehicleId: number | undefined;
+    const cat = v.category === 'reserve' ? 'reserve' : 'regular';
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM rtw_vehicles');
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
-        const result = await db.run('INSERT INTO rtw_vehicles (name, sort) VALUES (?, ?)', [v.name, next]);
+        const result = await db.run('INSERT INTO rtw_vehicles (name, sort, category) VALUES (?, ?, ?)', [v.name, next, cat]);
         vehicleId = Number(result.lastInsertRowid);
     } catch (e) {
-        const result = await db.run('INSERT INTO rtw_vehicles (name) VALUES (?)', [v.name]);
+        const result = await db.run('INSERT INTO rtw_vehicles (name, category) VALUES (?, ?)', [v.name, cat]);
         vehicleId = Number(result.lastInsertRowid);
     }
 
@@ -1989,14 +2260,20 @@ export const addRtwVehicle = async (db: AsyncDB, v: { name: string }) => {
     // Initialisiere Standard-Positionen
     await initializeDefaultVehiclePositions(db, 'rtw', vehicleId);
 
-    // Erstelle automatisch eine Periode ab aktuellem Monat (unbegrenzt)
-    const now = new Date();
-    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    await db.run('INSERT INTO rtw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, NULL, 1)',
-        [vehicleId, currentYM]);
+    // Nur Zeiträume anlegen, wenn diese explizit übergeben wurden
+    if (v.periods && Array.isArray(v.periods)) {
+        for (const p of v.periods) {
+            await db.run('INSERT INTO rtw_vehicle_periods (vehicleId, startYM, endYM, active, note) VALUES (?, ?, ?, ?, ?)',
+                [vehicleId, p.startYM || p.startDate, p.endYM || p.endDate || null, p.active !== false ? 1 : 0, p.note || '']);
+        }
+    }
+
+    return vehicleId;
 };
-export const updateRtwVehicle = async (db: AsyncDB, v: { id: number, name: string }) => {
-    await db.run('UPDATE rtw_vehicles SET name = ? WHERE id = ?', [v.name, v.id]);
+export const updateRtwVehicle = async (db: AsyncDB, v: { id: number, name: string, category?: string }) => {
+    await ensureVehicleCategoryColumns(db);
+    const cat = v.category === 'reserve' ? 'reserve' : 'regular';
+    await db.run('UPDATE rtw_vehicles SET name = ?, category = ? WHERE id = ?', [v.name, cat, v.id]);
 };
 export const deleteRtwVehicle = async (db: AsyncDB, id: number, currentYear?: number) => {
     // Soft Delete: mark archived_year = currentYear (oder aktuelles Jahr wenn nicht gegeben)
@@ -2011,28 +2288,32 @@ export const updateRtwVehicleOrder = async (db: AsyncDB, order: number[]) => {
 
 // --- NEF Vehicles CRUD ---
 export const getNefVehicles = async (db: AsyncDB, year?: number) => {
+    await ensureVehicleCategoryColumns(db);
     if (typeof year === 'number') {
-        return await db.all('SELECT id, name, sort, archived_year, COALESCE(occupancy_mode, \'24h\') as occupancy_mode FROM nef_vehicles WHERE archived_year IS NULL OR archived_year >= ? ORDER BY sort ASC, id ASC', [year]);
+        return await db.all("SELECT id, name, sort, archived_year, COALESCE(occupancy_mode, '24h') as occupancy_mode, COALESCE(category, 'regular') as category FROM nef_vehicles WHERE archived_year IS NULL OR archived_year >= ? ORDER BY CASE WHEN COALESCE(category, 'regular') = 'reserve' THEN 1 ELSE 0 END ASC, sort ASC, id ASC", [year]);
     }
-    return await db.all('SELECT id, name, sort, archived_year, COALESCE(occupancy_mode, \'24h\') as occupancy_mode FROM nef_vehicles WHERE archived_year IS NULL ORDER BY sort ASC, id ASC');
+    return await db.all("SELECT id, name, sort, archived_year, COALESCE(occupancy_mode, '24h') as occupancy_mode, COALESCE(category, 'regular') as category FROM nef_vehicles WHERE archived_year IS NULL ORDER BY CASE WHEN COALESCE(category, 'regular') = 'reserve' THEN 1 ELSE 0 END ASC, sort ASC, id ASC");
 };
 
 // --- ITW Vehicles CRUD ---
 export const getItwVehicles = async (db: AsyncDB, year?: number) => {
+    await ensureVehicleCategoryColumns(db);
     if (typeof year === 'number') {
-        return await db.all('SELECT * FROM itw_vehicles WHERE archived_year IS NULL OR archived_year >= ? ORDER BY sort ASC, id ASC', [year]);
+        return await db.all("SELECT id, name, sort, archived_year, COALESCE(category, 'regular') as category FROM itw_vehicles WHERE archived_year IS NULL OR archived_year >= ? ORDER BY CASE WHEN COALESCE(category, 'regular') = 'reserve' THEN 1 ELSE 0 END ASC, sort ASC, id ASC", [year]);
     }
-    return await db.all('SELECT * FROM itw_vehicles WHERE archived_year IS NULL ORDER BY sort ASC, id ASC');
+    return await db.all("SELECT id, name, sort, archived_year, COALESCE(category, 'regular') as category FROM itw_vehicles WHERE archived_year IS NULL ORDER BY CASE WHEN COALESCE(category, 'regular') = 'reserve' THEN 1 ELSE 0 END ASC, sort ASC, id ASC");
 };
-export const addItwVehicle = async (db: AsyncDB, v: { name: string }) => {
+export const addItwVehicle = async (db: AsyncDB, v: { name: string, category?: string, periods?: any[] }) => {
+    await ensureVehicleCategoryColumns(db);
     let vehicleId: number | undefined;
+    const cat = v.category === 'reserve' ? 'reserve' : 'regular';
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM itw_vehicles');
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
-        const result = await db.run('INSERT INTO itw_vehicles (name, sort) VALUES (?, ?)', [v.name, next]);
+        const result = await db.run('INSERT INTO itw_vehicles (name, sort, category) VALUES (?, ?, ?)', [v.name, next, cat]);
         vehicleId = Number(result.lastInsertRowid);
     } catch (e) {
-        const result = await db.run('INSERT INTO itw_vehicles (name) VALUES (?)', [v.name]);
+        const result = await db.run('INSERT INTO itw_vehicles (name, category) VALUES (?, ?)', [v.name, cat]);
         vehicleId = Number(result.lastInsertRowid);
     }
 
@@ -2043,14 +2324,20 @@ export const addItwVehicle = async (db: AsyncDB, v: { name: string }) => {
     // Initialisiere Standard-Positionen
     await initializeDefaultVehiclePositions(db, 'itw', vehicleId);
 
-    // Erstelle automatisch eine Periode ab aktuellem Monat (unbegrenzt)
-    const now = new Date();
-    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    await db.run('INSERT INTO itw_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, NULL, 1)',
-        [vehicleId, currentYM]);
+    // Nur Zeiträume anlegen, wenn diese explizit übergeben wurden
+    if (v.periods && Array.isArray(v.periods)) {
+        for (const p of v.periods) {
+            await db.run('INSERT INTO itw_vehicle_periods (vehicleId, startYM, endYM, active, note) VALUES (?, ?, ?, ?, ?)',
+                [vehicleId, p.startYM || p.startDate, p.endYM || p.endDate || null, p.active !== false ? 1 : 0, p.note || '']);
+        }
+    }
+
+    return vehicleId;
 };
-export const updateItwVehicle = async (db: AsyncDB, v: { id: number, name: string }) => {
-    await db.run('UPDATE itw_vehicles SET name = ? WHERE id = ?', [v.name, v.id]);
+export const updateItwVehicle = async (db: AsyncDB, v: { id: number, name: string, category?: string }) => {
+    await ensureVehicleCategoryColumns(db);
+    const cat = v.category === 'reserve' ? 'reserve' : 'regular';
+    await db.run('UPDATE itw_vehicles SET name = ?, category = ? WHERE id = ?', [v.name, cat, v.id]);
 };
 export const deleteItwVehicle = async (db: AsyncDB, id: number, currentYear?: number) => {
     const y = currentYear || new Date().getFullYear();
@@ -2062,17 +2349,19 @@ export const updateItwVehicleOrder = async (db: AsyncDB, order: number[]) => {
     }
 };
 
-export const addNefVehicle = async (db: AsyncDB, v: { name: string, occupancyMode?: '24h' | 'tag' }) => {
+export const addNefVehicle = async (db: AsyncDB, v: { name: string, occupancyMode?: '24h' | 'tag', category?: string, periods?: any[] }) => {
+    await ensureVehicleCategoryColumns(db);
     let vehicleId: number | undefined;
+    const cat = v.category === 'reserve' ? 'reserve' : 'regular';
     try {
         const row: any = await db.get('SELECT MAX(sort) as m FROM nef_vehicles');
         const next = (row && typeof row.m === 'number') ? row.m + 1 : 0;
-        const result = await db.run('INSERT INTO nef_vehicles (name, sort, occupancy_mode) VALUES (?, ?, ?)',
-            [v.name, next, v.occupancyMode === 'tag' ? 'tag' : '24h']);
+        const result = await db.run('INSERT INTO nef_vehicles (name, sort, occupancy_mode, category) VALUES (?, ?, ?, ?)',
+            [v.name, next, v.occupancyMode === 'tag' ? 'tag' : '24h', cat]);
         vehicleId = result.lastInsertRowid as number;
     } catch (e) {
-        const result = await db.run('INSERT INTO nef_vehicles (name, occupancy_mode) VALUES (?, ?)',
-            [v.name, v.occupancyMode === 'tag' ? 'tag' : '24h']);
+        const result = await db.run('INSERT INTO nef_vehicles (name, occupancy_mode, category) VALUES (?, ?, ?)',
+            [v.name, v.occupancyMode === 'tag' ? 'tag' : '24h', cat]);
         vehicleId = result.lastInsertRowid as number;
     }
 
@@ -2083,17 +2372,23 @@ export const addNefVehicle = async (db: AsyncDB, v: { name: string, occupancyMod
     // Initialisiere Standard-Positionen
     await initializeDefaultVehiclePositions(db, 'nef', vehicleId);
 
-    // Erstelle automatisch eine Periode ab aktuellem Monat (unbegrenzt)
-    const now = new Date();
-    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    await db.run('INSERT INTO nef_vehicle_periods (vehicleId, startYM, endYM, active) VALUES (?, ?, NULL, 1)',
-        [vehicleId, currentYM]);
+    // Nur Zeiträume anlegen, wenn diese explizit übergeben wurden
+    if (v.periods && Array.isArray(v.periods)) {
+        for (const p of v.periods) {
+            await db.run('INSERT INTO nef_vehicle_periods (vehicleId, startYM, endYM, active, note) VALUES (?, ?, ?, ?, ?)',
+                [vehicleId, p.startYM || p.startDate, p.endYM || p.endDate || null, p.active !== false ? 1 : 0, p.note || '']);
+        }
+    }
+
+    return vehicleId;
 };
-export const updateNefVehicle = async (db: AsyncDB, v: { id: number, name: string, occupancyMode?: '24h' | 'tag' }) => {
+export const updateNefVehicle = async (db: AsyncDB, v: { id: number, name: string, occupancyMode?: '24h' | 'tag', category?: string }) => {
+    await ensureVehicleCategoryColumns(db);
+    const cat = v.category === 'reserve' ? 'reserve' : 'regular';
     if (v.occupancyMode) {
-        await db.run('UPDATE nef_vehicles SET name = ?, occupancy_mode = ? WHERE id = ?', [v.name, v.occupancyMode, v.id]);
+        await db.run('UPDATE nef_vehicles SET name = ?, occupancy_mode = ?, category = ? WHERE id = ?', [v.name, v.occupancyMode, cat, v.id]);
     } else {
-        await db.run('UPDATE nef_vehicles SET name = ? WHERE id = ?', [v.name, v.id]);
+        await db.run('UPDATE nef_vehicles SET name = ?, category = ? WHERE id = ?', [v.name, cat, v.id]);
     }
 };
 export const setNefOccupancyMode = async (db: AsyncDB, id: number, mode: '24h' | 'tag') => {
@@ -2112,27 +2407,35 @@ export const updateNefVehicleOrder = async (db: AsyncDB, order: number[]) => {
 
 // --- Vehicle monthly activation helpers (DEPRECATED - use vehicle periods instead) ---
 export const getRtwVehicleActivations = async (db: AsyncDB, year: number) => {
-    // Compatibility: Generate activation list from periods
-    // We need to fetch vehicles to know which ones exist, but we can also just fetch all periods
-    // and group by vehicle. However, to handle "no periods = active", we need the list of vehicles.
+    // Compatibility: Generate activation list from periods and special days
+    await ensureVehicleTables(db);
     const vehicles = await getRtwVehicles(db, year);
     const results: { vehicleId: number, month: number, enabled: number }[] = [];
 
     for (const v of vehicles) {
         const periods = await db.all('SELECT * FROM rtw_vehicle_periods WHERE vehicleId = ?', [v.id]);
+        const specialDays = await db.all("SELECT * FROM vehicle_special_days WHERE vehicleType = 'rtw' AND vehicleId = ?", [v.id]);
         
         for (let m = 1; m <= 12; m++) {
             const ym = `${year}-${String(m).padStart(2, '0')}`;
             
-            // If no periods exist, vehicle is active by default
-            let isActive = periods.length === 0;
+            let isActive = false;
             
             if (periods.length > 0) {
-                isActive = periods.some((p: any) =>
-                    (p.active === 1 || p.active === true) &&
-                    p.startYM <= ym &&
-                    (p.endYM === null || p.endYM === '' || p.endYM >= ym)
-                );
+                isActive = periods.some((p: any) => {
+                    const isAct = p.active === 1 || p.active === true;
+                    if (!isAct) return false;
+                    const start = (p.startYM || p.startDate || '').trim().slice(0, 7);
+                    const end = (p.endYM || p.endDate || '').trim().slice(0, 7);
+                    if (!start) return true;
+                    return start <= ym && (!end || end >= ym);
+                });
+            } else if (v.category !== 'reserve') {
+                isActive = true;
+            }
+
+            if (!isActive && specialDays.length > 0) {
+                isActive = specialDays.some((s: any) => s.action !== 'remove' && (s.date || '').startsWith(ym));
             }
             
             results.push({ vehicleId: v.id, month: m, enabled: isActive ? 1 : 0 });
@@ -2146,25 +2449,35 @@ export const setRtwVehicleActivation = async (db: AsyncDB, vehicleId: number, ye
 };
 
 export const getNefVehicleActivations = async (db: AsyncDB, year: number) => {
-    // Compatibility: Generate activation list from periods
+    // Compatibility: Generate activation list from periods and special days
+    await ensureVehicleTables(db);
     const vehicles = await getNefVehicles(db, year);
     const results: { vehicleId: number, month: number, enabled: number }[] = [];
 
     for (const v of vehicles) {
         const periods = await db.all('SELECT * FROM nef_vehicle_periods WHERE vehicleId = ?', [v.id]);
+        const specialDays = await db.all("SELECT * FROM vehicle_special_days WHERE vehicleType = 'nef' AND vehicleId = ?", [v.id]);
         
         for (let m = 1; m <= 12; m++) {
             const ym = `${year}-${String(m).padStart(2, '0')}`;
             
-            // If no periods exist, vehicle is active by default
-            let isActive = periods.length === 0;
+            let isActive = false;
             
             if (periods.length > 0) {
-                isActive = periods.some((p: any) =>
-                    (p.active === 1 || p.active === true) &&
-                    p.startYM <= ym &&
-                    (p.endYM === null || p.endYM === '' || p.endYM >= ym)
-                );
+                isActive = periods.some((p: any) => {
+                    const isAct = p.active === 1 || p.active === true;
+                    if (!isAct) return false;
+                    const start = (p.startYM || p.startDate || '').trim().slice(0, 7);
+                    const end = (p.endYM || p.endDate || '').trim().slice(0, 7);
+                    if (!start) return true;
+                    return start <= ym && (!end || end >= ym);
+                });
+            } else if (v.category !== 'reserve') {
+                isActive = true;
+            }
+
+            if (!isActive && specialDays.length > 0) {
+                isActive = specialDays.some((s: any) => s.action !== 'remove' && (s.date || '').startsWith(ym));
             }
             
             results.push({ vehicleId: v.id, month: m, enabled: isActive ? 1 : 0 });
@@ -2262,6 +2575,109 @@ export const getAllNefVehiclePeriods = async (db: AsyncDB) => {
     return await db.all('SELECT * FROM nef_vehicle_periods ORDER BY vehicleId, startYM ASC');
 };
 
+// --- Special Days & Peak Coverage (Spitzenabdeckung / Sonderlagen) ---
+export const ensureVehicleTables = async (db: AsyncDB) => {
+    try {
+        await db.exec(`
+            CREATE TABLE IF NOT EXISTS vehicle_special_days (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vehicleType TEXT NOT NULL,
+                vehicleId INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                reason TEXT,
+                shiftMode TEXT DEFAULT '24h',
+                action TEXT DEFAULT 'add',
+                createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(vehicleType, vehicleId, date)
+            )
+        `);
+        await db.exec(`CREATE INDEX IF NOT EXISTS idx_vehicle_special_days_lookup ON vehicle_special_days (vehicleType, vehicleId, date)`);
+
+        for (const table of ['rtw_vehicle_periods', 'nef_vehicle_periods', 'itw_vehicle_periods']) {
+            try {
+                await db.exec(`
+                    CREATE TABLE IF NOT EXISTS ${table} (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        vehicleId INTEGER NOT NULL,
+                        startYM TEXT NOT NULL,
+                        endYM TEXT,
+                        active INTEGER DEFAULT 1,
+                        note TEXT
+                    )
+                `);
+                const cols = await db.all(`PRAGMA table_info('${table}')`);
+                if (cols.length > 0 && !cols.some((c: any) => c.name === 'note')) {
+                    await db.exec(`ALTER TABLE ${table} ADD COLUMN note TEXT`);
+                }
+            } catch { }
+        }
+    } catch (e) {
+        console.warn('[DB] ensureVehicleTables error:', e);
+    }
+};
+
+export const getVehicleSpecialDays = async (db: AsyncDB, vehicleType: string, vehicleId: number) => {
+    await ensureVehicleTables(db);
+    const vt = (vehicleType || 'rtw').toLowerCase();
+    return await db.all(
+        'SELECT * FROM vehicle_special_days WHERE vehicleType = ? AND vehicleId = ? ORDER BY date ASC',
+        [vt, vehicleId]
+    );
+};
+
+export const getAllVehicleSpecialDays = async (db: AsyncDB, year?: number) => {
+    await ensureVehicleTables(db);
+    if (year) {
+        return await db.all('SELECT * FROM vehicle_special_days WHERE date LIKE ? ORDER BY date ASC', [`${year}-%`]);
+    }
+    return await db.all('SELECT * FROM vehicle_special_days ORDER BY date ASC');
+};
+
+export const setVehicleSpecialDays = async (
+    db: AsyncDB,
+    vehicleType: string,
+    vehicleId: number,
+    specialDays: Array<{ date: string, reason?: string, shiftMode?: string, action?: string }>
+) => {
+    await ensureVehicleTables(db);
+    const vt = (vehicleType || 'rtw').toLowerCase();
+    await db.run('DELETE FROM vehicle_special_days WHERE vehicleType = ? AND vehicleId = ?', [vt, vehicleId]);
+    for (const s of (specialDays || [])) {
+        const date = (s.date || '').trim();
+        if (!date) continue;
+        const reason = (s.reason || '').trim() || null;
+        const shiftMode = s.shiftMode || '24h';
+        const action = s.action || 'add';
+        await db.run(
+            'INSERT OR REPLACE INTO vehicle_special_days (vehicleType, vehicleId, date, reason, shiftMode, action) VALUES (?, ?, ?, ?, ?, ?)',
+            [vt, vehicleId, date, reason, shiftMode, action]
+        );
+    }
+};
+
+export const setVehiclePeriodsGeneric = async (
+    db: AsyncDB,
+    vehicleType: string,
+    vehicleId: number,
+    periods: Array<{ startYM?: string, startDate?: string, endYM?: string, endDate?: string, active?: boolean | number, note?: string }>
+) => {
+    await ensureVehicleTables(db);
+    const vt = (vehicleType || 'rtw').toLowerCase();
+    const table = vt === 'nef' ? 'nef_vehicle_periods' : vt === 'itw' ? 'itw_vehicle_periods' : 'rtw_vehicle_periods';
+    await db.run(`DELETE FROM ${table} WHERE vehicleId = ?`, [vehicleId]);
+    for (const p of (periods || [])) {
+        const start = (p.startDate || p.startYM || '').trim();
+        if (!start) continue;
+        const end = (p.endDate || p.endYM || '').trim() || null;
+        const active = (p.active === false || p.active === 0) ? 0 : 1;
+        const note = (p.note || '').trim() || null;
+        await db.run(
+            `INSERT INTO ${table} (vehicleId, startYM, endYM, active, note) VALUES (?, ?, ?, ?, ?)`,
+            [vehicleId, start, end, active, note]
+        );
+    }
+};
+
 export const getUniqueDepartments = async (db: AsyncDB) => {
     const rows = await db.all(`
         SELECT DISTINCT department FROM (
@@ -2306,49 +2722,73 @@ export const deleteNefVehiclePeriod = async (db: AsyncDB, id: number) => {
 
 // Helper: Check if RTW vehicle is active in a given month
 export const isRtwVehicleActiveInMonth = async (db: AsyncDB, vehicleId: number, yearMonth: string): Promise<boolean> => {
-    const result = await db.get(
-        `SELECT COUNT(*) as count FROM rtw_vehicle_periods 
-         WHERE vehicleId = ? AND active = 1 
-         AND startYM <= ? AND (endYM IS NULL OR endYM >= ?)`,
-        [vehicleId, yearMonth, yearMonth]
-    );
-    return result && result.count > 0;
+    await ensureVehicleTables(db);
+    const ym = yearMonth.slice(0, 7);
+    const periods = await db.all('SELECT * FROM rtw_vehicle_periods WHERE vehicleId = ?', [vehicleId]);
+    const specialDays = await db.all("SELECT * FROM vehicle_special_days WHERE vehicleType = 'rtw' AND vehicleId = ?", [vehicleId]);
+    const v = await db.get('SELECT category FROM rtw_vehicles WHERE id = ?', [vehicleId]);
+
+    const hasPeriod = periods.some((p: any) => {
+        const isAct = p.active === 1 || p.active === true;
+        if (!isAct) return false;
+        const start = (p.startYM || p.startDate || '').trim().slice(0, 7);
+        const end = (p.endYM || p.endDate || '').trim().slice(0, 7);
+        if (!start) return true;
+        return start <= ym && (!end || end >= ym);
+    });
+    if (hasPeriod) return true;
+    if (specialDays.some((s: any) => s.action !== 'remove' && (s.date || '').startsWith(ym))) return true;
+    if (periods.length === 0 && v?.category !== 'reserve') return true;
+    return false;
 };
 
 // Helper: Check if NEF vehicle is active in a given month
 export const isNefVehicleActiveInMonth = async (db: AsyncDB, vehicleId: number, yearMonth: string): Promise<boolean> => {
-    const result = await db.get(
-        `SELECT COUNT(*) as count FROM nef_vehicle_periods 
-         WHERE vehicleId = ? AND active = 1 
-         AND startYM <= ? AND (endYM IS NULL OR endYM >= ?)`,
-        [vehicleId, yearMonth, yearMonth]
-    );
-    return result && result.count > 0;
+    await ensureVehicleTables(db);
+    const ym = yearMonth.slice(0, 7);
+    const periods = await db.all('SELECT * FROM nef_vehicle_periods WHERE vehicleId = ?', [vehicleId]);
+    const specialDays = await db.all("SELECT * FROM vehicle_special_days WHERE vehicleType = 'nef' AND vehicleId = ?", [vehicleId]);
+    const v = await db.get('SELECT category FROM nef_vehicles WHERE id = ?', [vehicleId]);
+
+    const hasPeriod = periods.some((p: any) => {
+        const isAct = p.active === 1 || p.active === true;
+        if (!isAct) return false;
+        const start = (p.startYM || p.startDate || '').trim().slice(0, 7);
+        const end = (p.endYM || p.endDate || '').trim().slice(0, 7);
+        if (!start) return true;
+        return start <= ym && (!end || end >= ym);
+    });
+    if (hasPeriod) return true;
+    if (specialDays.some((s: any) => s.action !== 'remove' && (s.date || '').startsWith(ym))) return true;
+    if (periods.length === 0 && v?.category !== 'reserve') return true;
+    return false;
 };
 
 // Get all active RTW vehicle periods for a specific month
 export const getActiveRtwVehiclesInMonth = async (db: AsyncDB, yearMonth: string) => {
+    const ym = yearMonth.slice(0, 7);
     return await db.all(
         `SELECT rvp.*, rv.name 
          FROM rtw_vehicle_periods rvp
          JOIN rtw_vehicles rv ON rvp.vehicleId = rv.id
          WHERE rvp.active = 1 
-         AND rvp.startYM <= ? AND (rvp.endYM IS NULL OR rvp.endYM >= ?)
+         AND SUBSTR(rvp.startYM, 1, 7) <= ? AND (rvp.endYM IS NULL OR rvp.endYM = '' OR SUBSTR(rvp.endYM, 1, 7) >= ?)
          ORDER BY rv.sort`,
-        [yearMonth, yearMonth]
+        [ym, ym]
     );
 };
 
 // Get all active NEF vehicle periods for a specific month
 export const getActiveNefVehiclesInMonth = async (db: AsyncDB, yearMonth: string) => {
+    const ym = yearMonth.slice(0, 7);
     return await db.all(
         `SELECT nvp.*, nv.name, nv.occupancy_mode 
          FROM nef_vehicle_periods nvp
          JOIN nef_vehicles nv ON nvp.vehicleId = nv.id
          WHERE nvp.active = 1 
-         AND nvp.startYM <= ? AND (nvp.endYM IS NULL OR nvp.endYM >= ?)
+         AND SUBSTR(nvp.startYM, 1, 7) <= ? AND (nvp.endYM IS NULL OR nvp.endYM = '' OR SUBSTR(nvp.endYM, 1, 7) >= ?)
          ORDER BY nv.sort`,
-        [yearMonth, yearMonth]
+        [ym, ym]
     );
 };
 
@@ -3265,17 +3705,17 @@ export const getGlobalCommentsForMonth = async (db: AsyncDB, year: number, month
 // --- ITW Planning Functions ---
 export const getItwPatterns = async (db: AsyncDB, department?: string) => {
     let query = 'SELECT start_date as startDate, pattern, department FROM itw_patterns';
-    const params = [];
+    const params: any[] = [];
     if (department && department !== 'all') {
-        query += ' WHERE department = ?';
-        params.push(department);
+        query += " WHERE department = ? OR department = 'global' OR department IS NULL";
+        params.push(normalizeDepartment(department));
     }
     query += ' ORDER BY start_date ASC';
     const rows = await db.all(query, params);
     return rows.map((r: any) => ({ 
         startDate: String(r.startDate), 
         pattern: String(r.pattern),
-        department: String(r.department || '1. Abteilung')
+        department: r.department || 'global'
     }));
 };
 
@@ -3284,12 +3724,12 @@ export const setItwPatterns = async (db: AsyncDB, patterns: { startDate: string,
     try {
         await db.run('DELETE FROM itw_patterns');
         for (const p of (patterns || [])) {
-            if (!p || !p.startDate || !p.pattern) continue;
+            if (!p || !p.startDate) continue;
             const sd = String(p.startDate).trim();
             if (!/\d{4}-\d{2}-\d{2}/.test(sd)) continue;
             const parts = String(p.pattern || '').split(',').map(s => s.trim());
-            const norm = (parts.slice(0, 21).concat(Array(21).fill(''))).slice(0, 21).map(v => (v === '1' || v === '2' || v === '3' || v === 'IW') ? v : '');
-            await db.run('INSERT INTO itw_patterns (start_date, department, pattern) VALUES (?, ?, ?)', [sd, p.department || '1. Abteilung', norm.join(',')]);
+            const norm = (parts.slice(0, 21).concat(Array(21).fill(''))).slice(0, 21);
+            await db.run('INSERT INTO itw_patterns (start_date, department, pattern) VALUES (?, ?, ?)', [sd, p.department || 'global', norm.join(',')]);
         }
         await db.run('COMMIT');
     } catch (e) {
@@ -3320,10 +3760,10 @@ export const generateItwPlanningsForYear = async (db: AsyncDB, year: number, hol
         
         // Find department of person
         const person = await db.get('SELECT department FROM personnel WHERE id = ?', [personId]);
-        const dept = person?.department || '1. Abteilung';
+        const dept = normalizeDepartment(person?.department || '1. Abteilung');
         
         // Filter patterns for this department
-        const deptPatterns = patterns.filter(p => p.department === dept);
+        const deptPatterns = patterns.filter(p => normalizeDepartment(p.department) === dept);
         if (deptPatterns.length === 0) continue;
         
         const sortedPatterns = [...deptPatterns].sort((a, b) => a.startDate.localeCompare(b.startDate));
@@ -3391,14 +3831,65 @@ export const getItwPhaseAssignments = async (db: AsyncDB, startDate?: string) =>
     return db.all(query, params);
 };
 
-export const addItwPhaseAssignment = async (db: AsyncDB, startDate: string, personId: number, role: string) => {
+export const addItwPhaseAssignment = async (db: AsyncDB, startDate: string, personId: number, role: string, auditUser?: { id: number; name: string }) => {
+    if (auditUser) {
+        try {
+            const pName = await getPersonName(db, personId, 'person');
+            const existingInSlot = await db.get(
+                'SELECT person_id FROM itw_phase_assignments WHERE start_date = ? AND role = ? AND person_id != ?',
+                [startDate, role, personId]
+            );
+            let oldName = '-';
+            if (existingInSlot && existingInSlot.person_id) {
+                oldName = await getPersonName(db, existingInSlot.person_id, 'person');
+            }
+
+            await addAuditLog(db, {
+                user_id: auditUser.id || 0,
+                user_name: auditUser.name || 'System',
+                action_type: existingInSlot ? 'update' : 'create',
+                entity_type: 'itw_phase_assignment',
+                entity_ref: `ITW Phase ${startDate} (${role})`,
+                old_value: oldName,
+                new_value: pName,
+                details: `ITW-Vorplanung: ${pName} für Phase ab ${startDate} (${role}) eingeteilt`
+            });
+        } catch (err) {
+            console.error('[Database] Fehler beim Loggen des ITW Phase Assignments:', err);
+        }
+    }
+
     await db.run(
         'INSERT OR REPLACE INTO itw_phase_assignments (start_date, person_id, role) VALUES (?, ?, ?)',
         [startDate, personId, role]
     );
 };
 
-export const removeItwPhaseAssignment = async (db: AsyncDB, startDate: string, personId: number) => {
+export const removeItwPhaseAssignment = async (db: AsyncDB, startDate: string, personId: number, auditUser?: { id: number; name: string }) => {
+    if (auditUser) {
+        try {
+            const existing = await db.get(
+                'SELECT role FROM itw_phase_assignments WHERE start_date = ? AND person_id = ?',
+                [startDate, personId]
+            );
+            const role = existing?.role || 'Phase';
+            const pName = await getPersonName(db, personId, 'person');
+
+            await addAuditLog(db, {
+                user_id: auditUser.id || 0,
+                user_name: auditUser.name || 'System',
+                action_type: 'delete',
+                entity_type: 'itw_phase_assignment',
+                entity_ref: `ITW Phase ${startDate} (${role})`,
+                old_value: pName,
+                new_value: '-',
+                details: `ITW-Vorplanung: ${pName} aus Phase ab ${startDate} (${role}) entfernt`
+            });
+        } catch (err) {
+            console.error('[Database] Fehler beim Loggen des ITW Phase Removals:', err);
+        }
+    }
+
     await db.run(
         'DELETE FROM itw_phase_assignments WHERE start_date = ? AND person_id = ?',
         [startDate, personId]
@@ -3413,13 +3904,48 @@ export const getItwDutyRoster = async (db: AsyncDB, year: number) => {
     );
 };
 
-export const setItwDutyRosterEntry = async (db: AsyncDB, entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number }) => {
+export const setItwDutyRosterEntry = async (db: AsyncDB, entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number; auditUser?: { id: number; name: string } }) => {
     const personType = entry.personType || 'person';
-    await db.run(
-        `INSERT OR REPLACE INTO itw_duty_roster (personId, personType, date, value, type, manual_edit)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [entry.personId, personType, entry.date, entry.value, entry.type, entry.manual_edit || 0]
-    );
+
+    if (entry.auditUser && entry.manual_edit === 1) {
+        try {
+            const existing = await db.get(
+                'SELECT value, type FROM itw_duty_roster WHERE personId = ? AND personType = ? AND date = ?',
+                [entry.personId, personType, entry.date]
+            );
+            const oldValue = existing ? `${existing.value || ''}${existing.type ? ` (${existing.type})` : ''}` : '-';
+            const newValue = `${entry.value || ''}${entry.type ? ` (${entry.type})` : ''}` || '-';
+
+            if (oldValue !== newValue) {
+                const pName = await getPersonName(db, entry.personId, personType);
+                await addAuditLog(db, {
+                    user_id: entry.auditUser.id || 0,
+                    user_name: entry.auditUser.name || 'System',
+                    action_type: !entry.value && !entry.type ? 'delete' : (existing ? 'update' : 'create'),
+                    entity_type: 'itw_duty_roster',
+                    entity_ref: `${pName} (${entry.date})`,
+                    old_value: oldValue,
+                    new_value: newValue,
+                    details: `ITW-Dienstplan manuell bearbeitet`
+                });
+            }
+        } catch (err) {
+            console.error('[Database] Fehler beim Loggen des ITW Duty Roster Eintrags:', err);
+        }
+    }
+
+    if (!entry.value && !entry.type) {
+        await db.run(
+            `DELETE FROM itw_duty_roster WHERE personId = ? AND personType = ? AND date = ?`,
+            [entry.personId, personType, entry.date]
+        );
+    } else {
+        await db.run(
+            `INSERT OR REPLACE INTO itw_duty_roster (personId, personType, date, value, type, manual_edit)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [entry.personId, personType, entry.date, entry.value, entry.type, entry.manual_edit || 0]
+        );
+    }
 };
 
 // --- Guests Management ---

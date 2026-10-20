@@ -19,12 +19,12 @@ const monthNames = [
 ];
 
 const AppContent: React.FC = () => {
-    const { isAuthenticated, login, isDevMode, currentUser } = useAuth();
+    const { isAuthenticated, login, isDevMode, currentUser, hasPermission } = useAuth();
     const [currentMonth] = useState<number>(new Date().getMonth());
     const [rescueStation, setRescueStation] = useState<string>('');
     const [departmentName, setDepartmentName] = useState<string>('Rettungsdienst');
-    const [year, setYear] = useState<number>(new Date().getFullYear());
-    const [activeView, setActiveView] = useState<'einteilung'|'dienstplan'|'werte'|'personal'|'fahrzeuge'|'einstellungen'|'itw'>('einteilung');
+    const [year, setYear] = useState<number>(new Date().getFullYear());    const [activeView, setActiveView] = useState<'einteilung'|'dienstplan'|'werte'|'personal'|'fahrzeuge'|'einstellungen'|'itw'>('einteilung');
+    const [settingsCategory, setSettingsCategory] = useState<'general'|'roster'|'features'|'itw'|'qualifications'|'roles'|'audit'>('general');
     const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
     const [footerActions, setFooterActions] = useState<React.ReactNode>(null);
 
@@ -59,9 +59,24 @@ const AppContent: React.FC = () => {
         }
     }
 
+    const getFirstAllowedView = (): 'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge' | 'einstellungen' | 'itw' => {
+        const areas: Array<'einteilung' | 'dienstplan' | 'werte' | 'personal' | 'fahrzeuge' | 'itw' | 'einstellungen'> = [
+            'einteilung', 'dienstplan', 'werte', 'personal', 'fahrzeuge', 'itw', 'einstellungen'
+        ];
+        for (const area of areas) {
+            if (hasPermission(area, 'read') || hasPermission(area, 'write')) {
+                return area;
+            }
+        }
+        return 'einteilung';
+    };
+
     useEffect(() => {
         if (isAuthenticated) {
-            setActiveView('einteilung');
+            const firstAllowed = getFirstAllowedView();
+            if (!hasPermission(activeView, 'read') && !hasPermission(activeView, 'write')) {
+                setActiveView(firstAllowed);
+            }
             loadHeaderInfo();
             
             // Reagiere auf Jahr-Änderungen von DutyRoster/Values
@@ -80,12 +95,27 @@ const AppContent: React.FC = () => {
             };
             window.addEventListener('rdplan-department-changed', handleDepartmentChange);
             
+            const handlePersonnelUpdated = () => {
+                loadHeaderInfo();
+            };
+            (window as any).api?.onPersonnelUpdated?.(handlePersonnelUpdated);
+            
             return () => {
                 window.removeEventListener('rdplan-year-changed', handleYearChange);
                 window.removeEventListener('rdplan-department-changed', handleDepartmentChange);
+                (window as any).api?.offPersonnelUpdated?.(handlePersonnelUpdated);
             };
         }
     }, [isAuthenticated, currentUser]);
+
+    useEffect(() => {
+        if (isAuthenticated) {
+            if (!hasPermission(activeView, 'read') && !hasPermission(activeView, 'write')) {
+                const firstAllowed = getFirstAllowedView();
+                setActiveView(firstAllowed);
+            }
+        }
+    }, [isAuthenticated, currentUser, activeView]);
 
     useEffect(() => {
         if (!isAuthenticated) return;
@@ -106,15 +136,22 @@ const AppContent: React.FC = () => {
       const handler = (e: Event) => {
         const ce = e as CustomEvent;
         const view = (ce.detail?.view || '') as string;
-                if (['einteilung','dienstplan','werte','personal','fahrzeuge','einstellungen','itw'].includes(view)) {
+        const category = ce.detail?.category;
+        if (['einteilung','dienstplan','werte','personal','fahrzeuge','einstellungen','itw'].includes(view)) {
           setActiveView(view as any);
+          if (category) {
+            setSettingsCategory(category);
+          }
         }
       };
       window.addEventListener('navigate', handler as EventListener);
-                    (window as any).api?.onNavigate?.((v: any) => {
-                        if (typeof v === 'string' && ['einteilung','dienstplan','werte','personal','fahrzeuge','einstellungen','itw'].includes(v)) setActiveView(v as any);
-                        else if (v && typeof v.view === 'string' && ['einteilung','dienstplan','werte','personal','fahrzeuge','einstellungen','itw'].includes(v.view)) setActiveView(v.view as any);
-            });
+      (window as any).api?.onNavigate?.((v: any) => {
+          if (typeof v === 'string' && ['einteilung','dienstplan','werte','personal','fahrzeuge','einstellungen','itw'].includes(v)) setActiveView(v as any);
+          else if (v && typeof v.view === 'string' && ['einteilung','dienstplan','werte','personal','fahrzeuge','einstellungen','itw'].includes(v.view)) {
+              setActiveView(v.view as any);
+              if (v.category) setSettingsCategory(v.category);
+          }
+      });
       return () => {
         (window as any).api?.offNavigate?.();
         window.removeEventListener('navigate', handler as EventListener);
@@ -135,9 +172,9 @@ const AppContent: React.FC = () => {
         const onNavigate = (view: typeof activeView) => setActiveView(view);
 
         const content = useMemo(() => {
-                    switch (activeView) {
-                        case 'einteilung':
-                                    return <EinteilungPage departmentName={departmentName} />;
+            switch (activeView) {
+                case 'einteilung':
+                    return <EinteilungPage departmentName={departmentName} />;
                 case 'dienstplan':
                     return <DutyRoster departmentName={departmentName} />;
                 case 'werte':
@@ -147,23 +184,25 @@ const AppContent: React.FC = () => {
                 case 'fahrzeuge':
                     return <Vehicles setFooterActions={setFooterActions} />;
                 case 'einstellungen':
-                                        return (
-                                            <SettingsMenu
-                                                onClose={() => setActiveView('dienstplan')}
-                                                setFooterActions={setFooterActions}
-                                                departmentName={departmentName}
-                                            />
-                                        );
+                    return (
+                        <SettingsMenu
+                            onClose={() => setActiveView('dienstplan')}
+                            setFooterActions={setFooterActions}
+                            departmentName={departmentName}
+                            activeCategoryProp={settingsCategory}
+                            onCategoryChange={setSettingsCategory}
+                        />
+                    );
                 case 'itw':
                     return <ItwPage />;
                 default:
                     return null;
             }
-                }, [activeView, departmentName]);
+        }, [activeView, departmentName, settingsCategory]);
 
-                useEffect(() => {
-                    if (activeView !== 'einstellungen' && activeView !== 'personal' && activeView !== 'fahrzeuge') setFooterActions(null);
-                }, [activeView]);
+        useEffect(() => {
+            if (activeView !== 'einstellungen' && activeView !== 'personal' && activeView !== 'fahrzeuge') setFooterActions(null);
+        }, [activeView]);
 
         // Reagiere auf Sidebar Collapse Events
         useEffect(() => {
@@ -201,7 +240,7 @@ const AppContent: React.FC = () => {
                     />
                 </div>
                 <div style={{ gridRow: '2 / span 2', gridColumn: 1 }}>
-                    <Sidebar active={activeView} />
+                    <Sidebar active={activeView} activeSettingsCategory={settingsCategory} />
                 </div>
                 <main style={{ gridRow: 2, gridColumn: 2, overflow: 'auto' }}>
                     {content}

@@ -32,7 +32,8 @@ export interface DatabaseAdapter {
   bulkImportDutyRosterEntries(entries: any[], respectManualEdits?: boolean, deleteEmpty?: boolean): Promise<{ imported: number; skipped: number; }>;
   deleteOrphanedDutyRosterEntries(year: number, monthRange: { start: number; end: number } | number | undefined, seenPersonIds: string[], department?: string): Promise<any>;
 
-  getAzubiList(department?: string): Promise<any[]>;
+  getAzubiList(department?: string, includeInactive?: boolean): Promise<any[]>;
+  setAzubiActive(id: number, active: boolean): Promise<void>;
   getAzubi(id: number): Promise<any | null>;
   addAzubi(azubi: any): Promise<any>;
   updateAzubi(azubi: any): Promise<void>;
@@ -86,20 +87,25 @@ export interface DatabaseAdapter {
   updateItwDoctor(doc: any): Promise<void>;
   deleteItwDoctor(id: number): Promise<void>;
   updateItwDoctorOrder(order: number[]): Promise<void>;
+  getDoctorPeriods(doctorId: number): Promise<any[]>;
+  getAllDoctorPeriods(): Promise<any[]>;
+  addDoctorPeriod(period: any): Promise<any>;
+  updateDoctorPeriod(period: any): Promise<void>;
+  deleteDoctorPeriod(id: number): Promise<void>;
 
   getRtwVehicles(year?: number): Promise<any[]>;
-  addRtwVehicle(v: { name: string }): Promise<void>;
+  addRtwVehicle(v: { name: string }): Promise<any>;
   updateRtwVehicle(v: { id: number, name: string }): Promise<void>;
   deleteRtwVehicle(id: number, currentYear?: number): Promise<void>;
   updateRtwVehicleOrder(order: number[]): Promise<void>;
   getNefVehicles(year?: number): Promise<any[]>;
-  addNefVehicle(v: { name: string, occupancyMode?: '24h' | 'tag' }): Promise<void>;
+  addNefVehicle(v: { name: string, occupancyMode?: '24h' | 'tag' }): Promise<any>;
   updateNefVehicle(v: { id: number, name: string, occupancyMode?: '24h' | 'tag' }): Promise<void>;
   deleteNefVehicle(id: number, currentYear?: number): Promise<void>;
   updateNefVehicleOrder(order: number[]): Promise<void>;
 
   getItwVehicles(year?: number): Promise<any[]>;
-  addItwVehicle(v: { name: string }): Promise<void>;
+  addItwVehicle(v: { name: string }): Promise<any>;
   updateItwVehicle(v: { id: number, name: string }): Promise<void>;
   deleteItwVehicle(id: number, currentYear?: number): Promise<void>;
   updateItwVehicleOrder(order: number[]): Promise<void>;
@@ -127,6 +133,12 @@ export interface DatabaseAdapter {
   addItwVehiclePeriod(period: any): Promise<void>;
   updateItwVehiclePeriod(period: any): Promise<void>;
   deleteItwVehiclePeriod(id: number): Promise<void>;
+
+  // Vehicle Special Days & Peak Coverage
+  getVehicleSpecialDays(vehicleType: string, vehicleId: number): Promise<any[]>;
+  getAllVehicleSpecialDays(year?: number): Promise<any[]>;
+  setVehicleSpecialDays(vehicleType: string, vehicleId: number, specialDays: any[]): Promise<void>;
+  setVehiclePeriodsGeneric(vehicleType: string, vehicleId: number, periods: any[]): Promise<void>;
 
   // Vehicle Positions
   getVehiclePositions(vehicleType: string, vehicleId: number): Promise<any[]>;
@@ -209,10 +221,10 @@ export interface DatabaseAdapter {
   setItwPatterns(patterns: any[]): Promise<void>;
   generateItwPlanningsForYear(year: number, holidayDates?: string[]): Promise<void>;
   getItwPhaseAssignments(startDate?: string): Promise<any[]>;
-  addItwPhaseAssignment(startDate: string, personId: number, role: string): Promise<void>;
-  removeItwPhaseAssignment(startDate: string, personId: number): Promise<void>;
+  addItwPhaseAssignment(startDate: string, personId: number, role: string, auditUser?: { id: number; name: string }): Promise<void>;
+  removeItwPhaseAssignment(startDate: string, personId: number, auditUser?: { id: number; name: string }): Promise<void>;
   getItwDutyRoster(year: number): Promise<any[]>;
-  setItwDutyRosterEntry(entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number }): Promise<void>;
+  setItwDutyRosterEntry(entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number; auditUser?: { id: number; name: string } }): Promise<void>;
 
   getUniqueDepartments(): Promise<string[]>;
 
@@ -280,9 +292,14 @@ class SQLiteAdapter implements DatabaseAdapter {
     return deleteOrphanedDutyRosterEntries(this.db, year, monthRange, seenPersonIds, department);
   }
 
-  async getAzubiList(department?: string) {
+  async getAzubiList(department?: string, includeInactive?: boolean) {
     const { getAzubiList } = await import('./database');
-    return getAzubiList(this.db, department);
+    return getAzubiList(this.db, department, includeInactive);
+  }
+
+  async setAzubiActive(id: number, active: boolean) {
+    const { setAzubiActive } = await import('./database');
+    return setAzubiActive(this.db, id, active);
   }
 
   async getAzubi(id: number) {
@@ -451,7 +468,15 @@ class SQLiteAdapter implements DatabaseAdapter {
       'SELECT department FROM personnel_department_periods WHERE person_id = ? AND start_date <= ? AND (end_date IS NULL OR end_date >= ?) ORDER BY start_date DESC LIMIT 1',
       [personId, targetDate, targetDate]
     );
-    return period?.department || null;
+    if (period?.department) {
+      return period.department;
+    }
+    const hasDeptPeriods = await this.db.get('SELECT 1 FROM personnel_department_periods WHERE person_id = ? LIMIT 1', [personId]);
+    if (hasDeptPeriods) {
+      return null;
+    }
+    const p = await this.db.get('SELECT department FROM personnel WHERE id = ?', [personId]);
+    return p?.department || '1. Abteilung';
   }
 
   async getQualificationTypes(activeOnly?: boolean) {
@@ -512,6 +537,31 @@ class SQLiteAdapter implements DatabaseAdapter {
   async updateItwDoctorOrder(order: number[]) {
     const { updateItwDoctorOrder } = await import('./database');
     return updateItwDoctorOrder(this.db, order);
+  }
+
+  async getDoctorPeriods(doctorId: number) {
+    const { getDoctorPeriods } = await import('./database');
+    return getDoctorPeriods(this.db, doctorId);
+  }
+
+  async getAllDoctorPeriods() {
+    const { getAllDoctorPeriods } = await import('./database');
+    return getAllDoctorPeriods(this.db);
+  }
+
+  async addDoctorPeriod(period: any) {
+    const { addDoctorPeriod } = await import('./database');
+    return addDoctorPeriod(this.db, period);
+  }
+
+  async updateDoctorPeriod(period: any) {
+    const { updateDoctorPeriod } = await import('./database');
+    return updateDoctorPeriod(this.db, period);
+  }
+
+  async deleteDoctorPeriod(id: number) {
+    const { deleteDoctorPeriod } = await import('./database');
+    return deleteDoctorPeriod(this.db, id);
   }
 
   async getRtwVehicles(year?: number) {
@@ -692,6 +742,27 @@ class SQLiteAdapter implements DatabaseAdapter {
     return deleteItwVehiclePeriod(this.db, id);
   }
 
+  // Vehicle Special Days & Peak Coverage
+  async getVehicleSpecialDays(vehicleType: string, vehicleId: number) {
+    const { getVehicleSpecialDays } = await import('./database');
+    return getVehicleSpecialDays(this.db, vehicleType, vehicleId);
+  }
+
+  async getAllVehicleSpecialDays(year?: number) {
+    const { getAllVehicleSpecialDays } = await import('./database');
+    return getAllVehicleSpecialDays(this.db, year);
+  }
+
+  async setVehicleSpecialDays(vehicleType: string, vehicleId: number, specialDays: any[]) {
+    const { setVehicleSpecialDays } = await import('./database');
+    return setVehicleSpecialDays(this.db, vehicleType, vehicleId, specialDays);
+  }
+
+  async setVehiclePeriodsGeneric(vehicleType: string, vehicleId: number, periods: any[]) {
+    const { setVehiclePeriodsGeneric } = await import('./database');
+    return setVehiclePeriodsGeneric(this.db, vehicleType, vehicleId, periods);
+  }
+
   // Vehicle Positions
   async getVehiclePositions(vehicleType: string, vehicleId: number) {
     const { getVehiclePositions } = await import('./database');
@@ -754,14 +825,14 @@ class SQLiteAdapter implements DatabaseAdapter {
   }
 
   async getRoles() {
-    const rows = await this.db.all('SELECT id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, sort FROM roles ORDER BY sort ASC, id ASC');
+    const rows = await this.db.all('SELECT id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, canViewItw, canEditItw, canEditItwAll, canViewItwVorplanung, canEditItwVorplanung, canEditItwVorplanungAll, canViewItwAerzte, canEditItwAerzte, canViewItwDienstplan, canViewItwDienstplanAll, canEditItwDienstplan, sort FROM roles ORDER BY sort ASC, id ASC');
     return rows;
   }
 
   async addRole(role: any) {
     await this.db.run(
-      `INSERT OR IGNORE INTO roles (id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, sort)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR IGNORE INTO roles (id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, canViewItw, canEditItw, canEditItwAll, canViewItwVorplanung, canEditItwVorplanung, canEditItwVorplanungAll, canViewItwAerzte, canEditItwAerzte, canViewItwDienstplan, canViewItwDienstplanAll, canEditItwDienstplan, sort)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         role.id || null,
         role.name,
@@ -779,6 +850,17 @@ class SQLiteAdapter implements DatabaseAdapter {
         role.canViewRoster ? 1 : 0,
         role.canViewDienstplan ? 1 : 0,
         role.canViewDienstplanAll ? 1 : 0,
+        role.canViewItw ? 1 : 0,
+        role.canEditItw ? 1 : 0,
+        role.canEditItwAll ? 1 : 0,
+        role.canViewItwVorplanung ? 1 : 0,
+        role.canEditItwVorplanung ? 1 : 0,
+        role.canEditItwVorplanungAll ? 1 : 0,
+        role.canViewItwAerzte ? 1 : 0,
+        role.canEditItwAerzte ? 1 : 0,
+        role.canViewItwDienstplan ? 1 : 0,
+        role.canViewItwDienstplanAll ? 1 : 0,
+        role.canEditItwDienstplan ? 1 : 0,
         role.sort || 0
       ]
     );
@@ -816,11 +898,33 @@ class SQLiteAdapter implements DatabaseAdapter {
         const canViewRoster = role.permissions?.einteilung === 'read' ? 1 : 0;
         const canViewDienstplan = role.permissions?.dienstplan === 'read' ? 1 : 0;
         const canViewDienstplanAll = role.permissions?.dienstplan === 'read_all' ? 1 : 0;
+
+        // Granular ITW permissions
+        const vorplanungPerm = role.permissions?.itw_vorplanung || role.permissions?.itw || 'none';
+        const aerztePerm = role.permissions?.itw_aerzte || (role.permissions?.itw === 'write_all' ? 'write' : 'none');
+        const dienstplanPerm = role.permissions?.itw_dienstplan || 'none';
+
+        const canViewItwVorplanung = (vorplanungPerm === 'read' || vorplanungPerm === 'write' || vorplanungPerm === 'write_all') ? 1 : 0;
+        const canEditItwVorplanung = (vorplanungPerm === 'write' || vorplanungPerm === 'write_all') ? 1 : 0;
+        const canEditItwVorplanungAll = vorplanungPerm === 'write_all' ? 1 : 0;
+
+        const canViewItwAerzte = (aerztePerm === 'read' || aerztePerm === 'write' || aerztePerm === 'write_all') ? 1 : 0;
+        const canEditItwAerzte = (aerztePerm === 'write' || aerztePerm === 'write_all') ? 1 : 0;
+
+        const canViewItwDienstplan = (dienstplanPerm === 'read' || dienstplanPerm === 'read_all') ? 1 : 0;
+        const canViewItwDienstplanAll = (dienstplanPerm === 'read_all') ? 1 : 0;
+        const canEditItwDienstplan = 0;
+
+        // Legacy general ITW flags
+        const canViewItw = (canViewItwVorplanung || canViewItwAerzte || canViewItwDienstplan) ? 1 : 0;
+        const canEditItw = (canEditItwVorplanung || canEditItwAerzte) ? 1 : 0;
+        const canEditItwAll = canEditItwVorplanungAll ? 1 : 0;
+
         const sort = typeof role.sort === 'number' ? role.sort : index;
 
         if (existingRow) {
           await this.db.run(
-            `UPDATE roles SET name = ?, description = ?, canEditPersonnel = ?, canEditVehicles = ?, canEditSettings = ?, canEditRoster = ?, canEditDienstplan = ?, canViewReports = ?, canExportData = ?, canManageUsers = ?, canEditGlobalComments = ?, canEditPersonalComments = ?, canViewRoster = ?, canViewDienstplan = ?, canViewDienstplanAll = ?, sort = ? WHERE id = ?`,
+            `UPDATE roles SET name = ?, description = ?, canEditPersonnel = ?, canEditVehicles = ?, canEditSettings = ?, canEditRoster = ?, canEditDienstplan = ?, canViewReports = ?, canExportData = ?, canManageUsers = ?, canEditGlobalComments = ?, canEditPersonalComments = ?, canViewRoster = ?, canViewDienstplan = ?, canViewDienstplanAll = ?, canViewItw = ?, canEditItw = ?, canEditItwAll = ?, canViewItwVorplanung = ?, canEditItwVorplanung = ?, canEditItwVorplanungAll = ?, canViewItwAerzte = ?, canEditItwAerzte = ?, canViewItwDienstplan = ?, canViewItwDienstplanAll = ?, canEditItwDienstplan = ?, sort = ? WHERE id = ?`,
             [
               role.name,
               role.description || '',
@@ -837,6 +941,17 @@ class SQLiteAdapter implements DatabaseAdapter {
               canViewRoster,
               canViewDienstplan,
               canViewDienstplanAll,
+              canViewItw,
+              canEditItw,
+              canEditItwAll,
+              canViewItwVorplanung,
+              canEditItwVorplanung,
+              canEditItwVorplanungAll,
+              canViewItwAerzte,
+              canEditItwAerzte,
+              canViewItwDienstplan,
+              canViewItwDienstplanAll,
+              canEditItwDienstplan,
               sort,
               existingRow.id
             ]
@@ -844,8 +959,8 @@ class SQLiteAdapter implements DatabaseAdapter {
           keptIds.push(existingRow.id);
         } else {
           const result = await this.db.run(
-            `INSERT INTO roles (name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, sort)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+            `INSERT INTO roles (name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, canViewItw, canEditItw, canEditItwAll, canViewItwVorplanung, canEditItwVorplanung, canEditItwVorplanungAll, canViewItwAerzte, canEditItwAerzte, canViewItwDienstplan, canViewItwDienstplanAll, canEditItwDienstplan, sort)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
             [
               role.name,
               role.description || '',
@@ -862,12 +977,23 @@ class SQLiteAdapter implements DatabaseAdapter {
               canViewRoster,
               canViewDienstplan,
               canViewDienstplanAll,
+              canViewItw,
+              canEditItw,
+              canEditItwAll,
+              canViewItwVorplanung,
+              canEditItwVorplanung,
+              canEditItwVorplanungAll,
+              canViewItwAerzte,
+              canEditItwAerzte,
+              canViewItwDienstplan,
+              canViewItwDienstplanAll,
+              canEditItwDienstplan,
               sort
             ]
           );
-          const insertedId = result?.lastID;
-          if (insertedId) {
-            keptIds.push(insertedId);
+          const insertedId = result?.lastID ?? result?.lastInsertRowid;
+          if (insertedId !== undefined && insertedId !== null) {
+            keptIds.push(Number(insertedId));
           }
         }
       }
@@ -1112,14 +1238,14 @@ class SQLiteAdapter implements DatabaseAdapter {
     return getItwPhaseAssignments(this.db, startDate);
   }
 
-  async addItwPhaseAssignment(startDate: string, personId: number, role: string) {
+  async addItwPhaseAssignment(startDate: string, personId: number, role: string, auditUser?: { id: number; name: string }) {
     const { addItwPhaseAssignment } = await import('./database');
-    return addItwPhaseAssignment(this.db, startDate, personId, role);
+    return addItwPhaseAssignment(this.db, startDate, personId, role, auditUser);
   }
 
-  async removeItwPhaseAssignment(startDate: string, personId: number) {
+  async removeItwPhaseAssignment(startDate: string, personId: number, auditUser?: { id: number; name: string }) {
     const { removeItwPhaseAssignment } = await import('./database');
-    return removeItwPhaseAssignment(this.db, startDate, personId);
+    return removeItwPhaseAssignment(this.db, startDate, personId, auditUser);
   }
 
   async getItwDutyRoster(year: number) {
@@ -1127,7 +1253,7 @@ class SQLiteAdapter implements DatabaseAdapter {
     return getItwDutyRoster(this.db, year);
   }
 
-  async setItwDutyRosterEntry(entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number }) {
+  async setItwDutyRosterEntry(entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number; auditUser?: { id: number; name: string } }) {
     const { setItwDutyRosterEntry } = await import('./database');
     return setItwDutyRosterEntry(this.db, entry);
   }
@@ -1171,14 +1297,14 @@ class ItwPlanningAdapter {
     return getItwPhaseAssignments(this.db, startDate);
   }
 
-  async addItwPhaseAssignment(startDate: string, personId: number, role: string) {
+  async addItwPhaseAssignment(startDate: string, personId: number, role: string, auditUser?: { id: number; name: string }) {
     const { addItwPhaseAssignment } = await import('./database');
-    return addItwPhaseAssignment(this.db, startDate, personId, role);
+    return addItwPhaseAssignment(this.db, startDate, personId, role, auditUser);
   }
 
-  async removeItwPhaseAssignment(startDate: string, personId: number) {
+  async removeItwPhaseAssignment(startDate: string, personId: number, auditUser?: { id: number; name: string }) {
     const { removeItwPhaseAssignment } = await import('./database');
-    return removeItwPhaseAssignment(this.db, startDate, personId);
+    return removeItwPhaseAssignment(this.db, startDate, personId, auditUser);
   }
 
   async getItwDutyRoster(year: number) {
@@ -1186,7 +1312,7 @@ class ItwPlanningAdapter {
     return getItwDutyRoster(this.db, year);
   }
 
-  async setItwDutyRosterEntry(entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number }) {
+  async setItwDutyRosterEntry(entry: { personId: number; personType?: string; date: string; value: string; type: string; manual_edit?: number; auditUser?: { id: number; name: string } }) {
     const { setItwDutyRosterEntry } = await import('./database');
     return setItwDutyRosterEntry(this.db, entry);
   }
@@ -1606,7 +1732,28 @@ export class DatabaseManager {
       await db.exec("UPDATE personnel SET old_rtw_shifts = 0 WHERE old_rtw_shifts IS NULL");
     }
 
-    // Migration: add 'department' if missing
+    // Migration: add 'anrede' and 'title' to itw_doctors if missing
+    const itwDoctorsCols = await db.all("PRAGMA table_info('itw_doctors')");
+    if (itwDoctorsCols.length > 0) {
+      if (!itwDoctorsCols.some((c: any) => c.name === 'anrede')) {
+        console.log('[DatabaseManager] Adding anrede to itw_doctors');
+        await db.exec("ALTER TABLE itw_doctors ADD COLUMN anrede TEXT DEFAULT ''");
+      }
+      if (!itwDoctorsCols.some((c: any) => c.name === 'title')) {
+        console.log('[DatabaseManager] Adding title to itw_doctors');
+        await db.exec("ALTER TABLE itw_doctors ADD COLUMN title TEXT DEFAULT ''");
+      }
+      if (!itwDoctorsCols.some((c: any) => c.name === 'is_nef')) {
+        console.log('[DatabaseManager] Adding is_nef to itw_doctors');
+        await db.exec("ALTER TABLE itw_doctors ADD COLUMN is_nef INTEGER DEFAULT 0");
+        await db.exec("UPDATE itw_doctors SET is_nef = 0 WHERE is_nef IS NULL");
+      }
+      if (!itwDoctorsCols.some((c: any) => c.name === 'is_itw')) {
+        console.log('[DatabaseManager] Adding is_itw to itw_doctors');
+        await db.exec("ALTER TABLE itw_doctors ADD COLUMN is_itw INTEGER DEFAULT 1");
+        await db.exec("UPDATE itw_doctors SET is_itw = 1 WHERE is_itw IS NULL");
+      }
+    }
     if (!personnelCols.some((c: any) => c.name === 'department')) {
       console.log('[DatabaseManager] Adding department to personnel');
       await db.exec("ALTER TABLE personnel ADD COLUMN department TEXT NOT NULL DEFAULT '1. Abteilung'");
@@ -1649,6 +1796,19 @@ export class DatabaseManager {
     const hasViewDienstplanAll = tableInfo.some((c: any) => c.name === 'canViewDienstplanAll');
     const hasEditDienstplan = tableInfo.some((c: any) => c.name === 'canEditDienstplan');
 
+    const hasViewItw = tableInfo.some((c: any) => c.name === 'canViewItw');
+    const hasEditItw = tableInfo.some((c: any) => c.name === 'canEditItw');
+    const hasEditItwAll = tableInfo.some((c: any) => c.name === 'canEditItwAll');
+
+    const hasViewItwVorplanung = tableInfo.some((c: any) => c.name === 'canViewItwVorplanung');
+    const hasEditItwVorplanung = tableInfo.some((c: any) => c.name === 'canEditItwVorplanung');
+    const hasEditItwVorplanungAll = tableInfo.some((c: any) => c.name === 'canEditItwVorplanungAll');
+    const hasViewItwAerzte = tableInfo.some((c: any) => c.name === 'canViewItwAerzte');
+    const hasEditItwAerzte = tableInfo.some((c: any) => c.name === 'canEditItwAerzte');
+    const hasViewItwDienstplan = tableInfo.some((c: any) => c.name === 'canViewItwDienstplan');
+    const hasViewItwDienstplanAll = tableInfo.some((c: any) => c.name === 'canViewItwDienstplanAll');
+    const hasEditItwDienstplan = tableInfo.some((c: any) => c.name === 'canEditItwDienstplan');
+
     if (!hasGlobalComments) {
       await db.exec("ALTER TABLE roles ADD COLUMN canEditGlobalComments INTEGER DEFAULT 0");
     }
@@ -1666,6 +1826,39 @@ export class DatabaseManager {
     }
     if (!hasEditDienstplan) {
       await db.exec("ALTER TABLE roles ADD COLUMN canEditDienstplan INTEGER DEFAULT 0");
+    }
+    if (!hasViewItw) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canViewItw INTEGER DEFAULT 0");
+    }
+    if (!hasEditItw) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canEditItw INTEGER DEFAULT 0");
+    }
+    if (!hasEditItwAll) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canEditItwAll INTEGER DEFAULT 0");
+    }
+    if (!hasViewItwVorplanung) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canViewItwVorplanung INTEGER DEFAULT 0");
+    }
+    if (!hasEditItwVorplanung) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canEditItwVorplanung INTEGER DEFAULT 0");
+    }
+    if (!hasEditItwVorplanungAll) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canEditItwVorplanungAll INTEGER DEFAULT 0");
+    }
+    if (!hasViewItwAerzte) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canViewItwAerzte INTEGER DEFAULT 0");
+    }
+    if (!hasEditItwAerzte) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canEditItwAerzte INTEGER DEFAULT 0");
+    }
+    if (!hasViewItwDienstplan) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canViewItwDienstplan INTEGER DEFAULT 0");
+    }
+    if (!hasViewItwDienstplanAll) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canViewItwDienstplanAll INTEGER DEFAULT 0");
+    }
+    if (!hasEditItwDienstplan) {
+      await db.exec("ALTER TABLE roles ADD COLUMN canEditItwDienstplan INTEGER DEFAULT 0");
     }
 
     // Wenn die Spalten gerade erst hinzugefügt wurden (oder schon da waren aber wir migrieren json), 
@@ -1698,75 +1891,123 @@ export class DatabaseManager {
     }
 
     // Migration: migrate roles from settings JSON to roles table
-    const rolesCount = await db.get("SELECT COUNT(*) as count FROM roles");
-    if (rolesCount.count === 0) {
-      console.log('[DatabaseManager] Migrating roles from settings to roles table...');
-      const rolesSetting = await db.get("SELECT value FROM settings WHERE key='roles'");
-      if (rolesSetting && rolesSetting.value) {
-        try {
-          const oldRoles = JSON.parse(rolesSetting.value);
-          for (const role of oldRoles) {
-            // Mapping der alten permissions zu neuen Feldern
-            const perms = role.permissions || {};
-            await db.run(`
-                        INSERT OR IGNORE INTO roles (id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, sort)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    `, [
-              role.id,
-              role.name,
-              role.description || '',
-              perms.personal === 'write' ? 1 : 0,
-              perms.fahrzeuge === 'write' ? 1 : 0,
-              perms.einstellungen === 'write' ? 1 : 0,
-              perms.einteilung === 'write' ? 1 : 0,
-              perms.dienstplan === 'write' ? 1 : 0,
-              perms.werte === 'read' || perms.werte === 'read_all' || perms.werte === 'write' ? 1 : 0,
-              perms.werte === 'write' || perms.personal === 'write' || perms.fahrzeuge === 'write' ? 1 : 0,
-              perms.personal === 'write' || perms.einstellungen === 'write' ? 1 : 0,
-              perms.kommentar_global === 'write' ? 1 : 0,
-              perms.kommentar_individuell === 'write' ? 1 : 0,
-              perms.einteilung === 'read' ? 1 : 0,
-              perms.dienstplan === 'read' ? 1 : 0,
-              perms.dienstplan === 'read_all' ? 1 : 0,
-              role.id
-            ]);
-            console.log(`[DatabaseManager] ✓ Migrated role: ${role.name} (ID: ${role.id})`);
-          }
-          console.log('[DatabaseManager] Roles migration completed');
-        } catch (e) {
-          console.error('[DatabaseManager] Error migrating roles:', e);
-        }
-      }
-    }
-
-    // Migration: fix wrong role IDs in personnel table after roles migration
-    const roleIdRemapFlag = await db.get("SELECT value FROM settings WHERE key = 'migration_role_id_remap_v1'");
-    if (roleIdRemapFlag?.value !== '1') {
-      const rolesSetting = await db.get("SELECT value FROM settings WHERE key='roles'");
-      if (rolesSetting && rolesSetting.value) {
-        try {
-          const oldRoles = JSON.parse(rolesSetting.value);
-          const oldIdToNewId = new Map<number, number>();
-          for (const oldRole of oldRoles) {
-            const newRole = await db.get("SELECT id FROM roles WHERE name = ?", [oldRole.name]);
-            if (newRole && newRole.id !== oldRole.id) {
-                oldIdToNewId.set(oldRole.id, newRole.id);
+    const rolesSetting = await db.get("SELECT value FROM settings WHERE key='roles'");
+    if (rolesSetting && rolesSetting.value) {
+      try {
+        const oldRoles = JSON.parse(rolesSetting.value);
+        if (Array.isArray(oldRoles) && oldRoles.length > 0) {
+          const migrationFlag = await db.get("SELECT value FROM settings WHERE key='migration_roles_from_settings_v2'");
+          if (migrationFlag?.value !== '1') {
+            console.log('[DatabaseManager] Migrating roles from settings to roles table...');
+            
+            // Map of old JSON role ID to role name
+            const oldIdToName = new Map<number, string>();
+            
+            // Clean up any default dummy rows in roles table if oldRoles has multiple roles
+            const currentRolesCount = await db.get("SELECT COUNT(*) as count FROM roles");
+            if (currentRolesCount.count <= 1) {
+              await db.run("DELETE FROM roles");
             }
-          }
-          if (oldIdToNewId.size > 0) {
-              const personnelRows = await db.all("SELECT id, roleId FROM personnel");
-              for (const p of personnelRows) {
-                  if (p.roleId && oldIdToNewId.has(p.roleId)) {
-                      await db.run("UPDATE personnel SET roleId = ? WHERE id = ?", [oldIdToNewId.get(p.roleId), p.id]);
-                      console.log(`[DatabaseManager] Remapped roleId for personnel ID ${p.id}: ${p.roleId} -> ${oldIdToNewId.get(p.roleId)}`);
-                  }
+
+            for (const role of oldRoles) {
+              oldIdToName.set(Number(role.id), String(role.name || ''));
+              const perms = role.permissions || {};
+              const existingByName = await db.get("SELECT id FROM roles WHERE name = ?", [role.name]);
+              const existingById = await db.get("SELECT id FROM roles WHERE id = ?", [role.id]);
+
+              if (existingByName) {
+                await db.run(`
+                  UPDATE roles SET description=?, canEditPersonnel=?, canEditVehicles=?, canEditSettings=?, canEditRoster=?, canEditDienstplan=?, canViewReports=?, canExportData=?, canManageUsers=?, canEditGlobalComments=?, canEditPersonalComments=?, canViewRoster=?, canViewDienstplan=?, canViewDienstplanAll=?, sort=?
+                  WHERE id=?
+                `, [
+                  role.description || '',
+                  perms.personal === 'write' ? 1 : 0,
+                  perms.fahrzeuge === 'write' ? 1 : 0,
+                  perms.einstellungen === 'write' ? 1 : 0,
+                  perms.einteilung === 'write' ? 1 : 0,
+                  perms.dienstplan === 'write' ? 1 : 0,
+                  perms.werte === 'read' || perms.werte === 'read_all' || perms.werte === 'write' ? 1 : 0,
+                  perms.werte === 'write' || perms.personal === 'write' || perms.fahrzeuge === 'write' ? 1 : 0,
+                  perms.personal === 'write' || perms.einstellungen === 'write' ? 1 : 0,
+                  perms.kommentar_global === 'write' ? 1 : 0,
+                  perms.kommentar_individuell === 'write' ? 1 : 0,
+                  perms.einteilung === 'read' ? 1 : 0,
+                  perms.dienstplan === 'read' ? 1 : 0,
+                  perms.dienstplan === 'read_all' ? 1 : 0,
+                  role.id,
+                  existingByName.id
+                ]);
+              } else if (existingById) {
+                await db.run(`
+                  UPDATE roles SET name=?, description=?, canEditPersonnel=?, canEditVehicles=?, canEditSettings=?, canEditRoster=?, canEditDienstplan=?, canViewReports=?, canExportData=?, canManageUsers=?, canEditGlobalComments=?, canEditPersonalComments=?, canViewRoster=?, canViewDienstplan=?, canViewDienstplanAll=?, sort=?
+                  WHERE id=?
+                `, [
+                  role.name,
+                  role.description || '',
+                  perms.personal === 'write' ? 1 : 0,
+                  perms.fahrzeuge === 'write' ? 1 : 0,
+                  perms.einstellungen === 'write' ? 1 : 0,
+                  perms.einteilung === 'write' ? 1 : 0,
+                  perms.dienstplan === 'write' ? 1 : 0,
+                  perms.werte === 'read' || perms.werte === 'read_all' || perms.werte === 'write' ? 1 : 0,
+                  perms.werte === 'write' || perms.personal === 'write' || perms.fahrzeuge === 'write' ? 1 : 0,
+                  perms.personal === 'write' || perms.einstellungen === 'write' ? 1 : 0,
+                  perms.kommentar_global === 'write' ? 1 : 0,
+                  perms.kommentar_individuell === 'write' ? 1 : 0,
+                  perms.einteilung === 'read' ? 1 : 0,
+                  perms.dienstplan === 'read' ? 1 : 0,
+                  perms.dienstplan === 'read_all' ? 1 : 0,
+                  role.id,
+                  existingById.id
+                ]);
+              } else {
+                await db.run(`
+                  INSERT INTO roles (id, name, description, canEditPersonnel, canEditVehicles, canEditSettings, canEditRoster, canEditDienstplan, canViewReports, canExportData, canManageUsers, canEditGlobalComments, canEditPersonalComments, canViewRoster, canViewDienstplan, canViewDienstplanAll, sort)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [
+                  role.id,
+                  role.name,
+                  role.description || '',
+                  perms.personal === 'write' ? 1 : 0,
+                  perms.fahrzeuge === 'write' ? 1 : 0,
+                  perms.einstellungen === 'write' ? 1 : 0,
+                  perms.einteilung === 'write' ? 1 : 0,
+                  perms.dienstplan === 'write' ? 1 : 0,
+                  perms.werte === 'read' || perms.werte === 'read_all' || perms.werte === 'write' ? 1 : 0,
+                  perms.werte === 'write' || perms.personal === 'write' || perms.fahrzeuge === 'write' ? 1 : 0,
+                  perms.personal === 'write' || perms.einstellungen === 'write' ? 1 : 0,
+                  perms.kommentar_global === 'write' ? 1 : 0,
+                  perms.kommentar_individuell === 'write' ? 1 : 0,
+                  perms.einteilung === 'read' ? 1 : 0,
+                  perms.dienstplan === 'read' ? 1 : 0,
+                  perms.dienstplan === 'read_all' ? 1 : 0,
+                  role.id
+                ]);
               }
+              console.log(`[DatabaseManager] ✓ Migrated role: ${role.name} (ID: ${role.id})`);
+            }
+
+            // Remap personnel roleId to match roles table IDs by name
+            const allRolesInTable = await db.all("SELECT id, name FROM roles");
+            const nameToTableId = new Map<string, number>(allRolesInTable.map((r: any) => [String(r.name), Number(r.id)]));
+            
+            for (const [oldId, oldName] of oldIdToName.entries()) {
+              if (nameToTableId.has(oldName)) {
+                const targetId = nameToTableId.get(oldName)!;
+                if (targetId !== oldId) {
+                  await db.run("UPDATE personnel SET roleId = ? WHERE roleId = ?", [targetId, oldId]);
+                  console.log(`[DatabaseManager] Remapped personnel roleId from ${oldId} (${oldName}) to ${targetId}`);
+                }
+              }
+            }
+
+            await db.run("INSERT INTO settings (key, value) VALUES ('migration_roles_from_settings_v2', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+            console.log('[DatabaseManager] Roles migration v2 completed');
           }
-        } catch (e) {
-          console.error('[DatabaseManager] Error during role ID remap migration:', e);
         }
+      } catch (e) {
+        console.error('[DatabaseManager] Error migrating roles:', e);
       }
-      await db.run("INSERT INTO settings (key, value) VALUES ('migration_role_id_remap_v1', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value");
     }
 
     // Fix invalid role IDs that don't exist in roles table
@@ -1907,10 +2148,21 @@ export class DatabaseManager {
     }
 
     const azubiColsMgr = await db.all("PRAGMA table_info('azubis')");
-    const azubiDeptAdded = !azubiColsMgr.some((c: any) => c.name === 'department');
-    if (azubiDeptAdded) {
-      console.log('[DatabaseManager] Adding department to azubis');
-      await db.exec("ALTER TABLE azubis ADD COLUMN department TEXT NOT NULL DEFAULT '1. Abteilung'");
+    if (azubiColsMgr.length > 0) {
+      if (!azubiColsMgr.some((c: any) => c.name === 'sort')) {
+        console.log('[DatabaseManager] Adding sort to azubis');
+        await db.exec("ALTER TABLE azubis ADD COLUMN sort INTEGER DEFAULT 0");
+        await db.exec("UPDATE azubis SET sort = 0 WHERE sort IS NULL");
+      }
+      if (!azubiColsMgr.some((c: any) => c.name === 'department')) {
+        console.log('[DatabaseManager] Adding department to azubis');
+        await db.exec("ALTER TABLE azubis ADD COLUMN department TEXT NOT NULL DEFAULT '1. Abteilung'");
+      }
+      if (!azubiColsMgr.some((c: any) => c.name === 'active')) {
+        console.log('[DatabaseManager] Adding active to azubis');
+        await db.exec("ALTER TABLE azubis ADD COLUMN active INTEGER DEFAULT 1");
+        await db.exec("UPDATE azubis SET active = 1 WHERE active IS NULL");
+      }
     }
 
     // UNIQUE(personId, personType, date, department) für abteilungsgetrennte Dienstpläne
@@ -2124,7 +2376,8 @@ export class DatabaseManager {
             vorname TEXT NOT NULL,
             lehrjahr INTEGER NOT NULL,
             sort INTEGER NOT NULL DEFAULT 0,
-            department TEXT NOT NULL DEFAULT '1. Abteilung'
+            department TEXT NOT NULL DEFAULT '1. Abteilung',
+            active INTEGER NOT NULL DEFAULT 1
         );
         
         CREATE TABLE IF NOT EXISTS azubi_periods (
@@ -2134,6 +2387,16 @@ export class DatabaseManager {
             end_date TEXT NOT NULL,
             description TEXT,
             FOREIGN KEY (azubi_id) REFERENCES azubis (id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS doctor_periods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            doctor_id INTEGER NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (doctor_id) REFERENCES itw_doctors (id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS personnel_department_periods (
@@ -2149,6 +2412,8 @@ export class DatabaseManager {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             vorname TEXT NOT NULL,
+            anrede TEXT DEFAULT '',
+            title TEXT DEFAULT '',
             sort INTEGER NOT NULL DEFAULT 0
         );
         
@@ -2351,11 +2616,32 @@ export class DatabaseManager {
             remark TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_guests_date ON guests(date);
+
+        CREATE TABLE IF NOT EXISTS vehicle_special_days (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vehicleType TEXT NOT NULL,
+            vehicleId INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            reason TEXT,
+            shiftMode TEXT DEFAULT '24h',
+            action TEXT DEFAULT 'add',
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(vehicleType, vehicleId, date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_vehicle_special_days_lookup ON vehicle_special_days (vehicleType, vehicleId, date);
     `);
     try {
         await db.exec(`ALTER TABLE guests ADD COLUMN end_date TEXT`);
     } catch (e) {
         // Ignore if column already exists
+    }
+
+    for (const table of ['rtw_vehicle_periods', 'nef_vehicle_periods', 'itw_vehicle_periods']) {
+        try {
+            await db.exec(`ALTER TABLE ${table} ADD COLUMN note TEXT`);
+        } catch (e) {
+            // Ignore if column already exists
+        }
     }
 
     // Initialize default qualification types if empty
@@ -2397,6 +2683,27 @@ export class DatabaseManager {
       }
     } catch (e) {
       console.warn('[DatabaseManager] Warning while ensuring personnel.active column', e);
+    }
+    try {
+      const cols: any[] = await db.all("PRAGMA table_info('azubis')");
+      if (cols.length > 0) {
+        if (!cols.some((c: any) => c.name === 'active')) {
+          console.log('[DatabaseManager] Adding missing column "active" to azubis table');
+          await db.exec("ALTER TABLE azubis ADD COLUMN active INTEGER DEFAULT 1");
+          try { await db.exec("UPDATE azubis SET active = 1 WHERE active IS NULL"); } catch { }
+        }
+        if (!cols.some((c: any) => c.name === 'sort')) {
+          console.log('[DatabaseManager] Adding missing column "sort" to azubis table');
+          await db.exec("ALTER TABLE azubis ADD COLUMN sort INTEGER DEFAULT 0");
+          try { await db.exec("UPDATE azubis SET sort = 0 WHERE sort IS NULL"); } catch { }
+        }
+        if (!cols.some((c: any) => c.name === 'department')) {
+          console.log('[DatabaseManager] Adding missing column "department" to azubis table');
+          await db.exec("ALTER TABLE azubis ADD COLUMN department TEXT NOT NULL DEFAULT '1. Abteilung'");
+        }
+      }
+    } catch (e) {
+      console.warn('[DatabaseManager] Warning while ensuring azubis columns', e);
     }
   }
 
@@ -2545,7 +2852,8 @@ export class DatabaseManager {
     const errors: string[] = [];
 
     const normalizeDepartment = (deptStr: string | null | undefined): string => {
-      const dept = String(deptStr || '').trim();
+      let dept = String(deptStr || '').trim();
+      dept = dept.replace(/^['"`]+|['"`]+$/g, '').trim();
       if (!dept) return '1. Abteilung';
       if (/^\d+$/.test(dept)) return `${dept}. Abteilung`;
       return dept;
@@ -2562,20 +2870,8 @@ export class DatabaseManager {
       }
     };
 
-    const legacyDepartment = normalizeDepartment(getLegacySetting('department') || '1. Abteilung');
-
-    // Build existing personnel lookup
-    const existingPersons = await adapter.getPersonnel();
-    const lookupByNumber = new Map<string, number>();
-    const lookupByName = new Map<string, number>();
-    for (const p of existingPersons || []) {
-      if (p.personnelNumber) lookupByNumber.set(String(p.personnelNumber), p.id);
-      const sig = `${String(p.name || '').toLowerCase()}|${String(p.vorname || '').toLowerCase()}`;
-      lookupByName.set(sig, p.id);
-    }
-
-    const idMapping = new Map<number, number>(); // oldId -> newId (personnel)
-    const azubiIdMapping = new Map<number, number>(); // oldId -> newId (azubis)
+    const rawLegacySetting = getLegacySetting('department');
+    const legacyDepartment = normalizeDepartment(rawLegacySetting || '1. Abteilung');
 
     const hasTable = (tableName: string) => {
       try {
@@ -2592,6 +2888,40 @@ export class DatabaseManager {
         return [];
       }
     };
+
+    // Determine if source database was a single-department database configured for legacyDepartment (e.g. 3. Abteilung)
+    // where table schema defaults caused '1. Abteilung' to be populated in columns.
+    let isSingleLegacyDeptDb = false;
+    if (legacyDepartment !== '1. Abteilung') {
+      let persDepts: string[] = [];
+      if (hasTable('personnel') && getColumns('personnel').includes('department')) {
+        persDepts = (raw.prepare("SELECT DISTINCT department FROM personnel WHERE department IS NOT NULL AND department != ''").all() as any[])
+          .map(x => normalizeDepartment(x.department));
+      }
+      if (persDepts.length <= 1) {
+        isSingleLegacyDeptDb = true;
+      }
+    }
+
+    const resolveRecordDepartment = (rawDept: string | null | undefined): string => {
+      if (isSingleLegacyDeptDb) {
+        return legacyDepartment;
+      }
+      return normalizeDepartment(rawDept || legacyDepartment);
+    };
+
+    // Build existing personnel lookup
+    const existingPersons = await adapter.getPersonnel();
+    const lookupByNumber = new Map<string, number>();
+    const lookupByName = new Map<string, number>();
+    for (const p of existingPersons || []) {
+      if (p.personnelNumber) lookupByNumber.set(String(p.personnelNumber), p.id);
+      const sig = `${String(p.name || '').toLowerCase()}|${String(p.vorname || '').toLowerCase()}`;
+      lookupByName.set(sig, p.id);
+    }
+
+    const idMapping = new Map<number, number>(); // oldId -> newId (personnel)
+    const azubiIdMapping = new Map<number, number>(); // oldId -> newId (azubis)
 
     // Begin transaction on current DB via adapter's low-level DB if possible
     // We'll use adapter's methods for inserts
@@ -2615,6 +2945,8 @@ export class DatabaseManager {
               continue;
             }
 
+            const personDept = resolveRecordDepartment(r.department);
+
             const personObj = {
               name: r.name || '',
               vorname: r.vorname || '',
@@ -2629,7 +2961,7 @@ export class DatabaseManager {
               personnelNumber: r.personnelNumber || null,
               roleId: r.roleId || null,
               oldRtwShifts: r.old_rtw_shifts || 0,
-              department: normalizeDepartment(r.department)
+              department: personDept
             };
 
             if (matchedId && options.replaceExisting) {
@@ -2647,7 +2979,7 @@ export class DatabaseManager {
                 let assignedId: number | undefined;
                 // Try to read common return shapes
                 try {
-                  assignedId = Number((res && (res as any).lastInsertRowid) || (res && (res as any).lastInsertRowid === 0 ? 0 : undefined));
+                  assignedId = Number((res && (res as any).lastInsertRowid) || (res && (res as any).lastInsertRowid === 0 ? 0 : (typeof res === 'number' ? res : undefined)));
                 } catch {}
                 // If adapter didn't return inserted id, try to find the inserted person by personnelNumber or name/vorname
                 if (!assignedId) {
@@ -2666,7 +2998,11 @@ export class DatabaseManager {
                     // ignore lookup errors
                   }
                 }
-                if (assignedId) idMapping.set(oldId, assignedId);
+                if (assignedId) {
+                  idMapping.set(oldId, assignedId);
+                  lookupByName.set(`${String(personObj.name || '').toLowerCase()}|${String(personObj.vorname || '').toLowerCase()}`, assignedId);
+                  if (personObj.personnelNumber) lookupByNumber.set(String(personObj.personnelNumber), assignedId);
+                }
                 imported.personnel++;
               } catch (e: any) {
                 errors.push('Failed to add personnel ' + String(r.id) + ': ' + (e?.message || String(e)));
@@ -2699,9 +3035,8 @@ export class DatabaseManager {
           const rows = raw.prepare('SELECT * FROM azubis').all() as any[];
           for (const r of rows) {
             const oldId = Number(r.id);
-            const dept = azubiCols.includes('department')
-              ? normalizeDepartment(r.department || legacyDepartment)
-              : legacyDepartment;
+            const rawDept = azubiCols.includes('department') ? r.department : legacyDepartment;
+            const dept = resolveRecordDepartment(rawDept);
             const sig = `${dept}|${String(r.name || '').toLowerCase()}|${String(r.vorname || '').toLowerCase()}`;
             let matchedId = azubiLookup.get(sig);
 
@@ -2783,43 +3118,109 @@ export class DatabaseManager {
         try {
           let rows: any[] = [];
           if (hasTable('personnel_department_periods')) {
-            const cols = getColumns('personnel_department_periods');
-            if (cols.includes('department')) {
-              rows = raw.prepare('SELECT * FROM personnel_department_periods').all() as any[];
-            } else {
-              rows = (raw.prepare('SELECT person_id, start_date, end_date FROM personnel_department_periods').all() as any[])
-                .map(p => ({ ...p, department: legacyDepartment }));
+            const count = (raw.prepare('SELECT count(*) as c FROM personnel_department_periods').get() as any)?.c || 0;
+            if (count > 0) {
+              const cols = getColumns('personnel_department_periods');
+              if (cols.includes('department')) {
+                rows = raw.prepare('SELECT * FROM personnel_department_periods').all() as any[];
+              } else {
+                rows = (raw.prepare('SELECT person_id, start_date, end_date FROM personnel_department_periods').all() as any[])
+                  .map(p => ({ ...p, department: legacyDepartment }));
+              }
             }
-          } else if (hasTable('personnel')) {
+          }
+
+          if (rows.length === 0 && hasTable('personnel')) {
             const persCols = getColumns('personnel');
-            if (persCols.includes('department')) {
-              const persRows = raw.prepare('SELECT id, department FROM personnel').all() as any[];
-              rows = persRows.map(p => ({ person_id: p.id, department: p.department || legacyDepartment, start_date: '2020-01-01', end_date: null }));
-            } else {
-              const persRows = raw.prepare('SELECT id FROM personnel').all() as any[];
-              rows = persRows.map(p => ({ person_id: p.id, department: legacyDepartment, start_date: '2020-01-01', end_date: null }));
-            }
+            const persRows = raw.prepare('SELECT id' + (persCols.includes('department') ? ', department' : '') + ' FROM personnel').all() as any[];
+            rows = persRows.map(p => ({
+              person_id: p.id,
+              department: resolveRecordDepartment(p.department),
+              start_date: '2020-01-01',
+              end_date: null
+            }));
           }
 
           for (const r of rows) {
             const oldPid = Number(r.person_id || r.personId || r.person);
             const newPid = idMapping.get(oldPid);
             if (!newPid) continue; // skip if person not imported/mapped
-            const period = {
-              personId: newPid,
-              department: normalizeDepartment(r.department || legacyDepartment),
-              startDate: r.start_date || r.startDate,
-              endDate: r.end_date || r.endDate || null
-            };
+            const dept = resolveRecordDepartment(r.department);
+            const startDate = r.start_date || r.startDate || '2020-01-01';
+            const endDate = r.end_date || r.endDate || null;
+
             try {
-              await adapter.addPersonnelDepartmentPeriod(period as any);
-              imported.assignments++;
+              const existingPeriods = await adapter.getPersonnelDepartmentPeriods(newPid);
+              const exists = (existingPeriods || []).some((ep: any) =>
+                normalizeDepartment(ep.department) === dept &&
+                String(ep.start_date || ep.startDate) === String(startDate) &&
+                String(ep.end_date || ep.endDate || '') === String(endDate || '')
+              );
+              if (!exists) {
+                const period = {
+                  personId: newPid,
+                  department: dept,
+                  startDate,
+                  endDate
+                };
+                await adapter.addPersonnelDepartmentPeriod(period as any);
+                imported.assignments++;
+              }
             } catch (e: any) {
               errors.push('Failed to add personnel department period for old person ' + String(oldPid) + ': ' + (e?.message || String(e)));
             }
           }
         } catch (e: any) {
           errors.push('Assignments import failed: ' + (e?.message || String(e)));
+        }
+      }
+
+      // Personnel active periods
+      if (options.personnel && hasTable('personnel_active_periods')) {
+        try {
+          const rows = raw.prepare('SELECT * FROM personnel_active_periods').all() as any[];
+          for (const r of rows) {
+            const oldPid = Number(r.personId || r.person_id || 0);
+            const newPid = idMapping.get(oldPid);
+            if (!newPid) continue;
+            try {
+              const existingPeriods = await adapter.getPersonnelActivePeriods(newPid);
+              const exists = (existingPeriods || []).some((p: any) => 
+                String(p.startYM) === String(r.startYM) && 
+                String(p.endYM || '') === String(r.endYM || '') && 
+                (p.active === 0 ? 0 : 1) === (r.active === 0 ? 0 : 1)
+              );
+              if (!exists) {
+                await adapter.addPersonnelActivePeriod({
+                  personId: newPid,
+                  startYM: r.startYM,
+                  endYM: r.endYM || null,
+                  description: r.description || '',
+                  active: r.active === 0 ? 0 : 1
+                });
+              }
+            } catch (e: any) {
+              errors.push('Failed to add active period for person ' + String(oldPid) + ': ' + (e?.message || String(e)));
+            }
+          }
+        } catch (e: any) {
+          errors.push('Personnel active periods import failed: ' + (e?.message || String(e)));
+        }
+      }
+
+      // Shift types
+      if (hasTable('shift_types')) {
+        try {
+          const rawShiftTypes = raw.prepare('SELECT code, description FROM shift_types').all() as any[];
+          for (const st of rawShiftTypes) {
+            try {
+              await adapter.addShiftType({ code: st.code, description: st.description || st.code });
+            } catch {
+              // Ignore if already exists
+            }
+          }
+        } catch (e: any) {
+          errors.push('Shift types import failed: ' + (e?.message || String(e)));
         }
       }
 
@@ -2940,9 +3341,8 @@ export class DatabaseManager {
               newPid = idMapping.get(oldPid);
             }
             if (!newPid) continue;
-            const entryDept = dutyCols.includes('department')
-              ? normalizeDepartment(r.department || legacyDepartment)
-              : legacyDepartment;
+            const rawDept = dutyCols.includes('department') ? r.department : legacyDepartment;
+            const entryDept = resolveRecordDepartment(rawDept);
             toImport.push({
               personId: newPid,
               personType,

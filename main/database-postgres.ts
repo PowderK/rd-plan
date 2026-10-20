@@ -295,8 +295,13 @@ export async function initializePostgreSQLDatabase(config: PostgresConfig): Prom
             name VARCHAR(255) NOT NULL,
             vorname VARCHAR(255) NOT NULL,
             lehrjahr INTEGER NOT NULL,
-            sort INTEGER NOT NULL DEFAULT 0
+            sort INTEGER NOT NULL DEFAULT 0,
+            department VARCHAR(255) NOT NULL DEFAULT '1. Abteilung',
+            active INTEGER NOT NULL DEFAULT 1
         );
+        await client.query("ALTER TABLE azubis ADD COLUMN IF NOT EXISTS department VARCHAR(255) DEFAULT '1. Abteilung'");
+        await client.query("ALTER TABLE azubis ADD COLUMN IF NOT EXISTS active INTEGER DEFAULT 1");
+        await client.query("ALTER TABLE azubis ADD COLUMN IF NOT EXISTS sort INTEGER DEFAULT 0");
 
         -- Azubi periods table
         CREATE TABLE IF NOT EXISTS azubi_periods (
@@ -325,7 +330,26 @@ export async function initializePostgreSQLDatabase(config: PostgresConfig): Prom
             id SERIAL PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
             vorname VARCHAR(255) NOT NULL,
+            anrede VARCHAR(50) DEFAULT '',
+            title VARCHAR(100) DEFAULT '',
+            is_nef INTEGER DEFAULT 0,
+            is_itw INTEGER DEFAULT 1,
             sort INTEGER NOT NULL DEFAULT 0
+        );
+        await client.query("ALTER TABLE itw_doctors ADD COLUMN IF NOT EXISTS anrede VARCHAR(50) DEFAULT ''");
+        await client.query("ALTER TABLE itw_doctors ADD COLUMN IF NOT EXISTS title VARCHAR(100) DEFAULT ''");
+        await client.query("ALTER TABLE itw_doctors ADD COLUMN IF NOT EXISTS is_nef INTEGER DEFAULT 0");
+        await client.query("ALTER TABLE itw_doctors ADD COLUMN IF NOT EXISTS is_itw INTEGER DEFAULT 1");
+
+        -- Doctor periods table
+        CREATE TABLE IF NOT EXISTS doctor_periods (
+            id SERIAL PRIMARY KEY,
+            doctor_id INTEGER NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            description TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (doctor_id) REFERENCES itw_doctors (id) ON DELETE CASCADE
         );
 
         -- RTW vehicles table
@@ -379,6 +403,7 @@ export async function initializePostgreSQLDatabase(config: PostgresConfig): Prom
         CREATE INDEX IF NOT EXISTS idx_qualification_periods_type ON qualification_periods (qualType);
         CREATE INDEX IF NOT EXISTS idx_qualification_periods_period ON qualification_periods (startYM, endYM);
         CREATE INDEX IF NOT EXISTS idx_azubi_periods_azubi ON azubi_periods (azubi_id);
+        CREATE INDEX IF NOT EXISTS idx_doctor_periods_doctor ON doctor_periods (doctor_id);
     `);
 
     console.log('[PostgreSQL] Database schema initialized successfully');

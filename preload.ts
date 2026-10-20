@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+ipcRenderer.setMaxListeners(100);
+
 // Small helper to safely stringify arguments
 function safeStringify(arg: any) {
     if (typeof arg === 'string') return arg;
@@ -87,7 +89,8 @@ contextBridge.exposeInMainWorld('api', {
     // System Info
     getSystemUsername: () => ipcRenderer.invoke('get-system-username'),
     openAzubiWindow: () => ipcRenderer.send('open-azubi-window'),
-    getAzubiList: (department?: string) => ipcRenderer.invoke('get-azubi-list', department),
+    getAzubiList: (includeInactiveOrDept?: boolean | string, department?: string) => ipcRenderer.invoke('get-azubi-list', includeInactiveOrDept, department),
+    setAzubiActive: (id: number, active: boolean) => ipcRenderer.invoke('set-azubi-active', id, active),
     addAzubi: (azubi: any) => ipcRenderer.invoke('add-azubi', azubi),
     updateAzubi: (azubi: any) => ipcRenderer.invoke('update-azubi', azubi),
     deleteAzubi: (id: number) => ipcRenderer.invoke('delete-azubi', id),
@@ -141,6 +144,14 @@ contextBridge.exposeInMainWorld('api', {
     updateItwDoctor: (doc: any) => ipcRenderer.invoke('update-itw-doctor', doc),
     deleteItwDoctor: (id: number) => ipcRenderer.invoke('delete-itw-doctor', id),
     updateItwDoctorOrder: (order: number[]) => ipcRenderer.invoke('update-itw-doctor-order', order),
+    // Doctor Periods
+    getDoctorPeriods: (doctorId: number) => ipcRenderer.invoke('get-doctor-periods', doctorId),
+    getAllDoctorPeriods: () => ipcRenderer.invoke('get-all-doctor-periods'),
+    addDoctorPeriod: (period: any) => ipcRenderer.invoke('add-doctor-period', period),
+    updateDoctorPeriod: (id: number, period: any) => ipcRenderer.invoke('update-doctor-period', id, period),
+    deleteDoctorPeriod: (id: number) => ipcRenderer.invoke('delete-doctor-period', id),
+    onItwDoctorsUpdated: (callback: () => void) => ipcRenderer.on('itw-doctors-updated', callback),
+    offItwDoctorsUpdated: (callback: () => void) => ipcRenderer.removeListener('itw-doctors-updated', callback),
     // ITW Vehicles
     getItwVehicles: () => ipcRenderer.invoke('get-itw-vehicles'),
     addItwVehicle: (v: any) => ipcRenderer.invoke('add-itw-vehicle', v),
@@ -194,6 +205,11 @@ contextBridge.exposeInMainWorld('api', {
     addNefVehiclePeriod: (period: any) => ipcRenderer.invoke('add-nef-vehicle-period', period),
     updateNefVehiclePeriod: (period: any) => ipcRenderer.invoke('update-nef-vehicle-period', period),
     deleteNefVehiclePeriod: (id: number) => ipcRenderer.invoke('delete-nef-vehicle-period', id),
+    // Vehicle Special Days & Peak Coverage
+    getVehicleSpecialDays: (vehicleType: string, vehicleId: number) => ipcRenderer.invoke('get-vehicle-special-days', vehicleType, vehicleId),
+    getAllVehicleSpecialDays: (year?: number) => ipcRenderer.invoke('get-all-vehicle-special-days', year),
+    setVehicleSpecialDays: (vehicleType: string, vehicleId: number, specialDays: any[]) => ipcRenderer.invoke('set-vehicle-special-days', vehicleType, vehicleId, specialDays),
+    setVehiclePeriods: (vehicleType: string, vehicleId: number, periods: any[]) => ipcRenderer.invoke('set-vehicle-periods', vehicleType, vehicleId, periods),
     // Holidays
     getHolidaysForYear: (year: number) => ipcRenderer.invoke('get-holidays', year),
     setHolidaysForYear: (year: number, dates: { date: string, name?: string }[]) => ipcRenderer.invoke('set-holidays', year, dates),
@@ -201,7 +217,7 @@ contextBridge.exposeInMainWorld('api', {
     deleteHoliday: (date: string) => ipcRenderer.invoke('delete-holiday', date),
     // ITW Patterns
     getItwPatterns: (department?: string) => ipcRenderer.invoke('get-itw-patterns', department),
-    setItwPatterns: (patterns: { startDate: string, pattern: string }[]) => ipcRenderer.invoke('set-itw-patterns', patterns),
+    setItwPatterns: (patterns: { startDate: string, pattern: string, department?: string }[]) => ipcRenderer.invoke('set-itw-patterns', patterns),
     generateItwPlanningsForYear: (year: number) => ipcRenderer.invoke('generate-itw-plannings-for-year', year),
     // Department Patterns
     getDeptPatterns: () => ipcRenderer.invoke('get-dept-patterns'),
@@ -271,6 +287,8 @@ contextBridge.exposeInMainWorld('api', {
     getSetupDefaults: () => ipcRenderer.invoke('get-setup-defaults'),
     testDirWritable: (dir: string) => ipcRenderer.invoke('test-dir-writable', dir),
     finalizeSetup: (dir: string) => ipcRenderer.invoke('finalize-setup', dir),
+    notifyAllUpdated: () => ipcRenderer.invoke('notify-all-updated'),
+    exportHtmlToPdf: (options: { html: string; title?: string; defaultFileName?: string; landscape?: boolean }) => ipcRenderer.invoke('export-html-to-pdf', options),
 });
 
 // Ergänze für Electron Dialog API
@@ -278,7 +296,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
     on: (channel: string, callback: (...args: any[]) => void) => {
         // Whitelist für erlaubte Channels
-        const validChannels = ['splash-status', 'splash-version', 'duty-roster-updated', 'personnel-updated'];
+        const validChannels = ['splash-status', 'splash-version', 'duty-roster-updated', 'personnel-updated', 'vehicles-updated', 'settings-updated', 'azubis-updated', 'itw-updated', 'guests-updated', 'holidays-updated'];
         if (validChannels.includes(channel)) {
             ipcRenderer.on(channel, (_event, ...args) => callback(...args));
         }

@@ -53,7 +53,7 @@ try {
 try {
   const { execSync } = require('child_process');
   const changelogPath = path.join(__dirname, '..', 'CHANGELOG.md');
-  execSync(`git add "${buildInfoPath}" "${changelogPath}"`, { stdio: 'ignore' });
+  execSync(`git add -A`, { stdio: 'ignore' });
   execSync(`git commit -m "Build ${next}: automated bump and CHANGELOG entry"`, { stdio: 'ignore' });
   execSync(`git tag -a "build-${next}" -m "Build ${next}"`, { stdio: 'ignore' });
   console.log('Committed and tagged build-', next);

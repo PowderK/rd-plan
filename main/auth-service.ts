@@ -7,13 +7,13 @@ export interface AuthSession {
   vorname: string;
   roleId: number | null;
   roleName?: string;
-  permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>;
+  permissions: Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'>;
   assignedDepartment: string | 'all';
 }
 
 export class AuthService {
   private currentSession: AuthSession | null = null;
-  private getDefaultPermissions(): Record<string, 'none' | 'read' | 'read_all' | 'write'> {
+  private getDefaultPermissions(): Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'> {
     return {
       einteilung: 'none',
       dienstplan: 'none',
@@ -22,11 +22,15 @@ export class AuthService {
       fahrzeuge: 'none',
       einstellungen: 'none',
       kommentar_global: 'none',
-      kommentar_individuell: 'none'
+      kommentar_individuell: 'none',
+      itw: 'none',
+      itw_vorplanung: 'none',
+      itw_aerzte: 'none',
+      itw_dienstplan: 'none'
     };
   }
 
-  private getPermissionsFromRoleRow(role: any): Record<string, 'none' | 'read' | 'read_all' | 'write'> {
+  private getPermissionsFromRoleRow(role: any): Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'> {
     const canViewReports = role.canViewReports === 1 || role.canViewReports === true;
     const canExportData = role.canExportData === 1 || role.canExportData === true;
     let werte: 'none' | 'read' | 'read_all' | 'write' = 'none';
@@ -42,6 +46,29 @@ export class AuthService {
     else if (role.canViewDienstplanAll === 1 || role.canViewDienstplanAll === true) dienstplan = 'read_all';
     else if (role.canViewDienstplan === 1 || role.canViewDienstplan === true) dienstplan = 'read';
 
+    // Granular ITW Permissions with fallbacks
+    let itw_vorplanung: 'none' | 'read' | 'write' | 'write_all' = 'none';
+    if (role.canEditItwVorplanungAll === 1 || role.canEditItwVorplanungAll === true) itw_vorplanung = 'write_all';
+    else if (role.canEditItwVorplanung === 1 || role.canEditItwVorplanung === true) itw_vorplanung = 'write';
+    else if (role.canViewItwVorplanung === 1 || role.canViewItwVorplanung === true) itw_vorplanung = 'read';
+    else if (role.canEditItwAll === 1 || role.canEditItwAll === true) itw_vorplanung = 'write_all';
+    else if (role.canEditItw === 1 || role.canEditItw === true) itw_vorplanung = 'write';
+    else if (role.canViewItw === 1 || role.canViewItw === true) itw_vorplanung = 'read';
+
+    let itw_aerzte: 'none' | 'read' | 'write' = 'none';
+    if (role.canEditItwAerzte === 1 || role.canEditItwAerzte === true) itw_aerzte = 'write';
+    else if (role.canViewItwAerzte === 1 || role.canViewItwAerzte === true) itw_aerzte = 'read';
+    else if (role.canEditItwAll === 1 || role.canEditItwAll === true) itw_aerzte = 'write';
+
+    let itw_dienstplan: 'none' | 'read' | 'read_all' = 'none';
+    if (role.canViewItwDienstplanAll === 1 || role.canViewItwDienstplanAll === true || role.canEditItwDienstplan === 1 || role.canEditItwDienstplan === true) itw_dienstplan = 'read_all';
+    else if (role.canViewItwDienstplan === 1 || role.canViewItwDienstplan === true) itw_dienstplan = 'read';
+
+    let itw: 'none' | 'read' | 'write' | 'write_all' = 'none';
+    if (itw_vorplanung === 'write_all') itw = 'write_all';
+    else if (itw_vorplanung === 'write' || itw_aerzte === 'write') itw = 'write';
+    else if (itw_vorplanung === 'read' || itw_aerzte === 'read' || itw_dienstplan === 'read_all' || itw_dienstplan === 'read') itw = 'read';
+
     return {
       einteilung,
       dienstplan,
@@ -50,18 +77,22 @@ export class AuthService {
       fahrzeuge: role.canEditVehicles ? 'write' : 'none',
       einstellungen: role.canEditSettings ? 'write' : 'none',
       kommentar_global: role.canEditGlobalComments ? 'write' : 'none',
-      kommentar_individuell: role.canEditPersonalComments ? 'write' : 'none'
+      kommentar_individuell: role.canEditPersonalComments ? 'write' : 'none',
+      itw,
+      itw_vorplanung,
+      itw_aerzte,
+      itw_dienstplan
     };
   }
 
   private mergeLegacyRolePermissions(
-    permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>,
+    permissions: Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'>,
     legacyPermissions: any
-  ): Record<string, 'none' | 'read' | 'read_all' | 'write'> {
+  ): Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'> {
     const merged = { ...permissions };
     if (!legacyPermissions || typeof legacyPermissions !== 'object') return merged;
     for (const [key, val] of Object.entries(legacyPermissions)) {
-      if (val === 'none' || val === 'read' || val === 'read_all' || val === 'write') {
+      if (val === 'none' || val === 'read' || val === 'read_all' || val === 'write' || val === 'write_all') {
         merged[key] = val;
       }
     }
@@ -69,10 +100,10 @@ export class AuthService {
   }
 
   private applyAdministratorGrants(
-    permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>,
+    permissions: Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'>,
     roleName?: string,
     role?: any
-  ): Record<string, 'none' | 'read' | 'read_all' | 'write'> {
+  ): Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'> {
     const isAdmin =
       roleName?.toLowerCase() === 'administrator' ||
       role?.canManageUsers === 1 ||
@@ -92,10 +123,14 @@ export class AuthService {
       fahrzeuge: permissions.fahrzeuge === 'none' ? 'write' : permissions.fahrzeuge,
       einteilung: permissions.einteilung === 'none' ? 'write' : permissions.einteilung,
       dienstplan: permissions.dienstplan === 'none' ? 'write' : permissions.dienstplan,
+      itw: 'write_all',
+      itw_vorplanung: 'write_all',
+      itw_aerzte: 'write',
+      itw_dienstplan: 'read_all'
     };
   }
 
-  private async resolveRoleInfo(roleId: number | null | undefined): Promise<{ permissions: Record<string, 'none' | 'read' | 'read_all' | 'write'>, name?: string }> {
+  private async resolveRoleInfo(roleId: number | null | undefined): Promise<{ permissions: Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'>, name?: string }> {
     const permissions = this.getDefaultPermissions();
     if (!roleId) return { permissions };
 
@@ -253,8 +288,8 @@ export class AuthService {
     const userLevel = this.currentSession.permissions[area] || 'none';
     
     if (userLevel === 'none') return false;
-    if (requiredLevel === 'read') return userLevel === 'read' || userLevel === 'read_all' || userLevel === 'write';
-    if (requiredLevel === 'write') return userLevel === 'write';
+    if (requiredLevel === 'read') return userLevel === 'read' || userLevel === 'read_all' || userLevel === 'write' || userLevel === 'write_all';
+    if (requiredLevel === 'write') return userLevel === 'write' || userLevel === 'write_all';
     
     return false;
   }

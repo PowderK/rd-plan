@@ -2,6 +2,8 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { buildVehicleActivationMap, calculateTargets } from '../utils/calculation';
 import { rosterReleasedSettingKey } from '../utils/rosterRelease';
+import { isVehicleActiveOnDate } from '../utils/vehiclePeriods';
+import { parseItwDay } from '../utils/itwPatternUtils';
 import styles from './MonthTabs.module.css';
 import { Kontrollkasten } from './Kontrollkasten';
 import { AzubiAutoAssignDialog, ShiftSummary, ProposedAssignment, ConflictAzubi } from './AzubiAutoAssignDialog';
@@ -62,13 +64,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
     const [department, setDepartment] = useState<number>(() => departmentNameToId(departmentName));
     const [localRoster, setLocalRoster] = useState(roster || {} as Record<string, Record<string, { value: string; type: string }>>);
-    const [rtwVehicles, setRtwVehicles] = useState<{ id: number; name: string }[]>([]);
-    const [nefVehicles, setNefVehicles] = useState<{ id: number; name: string; occupancy_mode?: '24h' | 'tag' }[]>([]);
+    const [rtwVehicles, setRtwVehicles] = useState<{ id: number; name: string; category?: string }[]>([]);
+    const [nefVehicles, setNefVehicles] = useState<{ id: number; name: string; occupancy_mode?: '24h' | 'tag'; category?: string }[]>([]);
     const [itwEnabled, setItwEnabled] = useState<boolean>(false);
     const [shiftTypes, setShiftTypes] = useState<{ id: number, code: string, description: string }[]>([]);
     const [auswertungByType, setAuswertungByType] = useState<Record<string, 'off' | 'tag' | 'nacht' | '24h' | 'itw'>>({});
     const [days, setDays] = useState<{ date: string; weekday: string; day: number; dayOfYear: number }[]>([]);
-    const [itwDoctors, setItwDoctors] = useState<{ id: number; name: string }[]>([]);
+    const [itwDoctors, setItwDoctors] = useState<{ id: number; name: string; vorname?: string; title?: string; anrede?: string; is_nef?: boolean | number; is_itw?: boolean | number }[]>([]);
+    const [doctorPeriods, setDoctorPeriods] = useState<Record<number, any[]>>({});
     const [viewMode, setViewMode] = useState<'rtwnef' | 'itw'>('rtwnef');
     const [rtwNames, setRtwNames] = useState<string[]>([]);
     const [nefName, setNefName] = useState<string>('');
@@ -76,6 +79,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [nefActivations, setNefActivations] = useState<Record<number, boolean[]>>({});
     const [rtwVehiclePeriods, setRtwVehiclePeriods] = useState<Record<number, any[]>>({});
     const [nefVehiclePeriods, setNefVehiclePeriods] = useState<Record<number, any[]>>({});
+    const [vehicleSpecialDays, setVehicleSpecialDays] = useState<any[]>([]);
     const [itwPatternSeqs, setItwPatternSeqs] = useState<{ startDate: string; department: string; pattern: string[] }[]>([]);
     const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
     const [isUpdating, setIsUpdating] = useState(false); // Verhindert Race-Conditions während Updates
@@ -90,6 +94,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [lpalIds, setLpalIds] = useState<Set<number>>(new Set());
     const [ue50MonthlyMap, setUe50MonthlyMap] = useState<Record<number, boolean[]>>({});
     const [lpalMonthlyMap, setLpalMonthlyMap] = useState<Record<number, boolean[]>>({});
+    const [taucherMonthlyMap, setTaucherMonthlyMap] = useState<Record<number, boolean[]>>({});
+    const [featureTaucher, setFeatureTaucher] = useState<boolean>(true);
     // HLF-B Perioden für korrekte Berechnung
     const [hlfbPeriodsByPerson, setHlfbPeriodsByPerson] = useState<Record<number, Array<{ startYM: string; endYM?: string }>>>({});
     // Performance: Debouncing für Roster-Updates
@@ -113,6 +119,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [weekendSaturdayNight, setWeekendSaturdayNight] = useState<boolean>(true);
     const [weekendSundayDay, setWeekendSundayDay] = useState<boolean>(true);
     const [weekendSundayNight, setWeekendSundayNight] = useState<boolean>(true);
+    const [weekendHolidayDay, setWeekendHolidayDay] = useState<boolean>(false);
+    const [weekendHolidayNight, setWeekendHolidayNight] = useState<boolean>(false);
     // Freigabe-Status pro Monat
     const [releasedMonths, setReleasedMonths] = useState<boolean[]>(Array(12).fill(false));
     /** Monate mit unbesetzten Pflichtpositionen (für gelbe Markierung bei Freigabe). */
@@ -266,9 +274,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
     // Höre auf Sidebar Collapse Events
     useEffect(() => {
-        const handler = () => {
-            setSidebarCollapsed(!!(window as any).sidebarCollapsed);
+        const handler = (e: any) => {
+            const collapsed = typeof e?.detail?.collapsed === 'boolean' ? e.detail.collapsed : !!(window as any).sidebarCollapsed;
+            setSidebarCollapsed(collapsed);
         };
+        setSidebarCollapsed(!!(window as any).sidebarCollapsed);
         window.addEventListener('sidebar-collapsed', handler as EventListener);
         return () => window.removeEventListener('sidebar-collapsed', handler as EventListener);
     }, []);
@@ -297,15 +307,22 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const lpalSetting = await (window as any).api.getSetting('lpal_qualification_type');
                 if (lpalSetting) lpalQualName = String(lpalSetting);
 
+                let taucherQualName = 'Taucher';
+                const taucherSetting = await (window as any).api.getSetting('taucher_qualification_type');
+                if (taucherSetting) taucherQualName = String(taucherSetting);
+
                 const ue50Map: Record<number, boolean[]> = {};
                 const lpalMap: Record<number, boolean[]> = {};
+                const taucherMap: Record<number, boolean[]> = {};
                 const combinedIds = new Set<number>();
                 const lpalOnlyIds = new Set<number>();
-                for (const p of personnel) {
+                const candidateList = (personnelLookup && personnelLookup.length > 0) ? personnelLookup : personnel;
+                for (const p of candidateList) {
                     try {
                         const periods = await (window as any).api.getQualificationPeriods?.(p.id) || [];
                         const ue50Arr = Array(12).fill(false);
                         const lpalArr = Array(12).fill(false);
+                        const taucherArr = Array(12).fill(false);
                         for (let month = 0; month < 12; month++) {
                             const yearMonth = `${year}-${String(month + 1).padStart(2, '0')}`;
                             const hasUe50 = periods.some((per: any) =>
@@ -320,8 +337,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 per.startYM <= yearMonth &&
                                 (!per.endYM || per.endYM >= yearMonth)
                             );
+                            const hasTaucher = periods.some((per: any) =>
+                                per.active &&
+                                per.qualType === taucherQualName &&
+                                per.startYM <= yearMonth &&
+                                (!per.endYM || per.endYM >= yearMonth)
+                            );
                             if (hasUe50) ue50Arr[month] = true;
                             if (hasLpal) lpalArr[month] = true;
+                            if (hasTaucher) taucherArr[month] = true;
                             if (hasUe50 || hasLpal) {
                                 combinedIds.add(p.id);
                                 if (hasLpal) lpalOnlyIds.add(p.id);
@@ -329,18 +353,21 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         }
                         ue50Map[p.id] = ue50Arr;
                         lpalMap[p.id] = lpalArr;
+                        taucherMap[p.id] = taucherArr;
                         (p as any).ue50Monthly = (p as any).ue50Monthly || ue50Arr;
                         (p as any).lpalMonthly = (p as any).lpalMonthly || lpalArr;
+                        (p as any).taucherMonthly = (p as any).taucherMonthly || taucherArr;
                     } catch { }
                 }
                 setUe50MonthlyMap(ue50Map);
                 setLpalMonthlyMap(lpalMap);
+                setTaucherMonthlyMap(taucherMap);
                 setUe50Ids(combinedIds);
                 setLpalIds(lpalOnlyIds);
-            } catch { setUe50Ids(new Set()); setLpalIds(new Set()); setUe50MonthlyMap({}); setLpalMonthlyMap({}); }
+            } catch { setUe50Ids(new Set()); setLpalIds(new Set()); setUe50MonthlyMap({}); setLpalMonthlyMap({}); setTaucherMonthlyMap({}); }
         };
         loadUe50();
-    }, [year, personnel]);
+    }, [year, personnel, personnelLookup]);
 
     useEffect(() => {
         const load = async () => {
@@ -363,6 +390,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 setWeekendSundayDay(suDay !== 'false');
                 const suNight = await (window as any).api.getSetting('weekend_sunday_night');
                 setWeekendSundayNight(suNight !== 'false');
+
+                const holDay = await (window as any).api.getSetting('weekend_holiday_day');
+                setWeekendHolidayDay(holDay === 'true');
+                const holNight = await (window as any).api.getSetting('weekend_holiday_night');
+                setWeekendHolidayNight(holNight === 'true');
             } catch { }
             try { const r = await (window as any).api.getRtwVehicles?.(year); if (Array.isArray(r)) setRtwVehicles(r); } catch { }
             try { const n = await (window as any).api.getNefVehicles?.(year); if (Array.isArray(n)) setNefVehicles(n); } catch { }
@@ -381,12 +413,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             } catch { }
             // ITW Sequenzen laden
             try {
-                const norm = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(len).fill('')).slice(0, len).map(v => (v === 'IW' ? 'IW' : ''));
+                const norm = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(len).fill('')).slice(0, len);
                 const seqs = await (window as any).api.getItwPatterns?.();
                 if (Array.isArray(seqs) && seqs.length > 0) {
                     const parsed = seqs.map((s: any) => ({ 
                         startDate: String(s.startDate), 
-                        department: s.department || '1. Abteilung',
+                        department: s.department || 'global',
                         pattern: norm(String(s.pattern).split(',').map((x: string) => x.trim()), 21) 
                     }));
                     parsed.sort((a, b) => a.startDate.localeCompare(b.startDate));
@@ -406,6 +438,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             try {
                 const docs = await (window as any).api.getItwDoctors?.();
                 if (Array.isArray(docs)) setItwDoctors(docs);
+                const docP = await (window as any).api.getAllDoctorPeriods?.();
+                const dpMap: Record<number, any[]> = {};
+                (docP || []).forEach((p: any) => {
+                    if (!dpMap[p.doctor_id]) dpMap[p.doctor_id] = [];
+                    dpMap[p.doctor_id].push(p);
+                });
+                setDoctorPeriods(dpMap);
             } catch { }
             // Feiertage laden
             try {
@@ -417,6 +456,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             try {
                 const feat = await (window as any).api.getSetting(`feature_old_rtw_shifts_${departmentName}`);
                 setFeatureOldRtwShifts(feat === 'true' || feat === true);
+            } catch { }
+            try {
+                const featT = await (window as any).api.getSetting(`feature_taucher_${departmentName}`);
+                if (featT !== null && featT !== undefined) {
+                    setFeatureTaucher(featT === 'true' || featT === true || featT === '1');
+                } else {
+                    const globT = await (window as any).api.getSetting('feature_taucher');
+                    setFeatureTaucher(globT === null || globT === undefined ? true : (globT === 'true' || globT === true || globT === '1'));
+                }
             } catch { }
             // Neue Fahrzeug-Zeiträume laden
             try {
@@ -435,14 +483,17 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     nMap[p.vehicleId].push(p);
                 });
                 setNefVehiclePeriods(nMap);
+
+                const spec = await (window as any).api.getAllVehicleSpecialDays?.(year);
+                setVehicleSpecialDays(Array.isArray(spec) ? spec : []);
             } catch { }
         };
         load();
     }, [year, currentMonth]);
 
-    // Separater Effekt für Settings-Listener (verhindert Listener-Leaks)
+    // Separater Effekt für Settings- und Vehicles-Listener (verhindert Listener-Leaks)
     useEffect(() => {
-        const onSettingsUpdated = async () => {
+        const reloadVehiclesAndSettings = async () => {
             try {
                 const y = await (window as any).api.getSetting('year');
                 const yearNum = Number(y || new Date().getFullYear());
@@ -460,12 +511,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 } catch { }
                 // ITW-Sequenzen aktualisieren
                 try {
-                    const norm = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(len).fill('')).slice(0, len).map(v => (v === 'IW' ? 'IW' : ''));
+                    const norm = (arr: string[], len = 21) => (arr || []).slice(0, len).concat(Array(len).fill('')).slice(0, len);
                     const seqs = await (window as any).api.getItwPatterns?.();
                     if (Array.isArray(seqs) && seqs.length > 0) {
                         const parsed = seqs.map((s: any) => ({ 
                             startDate: String(s.startDate), 
-                            department: s.department || '1. Abteilung',
+                            department: s.department || 'global',
                             pattern: norm(String(s.pattern).split(',').map((x: string) => x.trim()), 21) 
                         }));
                         parsed.sort((a, b) => a.startDate.localeCompare(b.startDate));
@@ -479,7 +530,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     setHolidays(s);
                 } catch { }
 
-                // Neue Fahrzeug-Zeiträume neu laden
+                // Neue Fahrzeug-Zeiträume & Sondertage neu laden
                 try {
                     const rtwP = await (window as any).api.getAllRtwVehiclePeriods?.();
                     const rMap: Record<number, any[]> = {};
@@ -496,12 +547,40 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         nMap[p.vehicleId].push(p);
                     });
                     setNefVehiclePeriods(nMap);
+
+                    const spec = await (window as any).api.getAllVehicleSpecialDays?.(yearNum);
+                    setVehicleSpecialDays(Array.isArray(spec) ? spec : []);
+                } catch { }
+                try {
+                    const featT = await (window as any).api.getSetting(`feature_taucher_${departmentName}`);
+                    if (featT !== null && featT !== undefined) {
+                        setFeatureTaucher(featT === 'true' || featT === true || featT === '1');
+                    } else {
+                        const globT = await (window as any).api.getSetting('feature_taucher');
+                        setFeatureTaucher(globT === null || globT === undefined ? true : (globT === 'true' || globT === true || globT === '1'));
+                    }
+                } catch { }
+                try {
+                    const docs = await (window as any).api.getItwDoctors?.();
+                    if (Array.isArray(docs)) setItwDoctors(docs);
+                    const docP = await (window as any).api.getAllDoctorPeriods?.();
+                    const dpMap: Record<number, any[]> = {};
+                    (docP || []).forEach((p: any) => {
+                        if (!dpMap[p.doctor_id]) dpMap[p.doctor_id] = [];
+                        dpMap[p.doctor_id].push(p);
+                    });
+                    setDoctorPeriods(dpMap);
                 } catch { }
             } catch { }
         };
-        (window as any).api?.onSettingsUpdated?.(onSettingsUpdated);
-        // Event-Handler entfernt - Parent (EinteilungPage) kümmert sich um Roster-Updates
-        return () => { (window as any).api?.offSettingsUpdated?.(onSettingsUpdated); };
+        (window as any).api?.onSettingsUpdated?.(reloadVehiclesAndSettings);
+        (window as any).api?.onVehiclesUpdated?.(reloadVehiclesAndSettings);
+        (window as any).api?.onItwDoctorsUpdated?.(reloadVehiclesAndSettings);
+        return () => { 
+            (window as any).api?.offSettingsUpdated?.(reloadVehiclesAndSettings); 
+            (window as any).api?.offVehiclesUpdated?.(reloadVehiclesAndSettings);
+            (window as any).api?.offItwDoctorsUpdated?.(reloadVehiclesAndSettings);
+        };
     }, []);
 
     // Synchronisiere currentMonth mit window-Objekt für Dienstplan
@@ -595,7 +674,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             return false;
         }
 
-        if (desired === 'any') return true;
         const evalMode = auswertungByType[code] || 'off';
 
         // Wenn der Auswertungsmodus 'off' ist, ist die Person nicht verfügbar
@@ -603,6 +681,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             return false;
         }
 
+        if (desired === 'any') return true;
         if (desired === 'tag') return (evalMode === 'tag' || evalMode === '24h');
         if (desired === 'nacht') return (evalMode === 'nacht' || evalMode === '24h');
         if (desired === '24h') return evalMode === '24h';
@@ -696,40 +775,59 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         for (const iso of monthDays) {
             for (let rIdx = 0; rIdx < (rtwVehicles || []).length; rIdx++) {
                 const v = rtwVehicles[rIdx];
-                const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[monthIndex] !== false;
-                if (!enabled) continue;
+                const isReserve = v.category === 'reserve';
+                const dayStatus = isVehicleActiveOnDate(
+                    iso,
+                    rtwVehiclePeriods[v.id] || [],
+                    (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id)),
+                    isReserve
+                );
+                if (!dayStatus.active) continue;
+
+                const showTag = dayStatus.shiftMode !== 'nacht';
+                const showNacht = dayStatus.shiftMode !== 'tag';
 
                 const positions = rtwMap[v.id] || [];
 
-                for (let pIdx = 0; pIdx < Math.min(2, positions.length); pIdx++) {
-                    const pos = positions[pIdx];
-                    const slotId = `rtw${rIdx + 1}_tag_${pIdx + 1}`;
-                    const value = getAssignedValueFor(iso, slotId);
-                    if (!value || value.trim() === '') {
-                        const dt = new Date(iso + 'T00:00:00');
-                        const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-                        const posName = pos.positionName.replace(/\s+\d+$/, '');
-                        emptySlots.push(`${label}: ${v.name || `RTW ${rIdx + 1}`} ${posName} Tag`);
+                if (showTag) {
+                    for (let pIdx = 0; pIdx < Math.min(2, positions.length); pIdx++) {
+                        const pos = positions[pIdx];
+                        const slotId = `rtw${rIdx + 1}_tag_${pIdx + 1}`;
+                        const value = getAssignedValueFor(iso, slotId);
+                        if (!value || value.trim() === '') {
+                            const dt = new Date(iso + 'T00:00:00');
+                            const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                            const posName = pos.positionName.replace(/\s+\d+$/, '');
+                            emptySlots.push(`${label}: ${v.name || `RTW ${rIdx + 1}`} ${posName} Tag`);
+                        }
                     }
                 }
 
-                for (let pIdx = 0; pIdx < Math.min(2, positions.length); pIdx++) {
-                    const pos = positions[pIdx];
-                    const slotId = `rtw${rIdx + 1}_nacht_${pIdx + 1}`;
-                    const value = getAssignedValueFor(iso, slotId);
-                    if (!value || value.trim() === '') {
-                        const dt = new Date(iso + 'T00:00:00');
-                        const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-                        const posName = pos.positionName.replace(/\s+\d+$/, '');
-                        emptySlots.push(`${label}: ${v.name || `RTW ${rIdx + 1}`} ${posName} Nacht`);
+                if (showNacht) {
+                    for (let pIdx = 0; pIdx < Math.min(2, positions.length); pIdx++) {
+                        const pos = positions[pIdx];
+                        const slotId = `rtw${rIdx + 1}_nacht_${pIdx + 1}`;
+                        const value = getAssignedValueFor(iso, slotId);
+                        if (!value || value.trim() === '') {
+                            const dt = new Date(iso + 'T00:00:00');
+                            const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                            const posName = pos.positionName.replace(/\s+\d+$/, '');
+                            emptySlots.push(`${label}: ${v.name || `RTW ${rIdx + 1}`} ${posName} Nacht`);
+                        }
                     }
                 }
             }
 
             for (let nIdx = 0; nIdx < (nefVehicles || []).length; nIdx++) {
                 const v = nefVehicles[nIdx];
-                const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[monthIndex] !== false;
-                if (!enabled) continue;
+                const isReserve = v.category === 'reserve';
+                const isPeriodActive = isVehicleActiveOnDate(
+                    iso,
+                    nefVehiclePeriods[v.id] || [],
+                    (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id)),
+                    isReserve
+                ).active;
+                if (!isPeriodActive) continue;
 
                 const positions = nefMap[v.id] || [];
                 if (positions.length === 0) continue;
@@ -746,7 +844,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         }
 
         return emptySlots;
-    }, [buildDepartmentDaysForMonth, rtwVehicles, nefVehicles, rtwActivations, nefActivations, getAssignedValueFor]);
+    }, [buildDepartmentDaysForMonth, rtwVehicles, nefVehicles, rtwActivations, nefActivations, rtwVehiclePeriods, nefVehiclePeriods, vehicleSpecialDays, getAssignedValueFor]);
 
     useEffect(() => {
         const flags = Array.from({ length: 12 }, (_, i) =>
@@ -802,8 +900,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             for (const iso of monthDays) {
                 for (let rIdx = 0; rIdx < (rtwVehicles || []).length; rIdx++) {
                     const v = rtwVehicles[rIdx];
-                    const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                    if (!enabled) continue;
+                    const isReserve = v.category === 'reserve';
+                    const dayStatus = isVehicleActiveOnDate(
+                        iso,
+                        rtwVehiclePeriods[v.id] || [],
+                        (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id)),
+                        isReserve
+                    );
+                    if (!dayStatus.active) continue;
 
                     const positions = rtwMap[v.id] || [];
 
@@ -852,8 +956,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                 for (let nIdx = 0; nIdx < (nefVehicles || []).length; nIdx++) {
                     const v = nefVehicles[nIdx];
-                    const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                    if (!enabled) continue;
+                    const isReserve = v.category === 'reserve';
+                    const isPeriodActive = isVehicleActiveOnDate(
+                        iso,
+                        nefVehiclePeriods[v.id] || [],
+                        (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id)),
+                        isReserve
+                    ).active;
+                    if (!isPeriodActive) continue;
 
                     const positions = nefMap[v.id] || [];
                     if (positions.length === 0) continue;
@@ -945,7 +1055,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             }
             if (t === 'd') {
                 const d = itwDoctors.find(x => x.id === id);
-                return d ? `${d.name}` : `Arzt ${id}`;
+                if (d) {
+                    return [d.title, d.vorname, d.name].filter(Boolean).join(' ') || d.name;
+                }
+                return `Arzt ${id}`;
             }
             if (t === 'g') {
                 const g = guests.find(x => x.id === id);
@@ -1187,8 +1300,16 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const allAvailableFallbackSlots: { id: string; label: string }[] = [];
 
                 (rtwVehicles || []).forEach((v, rIdx) => {
-                    const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                    if (!enabled) return;
+                    const isReserve = v.category === 'reserve';
+                    const dayStatus = isVehicleActiveOnDate(
+                        DateStr,
+                        rtwVehiclePeriods[v.id] || [],
+                        (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id)),
+                        isReserve
+                    );
+                    if (!dayStatus.active) return;
+                    if (shift === 'tag' && dayStatus.shiftMode === 'nacht') return;
+                    if (shift === 'nacht' && dayStatus.shiftMode === 'tag') return;
 
                     const slot2 = shift === 'tag' ? `rtw${rIdx+1}_tag_2` : `rtw${rIdx+1}_nacht_2`;
                     const slot3 = shift === 'tag' ? `rtw${rIdx+1}_tag_3` : `rtw${rIdx+1}_nacht_3`;
@@ -1204,8 +1325,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 });
 
                 (nefVehicles || []).forEach((v, nIdx) => {
-                    const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                    if (!enabled) return;
+                    const isReserve = v.category === 'reserve';
+                    const isPeriodActive = isVehicleActiveOnDate(
+                        DateStr,
+                        nefVehiclePeriods[v.id] || [],
+                        (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id)),
+                        isReserve
+                    ).active;
+                    if (!isPeriodActive) return;
                     const slotId = nIdx === 0 ? 'nef_azubi' : `nef${nIdx+1}_azubi`;
                     if (!isSlotTakenGlobally(DateStr, slotId)) allAvailableFallbackSlots.push({ id: slotId, label: `${v.name} Azubi` });
                 });
@@ -1435,10 +1562,18 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         };
     }, [viewMode, currentMonth, rtwVehicles, nefVehicles, rtwActivations, nefActivations, sidebarCollapsed]);
 
+    const isScrollSyncingRef = React.useRef<'content' | 'header' | null>(null);
+
     // Synchronisiere Scroll zwischen Fahrzeug-Header und Content
     const handleContentScroll = (e: React.UIEvent<HTMLDivElement>) => {
-        if (vehicleHeaderRef.current) {
+        if (vehicleHeaderRef.current && isScrollSyncingRef.current !== 'header') {
+            isScrollSyncingRef.current = 'content';
             vehicleHeaderRef.current.scrollLeft = e.currentTarget.scrollLeft;
+            requestAnimationFrame(() => {
+                if (isScrollSyncingRef.current === 'content') {
+                    isScrollSyncingRef.current = null;
+                }
+            });
         }
     };
 
@@ -1453,7 +1588,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     // ==========================================================
     // GEMEINSAME SOLL-BERECHNUNG für RTW-Tab und ITW-Tab
     // ==========================================================
-    useMemo(() => {
+    const sharedTargets = useMemo(() => {
         const computeSharedTargets = () => {
             // 1. Flatten Roster for Shared Calculation
             const flattenedRoster: any[] = [];
@@ -1491,7 +1626,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 department,
                 deptPatternSeqs || [],
                 hlfbPeriodsByPerson,
-                shiftTransfers // <-- Pass loaded transfers here
+                shiftTransfers, // <-- Pass loaded transfers here
+                { rtwPeriods: rtwVehiclePeriods, nefPeriods: nefVehiclePeriods }
             );
 
             // 3. Map Targets to MonthTabs format
@@ -1635,17 +1771,27 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                             }
 
                             let matchesWeekend = false;
-                            if (dow === 5) { // Freitag
-                                if ((isTag && weekendFridayDay) || (isNacht && weekendFridayNight)) {
+                            const isHolidayDate = holidays.has(iso);
+
+                            if (isHolidayDate) {
+                                if ((isTag && weekendHolidayDay) || (isNacht && weekendHolidayNight)) {
                                     matchesWeekend = true;
                                 }
-                            } else if (dow === 6) { // Samstag
-                                if ((isTag && weekendSaturdayDay) || (isNacht && weekendSaturdayNight)) {
-                                    matchesWeekend = true;
-                                }
-                            } else if (dow === 0) { // Sonntag
-                                if ((isTag && weekendSundayDay) || (isNacht && weekendSundayNight)) {
-                                    matchesWeekend = true;
+                            }
+
+                            if (!matchesWeekend) {
+                                if (dow === 5) { // Freitag
+                                    if ((isTag && weekendFridayDay) || (isNacht && weekendFridayNight)) {
+                                        matchesWeekend = true;
+                                    }
+                                } else if (dow === 6) { // Samstag
+                                    if ((isTag && weekendSaturdayDay) || (isNacht && weekendSaturdayNight)) {
+                                        matchesWeekend = true;
+                                    }
+                                } else if (dow === 0) { // Sonntag
+                                    if ((isTag && weekendSundayDay) || (isNacht && weekendSundayNight)) {
+                                        matchesWeekend = true;
+                                    }
                                 }
                             }
 
@@ -1758,10 +1904,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
         const result = computeSharedTargets();
         (window as any).__sharedTargets = result;
+        return result;
 
-    }, [year, roster, localRoster, personnel, azubis, ue50Ids, auswertungByType,
-        rtwVehicles, nefVehicles, rtwActivations, nefActivations, department,
-        deptPatternSeqs, hlfbPeriodsByPerson, shiftTransfers, currentMonth]);
+    }, [year, roster, localRoster, personnel, azubis, ue50Ids, ue50MonthlyMap, lpalMonthlyMap, taucherMonthlyMap, auswertungByType,
+        rtwVehicles, nefVehicles, rtwActivations, nefActivations, rtwVehiclePeriods, nefVehiclePeriods, department,
+        deptPatternSeqs, hlfbPeriodsByPerson, shiftTransfers, currentMonth, holidays,
+        weekendFridayDay, weekendFridayNight, weekendSaturdayDay, weekendSaturdayNight, weekendSundayDay, weekendSundayNight,
+        weekendHolidayDay, weekendHolidayNight, itwEnabled, featureTaucher, getNefAssistWeight]);
 
     const availablePersonKeys = React.useMemo(() => {
         if (!selectedAvailDate) return undefined;
@@ -2264,59 +2413,256 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         style={{ overflowX: 'auto', overflowY: 'hidden', background: 'var(--bg)' }}
                         onScroll={(e) => {
                             // Synchronisiere zurück zum Content wenn Header gescrollt wird
-                            if (contentRef.current) {
+                            if (contentRef.current && isScrollSyncingRef.current !== 'content') {
+                                isScrollSyncingRef.current = 'header';
                                 contentRef.current.scrollLeft = e.currentTarget.scrollLeft;
+                                requestAnimationFrame(() => {
+                                    if (isScrollSyncingRef.current === 'header') {
+                                        isScrollSyncingRef.current = null;
+                                    }
+                                });
                             }
                         }}
                     >
                         <div className={styles.container}>
-                            {(rtwVehicles || []).map((v, rIdx) => {
-                                const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                                if (!enabled) return null;
+                            {/* 1. REGEL-RTWS */}
+                            {(rtwVehicles || []).map((v, rIdx) => ({ v, rIdx })).filter(item => item.v.category !== 'reserve').map(({ v, rIdx }) => {
+                                const monthDays = buildDepartmentDaysForMonth(currentMonth);
+                                const periods = rtwVehiclePeriods[v.id] || [];
+                                const specialDays = (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id));
+                                const isActiveInMonth = monthDays.some(dateStr => isVehicleActiveOnDate(dateStr, periods, specialDays, false).active);
+                                if (!isActiveInMonth) return null;
+
                                 return (
                                     <div key={`rtw_header_${rIdx}`} style={{
                                         marginRight: 8,
-                                        marginBottom: 8,
+                                        marginBottom: 4,
                                         width: 'var(--vehicle-card-width)',
                                         minWidth: 'var(--vehicle-card-width)',
                                         maxWidth: 'var(--vehicle-card-width)',
-                                        padding: 8,
+                                        height: 58,
+                                        padding: '6px 8px 4px 8px',
                                         boxSizing: 'border-box',
-                                        background: 'var(--bg)'
+                                        background: '#ffffff',
+                                        borderRadius: '8px 8px 0 0',
+                                        border: '1px solid transparent',
+                                        position: 'relative',
+                                        overflow: 'hidden'
                                     }}>
-                                        <div style={{ paddingBottom: 4, borderBottom: '2px solid #ef4444' }}>
-                                            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 4, paddingLeft: 66 }}>{v.name || rtwNames[rIdx] || ''}</div>
-                                            <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr 1fr', gap: '6px' }}>
-                                                <div></div>
-                                                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>Tag</div>
-                                                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>Nacht</div>
+                                        <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '60px minmax(0, 1fr) minmax(0, 1fr)',
+                                            gap: '6px',
+                                            alignItems: 'center'
+                                        }}>
+                                            <div style={{
+                                                gridColumn: '2 / span 2',
+                                                textAlign: 'center',
+                                                fontWeight: 700,
+                                                fontSize: 14,
+                                                lineHeight: '1.2',
+                                                color: 'var(--text)',
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                marginBottom: 3
+                                            }}>
+                                                {v.name || rtwNames[rIdx] || ''}
                                             </div>
+                                            <div></div>
+                                            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center', lineHeight: '1.2' }}>Tag</div>
+                                            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center', lineHeight: '1.2' }}>Nacht</div>
                                         </div>
+                                        <div style={{
+                                            position: 'absolute',
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0,
+                                            height: '3px',
+                                            background: '#ef4444',
+                                            borderRadius: '3px 3px 0 0'
+                                        }} />
                                     </div>
                                 );
                             })}
-                            {(nefVehicles || []).map((v, nIdx) => {
-                                const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                                if (!enabled) return null;
+                            {/* 2. REGEL-NEFS */}
+                            {(nefVehicles || []).map((v, nIdx) => ({ v, nIdx })).filter(item => item.v.category !== 'reserve').map(({ v, nIdx }) => {
+                                const monthDays = buildDepartmentDaysForMonth(currentMonth);
+                                const periods = nefVehiclePeriods[v.id] || [];
+                                const specialDays = (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id));
+                                const isActiveInMonth = monthDays.some(dateStr => isVehicleActiveOnDate(dateStr, periods, specialDays, false).active);
+                                if (!isActiveInMonth) return null;
+
                                 const nefLabel = v.occupancy_mode === '24h' ? '24h' : 'Tag';
                                 return (
                                     <div key={`nef_header_${nIdx}`} style={{
                                         marginRight: 8,
-                                        marginBottom: 8,
+                                        marginBottom: 4,
                                         width: 'var(--vehicle-card-width)',
                                         minWidth: 'var(--vehicle-card-width)',
                                         maxWidth: 'var(--vehicle-card-width)',
-                                        padding: 8,
+                                        height: 58,
+                                        padding: '6px 8px 4px 8px',
                                         boxSizing: 'border-box',
-                                        background: 'var(--bg)'
+                                        background: '#ffffff',
+                                        borderRadius: '8px 8px 0 0',
+                                        border: '1px solid transparent',
+                                        position: 'relative',
+                                        overflow: 'hidden'
                                     }}>
-                                        <div style={{ paddingBottom: 4, borderBottom: '2px solid #ef4444' }}>
-                                            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 4, paddingLeft: 66 }}>{v.name || nefName || ''}</div>
-                                            <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr', gap: '6px' }}>
-                                                <div></div>
-                                                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center' }}>{nefLabel}</div>
+                                        <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '60px minmax(0, 1fr)',
+                                            gap: '6px',
+                                            alignItems: 'center'
+                                        }}>
+                                            <div style={{
+                                                gridColumn: '2 / span 1',
+                                                textAlign: 'center',
+                                                fontWeight: 700,
+                                                fontSize: 14,
+                                                lineHeight: '1.2',
+                                                color: 'var(--text)',
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                marginBottom: 3
+                                            }}>
+                                                {v.name || nefName || ''}
                                             </div>
+                                            <div></div>
+                                            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textAlign: 'center', lineHeight: '1.2' }}>{nefLabel}</div>
                                         </div>
+                                        <div style={{
+                                            position: 'absolute',
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0,
+                                            height: '3px',
+                                            background: '#ef4444',
+                                            borderRadius: '3px 3px 0 0'
+                                        }} />
+                                    </div>
+                                );
+                            })}
+                            {/* 3. RESERVE-RTWS (GANZ RECHTS) */}
+                            {(rtwVehicles || []).map((v, rIdx) => ({ v, rIdx })).filter(item => item.v.category === 'reserve').map(({ v, rIdx }) => {
+                                const monthDays = buildDepartmentDaysForMonth(currentMonth);
+                                const periods = rtwVehiclePeriods[v.id] || [];
+                                const specialDays = (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id));
+                                const isActiveInMonth = monthDays.some(dateStr => isVehicleActiveOnDate(dateStr, periods, specialDays, true).active);
+                                if (!isActiveInMonth) return null;
+
+                                return (
+                                    <div key={`rtw_header_${rIdx}`} style={{
+                                        marginRight: 8,
+                                        marginBottom: 4,
+                                        width: 'var(--vehicle-card-width)',
+                                        minWidth: 'var(--vehicle-card-width)',
+                                        maxWidth: 'var(--vehicle-card-width)',
+                                        height: 58,
+                                        padding: '6px 8px 4px 8px',
+                                        boxSizing: 'border-box',
+                                        background: '#ffffff',
+                                        borderRadius: '8px 8px 0 0',
+                                        border: '1px solid transparent',
+                                        position: 'relative',
+                                        overflow: 'hidden'
+                                    }}>
+                                        <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '60px minmax(0, 1fr) minmax(0, 1fr)',
+                                            gap: '6px',
+                                            alignItems: 'center'
+                                        }}>
+                                            <div style={{
+                                                gridColumn: '2 / span 2',
+                                                textAlign: 'center',
+                                                fontWeight: 700,
+                                                fontSize: 14,
+                                                lineHeight: '1.2',
+                                                color: '#b91c1c',
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                marginBottom: 3
+                                            }}>
+                                                {v.name || rtwNames[rIdx] || ''} <span style={{ fontSize: 11, fontWeight: 500, color: '#ef4444' }}>(Reserve)</span>
+                                            </div>
+                                            <div></div>
+                                            <div style={{ fontSize: 11, color: '#b91c1c', fontWeight: 600, textAlign: 'center', lineHeight: '1.2' }}>Tag</div>
+                                            <div style={{ fontSize: 11, color: '#b91c1c', fontWeight: 600, textAlign: 'center', lineHeight: '1.2' }}>Nacht</div>
+                                        </div>
+                                        <div style={{
+                                            position: 'absolute',
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0,
+                                            height: '3px',
+                                            background: '#fca5a5',
+                                            borderRadius: '3px 3px 0 0'
+                                        }} />
+                                    </div>
+                                );
+                            })}
+                            {/* 4. RESERVE-NEFS (GANZ RECHTS) */}
+                            {(nefVehicles || []).map((v, nIdx) => ({ v, nIdx })).filter(item => item.v.category === 'reserve').map(({ v, nIdx }) => {
+                                const monthDays = buildDepartmentDaysForMonth(currentMonth);
+                                const periods = nefVehiclePeriods[v.id] || [];
+                                const specialDays = (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id));
+                                const isActiveInMonth = monthDays.some(dateStr => isVehicleActiveOnDate(dateStr, periods, specialDays, true).active);
+                                if (!isActiveInMonth) return null;
+
+                                const nefLabel = v.occupancy_mode === '24h' ? '24h' : 'Tag';
+
+                                return (
+                                    <div key={`nef_header_${nIdx}`} style={{
+                                        marginRight: 8,
+                                        marginBottom: 4,
+                                        width: 'var(--vehicle-card-width)',
+                                        minWidth: 'var(--vehicle-card-width)',
+                                        maxWidth: 'var(--vehicle-card-width)',
+                                        height: 58,
+                                        padding: '6px 8px 4px 8px',
+                                        boxSizing: 'border-box',
+                                        background: '#ffffff',
+                                        borderRadius: '8px 8px 0 0',
+                                        border: '1px solid transparent',
+                                        position: 'relative',
+                                        overflow: 'hidden'
+                                    }}>
+                                        <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '60px minmax(0, 1fr)',
+                                            gap: '6px',
+                                            alignItems: 'center'
+                                        }}>
+                                            <div style={{
+                                                gridColumn: '2 / span 1',
+                                                textAlign: 'center',
+                                                fontWeight: 700,
+                                                fontSize: 14,
+                                                lineHeight: '1.2',
+                                                color: '#b91c1c',
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                marginBottom: 3
+                                            }}>
+                                                {v.name || nefName || ''} <span style={{ fontSize: 11, fontWeight: 500, color: '#ef4444' }}>(Reserve)</span>
+                                            </div>
+                                            <div></div>
+                                            <div style={{ fontSize: 11, color: '#b91c1c', fontWeight: 600, textAlign: 'center', lineHeight: '1.2' }}>{nefLabel}</div>
+                                        </div>
+                                        <div style={{
+                                            position: 'absolute',
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0,
+                                            height: '3px',
+                                            background: '#fca5a5',
+                                            borderRadius: '3px 3px 0 0'
+                                        }} />
                                     </div>
                                 );
                             })}
@@ -2439,7 +2785,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                     }
 
                                     return (
-                                        <div key={d.date} style={{ marginBottom: 12 }}>
+                                        <div key={d.date} style={{ marginBottom: 12, width: 'max-content', minWidth: '100%' }}>
                                             {(() => {
                                                 const dt = new Date(d.date + 'T00:00:00');
                                                 const label = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }); // DD.MM
@@ -2473,7 +2819,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                         {commentCount > 0 && (
                                                             <div
                                                                 title={tooltipText || 'Kommentare anzeigen'}
-                                                                onClick={() => {
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
                                                                     setActiveCommentsData({ dateStr: label, comments: tooltipParts });
                                                                 }}
                                                                 style={{
@@ -2498,272 +2845,297 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                     </div>
                                                 );
                                             })()}
-                                            {viewMode === 'rtwnef' && <div className={styles.dayDivider} />}
+                                            {viewMode === 'rtwnef' && <div className={styles.dayDivider} style={{ width: '100%' }} />}
                                             <div>
                                                 <div className={styles.container}>
-                                                    {(rtwVehicles || []).map((v, rIdx) => {
-                                                        const enabled = (rtwActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                                                        if (!enabled) return null;
+                                                    {(() => {
+                                                        const renderRtwCard = (v: typeof rtwVehicles[0], rIdx: number) => {
+                                                            const isReserve = v.category === 'reserve';
+                                                            const dayStatus = isVehicleActiveOnDate(
+                                                                d.date,
+                                                                rtwVehiclePeriods[v.id] || [],
+                                                                (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'rtw') === 'rtw' && Number(s.vehicleId) === Number(v.id)),
+                                                                isReserve
+                                                            );
+                                                            if (!dayStatus.active) return null;
+
+                                                            const showTag = dayStatus.shiftMode !== 'nacht';
+                                                            const showNacht = dayStatus.shiftMode !== 'tag';
+                                                            const gridCols = (showTag && showNacht) ? '60px minmax(0, 1fr) minmax(0, 1fr)' : '60px minmax(0, 1fr)';
+
+                                                            return (
+                                                                <div key={`rtw_${rIdx}`} className={styles.rtwTable} style={{ gridTemplateColumns: gridCols }}>
+                                                                    <div className={styles.rowLabel}>FzF</div>
+                                                                    {showTag && (() => {
+                                                                        const slotId = `rtw${rIdx + 1}_tag_1`;
+                                                                        const value = getAssignedValue(slotId);
+
+                                                                        const optionsP = personnel
+                                                                            .filter(p => {
+                                                                                const hasQual = p.fahrzeugfuehrer;
+                                                                                const dutyCode = getDutyCodeFor(`p_${p.id}`);
+                                                                                const allowed = allowedByAuswertung(dutyCode, 'tag');
+                                                                                return allowed && hasQual;
+                                                                            })
+                                                                            .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
+                                                                        const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                        const allOptionsP = [...optionsP, ...guestsForDate];
+                                                                        const renderOptions = value && !allOptionsP.some(o => o.value === value)
+                                                                            ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
+
+                                                                        const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                                        const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
+
+                                                                        return (
+                                                                            <select
+                                                                                className={styles.select}
+                                                                                value={value}
+                                                                                disabled={!canWrite}
+                                                                                style={highlightStyle}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
+                                                                        );
+                                                                    })()}
+                                                                    {showNacht && (() => {
+                                                                        const slotId = `rtw${rIdx + 1}_nacht_1`;
+                                                                        const value = getAssignedValue(slotId);
+                                                                        const optionsP = personnel
+                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && p.fahrzeugfuehrer)
+                                                                            .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
+                                                                        const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                        const allOptionsP = [...optionsP, ...guestsForDate];
+                                                                        const renderOptions = value && !allOptionsP.some(o => o.value === value)
+                                                                            ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
+
+                                                                        const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                                        const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
+
+                                                                        return (
+                                                                            <select
+                                                                                className={styles.select}
+                                                                                value={value}
+                                                                                disabled={!canWrite}
+                                                                                style={highlightStyle}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
+                                                                        );
+                                                                    })()}
+                                                                    <div className={styles.rowLabel}>Ma</div>
+                                                                    {showTag && (() => {
+                                                                        const slotId = `rtw${rIdx + 1}_tag_2`;
+                                                                        const value = getAssignedValue(slotId);
+                                                                        const optionsP = personnel
+                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'tag'))
+                                                                            .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
+                                                                        const optionsA = azubis
+                                                                            .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'tag'))
+                                                                            .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
+                                                                        const options = [...optionsP, ...optionsA];
+                                                                        const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                        const allOptions = [...options, ...guestsForDate];
+                                                                        const renderOptions = value && !allOptions.some(o => o.value === value)
+                                                                            ? [{ value, label: findPersonLabelByValue(value) }, ...allOptions] : allOptions;
+
+                                                                        const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                                        const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
+
+                                                                        return (
+                                                                            <select className={styles.select} value={value}
+                                                                                disabled={!canWrite}
+                                                                                style={highlightStyle}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
+                                                                        );
+                                                                    })()}
+                                                                    {showNacht && (() => {
+                                                                        const slotId = `rtw${rIdx + 1}_nacht_2`;
+                                                                        const value = getAssignedValue(slotId);
+                                                                        const optionsP = personnel
+                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht'))
+                                                                            .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
+                                                                        const optionsA = azubis
+                                                                            .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'nacht'))
+                                                                            .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
+                                                                        const options = [...optionsP, ...optionsA];
+                                                                        const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                        const allOptions = [...options, ...guestsForDate];
+                                                                        const renderOptions = value && !allOptions.some(o => o.value === value)
+                                                                            ? [{ value, label: findPersonLabelByValue(value) }, ...allOptions] : allOptions;
+
+                                                                        const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                                        const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
+
+                                                                        return (
+                                                                            <select className={styles.select} value={value}
+                                                                                disabled={!canWrite}
+                                                                                style={highlightStyle}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
+                                                                        );
+                                                                    })()}
+                                                                    <div className={styles.rowLabel}>Azubi</div>
+                                                                    {showTag && (() => {
+                                                                        const slotId = `rtw${rIdx + 1}_tag_3`;
+                                                                        const value = getAssignedValue(slotId);
+                                                                        const optionsA = azubis
+                                                                            .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'tag'))
+                                                                            .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
+                                                                        const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                        const allOptionsA = [...optionsA, ...guestsForDate];
+                                                                        const renderOptions = value && !allOptionsA.some(o => o.value === value)
+                                                                            ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
+                                                                        return (
+                                                                            <select className={styles.select} value={value}
+                                                                                disabled={!canWrite}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
+                                                                        );
+                                                                    })()}
+                                                                    {showNacht && (() => {
+                                                                        const slotId = `rtw${rIdx + 1}_nacht_3`;
+                                                                        const value = getAssignedValue(slotId);
+                                                                        const optionsA = azubis
+                                                                            .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'nacht'))
+                                                                            .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
+                                                                        const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                        const allOptionsA = [...optionsA, ...guestsForDate];
+                                                                        const renderOptions = value && !allOptionsA.some(o => o.value === value)
+                                                                            ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
+                                                                        return (
+                                                                            <select className={styles.select} value={value}
+                                                                                disabled={!canWrite}
+                                                                                onChange={e => handleAssign(d.date, d.dayOfYear, e.target.value, slotId)}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); clearAssignedForSlot(slotId); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
+                                                                        );
+                                                                    })()}
+                                                                </div>
+                                                            );
+                                                        };
+
+                                                        const renderNefCard = (v: typeof nefVehicles[0], nefIdx: number) => {
+                                                            const isReserve = v.category === 'reserve';
+                                                            const dayStatus = isVehicleActiveOnDate(
+                                                                d.date,
+                                                                nefVehiclePeriods[v.id] || [],
+                                                                (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id)),
+                                                                isReserve
+                                                            );
+                                                            if (!dayStatus.active) return null;
+                                                            const nefLabel = dayStatus.shiftMode === 'tag' ? 'Tag' : (dayStatus.shiftMode === 'nacht' ? 'Nacht' : (v.occupancy_mode === 'tag' ? 'Tag' : '24h'));
+                                                            return (
+                                                                <div key={`nef_${nefIdx}`} className={styles.nefTable}>
+                                                                    {isReserve && (
+                                                                        <>
+                                                                            <div></div>
+                                                                            <div style={{ fontSize: 11, color: '#b91c1c', fontWeight: 600, textAlign: 'center' }}>{nefLabel}</div>
+                                                                        </>
+                                                                    )}
+                                                                    <div className={styles.rowLabel}>FzF</div>
+                                                                    {(() => {
+                                                                        const slotId = `nef${nefIdx + 1}_assist`;
+                                                                        const value = (() => {
+                                                                            let v = getAssignedValue(slotId);
+                                                                            if (!v && nefIdx === 0) v = getAssignedValue('nef_assist');
+                                                                            return v;
+                                                                        })();
+                                                                        const optionsP = personnel
+                                                                            .filter(p => {
+                                                                                if (!p.nef) return false;
+                                                                                const dutyCode = getDutyCodeFor(`p_${p.id}`);
+                                                                                const evalMode = auswertungByType[dutyCode];
+                                                                                if (!dutyCode || dutyCode.trim() === '') return false;
+                                                                                if (!evalMode || evalMode === 'off') return false;
+                                                                                return true;
+                                                                            })
+                                                                            .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
+                                                                        const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                        const allOptionsP = [...optionsP, ...guestsForDate];
+                                                                        const renderOptions = value && !allOptionsP.some(o => o.value === value)
+                                                                            ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
+
+                                                                        const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
+                                                                        const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
+
+                                                                        return (
+                                                                            <select className={styles.select} value={value}
+                                                                                disabled={!canWrite}
+                                                                                style={highlightStyle}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
+                                                                        );
+                                                                    })()}
+                                                                    <div className={styles.rowLabel}>Azubi</div>
+                                                                    {(() => {
+                                                                        const slotId = `nef${nefIdx + 1}_azubi`;
+                                                                        const value = (() => {
+                                                                            let v = getAssignedValue(slotId);
+                                                                            if (!v && nefIdx === 0) v = getAssignedValue('nef_azubi');
+                                                                            return v;
+                                                                        })();
+                                                                        const optionsA = azubis
+                                                                            .filter(a => {
+                                                                                const dutyCode = getDutyCodeFor(`a_${a.id}`);
+                                                                                const evalMode = auswertungByType[dutyCode];
+                                                                                if (!dutyCode || dutyCode.trim() === '') return false;
+                                                                                if (!evalMode || evalMode === 'off') return false;
+                                                                                return true;
+                                                                            })
+                                                                            .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
+                                                                        const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
+                                                                        const allOptionsA = [...optionsA, ...guestsForDate];
+                                                                        const renderOptions = value && !allOptionsA.some(o => o.value === value)
+                                                                            ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
+                                                                        return (
+                                                                            <select className={styles.select} value={value}
+                                                                                disabled={!canWrite}
+                                                                                onChange={e => handleAssign(d.date, d.dayOfYear, e.target.value, slotId)}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_azubi'); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
+                                                                        );
+                                                                    })()}
+                                                                </div>
+                                                            );
+                                                        };
+
+                                                        const indexedRtw = (rtwVehicles || []).map((v, rIdx) => ({ v, rIdx }));
+                                                        const indexedNef = (nefVehicles || []).map((v, nefIdx) => ({ v, nefIdx }));
+
                                                         return (
-                                                            <div key={`rtw_${rIdx}`} className={styles.rtwTable}>
-                                                                <div className={styles.rowLabel}>FzF</div>
-                                                                {(() => {
-                                                                    const slotId = `rtw${rIdx + 1}_tag_1`;
-                                                                    const value = getAssignedValue(slotId);
-
-                                                                    const optionsP = personnel
-                                                                        .filter(p => {
-                                                                            const hasQual = p.fahrzeugfuehrer;
-                                                                            const dutyCode = getDutyCodeFor(`p_${p.id}`);
-                                                                            const allowed = allowedByAuswertung(dutyCode, 'tag');
-                                                                            
-                                                                            if (d.day === 2 && rIdx === 0) {
-                                                                                console.log(`[DEBUG MonthTabs] Filter p=${p.name}, hasQual=${hasQual}, dutyCode=${dutyCode}, allowed=${allowed}`);
-                                                                            }
-                                                                            
-                                                                            return allowed && hasQual;
-                                                                        })
-                                                                        .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
-                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
-                                                                    const allOptionsP = [...optionsP, ...guestsForDate];
-                                                                    const renderOptions = value && !allOptionsP.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
-
-                                                                    // Prüfe ob hervorgehobene Person eingeteilt ist (rot)
-                                                                    const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
-                                                                    const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
-
-                                                                    if (d.day === 2) {
-                                                                        console.log('[DEBUG MonthTabs] RTW Select Day 2:', {
-                                                                            slotId,
-                                                                            value,
-                                                                            personnelCount: personnel.length,
-                                                                            matchingPersonnel: optionsP.map(o => o.label)
-                                                                        });
-                                                                    }
-                                                                    return (
-                                                                        <select
-                                                                            className={styles.select}
-                                                                            value={value}
-                                                                            disabled={!canWrite}
-                                                                            style={highlightStyle}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
-                                                                    );
-                                                                })()}
-                                                                {(() => {
-                                                                    const slotId = `rtw${rIdx + 1}_nacht_1`;
-                                                                    const value = getAssignedValue(slotId);
-                                                                    const optionsP = personnel
-                                                                        .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && p.fahrzeugfuehrer)
-                                                                        .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
-                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
-                                                                    const allOptionsP = [...optionsP, ...guestsForDate];
-                                                                    const renderOptions = value && !allOptionsP.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
-
-                                                                    // Prüfe ob hervorgehobene Person eingeteilt ist (blau)
-                                                                    const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
-                                                                    const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
-
-                                                                    return (
-                                                                        <select
-                                                                            className={styles.select}
-                                                                            value={value}
-                                                                            disabled={!canWrite}
-                                                                            style={highlightStyle}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
-                                                                    );
-                                                                })()}
-                                                                <div className={styles.rowLabel}>Ma</div>
-                                                                {(() => {
-                                                                    const slotId = `rtw${rIdx + 1}_tag_2`;
-                                                                    const value = getAssignedValue(slotId);
-                                                                    const optionsP = personnel
-                                                                        .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'tag'))
-                                                                        .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
-                                                                    const optionsA = azubis
-                                                                        .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'tag'))
-                                                                        .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
-                                                                    const options = [...optionsP, ...optionsA];
-                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
-                                                                    const allOptions = [...options, ...guestsForDate];
-                                                                    const renderOptions = value && !allOptions.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptions] : allOptions;
-
-                                                                    const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
-                                                                    const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
-
-                                                                    return (
-                                                                        <select className={styles.select} value={value}
-                                                                            disabled={!canWrite}
-                                                                            style={highlightStyle}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
-                                                                    );
-                                                                })()}
-                                                                {(() => {
-                                                                    const slotId = `rtw${rIdx + 1}_nacht_2`;
-                                                                    const value = getAssignedValue(slotId);
-                                                                    const optionsP = personnel
-                                                                        .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht'))
-                                                                        .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
-                                                                    const optionsA = azubis
-                                                                        .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'nacht'))
-                                                                        .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
-                                                                    const options = [...optionsP, ...optionsA];
-                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
-                                                                    const allOptions = [...options, ...guestsForDate];
-                                                                    const renderOptions = value && !allOptions.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptions] : allOptions;
-
-                                                                    const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
-                                                                    const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
-
-                                                                    return (
-                                                                        <select className={styles.select} value={value}
-                                                                            disabled={!canWrite}
-                                                                            style={highlightStyle}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
-                                                                    );
-                                                                })()}
-                                                                <div className={styles.rowLabel}>Azubi</div>
-                                                                {(() => {
-                                                                    const slotId = `rtw${rIdx + 1}_tag_3`;
-                                                                    const value = getAssignedValue(slotId);
-                                                                    const optionsA = azubis
-                                                                        .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'tag'))
-                                                                        .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
-                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
-                                                                    const allOptionsA = [...optionsA, ...guestsForDate];
-                                                                    const renderOptions = value && !allOptionsA.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
-                                                                    return (
-                                                                        <select className={styles.select} value={value}
-                                                                            disabled={!canWrite}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
-                                                                    );
-                                                                })()}
-                                                                {(() => {
-                                                                    const slotId = `rtw${rIdx + 1}_nacht_3`;
-                                                                    const value = getAssignedValue(slotId);
-                                                                    const optionsA = azubis
-                                                                        .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'nacht'))
-                                                                        .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
-                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
-                                                                    const allOptionsA = [...optionsA, ...guestsForDate];
-                                                                    const renderOptions = value && !allOptionsA.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
-                                                                    return (
-                                                                        <select className={styles.select} value={value}
-                                                                            disabled={!canWrite}
-                                                                            onChange={e => handleAssign(d.date, d.dayOfYear, e.target.value, slotId)}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); clearAssignedForSlot(slotId); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
-                                                                    );
-                                                                })()}
-                                                            </div>
+                                                            <>
+                                                                {/* 1. REGEL-RTWS */}
+                                                                {indexedRtw.filter(item => item.v.category !== 'reserve').map(item => renderRtwCard(item.v, item.rIdx))}
+                                                                {/* 2. REGEL-NEFS */}
+                                                                {indexedNef.filter(item => item.v.category !== 'reserve').map(item => renderNefCard(item.v, item.nefIdx))}
+                                                                {/* 3. RESERVE-RTWS (GANZ RECHTS) */}
+                                                                {indexedRtw.filter(item => item.v.category === 'reserve').map(item => renderRtwCard(item.v, item.rIdx))}
+                                                                {/* 4. RESERVE-NEFS (GANZ RECHTS) */}
+                                                                {indexedNef.filter(item => item.v.category === 'reserve').map(item => renderNefCard(item.v, item.nefIdx))}
+                                                            </>
                                                         );
-                                                    })}
-
-                                                    {(nefVehicles || []).map((v, nefIdx) => {
-                                                        const enabled = (nefActivations[v.id] ?? Array(12).fill(true))[currentMonth] !== false;
-                                                        if (!enabled) return null;
-                                                        return (
-                                                            <div key={`nef_${nefIdx}`} className={styles.nefTable}>
-                                                                <div className={styles.rowLabel}>FzF</div>
-                                                                {(() => {
-                                                                    const slotId = `nef${nefIdx + 1}_assist`;
-                                                                    const value = (() => {
-                                                                        let v = getAssignedValue(slotId);
-                                                                        if (!v && nefIdx === 0) v = getAssignedValue('nef_assist');
-                                                                        return v;
-                                                                    })();
-                                                                    const optionsP = personnel
-                                                                        .filter(p => {
-                                                                            if (!p.nef) return false;
-                                                                            const dutyCode = getDutyCodeFor(`p_${p.id}`);
-                                                                            const evalMode = auswertungByType[dutyCode];
-                                                                            // Nur Personen die an diesem Tag tatsächlich im aktiven Dienst sind (nicht 'off', nicht leer, nicht undefined)
-                                                                            if (!dutyCode || dutyCode.trim() === '') return false;
-                                                                            if (!evalMode || evalMode === 'off') return false;
-                                                                            return true;
-                                                                        })
-                                                                        .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
-                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
-                                                                    const allOptionsP = [...optionsP, ...guestsForDate];
-                                                                    const renderOptions = value && !allOptionsP.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsP] : allOptionsP;
-
-                                                                    const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
-                                                                    const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
-
-                                                                    return (
-                                                                        <select className={styles.select} value={value}
-                                                                            disabled={!canWrite}
-                                                                            style={highlightStyle}
-                                                                            onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
-                                                                    );
-                                                                })()}
-                                                                <div className={styles.rowLabel}>Azubi</div>
-                                                                {(() => {
-                                                                    const slotId = `nef${nefIdx + 1}_azubi`;
-                                                                    const value = (() => {
-                                                                        let v = getAssignedValue(slotId);
-                                                                        if (!v && nefIdx === 0) v = getAssignedValue('nef_azubi');
-                                                                        return v;
-                                                                    })();
-                                                                    const optionsA = azubis
-                                                                        .filter(a => {
-                                                                            const dutyCode = getDutyCodeFor(`a_${a.id}`);
-                                                                            const evalMode = auswertungByType[dutyCode];
-                                                                            // Nur Azubis die an diesem Tag tatsächlich im aktiven Dienst sind (nicht 'off', nicht leer, nicht undefined)
-                                                                            if (!dutyCode || dutyCode.trim() === '') return false;
-                                                                            if (!evalMode || evalMode === 'off') return false;
-                                                                            return true;
-                                                                        })
-                                                                        .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
-                                                                    const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
-                                                                    const allOptionsA = [...optionsA, ...guestsForDate];
-                                                                    const renderOptions = value && !allOptionsA.some(o => o.value === value)
-                                                                        ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
-                                                                    return (
-                                                                        <select className={styles.select} value={value}
-                                                                            disabled={!canWrite}
-                                                                            onChange={e => handleAssign(d.date, d.dayOfYear, e.target.value, slotId)}
-                                                                            onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_azubi'); } }}>
-                                                                            <option value=""></option>
-                                                                            {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                        </select>
-                                                                    );
-                                                                })()}
-                                                            </div>
-                                                        );
-                                                    })}
+                                                    })()}
                                                 </div>
                                             </div>
                                         </div>
@@ -2772,17 +3144,17 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 {(() => {
                                     // Kontrollkasten-Berechnungen (Monatsbasis) - jetzt zentralisiert
                                     const {
-                                        targetYearMap,
-                                        drivenYearMap,
-                                        allocTargetsInMonth,
-                                        perPersonAssignedWeightedInMonth,
-                                        perPersonNefInMonth,
-                                        perPersonItwInMonth,
-                                        perPersonRtwTagNightYear,
-                                        perPersonWeekendInYear,
-                                        targetCumulativeMap,
-                                        drivenCumulativeMap
-                                    } = (window as any).__sharedTargets || {};
+                                        targetYearMap = {},
+                                        drivenYearMap = {},
+                                        allocTargetsInMonth = {},
+                                        perPersonAssignedWeightedInMonth = {},
+                                        perPersonNefInMonth = {},
+                                        perPersonItwInMonth = {},
+                                        perPersonRtwTagNightYear = {},
+                                        perPersonWeekendInYear = {},
+                                        targetCumulativeMap = {},
+                                        drivenCumulativeMap = {}
+                                    } = sharedTargets || {};
 
                                     const items = (personnel || []).map(p => {
                                         const key = `p_${p.id}`;
@@ -2805,6 +3177,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                                         const ue50 = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[currentMonth] : !!ue50MonthlyMap[p.id]?.[currentMonth];
                                         const lpal = (p as any).lpalMonthly ? !!(p as any).lpalMonthly[currentMonth] : !!lpalMonthlyMap[p.id]?.[currentMonth];
+                                        const taucher = featureTaucher ? ((p as any).taucherMonthly ? !!(p as any).taucherMonthly[currentMonth] : !!taucherMonthlyMap[p.id]?.[currentMonth]) : false;
                                         const total = tn.tag + tn.nacht + nef + itw;
                                         const oldRtwShifts = (p as any).old_rtw_shifts || 0;
                                         const weekend = perPersonWeekendInYear[key] || 0;
@@ -2816,11 +3189,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                             return ty === year && tm === (currentMonth + 1);
                                         });
 
-                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, weekend, rest, cumDiff, teilzeit, hlfb, ue50, lpal, total, oldRtwShifts, hasTransfer } as any;
+                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, weekend, rest, cumDiff, teilzeit, hlfb, ue50, lpal, taucher, total, oldRtwShifts, hasTransfer } as any;
                                     });
                                     // Farbliche Hervorhebung: nur Personen mit Monats-Soll > 0 berücksichtigen, Rest (Jahr) auf 100%-Äquivalent normalisieren
                                     const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
-                                    const eligible = itemsWithIndex.filter(it => typeof it.target === 'number' && (it.target as number) > 0);
+                                    const eligible = itemsWithIndex.filter(it => !it.ue50 && !it.lpal && !it.isItwExternal && typeof it.rest === 'number' && Number.isFinite(it.rest));
                                     const normRests = eligible.map(it => {
                                         const fte = Math.max(0.01, (it.teilzeit || 100) / 100);
                                         return it.rest / fte;
@@ -3000,13 +3373,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                                         // 1. Musterfolge (Deaktiviert: ITW-Spalten nur anzeigen, wenn tatsächlich Einträge im Dienstplan existieren)
                                         // 1. Musterfolge (Loop-Vorschau für die aktuelle Abteilung)
-                                        const deptStr = `${department}. Abteilung`;
+                                        const myDeptCode = String(department);
                                         for (let i = 1; i <= daysInMonth; i++) {
                                             const iso = new Date(Date.UTC(year, currentMonth, i)).toISOString().slice(0, 10);
                                             if (holidays.has(iso)) continue;
 
                                             const seqs = [...(itwPatternSeqs || [])]
-                                                .filter(s => s.department === deptStr)
                                                 .sort((a, b) => a.startDate.localeCompare(b.startDate));
                                             if (seqs.length === 0) continue;
 
@@ -3020,7 +3392,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                             if (pat.length === 0) continue;
 
                                             const val = pat[((diffDays % pat.length) + pat.length) % pat.length];
-                                            if (val === 'IW') assignedItwDates.add(iso);
+                                            const slot = parseItwDay(val);
+                                            if (slot.fzf === myDeptCode || slot.maschinist === myDeptCode || val === 'IW') {
+                                                assignedItwDates.add(iso);
+                                            }
                                         }
 
                                         // 2. Tatsächliche Einträge
@@ -3076,7 +3451,27 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                     .filter(a => allowedByAuswertung(getDutyCodeForDate(`a_${a.id}`, date), 'any'))
                                                     .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
                                             } else if (role === 4) {
-                                                options = (itwDoctors || []).map(d => ({ value: `d:${d.id}`, label: d.name }));
+                                                const isDoctorActiveOnShiftDate = (docId: number) => {
+                                                    const periods = doctorPeriods[docId] || [];
+                                                    if (periods.length === 0) return true; // Keine Perioden definiert => dauerhaft aktiv
+                                                    const dIso = date.slice(0, 10);
+                                                    return periods.some(p => {
+                                                        const s = String(p.start_date || '').slice(0, 10);
+                                                        const e = String(p.end_date || '').slice(0, 10);
+                                                        return s <= dIso && e >= dIso;
+                                                    });
+                                                };
+
+                                                options = (itwDoctors || [])
+                                                    .filter(d => {
+                                                        const hasQual = d.is_itw === 1 || d.is_itw === true || String(d.is_itw) === '1' || (d.is_itw === undefined && !d.is_nef);
+                                                        if (!hasQual) return false;
+                                                        return isDoctorActiveOnShiftDate(d.id);
+                                                    })
+                                                    .map(d => {
+                                                        const label = [d.title, d.vorname, d.name].filter(Boolean).join(' ') || d.name;
+                                                        return { value: `d:${d.id}`, label };
+                                                    });
                                             }
                                             if (value && !options.some(o => o.value === value)) {
                                                 const label = findPersonLabelByValue(value);
@@ -3162,28 +3557,18 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 {(() => {
                                     // Kontrollkasten-Berechnungen (Monatsbasis) – identisch wie in RTW/NEF-Ansicht (mit Präsenz & HLF‑B Gewichtung)
                                     // Verwende gemeinsame SOLL-Berechnung (ITW-Tab)
-                                    const sharedTargets = (window as any).__sharedTargets || {
-                                        targetYearMap: {},
-                                        drivenYearMap: {},
-                                        allocTargetsInMonth: {},
-                                        perPersonAssignedWeightedInMonth: {},
-                                        perPersonNefInMonth: {},
-                                        perPersonItwInMonth: {},
-                                        perPersonRtwTagNightYear: {},
-                                        perPersonWeekendInYear: {}
-                                    };
                                     const {
-                                        targetYearMap,
-                                        drivenYearMap,
-                                        allocTargetsInMonth,
-                                        perPersonAssignedWeightedInMonth,
-                                        perPersonNefInMonth,
-                                        perPersonItwInMonth,
-                                        perPersonRtwTagNightYear,
-                                        perPersonWeekendInYear,
-                                        targetCumulativeMap,
-                                        drivenCumulativeMap
-                                    } = sharedTargets;
+                                        targetYearMap = {},
+                                        drivenYearMap = {},
+                                        allocTargetsInMonth = {},
+                                        perPersonAssignedWeightedInMonth = {},
+                                        perPersonNefInMonth = {},
+                                        perPersonItwInMonth = {},
+                                        perPersonRtwTagNightYear = {},
+                                        perPersonWeekendInYear = {},
+                                        targetCumulativeMap = {},
+                                        drivenCumulativeMap = {}
+                                    } = sharedTargets || {};
                                     const items = (personnel || []).map(p => {
                                         const key = `p_${p.id}`;
                                         const target = (allocTargetsInMonth[key] ?? 0) || '';
@@ -3203,13 +3588,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         const hlfb = (p as any).fahrzeugfuehrerHLFB === 1;
                                         const ue50 = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[currentMonth] : !!ue50MonthlyMap[p.id]?.[currentMonth];
                                         const lpal = (p as any).lpalMonthly ? !!(p as any).lpalMonthly[currentMonth] : !!lpalMonthlyMap[p.id]?.[currentMonth];
+                                        const taucher = featureTaucher ? ((p as any).taucherMonthly ? !!(p as any).taucherMonthly[currentMonth] : !!taucherMonthlyMap[p.id]?.[currentMonth]) : false;
                                         const oldRtwShifts = (p as any).oldRtwShifts || 0;
                                         const weekend = perPersonWeekendInYear[key] || 0;
                                         const total = tn.tag + tn.nacht + nef + itw;
-                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, weekend, rest, cumDiff, teilzeit, hlfb, ue50, lpal, total, oldRtwShifts } as any;
+                                        return { key, name: p.name, target, count, tag: tn.tag, nacht: tn.nacht, nef, itw, weekend, rest, cumDiff, teilzeit, hlfb, ue50, lpal, taucher, total, oldRtwShifts } as any;
                                     });
                                     const itemsWithIndex = items.map((it, idx) => ({ ...it, idx }));
-                                    const eligible = itemsWithIndex.filter(it => typeof it.target === 'number' && (it.target as number) > 0);
+                                    const eligible = itemsWithIndex.filter(it => !it.ue50 && !it.lpal && !it.isItwExternal && typeof it.rest === 'number' && Number.isFinite(it.rest));
                                     const normRests = eligible.map(it => {
                                         const fte = Math.max(0.01, (it.teilzeit || 100) / 100);
                                         return it.rest / fte;
