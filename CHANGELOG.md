@@ -1,6 +1,10 @@
 ## Build 1544 - 2026-10-20
 
-- automated build
+- **ITW-Vorplanung**: Manuelle Abteilungszuordnung je Phase für ITW-Planer
+  - ITW-Planer (`write_all`) können nun über ein Dropdown direkt an jeder einzelnen ITW-Phase und Planstelle (FzF 1, FzF 2, Maschinist) die zuständige Abteilung manuell anpassen.
+  - Der in den Einstellungen hinterlegte Grund-Loop (`itw_rotation_pattern`) bleibt davon unberührt und unabhängig.
+  - Manuell geänderte Positionen werden optisch hervorgehoben und können per `↺`-Button jederzeit wieder auf den Standard-Loop zurückgesetzt werden.
+  - Bei bereits eingeteiltem Personal werden die Dienstplan-Schichten (IW) nach Bestätigung automatisch auf die Schichttage der neuen Abteilung aktualisiert.
 
 ## Build 1543 - 2026-09-29
 
