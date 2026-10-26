@@ -7,9 +7,18 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v1.6.0** - ITW-Vorplanung mit maßgeschneiderter Mitarbeiter-Lückenübersicht (1-Klick-Selbsteintragung), 1-Seiten-PDF-Export für Planer, smarter Qualifikationsfilterung und entkoppeltem Rechtesystem für den ITW-Dienstplan (Lesen / Alle Lesen).
+**v1.6.1** - Automatisches 50er-Altersgrenzen-Management mit taggenauer Geburtstagsberechnung, automatischem Schichtberechnungsausschluss und Vorwarn-Entscheidungsdialog für RTW-Planer (Ü50-Unterstützerstatus oder Ausscheiden).
 
 ## Funktionen
+
+### Automatisches 50er-Altersgrenzen-Management & Ü50-Planung (v1.6.1+)
+- **Erfassung des Geburtsdatums**: Neues Feld „Geburtsdatum“ beim Erstellen und Bearbeiten von Personal sowie Anzeige in der Personalübersicht.
+- **Taggenaue Berechnung des 50. Geburtstags**: Exakte Berechnung des 50. Geburtstags mit optischem Status-Badge in der Personalbearbeitung.
+- **Automatischer Berechnungsausschluss**: Kollegen werden ab ihrem 50. Geburtstag taggenau für reguläre RTW-/NEF-Zuweisungen gesperrt und ab dem Folgemonat automatisch aus der Schichtsoll-Berechnung genommen (Soll = 0), damit die Jahres-Sollwerte der aktiven Kollegen stabil und mathematisch präzise bleiben.
+- **Planer-Benachrichtigung (1 Monat vorab)**: Beim ersten Login eines RTW-Planers ca. 1 Monat vor dem 50. Geburtstag erscheint ein moderner Hinweis-Dialog mit zwei Handlungsoptionen:
+  - *Als Ü50er in der RTW-Planung belassen*: Der Kollege erhält den Ü50-Status (Soll = 0) und unterstützt die Abteilung flexibel wie ein Azubi. Jede gefahrene Schicht senkt direkt das Gesamtsoll der anderen Kollegen.
+  - *Ab dem 50. Geburtstag aus der Liste entfernen*: Die Rettungsdienst-Qualifikation wird fristgerecht zum Monatsende des Geburtstags beendet.
+  - *Später entscheiden*: Schließt die Benachrichtigung für die aktuelle Sitzung.
 
 ### ITW-Vorplanung & Mitarbeiter-Self-Service (v1.6.0+)
 - **Personalisierte Lücken-Übersicht für Mitarbeiter**: Zeigt Mitarbeitern mit Selbsteintragungsrechten (`write`) ausschließlich die offenen Schichtblöcke der eigenen Abteilung mit passender Qualifikation (Fahrzeugführer / Maschinist) inklusive 1-Klick-Einteilung (*„Mich eintragen“*).
