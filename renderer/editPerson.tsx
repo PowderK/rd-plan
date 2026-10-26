@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShiftTransferManager } from './components/ShiftTransferManager';
+import { getFiftiethBirthday } from './utils/personPeriods';
 import './styles.css';
 
 interface QualificationPeriod {
@@ -457,6 +458,7 @@ const EditPerson: React.FC = () => {
   const id = Number(new URLSearchParams(window.location.search).get('id'));
   const [name, setName] = useState('');
   const [vorname, setVorname] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [teilzeit, setTeilzeit] = useState(100);
   const [department, setDepartment] = useState('1. Abteilung');
   const [sort, setSort] = useState(0);
@@ -503,6 +505,7 @@ const EditPerson: React.FC = () => {
         if (person) {
           setName(person.name || '');
           setVorname(person.vorname || '');
+          setBirthDate(person.birthDate || '');
           setTeilzeit(person.teilzeit ?? 100);
           setDepartment(person.department || '1. Abteilung');
           setSort(person.sort ?? 0);
@@ -595,7 +598,7 @@ const EditPerson: React.FC = () => {
 
     try {
       // Nur noch Basisdaten speichern - Qualifikationen werden separat über Perioden verwaltet
-      await (window as any).api.updatePerson({ id, name, vorname, teilzeit, department, active: true, sort, personnelNumber: personnelNumber.trim(), roleId, oldRtwShifts });
+      await (window as any).api.updatePerson({ id, name, vorname, birthDate: birthDate || null, teilzeit, department, active: true, sort, personnelNumber: personnelNumber.trim(), roleId, oldRtwShifts });
       if (window.opener) window.opener.postMessage('personnel-updated', '*');
       window.close();
     } catch (e) {
@@ -886,6 +889,11 @@ const EditPerson: React.FC = () => {
         </label>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span>Geburtsdatum</span>
+          <input type="date" value={birthDate} onChange={e => setBirthDate(e.target.value)} />
+        </label>
+
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span>Personalnummer *</span>
           <input value={personnelNumber} onChange={e => setPersonnelNumber(e.target.value)} />
         </label>
@@ -904,6 +912,33 @@ const EditPerson: React.FC = () => {
           <span>Teilzeit (%)</span>
           <input type="number" value={teilzeit} min={0} max={100} onChange={e => setTeilzeit(Number(e.target.value))} />
         </label>
+
+        {birthDate && (() => {
+          const bday50 = getFiftiethBirthday(birthDate);
+          if (!bday50) return null;
+          const bdayFormatted = bday50.toLocaleDateString('de-DE');
+          const now = new Date();
+          const isPast = now >= bday50;
+          return (
+            <div style={{
+              gridColumn: '1 / span 2',
+              padding: '10px 14px',
+              background: isPast ? '#fff3cd' : '#e8f4fd',
+              border: `1px solid ${isPast ? '#ffeeba' : '#b8daff'}`,
+              borderRadius: 6,
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              color: isPast ? '#856404' : '#0c5460'
+            }}>
+              <span style={{ fontSize: '18px' }}>🎂</span>
+              <div>
+                <strong>50. Geburtstag: {bdayFormatted}</strong> {isPast ? '— Der Kollege hat das 50. Lebensjahr bereits vollendet.' : '— 50. Geburtstag steht bevor.'}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {showOldRtwShiftsFeature && (

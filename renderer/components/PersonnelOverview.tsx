@@ -267,6 +267,7 @@ interface Person {
   roleId?: number;
   personnelNumber?: string;
   department?: string;
+  birthDate?: string;
 }
 
 interface Azubi { id: number; name: string; vorname: string; lehrjahr: number; active?: number | boolean; department?: string; }
@@ -1766,6 +1767,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                     <tr className={styles.thead}>
                       <th>Name</th>
                       <th>Vorname</th>
+                      <th style={{ width: 110 }}>Geburtsdatum</th>
                       <th style={{ width: 130 }}>Personalnummer</th>
                       <th style={{ width: 160 }}>Nutzerrolle</th>
                       <th style={{ width: 120 }} className={styles.center}>Qualifikationen</th>
@@ -1799,6 +1801,12 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                             )}
                           </td>
                           <td>{person.vorname}</td>
+                          <td style={{ fontSize: '13px' }}>
+                            {person.birthDate ? (() => {
+                              const [y, m, d] = person.birthDate.split('-');
+                              return `${d}.${m}.${y}`;
+                            })() : '—'}
+                          </td>
                           <td>{person.personnelNumber || '—'}</td>
                           <td>
                             {roles.find(r => r.id === person.roleId)?.name || '—'}
@@ -1876,6 +1884,7 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                         <tr className={styles.thead} style={{ color: '#666' }}>
                           <th>Name</th>
                           <th>Vorname</th>
+                          <th style={{ width: 110 }}>Geburtsdatum</th>
                           <th style={{ width: 130 }}>Personalnummer</th>
                           <th style={{ width: 160 }}>Nutzerrolle</th>
                           <th style={{ width: 120 }} className={styles.center}>Qualifikationen</th>
@@ -1902,6 +1911,12 @@ const PersonnelOverview: React.FC<PersonnelOverviewProps & { departmentName?: st
                                 )}
                               </td>
                               <td>{person.vorname}</td>
+                              <td style={{ fontSize: '13px' }}>
+                                {person.birthDate ? (() => {
+                                  const [y, m, d] = person.birthDate.split('-');
+                                  return `${d}.${m}.${y}`;
+                                })() : '—'}
+                              </td>
                               <td>{person.personnelNumber || '—'}</td>
                               <td>
                                 {roles.find(r => r.id === person.roleId)?.name || '—'}

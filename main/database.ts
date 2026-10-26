@@ -186,7 +186,8 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
             itwFahrzeugfuehrer INTEGER NOT NULL DEFAULT 0,
             sort INTEGER NOT NULL DEFAULT 0,
             active INTEGER NOT NULL DEFAULT 1,
-            department TEXT NOT NULL DEFAULT 'Rettungsdienst'
+            department TEXT NOT NULL DEFAULT 'Rettungsdienst',
+            birthDate TEXT DEFAULT NULL
         )
     `);
 
@@ -249,6 +250,11 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
         if (!colsAfter.some((c: any) => c.name === 'old_rtw_shifts')) {
             await db.exec("ALTER TABLE personnel ADD COLUMN old_rtw_shifts INTEGER DEFAULT 0");
             await db.exec("UPDATE personnel SET old_rtw_shifts = 0 WHERE old_rtw_shifts IS NULL");
+        }
+
+        // Migration: add 'birthDate' if missing
+        if (!colsAfter.some((c: any) => c.name === 'birthDate')) {
+            await db.exec("ALTER TABLE personnel ADD COLUMN birthDate TEXT DEFAULT NULL");
         }
     } catch (e) {
     }
@@ -1151,21 +1157,21 @@ export const getPersonnel = async (db: AsyncDB, includeInactive: boolean = false
 
 export const addPersonnel = async (db: AsyncDB, person: any) => {
     // Contact fields removed
-    const { name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, personnelNumber, roleId, oldRtwShifts, department } = person;
+    const { name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, personnelNumber, roleId, oldRtwShifts, department, birthDate } = person;
 
     return await db.run(
-        'INSERT INTO personnel (name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, personnelNumber, roleId, old_rtw_shifts, department) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [name, vorname, active !== false ? 1 : 0, teilzeit || 0, fahrzeugfuehrer ? 1 : 0, fahrzeugfuehrerHLFB ? 1 : 0, nef ? 1 : 0, itwMaschinist ? 1 : 0, itwFahrzeugfuehrer ? 1 : 0, sort || 0, personnelNumber || null, roleId || null, oldRtwShifts || 0, department || '1. Abteilung']
+        'INSERT INTO personnel (name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, sort, personnelNumber, roleId, old_rtw_shifts, department, birthDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [name, vorname, active !== false ? 1 : 0, teilzeit || 0, fahrzeugfuehrer ? 1 : 0, fahrzeugfuehrerHLFB ? 1 : 0, nef ? 1 : 0, itwMaschinist ? 1 : 0, itwFahrzeugfuehrer ? 1 : 0, sort || 0, personnelNumber || null, roleId || null, oldRtwShifts || 0, department || '1. Abteilung', birthDate || null]
     );
 };
 
 export const updatePersonnel = async (db: AsyncDB, person: any) => {
     // Contact fields removed
-    const { id, name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, personnelNumber, roleId, oldRtwShifts, department } = person;
+    const { id, name, vorname, active, teilzeit, fahrzeugfuehrer, fahrzeugfuehrerHLFB, nef, itwMaschinist, itwFahrzeugfuehrer, personnelNumber, roleId, oldRtwShifts, department, birthDate } = person;
 
     await db.run(
-        'UPDATE personnel SET name = ?, vorname = ?, active = ?, teilzeit = ?, fahrzeugfuehrer = ?, fahrzeugfuehrerHLFB = ?, nef = ?, itwMaschinist = ?, itwFahrzeugfuehrer = ?, personnelNumber = ?, roleId = ?, old_rtw_shifts = ?, department = ? WHERE id = ?',
-        [name, vorname, active !== false ? 1 : 0, teilzeit || 0, fahrzeugfuehrer ? 1 : 0, fahrzeugfuehrerHLFB ? 1 : 0, nef ? 1 : 0, itwMaschinist ? 1 : 0, itwFahrzeugfuehrer ? 1 : 0, personnelNumber || null, roleId || null, oldRtwShifts || 0, department || '1. Abteilung', id]
+        'UPDATE personnel SET name = ?, vorname = ?, active = ?, teilzeit = ?, fahrzeugfuehrer = ?, fahrzeugfuehrerHLFB = ?, nef = ?, itwMaschinist = ?, itwFahrzeugfuehrer = ?, personnelNumber = ?, roleId = ?, old_rtw_shifts = ?, department = ?, birthDate = ? WHERE id = ?',
+        [name, vorname, active !== false ? 1 : 0, teilzeit || 0, fahrzeugfuehrer ? 1 : 0, fahrzeugfuehrerHLFB ? 1 : 0, nef ? 1 : 0, itwMaschinist ? 1 : 0, itwFahrzeugfuehrer ? 1 : 0, personnelNumber || null, roleId || null, oldRtwShifts || 0, department || '1. Abteilung', birthDate || null, id]
     );
 };
 

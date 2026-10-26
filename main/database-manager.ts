@@ -1732,6 +1732,12 @@ export class DatabaseManager {
       await db.exec("UPDATE personnel SET old_rtw_shifts = 0 WHERE old_rtw_shifts IS NULL");
     }
 
+    // Migration: add 'birthDate' to personnel if missing
+    if (!personnelCols.some((c: any) => c.name === 'birthDate')) {
+      console.log('[DatabaseManager] Adding birthDate to personnel');
+      await db.exec("ALTER TABLE personnel ADD COLUMN birthDate TEXT DEFAULT NULL");
+    }
+
     // Migration: add 'anrede' and 'title' to itw_doctors if missing
     const itwDoctorsCols = await db.all("PRAGMA table_info('itw_doctors')");
     if (itwDoctorsCols.length > 0) {
@@ -2333,7 +2339,8 @@ export class DatabaseManager {
             itwFahrzeugfuehrer INTEGER NOT NULL DEFAULT 0,
       sort INTEGER NOT NULL DEFAULT '0',
       active INTEGER NOT NULL DEFAULT '1',
-      department TEXT NOT NULL DEFAULT '1. Abteilung'
+      department TEXT NOT NULL DEFAULT '1. Abteilung',
+      birthDate TEXT DEFAULT NULL
         );
         
         CREATE TABLE IF NOT EXISTS settings (

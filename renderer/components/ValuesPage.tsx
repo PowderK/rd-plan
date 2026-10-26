@@ -6,6 +6,7 @@ import {
   indexDepartmentPeriodsByPerson,
   qualificationAppliesInMonth,
   yearMonthKey,
+  isMonthAfterFiftiethBirthday,
 } from '../utils/personPeriods';
 import { isVehicleActiveOnDate, VehiclePeriod, VehicleSpecialDay } from '../utils/vehiclePeriods';
 import {
@@ -120,7 +121,11 @@ function usePersonnel(year: number, departmentName?: string) {
           if (ue50Periods.length > 0) ue50Monthly[m] = qualApplies(ue50Periods, ym);
           if (lpalPeriods.length > 0) lpalMonthly[m] = qualApplies(lpalPeriods, ym);
           if (isTaucherEnabled && taucherPeriods.length > 0) taucherMonthly[m] = qualApplies(taucherPeriods, ym);
-          if (rdPeriods.length > 0) rettungsdienstMonthly[m] = qualApplies(rdPeriods, ym);
+          let rdActive = rdPeriods.length > 0 ? qualApplies(rdPeriods, ym) : true;
+          if (p.birthDate && !ue50Monthly[m] && isMonthAfterFiftiethBirthday(p.birthDate, ym)) {
+            rdActive = false;
+          }
+          rettungsdienstMonthly[m] = rdActive;
         }
 
         const deptActiveMonthly = buildDepartmentActiveMonthly(

@@ -1,6 +1,17 @@
-## Build 1545 - 2026-10-26
+## Build 1547 - 2026-10-26
 
 - automated build
+
+## Version 1.6.1 - 2026-10-26
+
+- **Automatische 50. Geburtstags-Erkennung & Ü50-Planungsentscheidung**:
+  - **Geburtsdatum-Erfassung**: Neues Feld „Geburtsdatum“ beim Anlegen und Bearbeiten von Personal.
+  - **Taggenaue 50. Geburtstags-Berechnung**: Automatische Ermittlung des exakten Datums des 50. Geburtstags.
+  - **Automatische Herausnahme aus der RTW-Berechnung**: Sobald ein Mitarbeiter 50 Jahre alt wird, scheidet er automatisch aus der regulären RTW-Berechnung und Besetzungsoptionen aus, sofern er nicht als Ü50 übernommen wird.
+  - **Planer-Benachrichtigung 1 Monat im Voraus**: Beim ersten Login eines RTW-Planers erscheint 1 Monat vor dem 50. Geburtstag eines Kollegen ein Entscheidungsdialog:
+    - *Als Ü50er in der RTW-Planung belassen*: Kollege unterstützt das Team weiterhin wie ein Azubi (Jahres-Soll = 0, Entlastung der Abteilung).
+    - *Ab 50. Geburtstag aus der Liste entfernen*: Terminiert die Rettungsdienst-Qualifikation zum 50. Geburtstag.
+  - **Jahressoll-Stabilität**: Nahtlose Integration in die ganzjährige Hamilton-Sollwertberechnung (keine unerwünschten Sollwert-Sprünge bei Monatswechseln).
 
 ## Build 1544 - 2026-10-20
 

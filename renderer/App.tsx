@@ -9,6 +9,7 @@ import SettingsMenu from './components/SettingsMenu';
 import ValuesPage from './components/ValuesPage';
 import EinteilungPage from './components/EinteilungPage';
 import ItwPage from './components/ItwPage';
+import UpcomingUe50Modal from './components/UpcomingUe50Modal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './login';
 import './global-layout.css';
@@ -248,6 +249,7 @@ const AppContent: React.FC = () => {
                 <div style={{ gridRow: 3, gridColumn: 2 }}>
                     <Footer actions={footerActions} />
                 </div>
+                <UpcomingUe50Modal />
             </div>
         );
 };

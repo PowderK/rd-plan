@@ -4,6 +4,7 @@ import { buildVehicleActivationMap, calculateTargets } from '../utils/calculatio
 import { rosterReleasedSettingKey } from '../utils/rosterRelease';
 import { isVehicleActiveOnDate } from '../utils/vehiclePeriods';
 import { parseItwDay } from '../utils/itwPatternUtils';
+import { isTurnedFiftyOnDate } from '../utils/personPeriods';
 import styles from './MonthTabs.module.css';
 import { Kontrollkasten } from './Kontrollkasten';
 import { AzubiAutoAssignDialog, ShiftSummary, ProposedAssignment, ConflictAzubi } from './AzubiAutoAssignDialog';
@@ -32,6 +33,8 @@ interface MonthTabsProps {
     /** Vollständige Namensliste der Abteilung (ohne Monatsfilter) für Slot-Labels. */
     personnelLookup?: { id: number; name: string; vorname?: string }[];
     personnel: { id: number; name: string; vorname: string; fahrzeugfuehrer?: boolean; nef?: boolean; fahrzeugfuehrerHLFB?: boolean | number; teilzeit?: number }[];
+    /** Alle für das Jahr relevanten Personen der Abteilung (für ganzjährige Soll-Berechnung). */
+    allPersonnel?: any[];
     azubis: { id: number; name: string; vorname: string; lehrjahr: number }[];
     roster: Record<string, Record<string, { value: string; type: string }>>;
     year: number;
@@ -55,7 +58,7 @@ type AssignmentUndoEntry = {
     ts: number;
 };
 
-const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYearChange, departmentName, personnelLookup, personnel, azubis, roster, year, shiftPattern, deptPatternSeqs = [], onRosterChanged, onEntryAssigned }) => {
+const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYearChange, departmentName, personnelLookup, personnel, allPersonnel, azubis, roster, year, shiftPattern, deptPatternSeqs = [], onRosterChanged, onEntryAssigned }) => {
     const { hasPermission, currentUser } = useAuth();
     const canWrite = hasPermission('einteilung', 'write');
     // Read permission is implicit if they can see the page, but we use it to check for "read-only" status
@@ -338,7 +341,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const taucherMap: Record<number, boolean[]> = {};
                 const combinedIds = new Set<number>();
                 const lpalOnlyIds = new Set<number>();
-                const candidateList = (personnelLookup && personnelLookup.length > 0) ? personnelLookup : personnel;
+                const candidateList = (allPersonnel && allPersonnel.length > 0) ? allPersonnel : ((personnelLookup && personnelLookup.length > 0) ? personnelLookup : personnel);
                 for (const p of candidateList) {
                     try {
                         const periods = await (window as any).api.getQualificationPeriods?.(p.id) || [];
@@ -389,7 +392,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             } catch { setUe50Ids(new Set()); setLpalIds(new Set()); setUe50MonthlyMap({}); setLpalMonthlyMap({}); setTaucherMonthlyMap({}); }
         };
         loadUe50();
-    }, [year, personnel, personnelLookup]);
+    }, [year, personnel, allPersonnel, personnelLookup]);
 
     useEffect(() => {
         const load = async () => {
@@ -718,6 +721,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         if (desired === '24h') return evalMode === '24h';
         return false;
     }, [auswertungByType]);
+
+    const isEligibleOnDate = useCallback((p: any, dateStr: string) => {
+        const isUe50 = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[currentMonth] : !!ue50MonthlyMap[p.id]?.[currentMonth];
+        if (p.birthDate && !isUe50 && isTurnedFiftyOnDate(p.birthDate, dateStr)) {
+            return false;
+        }
+        return true;
+    }, [currentMonth, ue50MonthlyMap]);
 
     const getAssignedValueFor = useCallback((date: string, slotId: string): string => {
         const mergedKeys = Array.from(new Set([...(Object.keys(localRoster || {})), ...(Object.keys(roster || {}))]));
@@ -1642,11 +1653,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             }
 
             // 2. Calculate Targets using Shared Utility
+            const targetPersonnel = (allPersonnel && allPersonnel.length > 0) ? allPersonnel : personnel;
             const hlfbFactor = hlfbPercentage / 100;
             const targetsByPersonId = calculateTargets(
                 year,
                 flattenedRoster,
-                personnel,
+                targetPersonnel,
                 azubis,
                 ue50MonthlyMap,
                 auswertungByType,
@@ -1667,7 +1679,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             const targetYearMap: Record<string, number> = {};
             const allocTargetsInMonth: Record<string, number> = {};
 
-            for (const p of personnel) {
+            for (const p of targetPersonnel) {
                 const key = `p_${p.id}`;
                 const t = targetsByPersonId[p.id] || Array(12).fill(0);
                 targetYearMap[key] = t.reduce((a, b) => a + b, 0);
@@ -1696,7 +1708,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             const targetCumulativeMap: Record<string, number> = {};
             const drivenCumulativeMap: Record<string, number> = {};
 
-            for (const p of personnel) {
+            for (const p of targetPersonnel) {
                 const key = `p_${p.id}`;
                 const t = targetsByPersonId[p.id] || Array(12).fill(0);
 
@@ -1754,7 +1766,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 drivenCumulativeMap[key] = cumDriven;
             }
 
-            for (const p of (personnel || [])) {
+            for (const p of (targetPersonnel || [])) {
                 const key = `p_${p.id}`;
 
                 // Yearly Stats
@@ -1939,7 +1951,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         (window as any).__sharedTargets = result;
         return result;
 
-    }, [year, roster, localRoster, personnel, azubis, ue50Ids, ue50MonthlyMap, lpalMonthlyMap, taucherMonthlyMap, auswertungByType,
+    }, [year, roster, localRoster, personnel, allPersonnel, azubis, ue50Ids, ue50MonthlyMap, lpalMonthlyMap, taucherMonthlyMap, auswertungByType,
         rtwVehicles, nefVehicles, rtwActivations, nefActivations, rtwVehiclePeriods, nefVehiclePeriods, department,
         deptPatternSeqs, hlfbPeriodsByPerson, hlfbPercentage, shiftTransfers, currentMonth, holidays,
         weekendFridayDay, weekendFridayNight, weekendSaturdayDay, weekendSaturdayNight, weekendSundayDay, weekendSundayNight,
@@ -2908,7 +2920,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                                 const hasQual = p.fahrzeugfuehrer;
                                                                                 const dutyCode = getDutyCodeFor(`p_${p.id}`);
                                                                                 const allowed = allowedByAuswertung(dutyCode, 'tag');
-                                                                                return allowed && hasQual;
+                                                                                return allowed && hasQual && isEligibleOnDate(p, d.date);
                                                                             })
                                                                             .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                                         const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
@@ -2936,7 +2948,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         const slotId = `rtw${rIdx + 1}_nacht_1`;
                                                                         const value = getAssignedValue(slotId);
                                                                         const optionsP = personnel
-                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && p.fahrzeugfuehrer)
+                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && p.fahrzeugfuehrer && isEligibleOnDate(p, d.date))
                                                                             .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                                         const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
                                                                         const allOptionsP = [...optionsP, ...guestsForDate];
@@ -2964,7 +2976,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         const slotId = `rtw${rIdx + 1}_tag_2`;
                                                                         const value = getAssignedValue(slotId);
                                                                         const optionsP = personnel
-                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'tag'))
+                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'tag') && isEligibleOnDate(p, d.date))
                                                                             .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                                         const optionsA = azubis
                                                                             .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'tag'))
@@ -2993,7 +3005,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         const slotId = `rtw${rIdx + 1}_nacht_2`;
                                                                         const value = getAssignedValue(slotId);
                                                                         const optionsP = personnel
-                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht'))
+                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && isEligibleOnDate(p, d.date))
                                                                             .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                                         const optionsA = azubis
                                                                             .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'nacht'))
@@ -3096,6 +3108,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                                 const evalMode = auswertungByType[dutyCode];
                                                                                 if (!dutyCode || dutyCode.trim() === '') return false;
                                                                                 if (!evalMode || evalMode === 'off') return false;
+                                                                                if (!isEligibleOnDate(p, d.date)) return false;
                                                                                 return true;
                                                                             })
                                                                             .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
