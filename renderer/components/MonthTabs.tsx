@@ -99,6 +99,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [lpalMonthlyMap, setLpalMonthlyMap] = useState<Record<number, boolean[]>>({});
     const [taucherMonthlyMap, setTaucherMonthlyMap] = useState<Record<number, boolean[]>>({});
     const [featureTaucher, setFeatureTaucher] = useState<boolean>(true);
+    const [featureAutoUe50, setFeatureAutoUe50] = useState<boolean>(true);
     // HLF-B Perioden und Prozentzahl für korrekte Berechnung
     const [hlfbPeriodsByPerson, setHlfbPeriodsByPerson] = useState<Record<number, Array<{ startYM: string; endYM?: string }>>>({});
     const [hlfbPercentage, setHlfbPercentage] = useState<number>(75);
@@ -500,6 +501,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     setFeatureTaucher(globT === null || globT === undefined ? true : (globT === 'true' || globT === true || globT === '1'));
                 }
             } catch { }
+            try {
+                const featUe50 = await (window as any).api.getSetting(`feature_auto_ue50_${departmentName}`);
+                if (featUe50 !== null && featUe50 !== undefined) {
+                    setFeatureAutoUe50(featUe50 === 'true' || featUe50 === true || featUe50 === '1');
+                } else {
+                    const globUe50 = await (window as any).api.getSetting('feature_auto_ue50');
+                    setFeatureAutoUe50(globUe50 === null || globUe50 === undefined ? true : (globUe50 === 'true' || globUe50 === true || globUe50 === '1'));
+                }
+            } catch { }
             // Neue Fahrzeug-Zeiträume laden
             try {
                 const rtwP = await (window as any).api.getAllRtwVehiclePeriods?.();
@@ -592,6 +602,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     } else {
                         const globT = await (window as any).api.getSetting('feature_taucher');
                         setFeatureTaucher(globT === null || globT === undefined ? true : (globT === 'true' || globT === true || globT === '1'));
+                    }
+                } catch { }
+                try {
+                    const featUe50 = await (window as any).api.getSetting(`feature_auto_ue50_${departmentName}`);
+                    if (featUe50 !== null && featUe50 !== undefined) {
+                        setFeatureAutoUe50(featUe50 === 'true' || featUe50 === true || featUe50 === '1');
+                    } else {
+                        const globUe50 = await (window as any).api.getSetting('feature_auto_ue50');
+                        setFeatureAutoUe50(globUe50 === null || globUe50 === undefined ? true : (globUe50 === 'true' || globUe50 === true || globUe50 === '1'));
                     }
                 } catch { }
                 try {
@@ -724,11 +743,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
     const isEligibleOnDate = useCallback((p: any, dateStr: string) => {
         const isUe50 = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[currentMonth] : !!ue50MonthlyMap[p.id]?.[currentMonth];
-        if (p.birthDate && !isUe50 && isTurnedFiftyOnDate(p.birthDate, dateStr)) {
+        if (featureAutoUe50 && p.birthDate && !isUe50 && isTurnedFiftyOnDate(p.birthDate, dateStr)) {
             return false;
         }
         return true;
-    }, [currentMonth, ue50MonthlyMap]);
+    }, [currentMonth, ue50MonthlyMap, featureAutoUe50]);
 
     const getAssignedValueFor = useCallback((date: string, slotId: string): string => {
         const mergedKeys = Array.from(new Set([...(Object.keys(localRoster || {})), ...(Object.keys(roster || {}))]));
@@ -1672,7 +1691,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 hlfbPeriodsByPerson,
                 shiftTransfers, // <-- Pass loaded transfers here
                 { rtwPeriods: rtwVehiclePeriods, nefPeriods: nefVehiclePeriods },
-                hlfbFactor
+                hlfbFactor,
+                featureAutoUe50
             );
 
             // 3. Map Targets to MonthTabs format
@@ -1955,7 +1975,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         rtwVehicles, nefVehicles, rtwActivations, nefActivations, rtwVehiclePeriods, nefVehiclePeriods, department,
         deptPatternSeqs, hlfbPeriodsByPerson, hlfbPercentage, shiftTransfers, currentMonth, holidays,
         weekendFridayDay, weekendFridayNight, weekendSaturdayDay, weekendSaturdayNight, weekendSundayDay, weekendSundayNight,
-        weekendHolidayDay, weekendHolidayNight, itwEnabled, featureTaucher, getNefAssistWeight]);
+        weekendHolidayDay, weekendHolidayNight, itwEnabled, featureTaucher, featureAutoUe50, getNefAssistWeight]);
 
     const availablePersonKeys = React.useMemo(() => {
         if (!selectedAvailDate) return undefined;
@@ -3295,7 +3315,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 const isUe50InMonth = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[mIdx] : !!ue50MonthlyMap[p.id]?.[mIdx];
                                                 for (let d = 1; d <= dim; d++) {
                                                     const iso = new Date(Date.UTC(year, mIdx, d)).toISOString().slice(0, 10);
-                                                    if (p.birthDate && !isUe50InMonth && isTurnedFiftyOnDate(p.birthDate, iso)) {
+                                                    if (featureAutoUe50 && p.birthDate && !isUe50InMonth && isTurnedFiftyOnDate(p.birthDate, iso)) {
                                                         continue;
                                                     }
                                                     const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
@@ -3700,7 +3720,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 const isUe50InMonth = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[mIdx] : !!ue50MonthlyMap[p.id]?.[mIdx];
                                                 for (let d = 1; d <= dim; d++) {
                                                     const iso = new Date(Date.UTC(year, mIdx, d)).toISOString().slice(0, 10);
-                                                    if (p.birthDate && !isUe50InMonth && isTurnedFiftyOnDate(p.birthDate, iso)) {
+                                                    if (featureAutoUe50 && p.birthDate && !isUe50InMonth && isTurnedFiftyOnDate(p.birthDate, iso)) {
                                                         continue;
                                                     }
                                                     const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];

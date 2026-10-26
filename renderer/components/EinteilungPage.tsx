@@ -118,6 +118,18 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
         if (setting) taucherQualName = String(setting);
       } catch { }
 
+      // Lade Feature Toggle Automatische Ü50-Berechnung
+      let autoUe50Enabled = true;
+      try {
+        const feat = await (window as any).api.getSetting(`feature_auto_ue50_${departmentName}`);
+        if (feat !== null && feat !== undefined) {
+          autoUe50Enabled = (feat === 'true' || feat === true || feat === '1');
+        } else {
+          const globFeat = await (window as any).api.getSetting('feature_auto_ue50');
+          autoUe50Enabled = (globFeat === null || globFeat === undefined ? true : (globFeat === 'true' || globFeat === true || globFeat === '1'));
+        }
+      } catch { }
+
       // Lade RTW und NEF Fahrzeuge um die konfigurierten Qualifikationen zu ermitteln
       const rtwVehicles = await (window as any).api.getRtwVehicles?.(year) || [];
       const nefVehicles = await (window as any).api.getNefVehicles?.(year) || [];
@@ -206,8 +218,8 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
             if (hasLpalPeriod) lpalMonthly[m] = qualApplies(lpalPeriods, ym);
             if (hasTaucherPeriod) taucherMonthly[m] = qualApplies(taucherPeriods, ym);
             let rdActive = hasRettungsdienstPeriod ? qualApplies(rettungsdienstPeriods, ym) : true;
-            // Automatisch ab Folgemonat des 50. Geburtstags aus der RTW-Berechnung nehmen, falls kein Ü50-Status
-            if (person.birthDate && !ue50Monthly[m] && isMonthAfterFiftiethBirthday(person.birthDate, ym)) {
+            // Automatisch ab Folgemonat des 50. Geburtstags aus der RTW-Berechnung nehmen, falls Feature aktiv und kein Ü50-Status
+            if (autoUe50Enabled && person.birthDate && !ue50Monthly[m] && isMonthAfterFiftiethBirthday(person.birthDate, ym)) {
               rdActive = false;
             }
             rettungsdienstMonthly[m] = rdActive;

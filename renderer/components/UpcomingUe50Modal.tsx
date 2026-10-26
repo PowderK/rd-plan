@@ -41,6 +41,24 @@ export const UpcomingUe50Modal: React.FC<UpcomingUe50ModalProps> = ({ onDecided 
       try {
         setLoading(true);
 
+        // Prüfe ob Feature "Automatische Ü50-Berechnung" aktiv ist
+        const dept = currentUser?.assignedDepartment && currentUser.assignedDepartment !== 'all'
+          ? currentUser.assignedDepartment
+          : '1. Abteilung';
+        const [featAuto, globAuto] = await Promise.all([
+          (window as any).api.getSetting?.(`feature_auto_ue50_${dept}`),
+          (window as any).api.getSetting?.('feature_auto_ue50')
+        ]);
+        const isEnabled = featAuto !== null && featAuto !== undefined
+          ? (featAuto === 'true' || featAuto === true || featAuto === '1')
+          : (globAuto === null || globAuto === undefined ? true : (globAuto === 'true' || globAuto === true || globAuto === '1'));
+
+        if (!isEnabled) {
+          setPendingList([]);
+          setLoading(false);
+          return;
+        }
+
         // Lade Qualifikationsbezeichnungen aus Einstellungen
         const [ue50Setting, rdSetting] = await Promise.all([
           (window as any).api.getSetting?.('ue50_qualification_type'),
@@ -262,7 +280,6 @@ export const UpcomingUe50Modal: React.FC<UpcomingUe50ModalProps> = ({ onDecided 
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
               background: 'rgba(255, 255, 255, 0.18)',
               padding: '4px 12px',
               borderRadius: '999px',
@@ -272,7 +289,6 @@ export const UpcomingUe50Modal: React.FC<UpcomingUe50ModalProps> = ({ onDecided 
               marginBottom: '10px'
             }}
           >
-            <span>🎂</span>
             <span>50. GEBURTSTAG STEHT BEVOR</span>
           </div>
           <h2
@@ -335,16 +351,13 @@ export const UpcomingUe50Modal: React.FC<UpcomingUe50ModalProps> = ({ onDecided 
               transition: 'all 0.15s ease'
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-              <span style={{ fontSize: '20px' }}>🤝</span>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '15px', color: '#1e40af' }}>
-                  Als Ü50er in der RTW-Planung belassen
-                </div>
-                <div style={{ fontSize: '13px', color: '#334155', marginTop: '3px', lineHeight: 1.4 }}>
-                  Der Kollege erhält ab <strong>{monthLabel} {bYear}</strong> den Ü50-Status. Er unterstützt
-                  das Team weiterhin bei Bedarf und übernimmt Schichten wie ein Azubi (Jahres-Soll = 0).
-                </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '15px', color: '#1e40af' }}>
+                Als Ü50er in der RTW-Planung belassen
+              </div>
+              <div style={{ fontSize: '13px', color: '#334155', marginTop: '3px', lineHeight: 1.4 }}>
+                Der Kollege erhält ab <strong>{monthLabel} {bYear}</strong> den Ü50-Status. Er unterstützt
+                das Team weiterhin bei Bedarf und übernimmt Schichten wie ein Azubi (Jahres-Soll = 0).
               </div>
             </div>
             <button
@@ -361,14 +374,10 @@ export const UpcomingUe50Modal: React.FC<UpcomingUe50ModalProps> = ({ onDecided 
                 fontWeight: 600,
                 fontSize: '13px',
                 cursor: loading ? 'not-allowed' : 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
                 boxShadow: '0 2px 4px rgba(37, 99, 235, 0.25)'
               }}
             >
-              <span>✓</span>
-              <span>Als Ü50er übernehmen</span>
+              Als Ü50er übernehmen
             </button>
           </div>
 
@@ -384,16 +393,13 @@ export const UpcomingUe50Modal: React.FC<UpcomingUe50ModalProps> = ({ onDecided 
               gap: '10px'
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-              <span style={{ fontSize: '20px' }}>📋</span>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '15px', color: '#334155' }}>
-                  Ab 50. Geburtstag aus Liste entfernen
-                </div>
-                <div style={{ fontSize: '13px', color: '#64748b', marginTop: '3px', lineHeight: 1.4 }}>
-                  Die Rettungsdienst-Qualifikation wird zum <strong>{monthLabel} {bYear}</strong> beendet. Der
-                  Kollege wird ab dem Folgemonat nicht mehr im RTW-Dienstplan aufgeführt.
-                </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '15px', color: '#334155' }}>
+                Ab 50. Geburtstag aus Liste entfernen
+              </div>
+              <div style={{ fontSize: '13px', color: '#64748b', marginTop: '3px', lineHeight: 1.4 }}>
+                Die Rettungsdienst-Qualifikation wird zum <strong>{monthLabel} {bYear}</strong> beendet. Der
+                Kollege wird ab dem Folgemonat nicht mehr im RTW-Dienstplan aufgeführt.
               </div>
             </div>
             <button
@@ -409,14 +415,10 @@ export const UpcomingUe50Modal: React.FC<UpcomingUe50ModalProps> = ({ onDecided 
                 borderRadius: '8px',
                 fontWeight: 600,
                 fontSize: '13px',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px'
+                cursor: loading ? 'not-allowed' : 'pointer'
               }}
             >
-              <span>✕</span>
-              <span>Aus RTW-Planung entfernen</span>
+              Aus RTW-Planung entfernen
             </button>
           </div>
         </div>

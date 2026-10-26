@@ -927,12 +927,8 @@ const EditPerson: React.FC = () => {
               border: `1px solid ${isPast ? '#ffeeba' : '#b8daff'}`,
               borderRadius: 6,
               fontSize: '13px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
               color: isPast ? '#856404' : '#0c5460'
             }}>
-              <span style={{ fontSize: '18px' }}>🎂</span>
               <div>
                 <strong>50. Geburtstag: {bdayFormatted}</strong> {isPast ? '— Der Kollege hat das 50. Lebensjahr bereits vollendet.' : '— 50. Geburtstag steht bevor.'}
               </div>

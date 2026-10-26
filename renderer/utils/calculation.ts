@@ -212,7 +212,8 @@ export function computeWeightedPresence(
     ue50Input: Set<number> | ((personId: number, monthIndex: number) => boolean) | Record<number, boolean[]>,
     auswertungByType: Record<string, string>,
     hlfbPeriodsByPerson?: Record<number, Array<{ startYM: string; endYM?: string }>>,
-    hlfbFactor: number = 0.75
+    hlfbFactor: number = 0.75,
+    autoUe50Enabled: boolean = true
 ) {
     const countsByPerson: Record<number, number[]> = {};
     const ensure = (pid: number) => (countsByPerson[pid] ||= Array(12).fill(0));
@@ -231,8 +232,8 @@ export function computeWeightedPresence(
 
             const p = personnelById[pid];
             // Sobald das Jahr beginnt: Tage ab dem 50. Geburtstag werden taggenau nicht mehr
-            // in die Schichtberechnung einbezogen (falls in diesem Monat noch kein Ü50-Status aktiv ist)
-            if (p?.birthDate && isTurnedFiftyOnDate(p.birthDate, iso)) {
+            // in die Schichtberechnung einbezogen (falls Feature aktiv und in diesem Monat noch kein Ü50-Status aktiv ist)
+            if (autoUe50Enabled && p?.birthDate && isTurnedFiftyOnDate(p.birthDate, iso)) {
                 continue;
             }
 
@@ -327,7 +328,8 @@ export function calculateTargetsWithDetails(
     hlfbPeriodsByPerson?: Record<number, Array<{ startYM: string; endYM?: string }>>,
     shiftTransfers: ShiftTransfer[] = [], // Optional for backward compatibility
     vehiclePeriods?: { rtwPeriods: Record<number, any[]>; nefPeriods: Record<number, any[]> },
-    hlfbFactor: number = 0.75
+    hlfbFactor: number = 0.75,
+    autoUe50Enabled: boolean = true
 ): CalculationResultDetails {
     // 1. Dept Shifts
     const deptShifts = computeDeptShiftsPerMonth(year, department, deptPatternSeqs);
@@ -345,7 +347,7 @@ export function calculateTargetsWithDetails(
     const positionsAdj = positions.map((p, i) => Math.max(0, p - azubiShifts[i] - ue50Shifts[i]));
 
     // 5. Weighted Presence
-    const presence = computeWeightedPresence(year, roster, personnel, ue50Input, auswertungByType, hlfbPeriodsByPerson, hlfbFactor);
+    const presence = computeWeightedPresence(year, roster, personnel, ue50Input, auswertungByType, hlfbPeriodsByPerson, hlfbFactor, autoUe50Enabled);
 
     // 6. Hamilton Allocation
     const targetsById: Record<number, number[]> = {};
@@ -539,7 +541,8 @@ export function calculateTargets(
     hlfbPeriodsByPerson?: Record<number, Array<{ startYM: string; endYM?: string }>>,
     shiftTransfers: ShiftTransfer[] = [], // Optional for backward compatibility
     vehiclePeriods?: { rtwPeriods: Record<number, any[]>; nefPeriods: Record<number, any[]> },
-    hlfbFactor: number = 0.75
+    hlfbFactor: number = 0.75,
+    autoUe50Enabled: boolean = true
 ): Record<number, number[]> {
     return calculateTargetsWithDetails(
         year,
@@ -555,7 +558,8 @@ export function calculateTargets(
         hlfbPeriodsByPerson,
         shiftTransfers,
         vehiclePeriods,
-        hlfbFactor
+        hlfbFactor,
+        autoUe50Enabled
     ).targetsById;
 }
 

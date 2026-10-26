@@ -19,6 +19,7 @@ RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die 
   - *Als Ü50er in der RTW-Planung belassen*: Der Kollege erhält den Ü50-Status (Soll = 0) und unterstützt die Abteilung flexibel wie ein Azubi. Jede gefahrene Schicht senkt direkt das Gesamtsoll der anderen Kollegen.
   - *Ab dem 50. Geburtstag aus der Liste entfernen*: Die Rettungsdienst-Qualifikation wird fristgerecht zum Monatsende des Geburtstags beendet.
   - *Später entscheiden*: Schließt die Benachrichtigung für die aktuelle Sitzung.
+- **Konfigurierbarer Feature-Toggle**: Unter *Einstellungen* $\rightarrow$ *Features* kann die *„Automatische Ü50-Berechnung“* abteilungsweit oder global flexibel aktiviert oder deaktiviert werden.
 
 ### ITW-Vorplanung & Mitarbeiter-Self-Service (v1.6.0+)
 - **Personalisierte Lücken-Übersicht für Mitarbeiter**: Zeigt Mitarbeitern mit Selbsteintragungsrechten (`write`) ausschließlich die offenen Schichtblöcke der eigenen Abteilung mit passender Qualifikation (Fahrzeugführer / Maschinist) inklusive 1-Klick-Einteilung (*„Mich eintragen“*).

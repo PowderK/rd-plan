@@ -367,6 +367,17 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         }
       } catch { }
 
+      let isAutoUe50 = true;
+      try {
+        const featU = await (window as any).api.getSetting(`feature_auto_ue50_${department}`);
+        if (featU !== null && featU !== undefined) {
+          isAutoUe50 = featU === 'true' || featU === true || featU === '1';
+        } else {
+          const globU = await (window as any).api.getSetting('feature_auto_ue50');
+          isAutoUe50 = globU === null || globU === undefined ? true : (globU === 'true' || globU === true || globU === '1');
+        }
+      } catch { }
+
       const periodsByPerson: Record<number, any[]> = {};
       if (Array.isArray(allQualPeriods)) {
         allQualPeriods.forEach((p: any) => {
@@ -384,7 +395,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
         let hasRd = rdPeriods.length === 0 ? true : rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
         const hasUe50 = pPeriods.some((per: any) => per.qualType === ue50QualName && qualificationAppliesInMonth(per, yearMonth));
-        if (p.birthDate && !hasUe50 && isMonthAfterFiftiethBirthday(p.birthDate, yearMonth)) {
+        if (isAutoUe50 && p.birthDate && !hasUe50 && isMonthAfterFiftiethBirthday(p.birthDate, yearMonth)) {
           hasRd = false;
         }
         return hasRd;
@@ -1247,6 +1258,17 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       }
     } catch { }
 
+    let isAutoUe50 = true;
+    try {
+      const featU = await (window as any).api.getSetting(`feature_auto_ue50_${departmentName}`);
+      if (featU !== null && featU !== undefined) {
+        isAutoUe50 = featU === 'true' || featU === true || featU === '1';
+      } else {
+        const globU = await (window as any).api.getSetting('feature_auto_ue50');
+        isAutoUe50 = globU === null || globU === undefined ? true : (globU === 'true' || globU === true || globU === '1');
+      }
+    } catch { }
+
     const yearMonth = `${year}-${String(currentMonth + 1).padStart(2, '0')}`;
     const taucherSet = new Set<number>();
     const filteredPersonnel = (list || []).filter((p: any) => {
@@ -1256,7 +1278,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
       let hasRd = rdPeriods.length === 0 ? true : rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
       const hasUe50 = pPeriods.some((per: any) => per.qualType === ue50QualName && qualificationAppliesInMonth(per, yearMonth));
-      if (p.birthDate && !hasUe50 && isMonthAfterFiftiethBirthday(p.birthDate, yearMonth)) {
+      if (isAutoUe50 && p.birthDate && !hasUe50 && isMonthAfterFiftiethBirthday(p.birthDate, yearMonth)) {
         hasRd = false;
       }
       return hasRd;
