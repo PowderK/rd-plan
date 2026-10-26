@@ -39,6 +39,7 @@ type PersonnelStatsRow = {
   id: number;
   name: string;
   vorname: string;
+  birthDate?: string | null;
   fahrzeugfuehrerHLFB?: boolean;
   hlfbMonthly?: boolean[];
   ue50?: boolean;
@@ -144,6 +145,7 @@ function usePersonnel(year: number, departmentName?: string) {
           id: p.id,
           name: p.name,
           vorname: p.vorname,
+          birthDate: p.birthDate,
           fahrzeugfuehrerHLFB: hlfbMonthly.some(Boolean),
           hlfbMonthly,
           ue50: ue50Monthly.some(Boolean),

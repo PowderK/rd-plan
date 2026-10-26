@@ -32,7 +32,7 @@ interface MonthTabsProps {
     departmentName?: string;
     /** Vollständige Namensliste der Abteilung (ohne Monatsfilter) für Slot-Labels. */
     personnelLookup?: { id: number; name: string; vorname?: string }[];
-    personnel: { id: number; name: string; vorname: string; fahrzeugfuehrer?: boolean; nef?: boolean; fahrzeugfuehrerHLFB?: boolean | number; teilzeit?: number }[];
+    personnel: { id: number; name: string; vorname: string; birthDate?: string | null; fahrzeugfuehrer?: boolean; nef?: boolean; fahrzeugfuehrerHLFB?: boolean | number; teilzeit?: number }[];
     /** Alle für das Jahr relevanten Personen der Abteilung (für ganzjährige Soll-Berechnung). */
     allPersonnel?: any[];
     azubis: { id: number; name: string; vorname: string; lehrjahr: number }[];
@@ -3292,8 +3292,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 if (dept && !dept[mIdx]) continue;
 
                                                 const dim = new Date(year, mIdx + 1, 0).getDate();
+                                                const isUe50InMonth = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[mIdx] : !!ue50MonthlyMap[p.id]?.[mIdx];
                                                 for (let d = 1; d <= dim; d++) {
                                                     const iso = new Date(Date.UTC(year, mIdx, d)).toISOString().slice(0, 10);
+                                                    if (p.birthDate && !isUe50InMonth && isTurnedFiftyOnDate(p.birthDate, iso)) {
+                                                        continue;
+                                                    }
                                                     const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
                                                     const raw = String(cell?.value || '').trim();
                                                     if (raw && (auswertungByType[raw] || 'off') !== 'off') cnt++;
@@ -3693,8 +3697,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 if (dept && !dept[mIdx]) continue;
 
                                                 const dim = new Date(year, mIdx + 1, 0).getDate();
+                                                const isUe50InMonth = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[mIdx] : !!ue50MonthlyMap[p.id]?.[mIdx];
                                                 for (let d = 1; d <= dim; d++) {
                                                     const iso = new Date(Date.UTC(year, mIdx, d)).toISOString().slice(0, 10);
+                                                    if (p.birthDate && !isUe50InMonth && isTurnedFiftyOnDate(p.birthDate, iso)) {
+                                                        continue;
+                                                    }
                                                     const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
                                                     const raw = String(cell?.value || '').trim();
                                                     if (raw && (auswertungByType[raw] || 'off') !== 'off') cnt++;
