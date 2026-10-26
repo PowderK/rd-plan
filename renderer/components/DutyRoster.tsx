@@ -198,6 +198,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const [nefVehicles, setNefVehicles] = useState<{ id: number; name: string }[]>([]);
   const [rtwActs, setRtwActs] = useState<Record<number, boolean[]>>({});
   const [nefActs, setNefActs] = useState<Record<number, boolean[]>>({});
+  const [hlfbPercentage, setHlfbPercentage] = useState<number>(75);
   // Monatsweise Ansicht: ausgewählter Monat und Tage
   const [currentMonth, setCurrentMonth] = useState<number>(() => {
     if ((window as any).rdPlanMonth !== undefined && typeof (window as any).rdPlanMonth === 'number') {
@@ -349,6 +350,14 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         } else {
           const globT = await (window as any).api.getSetting('feature_taucher');
           isTaucherFeature = globT === null || globT === undefined ? true : (globT === 'true' || globT === true || globT === '1');
+        }
+      } catch { }
+
+      try {
+        const val = await (window as any).api.getSetting('hlfb_percentage');
+        if (val !== null && val !== undefined && val !== '') {
+          const parsed = Number(val);
+          if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) setHlfbPercentage(parsed);
         }
       } catch { }
 
@@ -545,6 +554,13 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         const y = await (window as any).api.getSetting('year');
         const newYear = Number(y || new Date().getFullYear());
         if (newYear !== year) setYear(newYear);
+        try {
+          const val = await (window as any).api.getSetting('hlfb_percentage');
+          if (val !== null && val !== undefined && val !== '') {
+            const parsed = Number(val);
+            if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) setHlfbPercentage(parsed);
+          }
+        } catch { }
         // Shift-Typen und Auswertungen neu laden
         try {
           const types = await (window as any).api.getShiftTypes();
@@ -1392,7 +1408,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       }
       if (presence > 0) {
         const hasHLFB = (p as any).fahrzeugfuehrerHLFB === 1;
-        sum += hasHLFB ? 0.75 : 1;
+        sum += hasHLFB ? (hlfbPercentage / 100) : 1;
       }
     }
     // console.log('[DEBUG] activePersonnelInMonth:', sum, 'from', personnel.length, 'personnel');

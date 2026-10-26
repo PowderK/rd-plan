@@ -129,8 +129,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
   const [newlyAddedQualId, setNewlyAddedQualId] = useState<number | null>(null);
   const [originalQualificationTypes, setOriginalQualificationTypes] = useState<any[] | null>(null);
   const [originalQualificationCategories, setOriginalQualificationCategories] = useState<string[] | null>(null);
-  // HLFB 75%-Regel Qualifikationszuordnung
+  // HLFB Qualifikationszuordnung und Prozentzahl
   const [hlfbQualificationType, setHlfbQualificationType] = useState<string>('FzF HLF B');
+  const [hlfbPercentage, setHlfbPercentage] = useState<number>(75);
 
   // Rollen und Rechte Management
   const [roles, setRoles] = useState<{ id: number; name: string; description?: string; permissions: Record<string, 'none' | 'read' | 'read_all' | 'write' | 'write_all'> }[]>([]);
@@ -227,6 +228,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       rescueStation,
       year,
       hlfbQualificationType,
+      hlfbPercentage,
       ue50QualificationType,
       lpalQualificationType,
       taucherQualificationType,
@@ -257,6 +259,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
     rescueStation,
     year,
     hlfbQualificationType,
+    hlfbPercentage,
     ue50QualificationType,
     lpalQualificationType,
     taucherQualificationType,
@@ -409,6 +412,17 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
         // console.error('Failed to load HLFB qualification type:', e);
       }
 
+      // Load HLFB percentage setting
+      try {
+        const hlfbPerc = await (window as any).api.getSetting('hlfb_percentage');
+        if (hlfbPerc !== null && hlfbPerc !== undefined && hlfbPerc !== '') {
+          const parsed = Number(hlfbPerc);
+          if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
+            setHlfbPercentage(parsed);
+          }
+        }
+      } catch (e) { }
+
       // Load Ü50 qualification type setting
       try {
         const ue50Qual = await (window as any).api.getSetting('ue50_qualification_type');
@@ -539,6 +553,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       await (window as any).api.setSetting('rescueStation', rescueStation);
       // year wird nicht mehr als Setting gespeichert - direkt im Dienstplan/Werte gewählt
       await (window as any).api.setSetting('hlfb_qualification_type', hlfbQualificationType);
+      await (window as any).api.setSetting('hlfb_percentage', String(hlfbPercentage));
       await (window as any).api.setSetting('ue50_qualification_type', ue50QualificationType);
       await (window as any).api.setSetting('lpal_qualification_type', lpalQualificationType);
       await (window as any).api.setSetting('taucher_qualification_type', taucherQualificationType);
@@ -600,6 +615,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
           setHolidays((fresh || []).map((h: any) => ({ date: String(h.date), name: String(h.name || '') })));
         } catch { }
       } catch { }
+      window.dispatchEvent(new CustomEvent('settings-updated'));
       setInitialSaveSnapshot(currentSaveSnapshot);
       setHasUnsavedChanges(false);
       setEditingYearPlannings(false);
@@ -2441,10 +2457,10 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
         {/* KATEGORIE: QUALIFIKATIONEN */}
         {activeCategory === 'qualifications' && (
           <div>
-            {/* HLFB 75%-Regel Zuordnung */}
-            <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#f8f9fa', borderRadius: 6 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <strong style={{ minWidth: 250 }}>Qualifikation für FzF HLF B (75%-Regel):</strong>
+            {/* HLFB Regel Zuordnung & Prozentzahl */}
+            <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#f8f9fa', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <strong style={{ minWidth: 250 }}>Qualifikation für FzF HLF-B:</strong>
                 <select
                   value={hlfbQualificationType}
                   onChange={e => setHlfbQualificationType(e.target.value)}
@@ -2454,9 +2470,30 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                     <option key={qt.id} value={qt.name}>{qt.name}</option>
                   ))}
                 </select>
-              </label>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <strong style={{ minWidth: 250 }}>HLF-B Gewichtung (%):</strong>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={hlfbPercentage}
+                    onChange={e => {
+                      const val = Number(e.target.value);
+                      setHlfbPercentage(isNaN(val) ? 75 : Math.max(0, Math.min(100, val)));
+                    }}
+                    style={{ width: 80, padding: '6px 8px', borderRadius: 4, border: '1px solid #cbd5e1' }}
+                  />
+                  <span>%</span>
+                  <span style={{ fontSize: '0.85em', color: '#666', marginLeft: 8 }}>
+                    (Standard: 75%)
+                  </span>
+                </div>
+              </div>
               <p style={{ margin: '8px 0 0', fontSize: '0.9em', color: '#666' }}>
-                Personen mit dieser Qualifikation werden in der Anwesenheitsauswertung mit 75% gewichtet (statt 100%).
+                Personen mit dieser Qualifikation werden in der Anwesenheitsauswertung mit {hlfbPercentage}% gewichtet (Faktor {(hlfbPercentage / 100).toLocaleString('de-DE')}, statt 100%).
               </p>
             </div>
 

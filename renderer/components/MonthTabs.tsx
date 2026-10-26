@@ -96,8 +96,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [lpalMonthlyMap, setLpalMonthlyMap] = useState<Record<number, boolean[]>>({});
     const [taucherMonthlyMap, setTaucherMonthlyMap] = useState<Record<number, boolean[]>>({});
     const [featureTaucher, setFeatureTaucher] = useState<boolean>(true);
-    // HLF-B Perioden für korrekte Berechnung
+    // HLF-B Perioden und Prozentzahl für korrekte Berechnung
     const [hlfbPeriodsByPerson, setHlfbPeriodsByPerson] = useState<Record<number, Array<{ startYM: string; endYM?: string }>>>({});
+    const [hlfbPercentage, setHlfbPercentage] = useState<number>(75);
     // Performance: Debouncing für Roster-Updates
     const [updateTimeout, setUpdateTimeout] = useState<NodeJS.Timeout | null>(null);
     const undoStackStorageKey = '__rdPlanAssignmentUndoStack';
@@ -297,6 +298,27 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     }, []);
 
     useEffect(() => {
+        const handleSettingsUpdated = async () => {
+            try {
+                const hlfbPerc = await (window as any).api.getSetting('hlfb_percentage');
+                if (hlfbPerc !== null && hlfbPerc !== undefined && hlfbPerc !== '') {
+                    const parsed = Number(hlfbPerc);
+                    if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
+                        setHlfbPercentage(parsed);
+                    }
+                }
+            } catch { }
+        };
+        window.addEventListener('settings-updated', handleSettingsUpdated);
+        const api = (window as any).api;
+        api?.onSettingsUpdated?.(handleSettingsUpdated);
+        return () => {
+            window.removeEventListener('settings-updated', handleSettingsUpdated);
+            api?.offSettingsUpdated?.(handleSettingsUpdated);
+        };
+    }, []);
+
+    useEffect(() => {
         const loadUe50 = async () => {
             try {
                 let ue50QualName = 'Ü50';
@@ -371,6 +393,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
     useEffect(() => {
         const load = async () => {
+            try {
+                const hlfbPerc = await (window as any).api.getSetting('hlfb_percentage');
+                if (hlfbPerc !== null && hlfbPerc !== undefined && hlfbPerc !== '') {
+                    const parsed = Number(hlfbPerc);
+                    if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
+                        setHlfbPercentage(parsed);
+                    }
+                }
+            } catch { }
             try {
                 const sws = await (window as any).api.getSetting('show_weekend_shifts');
                 setShowWeekendShifts(sws === 'true');
@@ -1611,6 +1642,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             }
 
             // 2. Calculate Targets using Shared Utility
+            const hlfbFactor = hlfbPercentage / 100;
             const targetsByPersonId = calculateTargets(
                 year,
                 flattenedRoster,
@@ -1627,7 +1659,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 deptPatternSeqs || [],
                 hlfbPeriodsByPerson,
                 shiftTransfers, // <-- Pass loaded transfers here
-                { rtwPeriods: rtwVehiclePeriods, nefPeriods: nefVehiclePeriods }
+                { rtwPeriods: rtwVehiclePeriods, nefPeriods: nefVehiclePeriods },
+                hlfbFactor
             );
 
             // 3. Map Targets to MonthTabs format
@@ -1908,7 +1941,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
     }, [year, roster, localRoster, personnel, azubis, ue50Ids, ue50MonthlyMap, lpalMonthlyMap, taucherMonthlyMap, auswertungByType,
         rtwVehicles, nefVehicles, rtwActivations, nefActivations, rtwVehiclePeriods, nefVehiclePeriods, department,
-        deptPatternSeqs, hlfbPeriodsByPerson, shiftTransfers, currentMonth, holidays,
+        deptPatternSeqs, hlfbPeriodsByPerson, hlfbPercentage, shiftTransfers, currentMonth, holidays,
         weekendFridayDay, weekendFridayNight, weekendSaturdayDay, weekendSaturdayNight, weekendSundayDay, weekendSundayNight,
         weekendHolidayDay, weekendHolidayNight, itwEnabled, featureTaucher, getNefAssistWeight]);
 
