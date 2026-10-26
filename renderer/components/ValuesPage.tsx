@@ -382,6 +382,35 @@ function computeShiftsPerPerson(row1: number[], row2: number[]) {
   return row1.map((num, i) => (row2[i] > 0 ? +(num / row2[i]).toFixed(2) : 0));
 }
 
+function useHlfbPercentage(): number {
+  const [percentage, setPercentage] = useState<number>(75);
+  const fetch = async () => {
+    try {
+      const val = await (window as any).api.getSetting?.('hlfb_percentage');
+      if (val !== null && val !== undefined && val !== '') {
+        const num = Number(val);
+        if (!isNaN(num) && num >= 0 && num <= 100) {
+          setPercentage(num);
+        }
+      }
+    } catch { }
+  };
+  useEffect(() => {
+    fetch();
+    window.addEventListener('settings-updated', fetch);
+    const api = (window as any).api;
+    if (api?.onSettingsUpdated) {
+      api.onSettingsUpdated(fetch);
+      return () => {
+        window.removeEventListener('settings-updated', fetch);
+        api.offSettingsUpdated?.(fetch);
+      };
+    }
+    return () => window.removeEventListener('settings-updated', fetch);
+  }, []);
+  return percentage;
+}
+
 const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) => {
   const [year, setYear] = useYear();
   const [department, setDepartment] = useState<number>(() => departmentNameToId(departmentName));
@@ -397,6 +426,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const vehicleData = useVehicleData();
   const deptPatternSeqs = useDeptPatterns();
   const [shiftTransfers, setShiftTransfers] = useState<any[]>([]);
+  const hlfbPercentage = useHlfbPercentage();
 
   useEffect(() => {
     setDepartment(departmentNameToId(departmentName));
@@ -430,6 +460,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   }, [setYear]);
 
   const calculationResult = useMemo(() => {
+    const hlfbFactor = hlfbPercentage / 100;
     return calculateTargetsWithDetails(
       year,
       roster,
@@ -443,9 +474,10 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       deptPatternSeqs,
       undefined,
       shiftTransfers,
-      vehicleData
+      vehicleData,
+      hlfbFactor
     );
-  }, [year, roster, personnel, azubis, ue50Ids, auswertungByType, rtw, nef, rtwActs, nefActs, department, deptPatternSeqs, shiftTransfers, vehicleData]);
+  }, [year, roster, personnel, azubis, ue50Ids, auswertungByType, rtw, nef, rtwActs, nefActs, department, deptPatternSeqs, shiftTransfers, vehicleData, hlfbPercentage]);
 
   const perPersonAssignedMap = useMemo(() => {
     return computeAssignedShiftsPerPerson(year, roster, personnel, department, deptPatternSeqs, nef);
@@ -775,7 +807,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               gap: '8px'
             }}>
               <InfoIcon />
-              <span>HLF-B Fahrzeugführer: Persönliches Gewicht wird mit 0,75 multipliziert.</span>
+              <span>HLF-B Fahrzeugführer: Persönliches Gewicht wird mit {hlfbPercentage}% ({Number((hlfbPercentage / 100).toFixed(4)).toLocaleString('de-DE')}) multipliziert.</span>
             </div>
           )}
           {person.taucher && (
@@ -838,7 +870,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               <li><strong style={{ color: 'var(--text)' }}>Pos. (Netto):</strong> Gesamtzahl der zu besetzenden Schichten im Monat. <br />
                 <em>Formel: (Abteilungsschichten × (RTW×4 + NEF×Besetzung)) + ITW − Azubi-Maschinisten − Ü50-Schichten.</em></li>
               <li><strong style={{ color: 'var(--text)' }}>Pers. Gewicht:</strong> Anzahl der Dienste, die die Person in diesem Monat tatsächlich geleistet hat (Anwesenheit). <br />
-                <em>Bei HLF-B Fahrzeugführern wird dieser Wert mit 0,75 multipliziert.</em></li>
+                <em>Bei HLF-B Fahrzeugführern wird dieser Wert mit {hlfbPercentage}% ({Number((hlfbPercentage / 100).toFixed(4)).toLocaleString('de-DE')}) multipliziert.</em></li>
               <li><strong style={{ color: 'var(--text)' }}>Gesamt-Gewicht:</strong> Summe der Gewichte aller aktiven Mitarbeiter in diesem Monat.</li>
               <li><strong style={{ color: 'var(--text)' }}>Anteil (Exakt):</strong> Der rechnerische Anteil an den Soll-Schichten. <br />
                 <em>Formel: (Pos. Netto × Pers. Gewicht) ÷ Gesamt-Gewicht.</em></li>
