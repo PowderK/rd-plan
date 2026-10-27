@@ -11,6 +11,16 @@ RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die 
 
 ## Funktionen
 
+### Automatische ITW-Einteilung im Monatsplan (v1.6.2+)
+- **1-Klick-Zuweisung für den gesamten Monat**: Vollautomatische Besetzung der ITW-Kacheln (Fahrzeugführer, Maschinist, Notarzt) anhand der hinterlegten Vorplanung und den `IW`-Diensten im Dienstplan.
+- **Priorität für die eigene Abteilung**: Kollegen der aktiven Abteilung mit hinterlegtem `IW` werden prioritär an ihrer Vorplanungs-Position platziert.
+- **Interaktive Konflikt- und Abweichungsklärung**: 
+  - Weicht der Kollege mit `IW` von der Vorplanung ab, fragt ein übersichtlicher Dialog nach der gewünschten Rolle (FzF oder Ma).
+  - Haben zwei Kollegen der eigenen Abteilung ein `IW`, vergibt der Planer im Dialog direkt FzF und Ma.
+- **Partner-Abteilungen als reine Info**: Verbleibende freie Positionen werden mit Vorplanungs-Kollegen fremder Abteilungen belegt. Diese werden optisch hervorgehoben (blau/kursiv mit Abteilungszusatz) und fließen **nicht** in die RTW-Berechnung des Kontrollkastens ein.
+- **Automatische Arzt-Besetzung**: Übernahme des im ITW-Dienstplan hinterlegten Notarztes in die Arzt-Zeile (violett markiert, reine Info).
+- **Vollständige Undo-Unterstützung**: Alle durchgeführten Zuweisungen können jederzeit über die Rückgängig-Funktion zurückgerollt werden.
+
 ### Dynamische Rest V-Kapazitätsanzeige & Kontrollkasten-Optimierung (v1.6.2+)
 - **Monatsabhängige Schwellenwert-Dynamik**: Die Ampelfarben für die verbleibende Restkapazität (Rest V) passen sich automatisch an die verbleibenden Restmonate des Planungsjahres an:
   - *Letzter Monat (Dezember)*: Grün bereits ab $\ge 1$ Schicht Puffer (Soll problemlos erreichbar), Gelb bei exakt $0$ Schichten Puffer (auf Kante genäht, kein Ausfallpuffer), Rot nur bei rechnerischem Defizit ($< 0$).

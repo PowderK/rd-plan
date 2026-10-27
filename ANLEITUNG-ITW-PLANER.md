@@ -11,7 +11,8 @@ Dieses Dokument bietet eine vollständige Übersicht über alle Funktionen, Werk
 4. [Lücken-Übersicht & Schnelleinteilung](#4-lücken-übersicht--schnelleinteilung)
 5. [PDF-Export im 1-Seiten-Kachel-Layout](#5-pdf-export-im-1-seiten-kachel-layout)
 6. [Automatischer Abgleich mit dem ITW-Dienstplan](#6-automatischer-abgleich-mit-dem-itw-dienstplan)
-7. [Empfohlener Planungsablauf (Best Practice)](#7-empfohlener-planungsablauf-best-practice)
+7. [Automatische ITW-Einteilung im Monatsplan](#7-automatische-itw-einteilung-im-monatsplan)
+8. [Empfohlener Planungsablauf (Best Practice)](#8-empfohlener-planungsablauf-best-practice)
 
 ---
 
@@ -119,7 +120,34 @@ Jede Einteilung in der Vorplanung wirkt sich in Echtzeit auf das Gesamtsystem au
 
 ---
 
-## 7. Empfohlener Planungsablauf (Best Practice)
+## 7. Automatische ITW-Einteilung im Monatsplan
+
+In der Monatsansicht der Einteilung (Reiter **ITW**) steht Planern der Button **„⚡ Automatische ITW-Einteilung (<Monat>)“** zur Verfügung. Dieser automatisiert die Zuordnung der ITW-Kacheln für den gewählten Monat auf Basis der **Vorplanung**, des **ITW-Dienstplans** und der **IW-Dienste** im Dienstplan der Kollegen.
+
+### Rahmenbedingungen & Prioritätsregeln:
+
+1. **Priorität 1: IW-Dienste der eigenen Abteilung**
+   * Hat an einem ITW-Betriebstag genau ein Kollege der eigenen Abteilung ein `IW` eingetragen und stimmt dies mit der Vorplanung überein, wird er direkt an der vorgesehenen Position (**FzF** oder **Ma**) platziert.
+   * **Abweichung (anderer Kollege hat IW):** Hat ein anderer Kollege der Abteilung ein `IW` als der in der Vorplanung vorgesehene, wird dies als Klärungsbedarf erkannt. Der interaktive Dialog fragt nach, an welcher Position (FzF oder Ma) der Kollege eingesetzt werden soll.
+   * **Zwei Kollegen der eigenen Abteilung haben IW:** Haben zwei Kollegen der eigenen Abteilung an demselben Tag ein `IW`, haben beide absolute Priorität vor externen Zuweisungen. Der Dialog ermöglicht die Zuordnung, wer als Fahrzeugführer (`itw_row_1`) und wer als Maschinist (`itw_row_2`) fährt.
+
+2. **Auffüllen verbleibender Positionen aus der Vorplanung (Fremdabteilungen als Info)**
+   * Erst nachdem die Positionen der eigenen Abteilung besetzt sind, werden die verbleibenden offenen Positionen anhand der ITW-Vorplanung mit den Kollegen der Partner-Abteilungen gefüllt.
+   * **Reine Information für den Einteiler:** Diese externen Kollegen werden blau und kursiv mit dem Zusatz der Herkunftsabteilung (z. B. `[2. Abt.]`) gekennzeichnet.
+   * **Keine Auswirkung auf RTW-Berechnung:** Externe Kollegen fließen **nicht** in die Schicht- und Sollberechnungen der aktiven Abteilung ein und beeinflussen den Kontrollkasten in keiner Weise.
+
+3. **Automatische Übernahme des ITW-Notarztes**
+   * Zum Abschluss wird der für diesen Tag im ITW-Dienstplan hinterlegte ITW-Arzt automatisch in die Zeile **Arzt** (`itw_row_4`) eingetragen.
+   * Auch dieser Eintrag dient der reinen Information (violett hervorgehoben) und hat keine Auswirkung auf das RTW-Soll.
+
+4. **Interaktiver Bestätigungsdialog & Undo**
+   * Vor dem Speichern zeigt der Dialog eine übersichtliche Zusammenfassung aller Tage, Rollen, Vorplanungs-Vorgaben und ermittelten IW-Dienste.
+   * Ungeklärte Tage / Konflikte können per Klick direkt im Dialog entschieden werden.
+   * Alle Änderungen werden als Batch eingetragen und können über die **Rückgängig-Funktion (Undo)** jederzeit wieder zurückgenommen werden.
+
+---
+
+## 8. Empfohlener Planungsablauf (Best Practice)
 
 ```mermaid
 flowchart TD
@@ -128,6 +156,7 @@ flowchart TD
     C --> D["4. Offene Phasen zuweisen (ggf. flexible Übersteuerung nutzen)"]
     D --> E["5. PDF-Vorplanung exportieren & aushängen"]
     E --> F["6. ITW-Dienstplan prüfen & freigeben"]
+    F --> G["7. Im Monatsplan 'Automatische ITW-Einteilung' ausführen"]
 ```
 
 1. **Vorbereitung:** Jahr prüfen und sicherstellen, dass die Stammdaten und ITW-Qualifikationen in der Personalverwaltung aktuell gepflegt sind.
@@ -135,3 +164,4 @@ flowchart TD
 3. **Lückenprüfung:** Planer öffnen die **Lücken-Übersicht** und prüfen unbesetzte Slots.
 4. **Feinabstimmung:** Zuweisung der verbleibenden Lücken über die Schnelleinteilung oder direkt in den Phasenkarten.
 5. **Export & Verteilung:** Erstellung des **1-Seiten-PDF-Aushangs** über den PDF-Export-Button.
+6. **Monats-Einteilung:** In der Monats-Einteilung die **Automatische ITW-Einteilung** ausführen, um alle ITW-Schichten sekundenschnell und fehlerfrei zu belegen.

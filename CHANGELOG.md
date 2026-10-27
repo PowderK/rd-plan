@@ -1,5 +1,15 @@
 ## Version 1.6.2 - 2026-10-27
 
+- **Automatische ITW-Einteilung im Monatsplan**:
+  - **1-Klick-Zuweisung für den gesamten Monat**: Automatische Ermittlung und Besetzung der ITW-Schichten (Fahrzeugführer, Maschinist, Notarzt) anhand der hinterlegten ITW-Vorplanung und den `IW`-Diensten im Monatsdienstplan.
+  - **Priorität für die eigene Abteilung**: Kollegen der aktiven Abteilung mit hinterlegtem `IW` werden prioritär an ihrer Vorplanungs-Position platziert.
+  - **Interaktiver Klärungsdialog bei Abweichungen & Doppelbelegungen**:
+    - Weicht ein Kollege mit `IW` von der Vorplanung ab, wird gezielt nach der Rolle (FzF oder Ma) gefragt.
+    - Haben zwei Kollegen der eigenen Abteilung ein `IW`, fragt der Dialog nach der Zuweisung von Fahrzeugführer (`itw_row_1`) und Maschinist (`itw_row_2`).
+  - **Fremdabteilungen als Info (ohne RTW-Berechnung)**: Verbleibende offene Planstellen werden mit Vorplanungs-Kollegen fremder Abteilungen belegt. Diese werden optisch hervorgehoben (blau/kursiv mit Abteilungs-Tag wie `[2. Abt.]`) und fließen **nicht** in die RTW-Berechnung des Kontrollkastens ein.
+  - **Automatische Übernahme des Notarztes**: Notärzte aus dem ITW-Dienstplan werden automatisch in die Arzt-Zeile (`itw_row_4`) übernommen (violett hervorgehoben, reine Info).
+  - **Vollständige Undo-Historie**: Alle automatischen ITW-Zuweisungen können jederzeit über die Rückgängig-Funktion zurückgerollt werden.
+
 - **Dynamische Rest V-Kapazitätsanzeige im Kontrollkasten**:
   - **Monatsabhängige Schwellenwerte**: Die Schwellenwerte für die Ampelfarben (Rot, Gelb, Grün) der Restkapazität (Rest V) skalieren nun dynamisch mit den verbleibenden Monaten im Planungsjahr:
     - Im letzten Planungsmonat (Dezember) genügt bereits ein Puffer von $\ge 1$ Schicht für den grünen Status (`#34c759`).
