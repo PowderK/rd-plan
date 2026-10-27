@@ -128,7 +128,7 @@ function usePersonnel(year: number, departmentName?: string) {
           if (ue50Periods.length > 0) ue50Monthly[m] = qualApplies(ue50Periods, ym);
           if (lpalPeriods.length > 0) lpalMonthly[m] = qualApplies(lpalPeriods, ym);
           if (isTaucherEnabled && taucherPeriods.length > 0) taucherMonthly[m] = qualApplies(taucherPeriods, ym);
-          let rdActive = rdPeriods.length > 0 ? qualApplies(rdPeriods, ym) : true;
+          let rdActive = rdPeriods.length > 0 ? qualApplies(rdPeriods, ym) : false;
           if (isAutoUe50Enabled && p.birthDate && !ue50Monthly[m] && isMonthAfterFiftiethBirthday(p.birthDate, ym)) {
             rdActive = false;
           }

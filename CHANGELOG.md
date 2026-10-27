@@ -1,3 +1,23 @@
+## Version 1.6.2 - 2026-10-27
+
+- **Dynamische Rest V-Kapazitätsanzeige im Kontrollkasten**:
+  - **Monatsabhängige Schwellenwerte**: Die Schwellenwerte für die Ampelfarben (Rot, Gelb, Grün) der Restkapazität (Rest V) skalieren nun dynamisch mit den verbleibenden Monaten im Planungsjahr:
+    - Im letzten Planungsmonat (Dezember) genügt bereits ein Puffer von $\ge 1$ Schicht für den grünen Status (`#34c759`).
+    - Ein Puffer von genau $0$ Schichten (auf Kante genäht, kein Ausfallpuffer) wird gelb (`#f59e0b`) dargestellt.
+    - Erst ein echtes rechnerisches Defizit ($< 0$) schaltet auf Rot (`#ef4444`).
+    - In früheren Monaten (Januar bis November) skalieren die Schwellenwerte kontinuierlich mit der Restmonatszahl und dem Teilzeitfaktor.
+  - **Weiß-Status bei Sollerfüllung**: Hat ein Kollege sein Jahressoll bereits erfüllt oder ist im Plus, wird die Rest V-Anzeige auf eine neutrale weiße Kachel mit dezentem Rahmen umgeschaltet.
+  - **Ruhiges Kachel-Design**: Feste Farbkacheln anstelle unübersichtlicher schrumpfender Fortschrittsbalken.
+  - **Erweiterter Tooltip**: Beim Überfahren der Kachel werden freie Schichten, noch benötigte Schichten, Puffer (`+X Schichten`), Status und aktive Monatsschwellen angezeigt.
+
+- **ITW-Vorplanung: Intelligenter Abteilungstausch & Schichtnachführung**:
+  - Beim Ändern der Abteilungszuordnung einer Planstelle (FzF 1, FzF 2 oder Maschinist) in den Phasen 1–3 tauschen die beiden beteiligten Positionen automatisch ihre Abteilungen.
+  - Bereits eingeteilte Kollegen der Abteilung werden automatisch auf die neue Position übertragen.
+  - Die Dienstplan-Schichten (IW) werden für alle beteiligten Kollegen automatisch auf die neuen Schichttage aktualisiert.
+
+- **Bugfix Grundqualifikation Rettungsdienst**:
+  - Korrektur der Zeitraumprüfung in Einteilung, Dienstplan, Werte-Übersicht und Ü50-Modal, sodass Mitarbeiter ohne aktive Rettungsdienst-Grundqualifikation nicht mehr fälschlicherweise zur Einteilung angeboten werden.
+
 ## Build 1549 - 2026-10-26
 
 - automated build

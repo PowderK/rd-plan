@@ -7,9 +7,21 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v1.6.1** - Automatisches 50er-Altersgrenzen-Management mit taggenauer Geburtstagsberechnung, automatischem Schichtberechnungsausschluss und Vorwarn-Entscheidungsdialog für RTW-Planer (Ü50-Unterstützerstatus oder Ausscheiden).
+**v1.6.2** - Dynamische Rest V-Kapazitätsanzeige im Kontrollkasten mit monatsabhängiger Schwellenwert-Skalierung und Weiß-Status bei Sollerfüllung, intelligenter Abteilungstausch mit Schicht- und Kollegen-Nachführung in der ITW-Vorplanung sowie Fehlerbehebung bei der Rettungsdienst-Grundqualifikationsprüfung.
 
 ## Funktionen
+
+### Dynamische Rest V-Kapazitätsanzeige & Kontrollkasten-Optimierung (v1.6.2+)
+- **Monatsabhängige Schwellenwert-Dynamik**: Die Ampelfarben für die verbleibende Restkapazität (Rest V) passen sich automatisch an die verbleibenden Restmonate des Planungsjahres an:
+  - *Letzter Monat (Dezember)*: Grün bereits ab $\ge 1$ Schicht Puffer (Soll problemlos erreichbar), Gelb bei exakt $0$ Schichten Puffer (auf Kante genäht, kein Ausfallpuffer), Rot nur bei rechnerischem Defizit ($< 0$).
+  - *Frühere Monate (Januar bis November)*: Progressive Skalierung (z. B. Januar: Rot $\le 4$, Gelb $\le 8$, Grün $> 8$ Schichten Puffer) unter Berücksichtigung des individuellen Teilzeitgrads.
+- **Weiß-Status bei Sollerfüllung**: Sobald ein Mitarbeiter sein Jahressoll erfüllt hat oder im Plus ist, schaltet die Anzeige automatisch auf eine neutrale weiße Kachel mit dezentem Rahmen um.
+- **Feste Farbblöcke statt schrumpfender Balken**: Ruhiges, klares Kachel-Design ohne unübersichtliche Teilbalken.
+- **Transparenter Tooltip**: Anzeige der freien Schichten, des Restbedarfs, des Puffers (`+X Schichten`) und der monatsspezifischen Schwellenwerte beim Überfahren der Kachel.
+
+### ITW-Vorplanung: Intelligenter Abteilungstausch & Schichtnachführung (v1.6.2+)
+- **Automatischer Abteilungstausch**: Wird bei einer Planstelle (FzF 1, FzF 2 oder Maschinist) die Abteilung manuell angepasst, tauschen die beiden betroffenen Positionen automatisch die Abteilungen, sodass die Phasenbesetzung vollständig geschlossen bleibt.
+- **Automatische Kollegen- und Dienstplan-Nachführung**: Bereits auf der getauschten Position eingeteilte Mitarbeiter werden automatisch auf die neue Planstelle übernommen. Ihre ITW-Dienste (IW) im Dienstplan werden nahtlos auf die Schichttage der neuen Rolle aktualisiert.
 
 ### Automatisches 50er-Altersgrenzen-Management & Ü50-Planung (v1.6.1+)
 - **Erfassung des Geburtsdatums**: Neues Feld „Geburtsdatum“ beim Erstellen und Bearbeiten von Personal sowie Anzeige in der Personalübersicht.

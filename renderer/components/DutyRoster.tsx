@@ -393,7 +393,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         const hasTaucher = isTaucherFeature && pPeriods.some((per: any) => per.qualType === taucherQualName && qualificationAppliesInMonth(per, yearMonth));
         if (hasTaucher) taucherSet.add(p.id);
         const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
-        let hasRd = rdPeriods.length === 0 ? true : rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
+        let hasRd = rdPeriods.length > 0 && rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
         const hasUe50 = pPeriods.some((per: any) => per.qualType === ue50QualName && qualificationAppliesInMonth(per, yearMonth));
         if (isAutoUe50 && p.birthDate && !hasUe50 && isMonthAfterFiftiethBirthday(p.birthDate, yearMonth)) {
           hasRd = false;
@@ -1276,7 +1276,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       const hasTaucher = isTaucherFeature && pPeriods.some((per: any) => per.qualType === taucherQualName && qualificationAppliesInMonth(per, yearMonth));
       if (hasTaucher) taucherSet.add(p.id);
       const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
-      let hasRd = rdPeriods.length === 0 ? true : rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
+      let hasRd = rdPeriods.length > 0 && rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
       const hasUe50 = pPeriods.some((per: any) => per.qualType === ue50QualName && qualificationAppliesInMonth(per, yearMonth));
       if (isAutoUe50 && p.birthDate && !hasUe50 && isMonthAfterFiftiethBirthday(p.birthDate, yearMonth)) {
         hasRd = false;

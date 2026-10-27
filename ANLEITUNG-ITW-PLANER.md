@@ -49,10 +49,11 @@ In RD-Plan wird die ITW-Planung über differenzierte Berechtigungen gesteuert:
 ### Manuelle Anpassung der Abteilungs-Zuordnung (Übersteuerung des Loops)
 * Standardmäßig wird die zuständige Abteilung jeder Position (FzF 1, FzF 2, Maschinist) aus dem in den Einstellungen definierten **ITW-Loop** berechnet.
 * Als **ITW-Planer** (`write_all`) kannst du die Abteilungszuordnung jeder einzelnen Position direkt auf der Phasenkarte über das **Abteilungs-Dropdown** manuell ändern (z. B. bei Abweichungen im Dienststellen-Aushang oder Ausnahmen).
+* **Automatischer Rollen- und Schichttausch:** Wird die Abteilung einer Position geändert (z. B. Maschinist auf die 1. Abteilung), tauschen die beiden betroffenen Positionen automatisch die Abteilungen. Bereits eingeteilte Kollegen der Abteilung (z. B. Kollege, der als FzF für die 1. Abteilung gesetzt war) werden mitgetauscht und übernehmen automatisch die neue Position (z. B. Maschinist).
+* **Automatische Dienstplananpassung:** Die ITW-Schichten (IW) im Dienstplan werden für die beteiligten Kollegen vollautomatisch auf die passenden Schichttage der getauschten Rollen übertragen.
 * **Unabhängiger Grund-Loop:** Der konfigurierte ITW-Rotations-Loop in den Einstellungen bleibt dabei vollständig unberührt und unabhängig.
 * **Optische Kennzeichnung:** Manuell geänderte Positionen werden mit einem hervorgehobenen Rahmen und einem Reset-Symbol `↺` gekennzeichnet.
-* **Zurücksetzen:** Über das `↺`-Symbol oder die erneute Auswahl von `... (Loop)` im Dropdown kann eine Position jederzeit wieder auf den Standard-Loop zurückgesetzt werden.
-* **Automatische Dienstplananpassung:** Falls für eine Position bereits ein Kollege eingeteilt ist, wird beim Ändern der Abteilung nach einer Bestätigung gefragt und die Dienstplan-Schichten (IW) werden automatisch auf die Schichttage der neuen Abteilung aktualisiert.
+* **Zurücksetzen:** Über das `↺`-Symbol oder die erneute Auswahl von `... (Loop)` im Dropdown kann eine Position jederzeit wieder auf den Standard-Loop zurückgesetzt werden (die Tauschpartner werden dabei ebenfalls wieder zurückgestellt).
 
 ---
 

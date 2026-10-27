@@ -217,7 +217,7 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
             if (hasUe50Period) ue50Monthly[m] = qualApplies(ue50Periods, ym);
             if (hasLpalPeriod) lpalMonthly[m] = qualApplies(lpalPeriods, ym);
             if (hasTaucherPeriod) taucherMonthly[m] = qualApplies(taucherPeriods, ym);
-            let rdActive = hasRettungsdienstPeriod ? qualApplies(rettungsdienstPeriods, ym) : true;
+            let rdActive = hasRettungsdienstPeriod ? qualApplies(rettungsdienstPeriods, ym) : false;
             // Automatisch ab Folgemonat des 50. Geburtstags aus der RTW-Berechnung nehmen, falls Feature aktiv und kein Ü50-Status
             if (autoUe50Enabled && person.birthDate && !ue50Monthly[m] && isMonthAfterFiftiethBirthday(person.birthDate, ym)) {
               rdActive = false;

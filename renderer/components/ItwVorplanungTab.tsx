@@ -237,7 +237,20 @@ const ItwVorplanungTab: React.FC = () => {
         }));
     }, [sortedItwSeqs, year, minYear]);
 
-    const calculatePhaseItwDays = (phaseStartStr: string, phaseEndStr: string, department?: string) => {
+    const getRoleType = (roleOrKey?: string): 'fzf' | 'maschinist' | undefined => {
+        if (!roleOrKey) return undefined;
+        const lower = roleOrKey.toLowerCase();
+        if (lower === 'maschinist' || lower.includes('masch')) return 'maschinist';
+        if (lower.startsWith('fzf') || lower.includes('fahrzeug')) return 'fzf';
+        return undefined;
+    };
+
+    const calculatePhaseItwDays = (
+        phaseStartStr: string, 
+        phaseEndStr: string, 
+        department?: string,
+        roleType?: 'fzf' | 'maschinist'
+    ) => {
         if (!sortedItwSeqs || sortedItwSeqs.length === 0) {
             return [];
         }
@@ -279,8 +292,18 @@ const ItwVorplanungTab: React.FC = () => {
                         itwDays.push(dateStr);
                     }
                 } else {
-                    if (slot.fzf === targetDeptCode || slot.maschinist === targetDeptCode) {
-                        itwDays.push(dateStr);
+                    if (roleType === 'fzf') {
+                        if (slot.fzf === targetDeptCode) {
+                            itwDays.push(dateStr);
+                        }
+                    } else if (roleType === 'maschinist') {
+                        if (slot.maschinist === targetDeptCode) {
+                            itwDays.push(dateStr);
+                        }
+                    } else {
+                        if (slot.fzf === targetDeptCode || slot.maschinist === targetDeptCode) {
+                            itwDays.push(dateStr);
+                        }
                     }
                 }
             }
@@ -323,13 +346,20 @@ const ItwVorplanungTab: React.FC = () => {
         return { fzfDays, maDays, total: fzfDays + maDays };
     };
 
-    const transferSchichtToRoster = async (personId: number, phaseStartStr: string, phaseEndStr: string, department?: string) => {
+    const transferSchichtToRoster = async (
+        personId: number, 
+        phaseStartStr: string, 
+        phaseEndStr: string, 
+        department?: string,
+        role?: string
+    ) => {
         const person = personnel.find(p => Number(p.id) === Number(personId));
         const personDept = department || person?.department || '1. Abteilung';
-        const itwDays = calculatePhaseItwDays(phaseStartStr, phaseEndStr, personDept);
+        const roleType = getRoleType(role);
+        const itwDays = calculatePhaseItwDays(phaseStartStr, phaseEndStr, personDept, roleType);
         
         if (itwDays.length === 0) {
-            console.warn('[ITW] Keine IW-Tage gefunden für Phase', { phaseStartStr, phaseEndStr, personDept });
+            console.warn('[ITW] Keine IW-Tage gefunden für Phase', { phaseStartStr, phaseEndStr, personDept, roleType });
             return;
         }
         
@@ -349,9 +379,16 @@ const ItwVorplanungTab: React.FC = () => {
         }
     };
 
-    const removeSchichtFromRoster = async (personId: number, phaseStartStr: string, phaseEndStr: string, department?: string) => {
+    const removeSchichtFromRoster = async (
+        personId: number, 
+        phaseStartStr: string, 
+        phaseEndStr: string, 
+        department?: string,
+        role?: string
+    ) => {
         const person = personnel.find(p => Number(p.id) === Number(personId));
         const personDept = department || person?.department || '1. Abteilung';
+        // Beim Löschen alte IW-Tage dieser Abteilung gründlich entfernen
         const itwDays = calculatePhaseItwDays(phaseStartStr, phaseEndStr, personDept);
         
         for (const dateStr of itwDays) {
@@ -434,7 +471,7 @@ const ItwVorplanungTab: React.FC = () => {
         
         const oldEntry = getAssignmentForPhase(phaseStart, role, department);
         if (oldEntry && oldEntry.person_id) {
-             await removeSchichtFromRoster(oldEntry.person_id, oldEntry.start_date, phaseEnd, department);
+             await removeSchichtFromRoster(oldEntry.person_id, oldEntry.start_date, phaseEnd, department, role);
              await (window as any).api.removeItwPhaseAssignment?.(oldEntry.start_date, oldEntry.person_id);
         }
 
@@ -467,7 +504,7 @@ const ItwVorplanungTab: React.FC = () => {
                     pId, 
                     role
                 );
-                await transferSchichtToRoster(pId, phaseStart, phaseEnd, department);
+                await transferSchichtToRoster(pId, phaseStart, phaseEnd, department, role);
             } catch (e: any) {
                 console.error('[ITW] Fehler:', e);
                 alert('Fehler beim Speichern: ' + e.message);
@@ -489,23 +526,104 @@ const ItwVorplanungTab: React.FC = () => {
     ) => {
         if (newDept === currentDept) return;
 
-        const currentAssgn = getAssignmentForPhase(phaseStart, role, currentDept);
-        if (currentAssgn && currentAssgn.person_id) {
-            const person = personnel.find(p => Number(p.id) === Number(currentAssgn.person_id));
-            const pName = person ? `${person.name}, ${person.vorname}` : 'Mitarbeiter';
-            const proceed = window.confirm(
-                `Für "${role}" ist aktuell ${pName} eingeteilt.\n\nSoll die zuständige Abteilung von "${currentDept}" auf "${newDept}" geändert werden?\nDie ITW-Schichten (IW) im Dienstplan werden für ${pName} automatisch auf die Schichttage der neuen Abteilung übertragen.`
-            );
-            if (!proceed) return;
+        // Phasen-Konfiguration und Overrides für diese Phase bestimmen
+        const phaseIdx = displayedPhases.findIndex(p => p.start === phaseStart);
+        const rotCount = itwRotationPhases.length || 3;
+        const rotIdx = phaseIdx >= 0 ? phaseIdx % rotCount : 0;
+        const rotConfig = itwRotationPhases[rotIdx] || { fzf1: '1. Abteilung', fzf2: '2. Abteilung', maschinist: '3. Abteilung' };
+        const currentOverride = phaseOverrides[phaseStart] || {};
 
+        const deptMap: Record<'fzf1' | 'fzf2' | 'maschinist', string> = {
+            fzf1: currentOverride.fzf1 || rotConfig.fzf1,
+            fzf2: currentOverride.fzf2 || rotConfig.fzf2,
+            maschinist: currentOverride.maschinist || rotConfig.maschinist
+        };
+
+        const defaultDeptMap: Record<'fzf1' | 'fzf2' | 'maschinist', string> = {
+            fzf1: rotConfig.fzf1,
+            fzf2: rotConfig.fzf2,
+            maschinist: rotConfig.maschinist
+        };
+
+        const roleTitleMap: Record<'fzf1' | 'fzf2' | 'maschinist', string> = {
+            fzf1: 'Fahrzeugführer 1',
+            fzf2: 'Fahrzeugführer 2',
+            maschinist: 'Maschinist'
+        };
+
+        // Welche andere Position in der Phase hat aktuell die neu gewählte Abteilung?
+        const otherKey = (['fzf1', 'fzf2', 'maschinist'] as const).find(k => k !== roleKey && deptMap[k] === newDept);
+        const otherRole = otherKey ? roleTitleMap[otherKey] : null;
+        const otherDept = otherKey ? deptMap[otherKey] : null;
+
+        // Eingeteilte Personen auf beiden Positionen ermitteln
+        const assgnA = getAssignmentForPhase(phaseStart, role, currentDept);
+        const assgnB = (otherKey && otherRole && otherDept) ? getAssignmentForPhase(phaseStart, otherRole, otherDept) : null;
+
+        const personA = assgnA?.person_id ? personnel.find(p => Number(p.id) === Number(assgnA.person_id)) : null;
+        const personB = assgnB?.person_id ? personnel.find(p => Number(p.id) === Number(assgnB.person_id)) : null;
+
+        // Bestätigungsabfrage für den Planer
+        if (personA || personB) {
+            let confirmMessage = `Abteilungs- und Schichtzuordnung für diese Phase ändern?\n\n`;
+            if (otherRole) {
+                confirmMessage += `• ${role}: ${currentDept} → ${newDept}${personB ? `\n  (Übernimmt Kollege: ${personB.name}, ${personB.vorname})` : '\n  (Neu unbesetzt)'}\n`;
+                confirmMessage += `• ${otherRole}: ${newDept} → ${currentDept}${personA ? `\n  (Übernimmt Kollege: ${personA.name}, ${personA.vorname})` : '\n  (Neu unbesetzt)'}\n\n`;
+            } else {
+                confirmMessage += `• ${role}: ${currentDept} → ${newDept}${personA ? `\n  (Mitarbeiter: ${personA.name}, ${personA.vorname})` : ''}\n\n`;
+            }
+            confirmMessage += `Die Schichten (IW) im Dienstplan und die eingeteilten Kollegen werden automatisch getauscht und nachgeführt. Fortfahren?`;
+
+            const proceed = window.confirm(confirmMessage);
+            if (!proceed) return;
+        }
+
+        // 1. Alte Schichten und Zuweisungen entfernen
+        if (personA) {
             try {
-                await removeSchichtFromRoster(currentAssgn.person_id, phaseStart, phaseEnd, currentDept);
-                await transferSchichtToRoster(currentAssgn.person_id, phaseStart, phaseEnd, newDept);
+                await removeSchichtFromRoster(personA.id, phaseStart, phaseEnd, currentDept, role);
+                await (window as any).api.removeItwPhaseAssignment?.(phaseStart, personA.id);
             } catch (err) {
-                console.error('[ITW] Fehler beim Anpassen der Dienstplan-Schichten:', err);
+                console.error('[ITW] Fehler beim Entfernen alter Schichten (Person A):', err);
             }
         }
 
+        if (personB && otherRole) {
+            try {
+                await removeSchichtFromRoster(personB.id, phaseStart, phaseEnd, newDept, otherRole);
+                await (window as any).api.removeItwPhaseAssignment?.(phaseStart, personB.id);
+            } catch (err) {
+                console.error('[ITW] Fehler beim Entfernen alter Schichten (Person B):', err);
+            }
+        }
+
+        // 2. Getauschte Zuweisungen und neue Dienstplanschichten eintragen
+        if (personB) {
+            try {
+                await (window as any).api.addItwPhaseAssignment?.(phaseStart, personB.id, role);
+                await transferSchichtToRoster(personB.id, phaseStart, phaseEnd, newDept, role);
+            } catch (err) {
+                console.error('[ITW] Fehler beim Zuweisen der neuen Schichten (Person B):', err);
+            }
+        }
+
+        if (personA && otherRole) {
+            try {
+                await (window as any).api.addItwPhaseAssignment?.(phaseStart, personA.id, otherRole);
+                await transferSchichtToRoster(personA.id, phaseStart, phaseEnd, currentDept, otherRole);
+            } catch (err) {
+                console.error('[ITW] Fehler beim Zuweisen der neuen Schichten (Person A):', err);
+            }
+        } else if (personA && !otherRole) {
+            try {
+                await (window as any).api.addItwPhaseAssignment?.(phaseStart, personA.id, role);
+                await transferSchichtToRoster(personA.id, phaseStart, phaseEnd, newDept, role);
+            } catch (err) {
+                console.error('[ITW] Fehler beim Zuweisen der neuen Schichten (Person A solo):', err);
+            }
+        }
+
+        // 3. Phase Overrides aktualisieren (beide Positionen tauschen)
         const updated = { ...phaseOverrides };
         if (!updated[phaseStart]) {
             updated[phaseStart] = {};
@@ -513,19 +631,30 @@ const ItwVorplanungTab: React.FC = () => {
             updated[phaseStart] = { ...updated[phaseStart] };
         }
 
-        if (newDept === defaultDept) {
+        if (newDept === defaultDeptMap[roleKey]) {
             delete updated[phaseStart][roleKey];
-            if (Object.keys(updated[phaseStart]).length === 0) {
-                delete updated[phaseStart];
-            }
         } else {
             updated[phaseStart][roleKey] = newDept;
+        }
+
+        if (otherKey) {
+            if (currentDept === defaultDeptMap[otherKey]) {
+                delete updated[phaseStart][otherKey];
+            } else {
+                updated[phaseStart][otherKey] = currentDept;
+            }
+        }
+
+        if (Object.keys(updated[phaseStart]).length === 0) {
+            delete updated[phaseStart];
         }
 
         setPhaseOverrides(updated);
 
         try {
             await (window as any).api.setSetting?.('itw_phase_dept_overrides', JSON.stringify(updated));
+            const assigns = await (window as any).api.getItwPhaseAssignments?.() || [];
+            setAssignments(assigns);
             window.dispatchEvent(new CustomEvent('itw-patterns-updated'));
             window.dispatchEvent(new CustomEvent('itw-duty-roster-updated'));
         } catch (e: any) {

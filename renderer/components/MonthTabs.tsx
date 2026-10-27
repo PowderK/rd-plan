@@ -3372,6 +3372,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 maxNR={maxNR}
                                                 presenceRemainingByPerson={presenceRemainingByPerson}
                                                 assignedRemainingByPerson={assignedRemainingByPerson}
+                                                currentMonth={currentMonth}
                                                 renderPresenceMeter={(value: number, height: number) => (
                                                     <div style={{ position: 'relative', width: 45, height, background: '#eef2f7', borderRadius: 3 }}>
                                                         <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1', zIndex: 1 }} />
@@ -3773,6 +3774,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 maxNR={maxNR}
                                                 presenceRemainingByPerson={presenceRemainingByPerson}
                                                 assignedRemainingByPerson={assignedRemainingByPerson}
+                                                currentMonth={currentMonth}
                                                 renderPresenceMeter={(value: number, height: number) => (
                                                     <div style={{ position: 'relative', width: 45, height, background: '#eef2f7', borderRadius: 3 }}>
                                                         <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1', zIndex: 1 }} />

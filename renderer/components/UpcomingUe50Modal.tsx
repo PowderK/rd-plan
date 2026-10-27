@@ -102,6 +102,13 @@ export const UpcomingUe50Modal: React.FC<UpcomingUe50ModalProps> = ({ onDecided 
 
           const pPeriods = periodsByPerson[p.id] || [];
 
+          // Prüfe, ob die Person überhaupt die Rettungsdienst-Qualifikation besitzt
+          const hasRd = pPeriods.some((q: any) =>
+            q.qualType === qRd &&
+            q.active !== false
+          );
+          if (!hasRd) continue;
+
           // Prüfe, ob bereits entschieden wurde:
           // 1. Bereits Ü50 für diesen Monat/Geburtstag eingetragen?
           const hasUe50 = pPeriods.some((q: any) =>
