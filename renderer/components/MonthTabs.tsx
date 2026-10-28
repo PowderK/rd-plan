@@ -4187,18 +4187,20 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 onConfirm={handleConfirmAutoAssign}
                 summaries={azubiAutoState || []}
             />
-            <ItwAutoAssignDialog
-                isOpen={isItwAutoAssignOpen}
-                onClose={() => setIsItwAutoAssignOpen(false)}
-                onConfirm={handleApplyItwAutoAssign}
-                monthName={months[currentMonth]}
-                year={year}
-                departmentName={departmentName}
-                departmentId={department}
-                initialPlans={itwAutoPlans}
-                crossDeptPersonnel={allCombinedPersonnel}
-                itwDoctors={itwDoctors}
-            />
+            {isItwAutoAssignOpen && (
+                <ItwAutoAssignDialog
+                    isOpen={isItwAutoAssignOpen}
+                    onClose={() => setIsItwAutoAssignOpen(false)}
+                    onConfirm={handleApplyItwAutoAssign}
+                    monthName={months[currentMonth]}
+                    year={year}
+                    departmentName={departmentName}
+                    departmentId={department}
+                    initialPlans={itwAutoPlans}
+                    crossDeptPersonnel={allCombinedPersonnel}
+                    itwDoctors={itwDoctors}
+                />
+            )}
             {showGuestModal && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div style={{ background: '#fff', padding: 24, borderRadius: 8, width: 400 }}>

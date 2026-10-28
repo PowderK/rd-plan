@@ -31,8 +31,10 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
   crossDeptPersonnel,
   itwDoctors = []
 }) => {
-  const [plans, setPlans] = useState<ItwDayAutoPlan[]>(initialPlans);
-  const [filterMode, setFilterMode] = useState<'all' | 'conflicts'>('all');
+  const [plans, setPlans] = useState<ItwDayAutoPlan[]>(() => initialPlans || []);
+  const [filterMode, setFilterMode] = useState<'all' | 'conflicts'>(() => {
+    return (initialPlans || []).some(p => p.conflictType !== 'none') ? 'conflicts' : 'all';
+  });
 
   const myDeptCode = normalizeDeptCode(departmentName || departmentId);
 
@@ -54,12 +56,9 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
 
   // Sync state when initialPlans changes
   React.useEffect(() => {
-    setPlans(initialPlans);
-    const hasConflicts = initialPlans.some(p => p.conflictType !== 'none');
-    if (hasConflicts) {
+    setPlans(initialPlans || []);
+    if ((initialPlans || []).some(p => p.conflictType !== 'none')) {
       setFilterMode('conflicts');
-    } else {
-      setFilterMode('all');
     }
   }, [initialPlans]);
 
