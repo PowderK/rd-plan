@@ -3855,37 +3855,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         for (let i = 0; i < allItwDays.length; i += 15) racks.push(allItwDays.slice(i, i + 15));
                                         return (
                                             <>
-                                                {canWrite && (
-                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, padding: '0 4px', flexWrap: 'wrap', gap: 10 }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                            <button
-                                                                type="button"
-                                                                onClick={handleOpenItwAutoAssign}
-                                                                style={{
-                                                                    display: 'inline-flex',
-                                                                    alignItems: 'center',
-                                                                    gap: 8,
-                                                                    padding: '7px 16px',
-                                                                    background: '#fffbeb',
-                                                                    color: '#b45309',
-                                                                    border: '1px solid #f59e0b',
-                                                                    borderRadius: 6,
-                                                                    fontSize: 13,
-                                                                    fontWeight: 600,
-                                                                    cursor: 'pointer',
-                                                                    boxShadow: '0 1px 2px rgba(245, 158, 11, 0.15)'
-                                                                }}
-                                                                title="Automatische ITW-Einteilung anhand Vorplanung und IW-Diensten"
-                                                            >
-                                                                <span style={{ fontSize: 16 }}>⚡</span>
-                                                                Automatische ITW-Einteilung ({months[currentMonth]})
-                                                            </button>
-                                                            <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                                                                Priorisiert IW-Dienste eigener Kollegen und übernimmt Vorplanungs-Besetzungen &amp; Ärzte als Info.
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                )}
                                                 {racks.map((rackDays, rackIdx) => (
                                                     <div key={`itw_rack_${rackIdx}`} className={styles.itwRack}>
                                                 {rackDays.map((d2) => {
