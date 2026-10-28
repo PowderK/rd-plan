@@ -1,4 +1,8 @@
-## Version 1.6.2 - 2026-10-27
+## Build 1550 - 2026-10-28
+
+- automated build
+
+## Version 1.6.2 - 2026-10-28
 
 - **Automatische ITW-Einteilung im Monatsplan**:
   - **1-Klick-Zuweisung für den gesamten Monat**: Automatische Ermittlung und Besetzung der ITW-Schichten (Fahrzeugführer, Maschinist, Notarzt) anhand der hinterlegten ITW-Vorplanung und den `IW`-Diensten im Monatsdienstplan.
@@ -6,9 +10,20 @@
   - **Interaktiver Klärungsdialog bei Abweichungen & Doppelbelegungen**:
     - Weicht ein Kollege mit `IW` von der Vorplanung ab, wird gezielt nach der Rolle (FzF oder Ma) gefragt.
     - Haben zwei Kollegen der eigenen Abteilung ein `IW`, fragt der Dialog nach der Zuweisung von Fahrzeugführer (`itw_row_1`) und Maschinist (`itw_row_2`).
-  - **Fremdabteilungen als Info (ohne RTW-Berechnung)**: Verbleibende offene Planstellen werden mit Vorplanungs-Kollegen fremder Abteilungen belegt. Diese werden optisch hervorgehoben (blau/kursiv mit Abteilungs-Tag wie `[2. Abt.]`) und fließen **nicht** in die RTW-Berechnung des Kontrollkastens ein.
+  - **Farbliche Kennzeichnung der Abteilungen (Eigene & Fremde)**:
+    - Fremde Kollegen werden nun in ihrer echten Abteilungsfarbe (Rot = 1. Abt., Blau = 2. Abt., Grün = 3. Abt.) dargestellt anstelle einer pauschalen Blaufärbung.
+    - Die **aktuelle/eigene Abteilung** wird in der ITW-Einteilung ebenfalls farblich im Abteilungsfarbton hinterlegt (solider Rand, kräftige Schrift; Fremdabteilungen mit gestricheltem Rahmen und kursiver Schrift).
+    - Streng isoliert: Reguläre RTW- und NEF-Zeilen bleiben unverändert.
+  - **Fremdabteilungen als Info (ohne RTW-Berechnung)**: Verbleibende offene Planstellen werden mit Vorplanungs-Kollegen fremder Abteilungen belegt. Diese fließen **nicht** in die RTW-Berechnung des Kontrollkastens ein.
   - **Automatische Übernahme des Notarztes**: Notärzte aus dem ITW-Dienstplan werden automatisch in die Arzt-Zeile (`itw_row_4`) übernommen (violett hervorgehoben, reine Info).
+  - **Aufgeräumter Header-Aufruf**: Zentraler Button *„ITW Automatik“* in der Header-Leiste; redundanter Button innerhalb des Tabs entfernt.
   - **Vollständige Undo-Historie**: Alle automatischen ITW-Zuweisungen können jederzeit über die Rückgängig-Funktion zurückgerollt werden.
+
+- **Windows Focus-Bugfix nach Anwendungswechsel (z. B. Alt+Tab zu Excel/Word)**:
+  - Behebung des Problems, dass Eingabefelder (wie Personalnummer / H-Nummer in den Personaleinstellungen) nach dem Wechsel zu einer externen Software und Zurückkehren in RD-Plan keinen Fokus mehr erhielten.
+  - Deaktivierung der Menüleisten und `autoHideMenuBar` auf allen Dialog- und Editorfenstern (verhindert das Fangen des Fokus durch den Windows-Menümodus bei Alt+Tab).
+  - Globaler WebContents-Fokus-Sync bei Fensteraktivierung.
+  - Capture-Klickabsicherung im Preload-Script zur sofortigen Fokussierung von `<input>`, `<textarea>`, `<select>` und `<label>`.
 
 - **Dynamische Rest V-Kapazitätsanzeige im Kontrollkasten**:
   - **Monatsabhängige Schwellenwerte**: Die Schwellenwerte für die Ampelfarben (Rot, Gelb, Grün) der Restkapazität (Rest V) skalieren nun dynamisch mit den verbleibenden Monaten im Planungsjahr:

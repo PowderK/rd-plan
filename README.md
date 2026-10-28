@@ -7,7 +7,7 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v1.6.2** - Dynamische Rest V-Kapazitätsanzeige im Kontrollkasten mit monatsabhängiger Schwellenwert-Skalierung und Weiß-Status bei Sollerfüllung, intelligenter Abteilungstausch mit Schicht- und Kollegen-Nachführung in der ITW-Vorplanung sowie Fehlerbehebung bei der Rettungsdienst-Grundqualifikationsprüfung.
+**v1.6.2** - Automatische ITW-Einteilung im Monatsplan mit intelligenter Vorplanungs- und IW-Dienst-Synchronisation, Abteilungsfarbkodierung für eigene und fremde Abteilungen, dynamische Rest V-Kapazitätsanzeige im Kontrollkasten mit monatsabhängiger Schwellenwert-Skalierung, intelligenter Abteilungstausch in der ITW-Vorplanung sowie Windows-Fokusoptimierung nach Anwendungswechsel.
 
 ## Funktionen
 
@@ -17,8 +17,11 @@ RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die 
 - **Interaktive Konflikt- und Abweichungsklärung**: 
   - Weicht der Kollege mit `IW` von der Vorplanung ab, fragt ein übersichtlicher Dialog nach der gewünschten Rolle (FzF oder Ma).
   - Haben zwei Kollegen der eigenen Abteilung ein `IW`, vergibt der Planer im Dialog direkt FzF und Ma.
-- **Partner-Abteilungen als reine Info**: Verbleibende freie Positionen werden mit Vorplanungs-Kollegen fremder Abteilungen belegt. Diese werden optisch hervorgehoben (blau/kursiv mit Abteilungszusatz) und fließen **nicht** in die RTW-Berechnung des Kontrollkastens ein.
+- **Farbliche Kennzeichnung der Abteilungen (Eigene & Fremde)**:
+  - Fremde Kollegen werden optisch in ihrer jeweiligen Abteilungsfarbe hervorgehoben (Rot = 1. Abt., Blau = 2. Abt., Grün = 3. Abt.; gestrichelter Rand und kursiver Text) und fließen **nicht** in die RTW-Berechnung des Kontrollkastens ein.
+  - Die eigene Abteilung wird in der ITW-Einteilung ebenfalls im Abteilungsfarbton hinterlegt (solider Rand, kräftige Schrift).
 - **Automatische Arzt-Besetzung**: Übernahme des im ITW-Dienstplan hinterlegten Notarztes in die Arzt-Zeile (violett markiert, reine Info).
+- **Zentraler Header-Aufruf**: Aufruf über den Button *„ITW Automatik“* in der Header-Leiste.
 - **Vollständige Undo-Unterstützung**: Alle durchgeführten Zuweisungen können jederzeit über die Rückgängig-Funktion zurückgerollt werden.
 
 ### Dynamische Rest V-Kapazitätsanzeige & Kontrollkasten-Optimierung (v1.6.2+)
