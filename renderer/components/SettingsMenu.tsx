@@ -168,6 +168,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
   const [featureOldRtwShifts, setFeatureOldRtwShifts] = useState(false);
   const [featureShiftTransfers, setFeatureShiftTransfers] = useState(false);
   const [featureTaucher, setFeatureTaucher] = useState(true);
+  const [featureAutoUe50, setFeatureAutoUe50] = useState(true);
   const [itwFeatureEnabled, setItwFeatureEnabled] = useState(false);
   const [activeCategory, setActiveCategory] = useState<'general' | 'roster' | 'features' | 'itw' | 'qualifications' | 'roles' | 'audit'>(activeCategoryProp || 'general');
 
@@ -245,6 +246,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       featureOldRtwShifts,
       featureShiftTransfers,
       featureTaucher,
+      featureAutoUe50,
       itwFeatureEnabled,
       roles: normalizedRoles,
       auswertungByType: sortedAuswertung,
@@ -276,6 +278,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
     featureOldRtwShifts,
     featureShiftTransfers,
     featureTaucher,
+    featureAutoUe50,
     itwFeatureEnabled,
     roles,
     auswertungByType,
@@ -574,6 +577,8 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       await (window as any).api.setSetting(`feature_shift_transfers_${selectedDepartment}`, featureShiftTransfers ? 'true' : 'false');
       await (window as any).api.setSetting(`feature_taucher_${selectedDepartment}`, featureTaucher ? 'true' : 'false');
       await (window as any).api.setSetting('feature_taucher', featureTaucher ? 'true' : 'false');
+      await (window as any).api.setSetting(`feature_auto_ue50_${selectedDepartment}`, featureAutoUe50 ? 'true' : 'false');
+      await (window as any).api.setSetting('feature_auto_ue50', featureAutoUe50 ? 'true' : 'false');
       // ITW global speichern
       await (window as any).api.setSetting('itw', itwFeatureEnabled ? 'true' : 'false');
       await (window as any).api.setSetting('itw_rotation_pattern', JSON.stringify(itwRotationPhases));
@@ -721,6 +726,15 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
         } else {
           const globT = await (window as any).api.getSetting('feature_taucher');
           setFeatureTaucher(globT === null || globT === undefined ? true : (globT === 'true' || globT === true || globT === '1'));
+        }
+      } catch { }
+      try {
+        const autoUe50Feat = await (window as any).api.getSetting(`feature_auto_ue50_${selectedDepartment}`);
+        if (autoUe50Feat !== null && autoUe50Feat !== undefined) {
+          setFeatureAutoUe50(autoUe50Feat === 'true' || autoUe50Feat === true || autoUe50Feat === '1');
+        } else {
+          const globUe50 = await (window as any).api.getSetting('feature_auto_ue50');
+          setFeatureAutoUe50(globUe50 === null || globUe50 === undefined ? true : (globUe50 === 'true' || globUe50 === true || globUe50 === '1'));
         }
       } catch { }
       try {
@@ -2036,6 +2050,22 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                   <strong>ITW Vorplanung</strong>
                   <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
                     Blendet alle ITW-Bereiche in Dienstplan, Fahrzeuge und Personal ein oder aus.
+                  </div>
+                </label>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr', columnGap: 12, alignItems: 'start' }}>
+                <input
+                  type="checkbox"
+                  id="featureAutoUe50"
+                  checked={featureAutoUe50}
+                  onChange={(e) => setFeatureAutoUe50(e.target.checked)}
+                  style={{ marginTop: 2 }}
+                />
+                <label htmlFor="featureAutoUe50" style={{ cursor: 'pointer', margin: 0 }}>
+                  <strong>Automatische Ü50-Berechnung</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                    Errechnet taggenau den 50. Geburtstag der Kollegen, nimmt sie ab diesem Zeitpunkt automatisch aus der regulären RTW-Berechnung und erinnert RTW-Planer 35 Tage im Voraus an die Entscheidung über den Ü50-Unterstützerstatus.
                   </div>
                 </label>
               </div>

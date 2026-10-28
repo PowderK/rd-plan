@@ -1,3 +1,4 @@
+import { isTurnedFiftyOnDate } from './personPeriods';
 
 /** Baut Monats-Aktivierungs-Map aus API-Zeilen (vehicleId, month, enabled). */
 export function buildVehicleActivationMap(rows: unknown): Record<number, boolean[]> {
@@ -207,14 +208,17 @@ export function computeUe50Shifts(
 export function computeWeightedPresence(
     year: number,
     roster: any[],
-    personnel: { id: number; fahrzeugfuehrerHLFB?: boolean | number; ue50Monthly?: boolean[]; lpalMonthly?: boolean[]; taucherMonthly?: boolean[]; rettungsdienstMonthly?: boolean[]; deptActiveMonthly?: boolean[] }[],
+    personnel: { id: number; fahrzeugfuehrerHLFB?: boolean | number; ue50Monthly?: boolean[]; lpalMonthly?: boolean[]; taucherMonthly?: boolean[]; rettungsdienstMonthly?: boolean[]; deptActiveMonthly?: boolean[]; birthDate?: string | null }[],
     ue50Input: Set<number> | ((personId: number, monthIndex: number) => boolean) | Record<number, boolean[]>,
     auswertungByType: Record<string, string>,
     hlfbPeriodsByPerson?: Record<number, Array<{ startYM: string; endYM?: string }>>,
-    hlfbFactor: number = 0.75
+    hlfbFactor: number = 0.75,
+    autoUe50Enabled: boolean = true
 ) {
     const countsByPerson: Record<number, number[]> = {};
     const ensure = (pid: number) => (countsByPerson[pid] ||= Array(12).fill(0));
+    const personnelById: Record<number, any> = {};
+    (personnel || []).forEach(p => { personnelById[p.id] = p; });
 
     for (const row of (roster || [])) {
         try {
@@ -225,6 +229,13 @@ export function computeWeightedPresence(
             const month = new Date(iso + 'T00:00:00Z').getUTCMonth();
 
             if (checkUe50InMonth(pid, month, ue50Input, personnel)) continue; // Ü50 in diesem Monat ausschließen
+
+            const p = personnelById[pid];
+            // Sobald das Jahr beginnt: Tage ab dem 50. Geburtstag werden taggenau nicht mehr
+            // in die Schichtberechnung einbezogen (falls Feature aktiv und in diesem Monat noch kein Ü50-Status aktiv ist)
+            if (autoUe50Enabled && p?.birthDate && isTurnedFiftyOnDate(p.birthDate, iso)) {
+                continue;
+            }
 
             const code = String(row.value || '').trim();
             if (!code) continue;
@@ -317,7 +328,8 @@ export function calculateTargetsWithDetails(
     hlfbPeriodsByPerson?: Record<number, Array<{ startYM: string; endYM?: string }>>,
     shiftTransfers: ShiftTransfer[] = [], // Optional for backward compatibility
     vehiclePeriods?: { rtwPeriods: Record<number, any[]>; nefPeriods: Record<number, any[]> },
-    hlfbFactor: number = 0.75
+    hlfbFactor: number = 0.75,
+    autoUe50Enabled: boolean = true
 ): CalculationResultDetails {
     // 1. Dept Shifts
     const deptShifts = computeDeptShiftsPerMonth(year, department, deptPatternSeqs);
@@ -335,7 +347,7 @@ export function calculateTargetsWithDetails(
     const positionsAdj = positions.map((p, i) => Math.max(0, p - azubiShifts[i] - ue50Shifts[i]));
 
     // 5. Weighted Presence
-    const presence = computeWeightedPresence(year, roster, personnel, ue50Input, auswertungByType, hlfbPeriodsByPerson, hlfbFactor);
+    const presence = computeWeightedPresence(year, roster, personnel, ue50Input, auswertungByType, hlfbPeriodsByPerson, hlfbFactor, autoUe50Enabled);
 
     // 6. Hamilton Allocation
     const targetsById: Record<number, number[]> = {};
@@ -529,7 +541,8 @@ export function calculateTargets(
     hlfbPeriodsByPerson?: Record<number, Array<{ startYM: string; endYM?: string }>>,
     shiftTransfers: ShiftTransfer[] = [], // Optional for backward compatibility
     vehiclePeriods?: { rtwPeriods: Record<number, any[]>; nefPeriods: Record<number, any[]> },
-    hlfbFactor: number = 0.75
+    hlfbFactor: number = 0.75,
+    autoUe50Enabled: boolean = true
 ): Record<number, number[]> {
     return calculateTargetsWithDetails(
         year,
@@ -545,7 +558,8 @@ export function calculateTargets(
         hlfbPeriodsByPerson,
         shiftTransfers,
         vehiclePeriods,
-        hlfbFactor
+        hlfbFactor,
+        autoUe50Enabled
     ).targetsById;
 }
 

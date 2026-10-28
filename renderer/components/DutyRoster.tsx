@@ -10,7 +10,7 @@ import { BUILD_INFO } from '../buildInfo';
 import { useAuth } from '../contexts/AuthContext';
 import { buildVehicleActivationMap } from '../utils/calculation';
 import { rosterReleasedSettingKey } from '../utils/rosterRelease';
-import { qualificationAppliesInMonth } from '../utils/personPeriods';
+import { qualificationAppliesInMonth, isMonthAfterFiftiethBirthday } from '../utils/personPeriods';
 
 interface Person {
   id: number;
@@ -336,6 +336,12 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         if (val) rettungsdienstQualName = String(val);
       } catch { }
 
+      let ue50QualName = 'Ü50';
+      try {
+        const val = await (window as any).api.getSetting('ue50_qualification_type');
+        if (val) ue50QualName = String(val);
+      } catch { }
+
       let taucherQualName = 'Taucher';
       try {
         const val = await (window as any).api.getSetting('taucher_qualification_type');
@@ -361,6 +367,17 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         }
       } catch { }
 
+      let isAutoUe50 = true;
+      try {
+        const featU = await (window as any).api.getSetting(`feature_auto_ue50_${department}`);
+        if (featU !== null && featU !== undefined) {
+          isAutoUe50 = featU === 'true' || featU === true || featU === '1';
+        } else {
+          const globU = await (window as any).api.getSetting('feature_auto_ue50');
+          isAutoUe50 = globU === null || globU === undefined ? true : (globU === 'true' || globU === true || globU === '1');
+        }
+      } catch { }
+
       const periodsByPerson: Record<number, any[]> = {};
       if (Array.isArray(allQualPeriods)) {
         allQualPeriods.forEach((p: any) => {
@@ -376,8 +393,12 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         const hasTaucher = isTaucherFeature && pPeriods.some((per: any) => per.qualType === taucherQualName && qualificationAppliesInMonth(per, yearMonth));
         if (hasTaucher) taucherSet.add(p.id);
         const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
-        if (rdPeriods.length === 0) return true;
-        return rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
+        let hasRd = rdPeriods.length > 0 && rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
+        const hasUe50 = pPeriods.some((per: any) => per.qualType === ue50QualName && qualificationAppliesInMonth(per, yearMonth));
+        if (isAutoUe50 && p.birthDate && !hasUe50 && isMonthAfterFiftiethBirthday(p.birthDate, yearMonth)) {
+          hasRd = false;
+        }
+        return hasRd;
       });
 
       console.log('[DutyRoster Initial] Personnel before filter:', list?.length || 0, '| after filter:', filteredPersonnel?.length || 0);
@@ -1206,6 +1227,12 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       if (val) rettungsdienstQualName = String(val);
     } catch { }
 
+    let ue50QualName = 'Ü50';
+    try {
+      const val = await (window as any).api.getSetting('ue50_qualification_type');
+      if (val) ue50QualName = String(val);
+    } catch { }
+
     let taucherQualName = 'Taucher';
     try {
       const val = await (window as any).api.getSetting('taucher_qualification_type');
@@ -1231,6 +1258,17 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       }
     } catch { }
 
+    let isAutoUe50 = true;
+    try {
+      const featU = await (window as any).api.getSetting(`feature_auto_ue50_${departmentName}`);
+      if (featU !== null && featU !== undefined) {
+        isAutoUe50 = featU === 'true' || featU === true || featU === '1';
+      } else {
+        const globU = await (window as any).api.getSetting('feature_auto_ue50');
+        isAutoUe50 = globU === null || globU === undefined ? true : (globU === 'true' || globU === true || globU === '1');
+      }
+    } catch { }
+
     const yearMonth = `${year}-${String(currentMonth + 1).padStart(2, '0')}`;
     const taucherSet = new Set<number>();
     const filteredPersonnel = (list || []).filter((p: any) => {
@@ -1238,8 +1276,12 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       const hasTaucher = isTaucherFeature && pPeriods.some((per: any) => per.qualType === taucherQualName && qualificationAppliesInMonth(per, yearMonth));
       if (hasTaucher) taucherSet.add(p.id);
       const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
-      if (rdPeriods.length === 0) return true;
-      return rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
+      let hasRd = rdPeriods.length > 0 && rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
+      const hasUe50 = pPeriods.some((per: any) => per.qualType === ue50QualName && qualificationAppliesInMonth(per, yearMonth));
+      if (isAutoUe50 && p.birthDate && !hasUe50 && isMonthAfterFiftiethBirthday(p.birthDate, yearMonth)) {
+        hasRd = false;
+      }
+      return hasRd;
     });
 
     setTaucherPersonIds(taucherSet);

@@ -38,6 +38,11 @@ interface KontrollkastenItem {
   isItwExternal?: boolean;
 }
 
+const MONTH_NAMES = [
+  'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+  'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'
+];
+
 interface KontrollkastenProps {
   items: KontrollkastenItem[];
   highlightedPersonKey: string | null;
@@ -52,6 +57,7 @@ interface KontrollkastenProps {
   showWeekendShifts?: boolean;
   showItw?: boolean;
   availablePersonKeys?: Set<string>;
+  currentMonth?: number;
 }
 
 export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
@@ -68,6 +74,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
   showWeekendShifts = false,
   showItw = true,
   availablePersonKeys,
+  currentMonth,
 }) => {
   // Dynamisches Grid-Layout
   const wCol = showWeekendShifts ? '22px ' : '';
@@ -143,7 +150,7 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
         </span>
         <span 
           style={{ textAlign: 'center', fontWeight: 600, fontSize: 10, color: '#374151', paddingBottom: 1, borderBottom: '1px solid var(--line)', cursor: 'help' }}
-          title="T/N | Rest: Oben: Tag/Nacht-Verhältnis (Rot links = Tag-Überhang, Blau rechts = Nacht-Überhang). Unten: Restkapazität (Rest V) im Vergleich zum offenen Jahresbedarf (Grün = ausreichend Luft, Gelb = eng, Rot = kritisch)."
+          title="T/N | Rest: Oben: Tag/Nacht-Verhältnis (Rot links = Tag-Überhang, Blau rechts = Nacht-Überhang). Unten: Restkapazität (Rest V) im Vergleich zum offenen Jahresbedarf (Dynamische Schwellen je nach Planungsmonat: Weiß = Jahressoll erfüllt, Grün = ausreichender Puffer, Gelb = knapp / auf Kante genäht, Rot = kritisch / Defizit)."
         >
           T/N | Rest
         </span>
@@ -383,57 +390,95 @@ export const Kontrollkasten: React.FC<KontrollkastenProps> = ({
                       );
                     })()}
 
-                    {/* Rest V Balken */}
+                    {/* Rest V Anzeige */}
                     {(() => {
+                      const isFulfilled = typeof it.rest === 'number' && it.rest >= 0;
                       const pres = presenceRemainingByPerson[it.key] || 0;
                       const assigned = assignedRemainingByPerson[it.key] || 0;
                       const remain = Math.max(0, pres - assigned);
                       const needed = typeof it.rest === 'number' && it.rest < 0 ? Math.abs(it.rest) : 0;
                       const distance = remain - needed;
 
-                      const yellowThreshold = 10;
-                      const redThreshold = 5;
-                      const widthStartDistance = 15;
-
-                      let barColor = '#34c759';
-                      if (distance <= redThreshold) {
-                        barColor = '#ef4444';
-                      } else if (distance <= yellowThreshold) {
-                        barColor = '#f59e0b';
+                      // Wenn Jahresschichten erfüllt und im Plus: Anzeige nicht mehr benötigt, weißer Kasten
+                      if (isFulfilled || needed <= 0) {
+                        const restVTooltip = `${it.name} Restkapazität (Rest V): Jahressoll bereits erfüllt / im Plus (${typeof it.rest === 'number' && it.rest >= 0 ? `+${it.rest}` : it.rest} Schichten)`;
+                        return (
+                          <div
+                            title={restVTooltip}
+                            style={{
+                              width: WAAGE_CONFIG.width,
+                              height: WAAGE_CONFIG.height,
+                              background: '#ffffff',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: 3,
+                              boxSizing: 'border-box',
+                              cursor: 'help',
+                            }}
+                          />
+                        );
                       }
 
-                      const widthFraction = needed <= 0
-                        ? 1
-                        : Math.max(0, Math.min(1, distance / widthStartDistance));
+                      // Dynamische Schwellenwerte je nach verbleibenden Monaten im Planungsjahr
+                      const mIndex = typeof currentMonth === 'number' ? Math.max(0, Math.min(11, currentMonth)) : 0;
+                      const monthsLeft = Math.max(1, 12 - mIndex);
+                      const monthName = MONTH_NAMES[mIndex];
 
-                      const restVTooltip = needed <= 0
-                        ? `${it.name} Restkapazität (Rest V): ${remain} freie Schichten im Restjahr verfügbar (Jahressoll bereits erfüllt / Gesamt: ${typeof it.rest === 'number' && it.rest >= 0 ? `+${it.rest}` : it.rest}, Puffer: +${remain} Schichten)`
-                        : `${it.name} Restkapazität (Rest V): ${remain} freie Schichten im Restjahr verfügbar vs. ${needed} noch benötigte Schichten (Gesamt: ${it.rest}, Puffer: ${distance >= 0 ? `+${distance}` : distance} Schichten)`;
+                      const fte = Math.max(0.2, (it.teilzeit || 100) / 100);
+
+                      let barColor = '#34c759';
+                      let statusText = 'ausreichend Puffer';
+                      let thresholdInfo = '';
+
+                      if (monthsLeft === 1) {
+                        // Letzter Monat (Dezember):
+                        // distance < 0: Rechnerisches Defizit (Soll kann nicht mehr erfüllt werden) -> ROT
+                        // distance === 0: Genau passend, kein Ausfallpuffer -> GELB
+                        // distance >= 1: Mindestens eine Schicht Puffer -> GRÜN
+                        if (distance < 0) {
+                          barColor = '#ef4444';
+                          statusText = 'Defizit – Soll rechnerisch nicht mehr erreichbar';
+                        } else if (distance === 0) {
+                          barColor = '#f59e0b';
+                          statusText = 'auf Kante genäht – kein Ausfallpuffer';
+                        } else {
+                          barColor = '#34c759';
+                          statusText = 'Soll problemlos erreichbar';
+                        }
+                        thresholdInfo = 'Dezember-Modus: Rot < 0, Gelb = 0, Grün ≥ 1';
+                      } else {
+                        // 2 bis 12 Monate verbleibend: dynamisch mit Restmonaten & Teilzeit skaliert
+                        const baseRed = Math.max(0, Math.floor((monthsLeft - 1) * 0.4));
+                        const baseYellow = Math.max(1, Math.round(monthsLeft * 0.7));
+                        const effRed = Math.max(0, Math.floor(baseRed * fte));
+                        const effYellow = Math.max(effRed + 1, Math.round(baseYellow * fte));
+
+                        if (distance < 0 || distance <= effRed) {
+                          barColor = '#ef4444';
+                          statusText = distance < 0 ? 'Defizit – Soll rechnerisch nicht mehr erreichbar' : 'kritisch geringer Puffer';
+                        } else if (distance <= effYellow) {
+                          barColor = '#f59e0b';
+                          statusText = 'knapper Puffer';
+                        } else {
+                          barColor = '#34c759';
+                          statusText = 'guter Puffer';
+                        }
+                        thresholdInfo = `Dynamische Schwelle (${monthName}, ${monthsLeft} Mon. verbleibend): Rot ≤ ${effRed}, Gelb ≤ ${effYellow}, Grün > ${effYellow}`;
+                      }
+
+                      const bufferStr = distance >= 0 ? `+${distance}` : `${distance}`;
+                      const restVTooltip = `${it.name} Restkapazität (Rest V): ${remain} freie Schichten verfügbar vs. ${needed} noch benötigt (Puffer: ${bufferStr} Schichten | Status: ${statusText} | ${thresholdInfo})`;
 
                       return (
                         <div
                           title={restVTooltip}
                           style={{
-                            position: 'relative',
                             width: WAAGE_CONFIG.width,
                             height: WAAGE_CONFIG.height,
-                            background: '#eef2f7',
+                            background: barColor,
                             borderRadius: 3,
                             cursor: 'help',
                           }}
-                        >
-                          <div
-                            style={{
-                              position: 'absolute',
-                              left: 0,
-                              top: 0,
-                              bottom: 0,
-                              width: `${widthFraction * 100}%`,
-                              background: barColor,
-                              borderRadius: 3,
-                            }}
-                          />
-                        </div>
+                        />
                       );
                     })()}
                   </div>

@@ -4,7 +4,8 @@ import {
   qualificationAppliesInMonth,
   buildDepartmentActiveMonthly,
   indexDepartmentPeriodsByPerson,
-  yearMonthKey
+  yearMonthKey,
+  isMonthAfterFiftiethBirthday
 } from '../utils/personPeriods';
 
 type RosterState = Record<string, Record<string, { value: string; type: string }>>;
@@ -21,6 +22,8 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
   });
   const [year, setYear] = useState<number>((window as any).rdPlanYear || new Date().getFullYear());
   const [personnel, setPersonnel] = useState<any[]>([]);
+  /** Alle für das Jahr relevanten Personen der Abteilung (für ganzjährige Soll-Berechnung). */
+  const [allPersonnel, setAllPersonnel] = useState<any[]>([]);
   /** Alle Personen der Abteilung (ohne Monatsfilter) – für Namensauflösung in der Einteilung. */
   const [personnelLookup, setPersonnelLookup] = useState<{ id: number; name: string; vorname?: string }[]>([]);
   const [azubis, setAzubis] = useState<any[]>([]);
@@ -53,19 +56,15 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
       setYear((window as any).rdPlanYear);
     }
     try {
-      // Pass current year/month to filter personnel by active periods
-      const filterDate = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`;
-      const rawList = await (window as any).api.getPersonnelList(false, filterDate, departmentName);
-      try {
-        const deptWide = await (window as any).api.getPersonnelList(false, undefined, departmentName);
-        setPersonnelLookup((deptWide || []).map((p: any) => ({
-          id: Number(p.id),
-          name: String(p.name || ''),
-          vorname: p.vorname ? String(p.vorname) : undefined
-        })));
-      } catch {
-        setPersonnelLookup([]);
-      }
+      // 1. Hole alle Personen der Abteilung für das gesamte Jahr (wie in ValuesPage)
+      const currentYear = year.toString();
+      const deptWide = await (window as any).api.getPersonnelList(false, currentYear, departmentName);
+      setPersonnelLookup((deptWide || []).map((p: any) => ({
+        id: Number(p.id),
+        name: String(p.name || ''),
+        vorname: p.vorname ? String(p.vorname) : undefined
+      })));
+
       const [allQualPeriods, allDeptPeriods] = await Promise.all([
         (window as any).api.getAllQualificationPeriods?.(),
         (window as any).api.getAllPersonnelDepartmentPeriods?.()
@@ -90,15 +89,6 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
       }
 
       const yearMonth = `${year}-${String(currentMonth + 1).padStart(2, '0')}`;
-
-      const list = (rawList || []).filter((p: any) => {
-        const pPeriods = periodsByPerson[p.id] || [];
-        const rdPeriods = pPeriods.filter((per: any) => per.qualType === rettungsdienstQualName);
-        if (rdPeriods.length === 0) return false;
-        return rdPeriods.some((per: any) => qualificationAppliesInMonth(per, yearMonth));
-      });
-
-      console.log('[EinteilungPage] Personnel before filter:', rawList.length, '| after filter:', list.length);
 
       // Lade HLFB Qualifikationstyp aus Settings
       let hlfbQualName = 'FzF HLF B'; // Fallback
@@ -126,6 +116,18 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
       try {
         const setting = await (window as any).api.getSetting('taucher_qualification_type');
         if (setting) taucherQualName = String(setting);
+      } catch { }
+
+      // Lade Feature Toggle Automatische Ü50-Berechnung
+      let autoUe50Enabled = true;
+      try {
+        const feat = await (window as any).api.getSetting(`feature_auto_ue50_${departmentName}`);
+        if (feat !== null && feat !== undefined) {
+          autoUe50Enabled = (feat === 'true' || feat === true || feat === '1');
+        } else {
+          const globFeat = await (window as any).api.getSetting('feature_auto_ue50');
+          autoUe50Enabled = (globFeat === null || globFeat === undefined ? true : (globFeat === 'true' || globFeat === true || globFeat === '1'));
+        }
       } catch { }
 
       // Lade RTW und NEF Fahrzeuge um die konfigurierten Qualifikationen zu ermitteln
@@ -169,11 +171,10 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
 
       console.log('[DEBUG EinteilungPage] RTW Qualifications:', Array.from(rtwQualifications));
       console.log('[DEBUG EinteilungPage] NEF Qualifications:', Array.from(nefQualifications));
-      // Für jede Person die Qualifikationen aus qualification_periods laden
-      const enrichedList = await Promise.all((list || []).map(async (person: any) => {
+      // Für alle Personen des Jahres die Qualifikationen zuordnen
+      const enrichedYearList = await Promise.all((deptWide || []).map(async (person: any) => {
         try {
-          // Lade Qualifikationsperioden (altes System mit qualType als String)
-          const periods = await (window as any).api.getQualificationPeriods?.(person.id) || [];
+          const periods = periodsByPerson[person.id] || [];
 
           const hasFahrzeugfuehrer = periods.some((p: any) =>
             rtwQualifications.has(p.qualType) &&
@@ -185,32 +186,6 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
             nefQualifications.has(p.qualType) &&
             qualificationAppliesInMonth(p, yearMonth)
           );
-
-          const hasHLFB = periods.some((p: any) =>
-            p.qualType === hlfbQualName &&
-            qualificationAppliesInMonth(p, yearMonth)
-          );
-
-          const hasUe50 = periods.some((p: any) =>
-            p.qualType === ue50QualName &&
-            qualificationAppliesInMonth(p, yearMonth)
-          );
-
-          const hasLpal = periods.some((p: any) =>
-            p.qualType === lpalQualName &&
-            qualificationAppliesInMonth(p, yearMonth)
-          );
-
-          const hasTaucher = periods.some((p: any) =>
-            p.qualType === taucherQualName &&
-            qualificationAppliesInMonth(p, yearMonth)
-          );
-
-          const hlfbMonthly = Array(12).fill(false);
-          const ue50Monthly = Array(12).fill(false);
-          const lpalMonthly = Array(12).fill(false);
-          const taucherMonthly = Array(12).fill(false);
-          const rettungsdienstMonthly = Array(12).fill(false);
 
           const hlfbPeriods = periods.filter((per: any) => per.qualType === hlfbQualName);
           const hasHlfbPeriod = hlfbPeriods.length > 0;
@@ -230,14 +205,24 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
           const qualApplies = (perList: any[], ym: string) =>
             perList.some((per: any) => qualificationAppliesInMonth(per, ym));
 
+          const hlfbMonthly = Array(12).fill(false);
+          const ue50Monthly = Array(12).fill(false);
+          const lpalMonthly = Array(12).fill(false);
+          const taucherMonthly = Array(12).fill(false);
+          const rettungsdienstMonthly = Array(12).fill(false);
+
           for (let m = 0; m < 12; m++) {
             const ym = yearMonthKey(year, m);
             if (hasHlfbPeriod) hlfbMonthly[m] = qualApplies(hlfbPeriods, ym);
             if (hasUe50Period) ue50Monthly[m] = qualApplies(ue50Periods, ym);
             if (hasLpalPeriod) lpalMonthly[m] = qualApplies(lpalPeriods, ym);
             if (hasTaucherPeriod) taucherMonthly[m] = qualApplies(taucherPeriods, ym);
-            if (hasRettungsdienstPeriod) rettungsdienstMonthly[m] = qualApplies(rettungsdienstPeriods, ym);
-            else rettungsdienstMonthly[m] = false;
+            let rdActive = hasRettungsdienstPeriod ? qualApplies(rettungsdienstPeriods, ym) : false;
+            // Automatisch ab Folgemonat des 50. Geburtstags aus der RTW-Berechnung nehmen, falls Feature aktiv und kein Ü50-Status
+            if (autoUe50Enabled && person.birthDate && !ue50Monthly[m] && isMonthAfterFiftiethBirthday(person.birthDate, ym)) {
+              rdActive = false;
+            }
+            rettungsdienstMonthly[m] = rdActive;
           }
 
           const deptActiveMonthly = buildDepartmentActiveMonthly(
@@ -254,6 +239,11 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
           if (!hasHlfbPeriod && staticFlag) {
             hlfbMonthly.fill(true);
           }
+
+          const hasHLFB = hlfbMonthly[currentMonth];
+          const hasUe50 = ue50Monthly[currentMonth];
+          const hasLpal = lpalMonthly[currentMonth];
+          const hasTaucher = taucherMonthly[currentMonth];
 
           return {
             ...person,
@@ -276,7 +266,18 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
         }
       }));
 
-      setPersonnel(enrichedList);
+      // Alle Personen mit Rettungsdienst-Qualifikation im Jahr für ganzjährige Soll-Berechnung
+      const targetPersonnel = enrichedYearList.filter((p: any) => p.rettungsdienstMonthly?.some(Boolean));
+      setAllPersonnel(targetPersonnel);
+
+      // Nur Personen mit aktiver Rettungsdienst-Qualifikation und Abteilungszugehörigkeit im aktuellen Monat anzeigen
+      const monthPersonnel = targetPersonnel.filter((p: any) =>
+        p.rettungsdienstMonthly?.[currentMonth] &&
+        (!p.deptActiveMonthly || p.deptActiveMonthly[currentMonth])
+      );
+
+      console.log('[EinteilungPage] All personnel (year):', targetPersonnel.length, '| active this month:', monthPersonnel.length);
+      setPersonnel(monthPersonnel);
     } catch { }
     try { const a = await (window as any).api.getAzubiList(departmentName); setAzubis(a || []); } catch { }
     try {
@@ -384,6 +385,7 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
           departmentName={departmentName}
           personnelLookup={personnelLookup}
           personnel={personnel}
+          allPersonnel={allPersonnel}
           azubis={azubis}
           roster={roster}
           year={year}

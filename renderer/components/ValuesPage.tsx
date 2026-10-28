@@ -6,6 +6,7 @@ import {
   indexDepartmentPeriodsByPerson,
   qualificationAppliesInMonth,
   yearMonthKey,
+  isMonthAfterFiftiethBirthday,
 } from '../utils/personPeriods';
 import { isVehicleActiveOnDate, VehiclePeriod, VehicleSpecialDay } from '../utils/vehiclePeriods';
 import {
@@ -38,6 +39,7 @@ type PersonnelStatsRow = {
   id: number;
   name: string;
   vorname: string;
+  birthDate?: string | null;
   fahrzeugfuehrerHLFB?: boolean;
   hlfbMonthly?: boolean[];
   ue50?: boolean;
@@ -62,7 +64,7 @@ function usePersonnel(year: number, departmentName?: string) {
   const fetch = async () => {
     try {
       const currentYear = year.toString();
-      const [rawList, allPeriods, allDeptPeriods, hlfbQualSetting, ue50QualSetting, lpalQualSetting, taucherQualSetting, rdQualSetting, featTSetting, globTSetting] = await Promise.all([
+      const [rawList, allPeriods, allDeptPeriods, hlfbQualSetting, ue50QualSetting, lpalQualSetting, taucherQualSetting, rdQualSetting, featTSetting, globTSetting, featAutoUe50, globAutoUe50] = await Promise.all([
         (window as any).api.getPersonnelList?.(false, currentYear, departmentName),
         (window as any).api.getAllQualificationPeriods?.(),
         (window as any).api.getAllPersonnelDepartmentPeriods?.(),
@@ -73,11 +75,17 @@ function usePersonnel(year: number, departmentName?: string) {
         (window as any).api.getSetting?.('rettungsdienst_qualification_type'),
         (window as any).api.getSetting?.(`feature_taucher_${departmentName}`),
         (window as any).api.getSetting?.('feature_taucher'),
+        (window as any).api.getSetting?.(`feature_auto_ue50_${departmentName}`),
+        (window as any).api.getSetting?.('feature_auto_ue50'),
       ]);
 
       const isTaucherEnabled = featTSetting !== null && featTSetting !== undefined
         ? featTSetting === '1' || featTSetting === true || featTSetting === 'true'
         : (globTSetting === null || globTSetting === undefined ? true : globTSetting === '1' || globTSetting === true || globTSetting === 'true');
+
+      const isAutoUe50Enabled = featAutoUe50 !== null && featAutoUe50 !== undefined
+        ? featAutoUe50 === '1' || featAutoUe50 === true || featAutoUe50 === 'true'
+        : (globAutoUe50 === null || globAutoUe50 === undefined ? true : globAutoUe50 === '1' || globAutoUe50 === true || globAutoUe50 === 'true');
 
       const hlfbQualName = String(hlfbQualSetting || 'Fahrzeugführer HLF-B');
       const ue50QualName = String(ue50QualSetting || 'Ü50');
@@ -120,7 +128,11 @@ function usePersonnel(year: number, departmentName?: string) {
           if (ue50Periods.length > 0) ue50Monthly[m] = qualApplies(ue50Periods, ym);
           if (lpalPeriods.length > 0) lpalMonthly[m] = qualApplies(lpalPeriods, ym);
           if (isTaucherEnabled && taucherPeriods.length > 0) taucherMonthly[m] = qualApplies(taucherPeriods, ym);
-          if (rdPeriods.length > 0) rettungsdienstMonthly[m] = qualApplies(rdPeriods, ym);
+          let rdActive = rdPeriods.length > 0 ? qualApplies(rdPeriods, ym) : false;
+          if (isAutoUe50Enabled && p.birthDate && !ue50Monthly[m] && isMonthAfterFiftiethBirthday(p.birthDate, ym)) {
+            rdActive = false;
+          }
+          rettungsdienstMonthly[m] = rdActive;
         }
 
         const deptActiveMonthly = buildDepartmentActiveMonthly(
@@ -139,6 +151,7 @@ function usePersonnel(year: number, departmentName?: string) {
           id: p.id,
           name: p.name,
           vorname: p.vorname,
+          birthDate: p.birthDate,
           fahrzeugfuehrerHLFB: hlfbMonthly.some(Boolean),
           hlfbMonthly,
           ue50: ue50Monthly.some(Boolean),
@@ -411,6 +424,35 @@ function useHlfbPercentage(): number {
   return percentage;
 }
 
+function useAutoUe50Feature(departmentName?: string): boolean {
+  const [enabled, setEnabled] = useState<boolean>(true);
+  const fetch = async () => {
+    try {
+      const feat = await (window as any).api.getSetting?.(`feature_auto_ue50_${departmentName}`);
+      if (feat !== null && feat !== undefined) {
+        setEnabled(feat === 'true' || feat === true || feat === '1');
+      } else {
+        const globFeat = await (window as any).api.getSetting?.('feature_auto_ue50');
+        setEnabled(globFeat === null || globFeat === undefined ? true : globFeat === 'true' || globFeat === true || globFeat === '1');
+      }
+    } catch { }
+  };
+  useEffect(() => {
+    fetch();
+    window.addEventListener('settings-updated', fetch);
+    const api = (window as any).api;
+    if (api?.onSettingsUpdated) {
+      api.onSettingsUpdated(fetch);
+      return () => {
+        window.removeEventListener('settings-updated', fetch);
+        api.offSettingsUpdated?.(fetch);
+      };
+    }
+    return () => window.removeEventListener('settings-updated', fetch);
+  }, [departmentName]);
+  return enabled;
+}
+
 const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) => {
   const [year, setYear] = useYear();
   const [department, setDepartment] = useState<number>(() => departmentNameToId(departmentName));
@@ -427,6 +469,7 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const deptPatternSeqs = useDeptPatterns();
   const [shiftTransfers, setShiftTransfers] = useState<any[]>([]);
   const hlfbPercentage = useHlfbPercentage();
+  const autoUe50Enabled = useAutoUe50Feature(departmentName);
 
   useEffect(() => {
     setDepartment(departmentNameToId(departmentName));
@@ -475,9 +518,10 @@ const ValuesPage: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       undefined,
       shiftTransfers,
       vehicleData,
-      hlfbFactor
+      hlfbFactor,
+      autoUe50Enabled
     );
-  }, [year, roster, personnel, azubis, ue50Ids, auswertungByType, rtw, nef, rtwActs, nefActs, department, deptPatternSeqs, shiftTransfers, vehicleData, hlfbPercentage]);
+  }, [year, roster, personnel, azubis, ue50Ids, auswertungByType, rtw, nef, rtwActs, nefActs, department, deptPatternSeqs, shiftTransfers, vehicleData, hlfbPercentage, autoUe50Enabled]);
 
   const perPersonAssignedMap = useMemo(() => {
     return computeAssignedShiftsPerPerson(year, roster, personnel, department, deptPatternSeqs, nef);

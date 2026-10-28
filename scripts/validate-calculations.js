@@ -239,6 +239,13 @@ async function main() {
         if (evalMode !== 'off') {
             const p = personnel.find(x => x.id === pid);
             if (!p?.ue50Monthly[m]) {
+                if (p?.birthDate) {
+                    const parts = String(p.birthDate).trim().slice(0, 10).split('-');
+                    if (parts.length === 3) {
+                        const bdayISO = `${parseInt(parts[0], 10) + 50}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                        if (iso >= bdayISO) return;
+                    }
+                }
                 const factor = p?.hlfbMonthly[m] ? 0.75 : 1.0;
                 presenceByPerson[pid][m] += factor;
             }

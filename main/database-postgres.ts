@@ -237,7 +237,8 @@ export async function initializePostgreSQLDatabase(config: PostgresConfig): Prom
             city VARCHAR(255) DEFAULT '',
             phone VARCHAR(50) DEFAULT '',
             mobile VARCHAR(50) DEFAULT '',
-            email VARCHAR(255) DEFAULT ''
+            email VARCHAR(255) DEFAULT '',
+            "birthDate" VARCHAR(50) DEFAULT NULL
         );
 
         -- Settings table

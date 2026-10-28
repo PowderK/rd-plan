@@ -7,9 +7,44 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v1.6.0** - ITW-Vorplanung mit maßgeschneiderter Mitarbeiter-Lückenübersicht (1-Klick-Selbsteintragung), 1-Seiten-PDF-Export für Planer, smarter Qualifikationsfilterung und entkoppeltem Rechtesystem für den ITW-Dienstplan (Lesen / Alle Lesen).
+**v1.6.2** - Automatische ITW-Einteilung im Monatsplan mit intelligenter Vorplanungs- und IW-Dienst-Synchronisation, Abteilungsfarbkodierung für eigene und fremde Abteilungen, dynamische Rest V-Kapazitätsanzeige im Kontrollkasten mit monatsabhängiger Schwellenwert-Skalierung, intelligenter Abteilungstausch in der ITW-Vorplanung sowie Windows-Fokusoptimierung nach Anwendungswechsel.
 
 ## Funktionen
+
+### Automatische ITW-Einteilung im Monatsplan (v1.6.2+)
+- **1-Klick-Zuweisung für den gesamten Monat**: Vollautomatische Besetzung der ITW-Kacheln (Fahrzeugführer, Maschinist, Notarzt) anhand der hinterlegten Vorplanung und den `IW`-Diensten im Dienstplan.
+- **Priorität für die eigene Abteilung**: Kollegen der aktiven Abteilung mit hinterlegtem `IW` werden prioritär an ihrer Vorplanungs-Position platziert.
+- **Interaktive Konflikt- und Abweichungsklärung**: 
+  - Weicht der Kollege mit `IW` von der Vorplanung ab, fragt ein übersichtlicher Dialog nach der gewünschten Rolle (FzF oder Ma).
+  - Haben zwei Kollegen der eigenen Abteilung ein `IW`, vergibt der Planer im Dialog direkt FzF und Ma.
+- **Farbliche Kennzeichnung der Abteilungen (Eigene & Fremde)**:
+  - Fremde Kollegen werden optisch in ihrer jeweiligen Abteilungsfarbe hervorgehoben (Rot = 1. Abt., Blau = 2. Abt., Grün = 3. Abt.; gestrichelter Rand und kursiver Text) und fließen **nicht** in die RTW-Berechnung des Kontrollkastens ein.
+  - Die eigene Abteilung wird in der ITW-Einteilung ebenfalls im Abteilungsfarbton hinterlegt (solider Rand, kräftige Schrift).
+- **Automatische Arzt-Besetzung**: Übernahme des im ITW-Dienstplan hinterlegten Notarztes in die Arzt-Zeile (violett markiert, reine Info).
+- **Zentraler Header-Aufruf**: Aufruf über den Button *„ITW Automatik“* in der Header-Leiste.
+- **Vollständige Undo-Unterstützung**: Alle durchgeführten Zuweisungen können jederzeit über die Rückgängig-Funktion zurückgerollt werden.
+
+### Dynamische Rest V-Kapazitätsanzeige & Kontrollkasten-Optimierung (v1.6.2+)
+- **Monatsabhängige Schwellenwert-Dynamik**: Die Ampelfarben für die verbleibende Restkapazität (Rest V) passen sich automatisch an die verbleibenden Restmonate des Planungsjahres an:
+  - *Letzter Monat (Dezember)*: Grün bereits ab $\ge 1$ Schicht Puffer (Soll problemlos erreichbar), Gelb bei exakt $0$ Schichten Puffer (auf Kante genäht, kein Ausfallpuffer), Rot nur bei rechnerischem Defizit ($< 0$).
+  - *Frühere Monate (Januar bis November)*: Progressive Skalierung (z. B. Januar: Rot $\le 4$, Gelb $\le 8$, Grün $> 8$ Schichten Puffer) unter Berücksichtigung des individuellen Teilzeitgrads.
+- **Weiß-Status bei Sollerfüllung**: Sobald ein Mitarbeiter sein Jahressoll erfüllt hat oder im Plus ist, schaltet die Anzeige automatisch auf eine neutrale weiße Kachel mit dezentem Rahmen um.
+- **Feste Farbblöcke statt schrumpfender Balken**: Ruhiges, klares Kachel-Design ohne unübersichtliche Teilbalken.
+- **Transparenter Tooltip**: Anzeige der freien Schichten, des Restbedarfs, des Puffers (`+X Schichten`) und der monatsspezifischen Schwellenwerte beim Überfahren der Kachel.
+
+### ITW-Vorplanung: Intelligenter Abteilungstausch & Schichtnachführung (v1.6.2+)
+- **Automatischer Abteilungstausch**: Wird bei einer Planstelle (FzF 1, FzF 2 oder Maschinist) die Abteilung manuell angepasst, tauschen die beiden betroffenen Positionen automatisch die Abteilungen, sodass die Phasenbesetzung vollständig geschlossen bleibt.
+- **Automatische Kollegen- und Dienstplan-Nachführung**: Bereits auf der getauschten Position eingeteilte Mitarbeiter werden automatisch auf die neue Planstelle übernommen. Ihre ITW-Dienste (IW) im Dienstplan werden nahtlos auf die Schichttage der neuen Rolle aktualisiert.
+
+### Automatisches 50er-Altersgrenzen-Management & Ü50-Planung (v1.6.1+)
+- **Erfassung des Geburtsdatums**: Neues Feld „Geburtsdatum“ beim Erstellen und Bearbeiten von Personal sowie Anzeige in der Personalübersicht.
+- **Taggenaue Berechnung des 50. Geburtstags**: Exakte Berechnung des 50. Geburtstags mit optischem Status-Badge in der Personalbearbeitung.
+- **Automatischer Berechnungsausschluss**: Kollegen werden ab ihrem 50. Geburtstag taggenau für reguläre RTW-/NEF-Zuweisungen gesperrt und ab dem Folgemonat automatisch aus der Schichtsoll-Berechnung genommen (Soll = 0), damit die Jahres-Sollwerte der aktiven Kollegen stabil und mathematisch präzise bleiben.
+- **Planer-Benachrichtigung (1 Monat vorab)**: Beim ersten Login eines RTW-Planers ca. 1 Monat vor dem 50. Geburtstag erscheint ein moderner Hinweis-Dialog mit zwei Handlungsoptionen:
+  - *Als Ü50er in der RTW-Planung belassen*: Der Kollege erhält den Ü50-Status (Soll = 0) und unterstützt die Abteilung flexibel wie ein Azubi. Jede gefahrene Schicht senkt direkt das Gesamtsoll der anderen Kollegen.
+  - *Ab dem 50. Geburtstag aus der Liste entfernen*: Die Rettungsdienst-Qualifikation wird fristgerecht zum Monatsende des Geburtstags beendet.
+  - *Später entscheiden*: Schließt die Benachrichtigung für die aktuelle Sitzung.
+- **Konfigurierbarer Feature-Toggle**: Unter *Einstellungen* $\rightarrow$ *Features* kann die *„Automatische Ü50-Berechnung“* abteilungsweit oder global flexibel aktiviert oder deaktiviert werden.
 
 ### ITW-Vorplanung & Mitarbeiter-Self-Service (v1.6.0+)
 - **Personalisierte Lücken-Übersicht für Mitarbeiter**: Zeigt Mitarbeitern mit Selbsteintragungsrechten (`write`) ausschließlich die offenen Schichtblöcke der eigenen Abteilung mit passender Qualifikation (Fahrzeugführer / Maschinist) inklusive 1-Klick-Einteilung (*„Mich eintragen“*).

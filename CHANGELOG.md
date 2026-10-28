@@ -1,6 +1,72 @@
-## Build 1545 - 2026-10-26
+## Build 1550 - 2026-10-28
 
 - automated build
+
+## Version 1.6.2 - 2026-10-28
+
+- **Automatische ITW-Einteilung im Monatsplan**:
+  - **1-Klick-Zuweisung für den gesamten Monat**: Automatische Ermittlung und Besetzung der ITW-Schichten (Fahrzeugführer, Maschinist, Notarzt) anhand der hinterlegten ITW-Vorplanung und den `IW`-Diensten im Monatsdienstplan.
+  - **Priorität für die eigene Abteilung**: Kollegen der aktiven Abteilung mit hinterlegtem `IW` werden prioritär an ihrer Vorplanungs-Position platziert.
+  - **Interaktiver Klärungsdialog bei Abweichungen & Doppelbelegungen**:
+    - Weicht ein Kollege mit `IW` von der Vorplanung ab, wird gezielt nach der Rolle (FzF oder Ma) gefragt.
+    - Haben zwei Kollegen der eigenen Abteilung ein `IW`, fragt der Dialog nach der Zuweisung von Fahrzeugführer (`itw_row_1`) und Maschinist (`itw_row_2`).
+  - **Farbliche Kennzeichnung der Abteilungen (Eigene & Fremde)**:
+    - Fremde Kollegen werden nun in ihrer echten Abteilungsfarbe (Rot = 1. Abt., Blau = 2. Abt., Grün = 3. Abt.) dargestellt anstelle einer pauschalen Blaufärbung.
+    - Die **aktuelle/eigene Abteilung** wird in der ITW-Einteilung ebenfalls farblich im Abteilungsfarbton hinterlegt (solider Rand, kräftige Schrift; Fremdabteilungen mit gestricheltem Rahmen und kursiver Schrift).
+    - Streng isoliert: Reguläre RTW- und NEF-Zeilen bleiben unverändert.
+  - **Fremdabteilungen als Info (ohne RTW-Berechnung)**: Verbleibende offene Planstellen werden mit Vorplanungs-Kollegen fremder Abteilungen belegt. Diese fließen **nicht** in die RTW-Berechnung des Kontrollkastens ein.
+  - **Automatische Übernahme des Notarztes**: Notärzte aus dem ITW-Dienstplan werden automatisch in die Arzt-Zeile (`itw_row_4`) übernommen (violett hervorgehoben, reine Info).
+  - **Aufgeräumter Header-Aufruf**: Zentraler Button *„ITW Automatik“* in der Header-Leiste; redundanter Button innerhalb des Tabs entfernt.
+  - **Vollständige Undo-Historie**: Alle automatischen ITW-Zuweisungen können jederzeit über die Rückgängig-Funktion zurückgerollt werden.
+
+- **Windows Focus-Bugfix nach Anwendungswechsel (z. B. Alt+Tab zu Excel/Word)**:
+  - Behebung des Problems, dass Eingabefelder (wie Personalnummer / H-Nummer in den Personaleinstellungen) nach dem Wechsel zu einer externen Software und Zurückkehren in RD-Plan keinen Fokus mehr erhielten.
+  - Deaktivierung der Menüleisten und `autoHideMenuBar` auf allen Dialog- und Editorfenstern (verhindert das Fangen des Fokus durch den Windows-Menümodus bei Alt+Tab).
+  - Globaler WebContents-Fokus-Sync bei Fensteraktivierung.
+  - Capture-Klickabsicherung im Preload-Script zur sofortigen Fokussierung von `<input>`, `<textarea>`, `<select>` und `<label>`.
+
+- **Dynamische Rest V-Kapazitätsanzeige im Kontrollkasten**:
+  - **Monatsabhängige Schwellenwerte**: Die Schwellenwerte für die Ampelfarben (Rot, Gelb, Grün) der Restkapazität (Rest V) skalieren nun dynamisch mit den verbleibenden Monaten im Planungsjahr:
+    - Im letzten Planungsmonat (Dezember) genügt bereits ein Puffer von $\ge 1$ Schicht für den grünen Status (`#34c759`).
+    - Ein Puffer von genau $0$ Schichten (auf Kante genäht, kein Ausfallpuffer) wird gelb (`#f59e0b`) dargestellt.
+    - Erst ein echtes rechnerisches Defizit ($< 0$) schaltet auf Rot (`#ef4444`).
+    - In früheren Monaten (Januar bis November) skalieren die Schwellenwerte kontinuierlich mit der Restmonatszahl und dem Teilzeitfaktor.
+  - **Weiß-Status bei Sollerfüllung**: Hat ein Kollege sein Jahressoll bereits erfüllt oder ist im Plus, wird die Rest V-Anzeige auf eine neutrale weiße Kachel mit dezentem Rahmen umgeschaltet.
+  - **Ruhiges Kachel-Design**: Feste Farbkacheln anstelle unübersichtlicher schrumpfender Fortschrittsbalken.
+  - **Erweiterter Tooltip**: Beim Überfahren der Kachel werden freie Schichten, noch benötigte Schichten, Puffer (`+X Schichten`), Status und aktive Monatsschwellen angezeigt.
+
+- **ITW-Vorplanung: Intelligenter Abteilungstausch & Schichtnachführung**:
+  - Beim Ändern der Abteilungszuordnung einer Planstelle (FzF 1, FzF 2 oder Maschinist) in den Phasen 1–3 tauschen die beiden beteiligten Positionen automatisch ihre Abteilungen.
+  - Bereits eingeteilte Kollegen der Abteilung werden automatisch auf die neue Position übertragen.
+  - Die Dienstplan-Schichten (IW) werden für alle beteiligten Kollegen automatisch auf die neuen Schichttage aktualisiert.
+
+- **Bugfix Grundqualifikation Rettungsdienst**:
+  - Korrektur der Zeitraumprüfung in Einteilung, Dienstplan, Werte-Übersicht und Ü50-Modal, sodass Mitarbeiter ohne aktive Rettungsdienst-Grundqualifikation nicht mehr fälschlicherweise zur Einteilung angeboten werden.
+
+## Build 1549 - 2026-10-26
+
+- automated build
+
+## Build 1548 - 2026-10-26
+
+- automated build
+
+## Build 1547 - 2026-10-26
+
+- automated build
+
+## Version 1.6.1 - 2026-10-26
+
+- **Automatische 50. Geburtstags-Erkennung & Ü50-Planungsentscheidung**:
+  - **Geburtsdatum-Erfassung**: Neues Feld „Geburtsdatum“ beim Anlegen und Bearbeiten von Personal.
+  - **Taggenaue 50. Geburtstags-Berechnung**: Automatische Ermittlung des exakten Datums des 50. Geburtstags.
+  - **Automatische Herausnahme aus der RTW-Berechnung**: Sobald ein Mitarbeiter 50 Jahre alt wird, scheidet er automatisch taggenau aus der regulären RTW-Berechnung und Besetzungsoptionen aus, sofern er nicht als Ü50 übernommen wird. Bereits ab Jahresbeginn wird die Grenze in der Anwesenheitsgewichtung taggenau berücksichtigt.
+  - **Planer-Benachrichtigung 35 Tage im Voraus**: Beim ersten Login eines RTW-Planers 35 Tage vor dem 50. Geburtstag eines Kollegen erscheint ein schlanker, dezenter Entscheidungsdialog ohne störende Emojis:
+    - *Als Ü50er in der RTW-Planung belassen*: Kollege unterstützt das Team weiterhin wie ein Azubi (Jahres-Soll = 0, Entlastung der Abteilung).
+    - *Ab 50. Geburtstag aus der Liste entfernen*: Terminiert die Rettungsdienst-Qualifikation zum 50. Geburtstag.
+  - **Konfigurierbarer Feature-Toggle**: Unter *Einstellungen* $\rightarrow$ *Features* kann die Funktion *„Automatische Ü50-Berechnung“* bei Bedarf flexibel deaktiviert werden.
+  - **Saubere Benutzeroberfläche**: Vollständige Entfernung von Emojis und Symbolen im Dialog und in der Personalverwaltung für ein aufgeräumtes Erscheinungsbild.
+  - **Jahressoll-Stabilität**: Nahtlose Integration in die ganzjährige Hamilton-Sollwertberechnung (keine unerwünschten Sollwert-Sprünge bei Monatswechseln).
 
 ## Build 1544 - 2026-10-20
 

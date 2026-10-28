@@ -3,10 +3,13 @@ import { createPortal } from 'react-dom';
 import { buildVehicleActivationMap, calculateTargets } from '../utils/calculation';
 import { rosterReleasedSettingKey } from '../utils/rosterRelease';
 import { isVehicleActiveOnDate } from '../utils/vehiclePeriods';
-import { parseItwDay } from '../utils/itwPatternUtils';
+import { parseItwDay, normalizeDeptCode, getDeptColorScheme } from '../utils/itwPatternUtils';
+import { isTurnedFiftyOnDate } from '../utils/personPeriods';
 import styles from './MonthTabs.module.css';
 import { Kontrollkasten } from './Kontrollkasten';
 import { AzubiAutoAssignDialog, ShiftSummary, ProposedAssignment, ConflictAzubi } from './AzubiAutoAssignDialog';
+import { ItwAutoAssignDialog } from './ItwAutoAssignDialog';
+import { buildItwMonthAutoAssignments, ItwDayAutoPlan } from '../utils/itwAutoAssign';
 
 export function isGuestActiveOnDate(g: any, dateStr: string): boolean {
     if (g.date === dateStr) return true;
@@ -31,7 +34,9 @@ interface MonthTabsProps {
     departmentName?: string;
     /** Vollständige Namensliste der Abteilung (ohne Monatsfilter) für Slot-Labels. */
     personnelLookup?: { id: number; name: string; vorname?: string }[];
-    personnel: { id: number; name: string; vorname: string; fahrzeugfuehrer?: boolean; nef?: boolean; fahrzeugfuehrerHLFB?: boolean | number; teilzeit?: number }[];
+    personnel: { id: number; name: string; vorname: string; birthDate?: string | null; fahrzeugfuehrer?: boolean; nef?: boolean; fahrzeugfuehrerHLFB?: boolean | number; teilzeit?: number }[];
+    /** Alle für das Jahr relevanten Personen der Abteilung (für ganzjährige Soll-Berechnung). */
+    allPersonnel?: any[];
     azubis: { id: number; name: string; vorname: string; lehrjahr: number }[];
     roster: Record<string, Record<string, { value: string; type: string }>>;
     year: number;
@@ -55,7 +60,7 @@ type AssignmentUndoEntry = {
     ts: number;
 };
 
-const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYearChange, departmentName, personnelLookup, personnel, azubis, roster, year, shiftPattern, deptPatternSeqs = [], onRosterChanged, onEntryAssigned }) => {
+const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYearChange, departmentName, personnelLookup, personnel, allPersonnel, azubis, roster, year, shiftPattern, deptPatternSeqs = [], onRosterChanged, onEntryAssigned }) => {
     const { hasPermission, currentUser } = useAuth();
     const canWrite = hasPermission('einteilung', 'write');
     // Read permission is implicit if they can see the page, but we use it to check for "read-only" status
@@ -81,6 +86,13 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [nefVehiclePeriods, setNefVehiclePeriods] = useState<Record<number, any[]>>({});
     const [vehicleSpecialDays, setVehicleSpecialDays] = useState<any[]>([]);
     const [itwPatternSeqs, setItwPatternSeqs] = useState<{ startDate: string; department: string; pattern: string[] }[]>([]);
+    const [crossDeptPersonnel, setCrossDeptPersonnel] = useState<any[]>([]);
+    const [itwDutyRoster, setItwDutyRoster] = useState<any[]>([]);
+    const [itwRotationPhases, setItwRotationPhases] = useState<any[]>([]);
+    const [phaseOverrides, setPhaseOverrides] = useState<Record<string, any>>({});
+    const [phaseAssignments, setPhaseAssignments] = useState<any[]>([]);
+    const [isItwAutoAssignOpen, setIsItwAutoAssignOpen] = useState(false);
+    const [itwAutoPlans, setItwAutoPlans] = useState<ItwDayAutoPlan[]>([]);
     const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
     const [isUpdating, setIsUpdating] = useState(false); // Verhindert Race-Conditions während Updates
     const [holidays, setHolidays] = useState<Set<string>>(new Set());
@@ -96,6 +108,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [lpalMonthlyMap, setLpalMonthlyMap] = useState<Record<number, boolean[]>>({});
     const [taucherMonthlyMap, setTaucherMonthlyMap] = useState<Record<number, boolean[]>>({});
     const [featureTaucher, setFeatureTaucher] = useState<boolean>(true);
+    const [featureAutoUe50, setFeatureAutoUe50] = useState<boolean>(true);
     // HLF-B Perioden und Prozentzahl für korrekte Berechnung
     const [hlfbPeriodsByPerson, setHlfbPeriodsByPerson] = useState<Record<number, Array<{ startYM: string; endYM?: string }>>>({});
     const [hlfbPercentage, setHlfbPercentage] = useState<number>(75);
@@ -338,7 +351,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 const taucherMap: Record<number, boolean[]> = {};
                 const combinedIds = new Set<number>();
                 const lpalOnlyIds = new Set<number>();
-                const candidateList = (personnelLookup && personnelLookup.length > 0) ? personnelLookup : personnel;
+                const candidateList = (allPersonnel && allPersonnel.length > 0) ? allPersonnel : ((personnelLookup && personnelLookup.length > 0) ? personnelLookup : personnel);
                 for (const p of candidateList) {
                     try {
                         const periods = await (window as any).api.getQualificationPeriods?.(p.id) || [];
@@ -389,7 +402,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             } catch { setUe50Ids(new Set()); setLpalIds(new Set()); setUe50MonthlyMap({}); setLpalMonthlyMap({}); setTaucherMonthlyMap({}); }
         };
         loadUe50();
-    }, [year, personnel, personnelLookup]);
+    }, [year, personnel, allPersonnel, personnelLookup]);
 
     useEffect(() => {
         const load = async () => {
@@ -477,6 +490,32 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 });
                 setDoctorPeriods(dpMap);
             } catch { }
+            try {
+                const allCrossPers = await (window as any).api.getPersonnel?.(false, 'all');
+                if (Array.isArray(allCrossPers)) setCrossDeptPersonnel(allCrossPers);
+            } catch { }
+            try {
+                const rotVal = await (window as any).api.getSetting?.('itw_rotation_pattern');
+                if (rotVal) {
+                    const parsed = JSON.parse(rotVal);
+                    if (Array.isArray(parsed) && parsed.length > 0) setItwRotationPhases(parsed);
+                }
+            } catch { }
+            try {
+                const overridesVal = await (window as any).api.getSetting?.('itw_phase_dept_overrides');
+                if (overridesVal) {
+                    const parsed = JSON.parse(overridesVal);
+                    if (parsed && typeof parsed === 'object') setPhaseOverrides(parsed);
+                }
+            } catch { }
+            try {
+                const assigns = await (window as any).api.getItwPhaseAssignments?.();
+                if (Array.isArray(assigns)) setPhaseAssignments(assigns);
+            } catch { }
+            try {
+                const dutyR = await (window as any).api.getItwDutyRoster?.(year);
+                if (Array.isArray(dutyR)) setItwDutyRoster(dutyR);
+            } catch { }
             // Feiertage laden
             try {
                 const list = await (window as any).api.getHolidaysForYear?.(year);
@@ -495,6 +534,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 } else {
                     const globT = await (window as any).api.getSetting('feature_taucher');
                     setFeatureTaucher(globT === null || globT === undefined ? true : (globT === 'true' || globT === true || globT === '1'));
+                }
+            } catch { }
+            try {
+                const featUe50 = await (window as any).api.getSetting(`feature_auto_ue50_${departmentName}`);
+                if (featUe50 !== null && featUe50 !== undefined) {
+                    setFeatureAutoUe50(featUe50 === 'true' || featUe50 === true || featUe50 === '1');
+                } else {
+                    const globUe50 = await (window as any).api.getSetting('feature_auto_ue50');
+                    setFeatureAutoUe50(globUe50 === null || globUe50 === undefined ? true : (globUe50 === 'true' || globUe50 === true || globUe50 === '1'));
                 }
             } catch { }
             // Neue Fahrzeug-Zeiträume laden
@@ -592,6 +640,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     }
                 } catch { }
                 try {
+                    const featUe50 = await (window as any).api.getSetting(`feature_auto_ue50_${departmentName}`);
+                    if (featUe50 !== null && featUe50 !== undefined) {
+                        setFeatureAutoUe50(featUe50 === 'true' || featUe50 === true || featUe50 === '1');
+                    } else {
+                        const globUe50 = await (window as any).api.getSetting('feature_auto_ue50');
+                        setFeatureAutoUe50(globUe50 === null || globUe50 === undefined ? true : (globUe50 === 'true' || globUe50 === true || globUe50 === '1'));
+                    }
+                } catch { }
+                try {
                     const docs = await (window as any).api.getItwDoctors?.();
                     if (Array.isArray(docs)) setItwDoctors(docs);
                     const docP = await (window as any).api.getAllDoctorPeriods?.();
@@ -601,6 +658,32 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         dpMap[p.doctor_id].push(p);
                     });
                     setDoctorPeriods(dpMap);
+                } catch { }
+                try {
+                    const allCrossPers = await (window as any).api.getPersonnel?.(false, 'all');
+                    if (Array.isArray(allCrossPers)) setCrossDeptPersonnel(allCrossPers);
+                } catch { }
+                try {
+                    const rotVal = await (window as any).api.getSetting?.('itw_rotation_pattern');
+                    if (rotVal) {
+                        const parsed = JSON.parse(rotVal);
+                        if (Array.isArray(parsed) && parsed.length > 0) setItwRotationPhases(parsed);
+                    }
+                } catch { }
+                try {
+                    const overridesVal = await (window as any).api.getSetting?.('itw_phase_dept_overrides');
+                    if (overridesVal) {
+                        const parsed = JSON.parse(overridesVal);
+                        if (parsed && typeof parsed === 'object') setPhaseOverrides(parsed);
+                    }
+                } catch { }
+                try {
+                    const assigns = await (window as any).api.getItwPhaseAssignments?.();
+                    if (Array.isArray(assigns)) setPhaseAssignments(assigns);
+                } catch { }
+                try {
+                    const dutyR = await (window as any).api.getItwDutyRoster?.(yearNum);
+                    if (Array.isArray(dutyR)) setItwDutyRoster(dutyR);
                 } catch { }
             } catch { }
         };
@@ -718,6 +801,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         if (desired === '24h') return evalMode === '24h';
         return false;
     }, [auswertungByType]);
+
+    const isEligibleOnDate = useCallback((p: any, dateStr: string) => {
+        const isUe50 = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[currentMonth] : !!ue50MonthlyMap[p.id]?.[currentMonth];
+        if (featureAutoUe50 && p.birthDate && !isUe50 && isTurnedFiftyOnDate(p.birthDate, dateStr)) {
+            return false;
+        }
+        return true;
+    }, [currentMonth, ue50MonthlyMap, featureAutoUe50]);
 
     const getAssignedValueFor = useCallback((date: string, slotId: string): string => {
         const mergedKeys = Array.from(new Set([...(Object.keys(localRoster || {})), ...(Object.keys(roster || {}))]));
@@ -1059,15 +1150,31 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
     const personNameById = useMemo(() => {
         const map = new Map<number, string>();
-        const add = (list: { id: number; name: string; vorname?: string }[] | undefined) => {
+        const myDept = normalizeDeptCode(departmentName || department);
+        const add = (list: any[] | undefined, isCrossDept = false) => {
             (list || []).forEach(p => {
-                if (p?.id != null && p.name) map.set(Number(p.id), String(p.name));
+                if (p?.id != null && p.name) {
+                    const id = Number(p.id);
+                    const pDept = p.department ? normalizeDeptCode(p.department) : '';
+                    const isForeign = isCrossDept && pDept && myDept && pDept !== myDept;
+                    const label = isForeign && pDept ? `${p.name} [${pDept}. Abt.]` : String(p.name);
+                    map.set(id, label);
+                }
             });
         };
+        add(crossDeptPersonnel, true);
         add(personnelLookup);
         add(personnel);
         return map;
-    }, [personnelLookup, personnel]);
+    }, [crossDeptPersonnel, personnelLookup, personnel, departmentName, department]);
+
+    const allCombinedPersonnel = useMemo(() => {
+        const map = new Map<number, any>();
+        (crossDeptPersonnel || []).forEach(p => { if (p && p.id != null) map.set(Number(p.id), p); });
+        (personnelLookup || []).forEach(p => { if (p && p.id != null) map.set(Number(p.id), p); });
+        (personnel || []).forEach(p => { if (p && p.id != null) map.set(Number(p.id), p); });
+        return Array.from(map.values());
+    }, [crossDeptPersonnel, personnelLookup, personnel]);
 
     const findPersonLabelByValue = useCallback((val: string) => {
         if (!val) return '';
@@ -1459,6 +1566,129 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         setTimeout(() => setIsUpdating(false), 100);
     };
 
+    const handleOpenItwAutoAssign = useCallback(() => {
+        if (!canWrite) return;
+        const plans = buildItwMonthAutoAssignments({
+            year,
+            month: currentMonth,
+            departmentId: department,
+            departmentName,
+            personnel,
+            crossDeptPersonnel: allCombinedPersonnel,
+            itwPatternSeqs,
+            itwRotationPhases,
+            phaseOverrides,
+            assignments: phaseAssignments,
+            holidays,
+            localRoster,
+            roster,
+            itwDoctors,
+            itwDutyRoster,
+            auswertungByType,
+            getAssignedValueFor
+        });
+
+        if (plans.length === 0) {
+            alert('Keine ITW-Betriebstage im aktuellen Monat gefunden.');
+            return;
+        }
+
+        setItwAutoPlans(plans);
+        setIsItwAutoAssignOpen(true);
+    }, [
+        canWrite,
+        year,
+        currentMonth,
+        department,
+        departmentName,
+        personnel,
+        allCombinedPersonnel,
+        itwPatternSeqs,
+        itwRotationPhases,
+        phaseOverrides,
+        phaseAssignments,
+        holidays,
+        localRoster,
+        roster,
+        itwDoctors,
+        itwDutyRoster,
+        auswertungByType,
+        getAssignedValueFor
+    ]);
+
+    const handleApplyItwAutoAssign = useCallback(async (plans: ItwDayAutoPlan[]) => {
+        setIsItwAutoAssignOpen(false);
+        if (!plans || plans.length === 0) return;
+
+        setIsUpdating(true);
+        try {
+            const batchAssigns: { personId: number; personType: string; date: string; slotType: string }[] = [];
+            const nextLocalRoster = { ...(localRoster || {}) };
+
+            for (const plan of plans) {
+                const date = plan.date;
+                const slotUpdates: { slotId: string; nextVal: string }[] = [
+                    { slotId: 'itw_row_1', nextVal: plan.proposedFzf.value },
+                    { slotId: 'itw_row_2', nextVal: plan.proposedMa.value },
+                    { slotId: 'itw_row_4', nextVal: plan.proposedDoctor.value }
+                ];
+
+                for (const { slotId, nextVal } of slotUpdates) {
+                    const curVal = getAssignedValueFor(date, slotId);
+                    if (curVal === nextVal) continue;
+
+                    pushUndoEntry({
+                        date,
+                        slotId,
+                        previousValue: curVal,
+                        nextValue: nextVal,
+                        ts: Date.now()
+                    });
+
+                    if (curVal) {
+                        const [curT, curIdStr] = curVal.split(':');
+                        const curPid = Number(curIdStr);
+                        const curPtype = curT === 'a' ? 'azubi' : (curT === 'd' ? 'doctor' : (curT === 'g' ? 'guest' : 'person'));
+                        const curKey = curPtype === 'person' ? `p_${curPid}` : (curPtype === 'azubi' ? `a_${curPid}` : (curPtype === 'guest' ? `g_${curPid}` : `d_${curPid}`));
+                        if (nextLocalRoster[curKey]?.[date]?.type === slotId) {
+                            nextLocalRoster[curKey] = {
+                                ...nextLocalRoster[curKey],
+                                [date]: { ...(nextLocalRoster[curKey][date] || {}), type: '' }
+                            };
+                        }
+                        batchAssigns.push({ personId: curPid, personType: curPtype, date, slotType: '' });
+                    }
+
+                    if (nextVal) {
+                        const [nextT, nextIdStr] = nextVal.split(':');
+                        const nextPid = Number(nextIdStr);
+                        const nextPtype = nextT === 'a' ? 'azubi' : (nextT === 'd' ? 'doctor' : (nextT === 'g' ? 'guest' : 'person'));
+                        const nextKey = nextPtype === 'person' ? `p_${nextPid}` : (nextPtype === 'azubi' ? `a_${nextPid}` : (nextPtype === 'guest' ? `g_${nextPid}` : `d_${nextPid}`));
+                        const currentPersonState = nextLocalRoster[nextKey] || {};
+                        nextLocalRoster[nextKey] = {
+                            ...currentPersonState,
+                            [date]: { ...(currentPersonState[date] || {}), type: slotId }
+                        };
+                        batchAssigns.push({ personId: nextPid, personType: nextPtype, date, slotType: slotId });
+                    }
+                }
+            }
+
+            setLocalRoster(nextLocalRoster);
+            setForceUpdateCounter(prev => prev + 1);
+
+            for (const assign of batchAssigns) {
+                await (window as any).api.assignSlot(assign);
+            }
+
+            if (onRosterChanged) onRosterChanged();
+        } catch (e) {
+            console.error('[MonthTabs] handleApplyItwAutoAssign failed:', e);
+        } finally {
+            setTimeout(() => setIsUpdating(false), 100);
+        }
+    }, [localRoster, getAssignedValueFor, pushUndoEntry, onRosterChanged]);
+
     const redoLastAssignmentChange = useCallback(async () => {
         if (!canWrite) return;
         if (redoStack.length === 0) return;
@@ -1642,11 +1872,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             }
 
             // 2. Calculate Targets using Shared Utility
+            const targetPersonnel = (allPersonnel && allPersonnel.length > 0) ? allPersonnel : personnel;
             const hlfbFactor = hlfbPercentage / 100;
             const targetsByPersonId = calculateTargets(
                 year,
                 flattenedRoster,
-                personnel,
+                targetPersonnel,
                 azubis,
                 ue50MonthlyMap,
                 auswertungByType,
@@ -1660,14 +1891,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 hlfbPeriodsByPerson,
                 shiftTransfers, // <-- Pass loaded transfers here
                 { rtwPeriods: rtwVehiclePeriods, nefPeriods: nefVehiclePeriods },
-                hlfbFactor
+                hlfbFactor,
+                featureAutoUe50
             );
 
             // 3. Map Targets to MonthTabs format
             const targetYearMap: Record<string, number> = {};
             const allocTargetsInMonth: Record<string, number> = {};
 
-            for (const p of personnel) {
+            for (const p of targetPersonnel) {
                 const key = `p_${p.id}`;
                 const t = targetsByPersonId[p.id] || Array(12).fill(0);
                 targetYearMap[key] = t.reduce((a, b) => a + b, 0);
@@ -1696,7 +1928,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             const targetCumulativeMap: Record<string, number> = {};
             const drivenCumulativeMap: Record<string, number> = {};
 
-            for (const p of personnel) {
+            for (const p of targetPersonnel) {
                 const key = `p_${p.id}`;
                 const t = targetsByPersonId[p.id] || Array(12).fill(0);
 
@@ -1754,7 +1986,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 drivenCumulativeMap[key] = cumDriven;
             }
 
-            for (const p of (personnel || [])) {
+            for (const p of (targetPersonnel || [])) {
                 const key = `p_${p.id}`;
 
                 // Yearly Stats
@@ -1939,11 +2171,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         (window as any).__sharedTargets = result;
         return result;
 
-    }, [year, roster, localRoster, personnel, azubis, ue50Ids, ue50MonthlyMap, lpalMonthlyMap, taucherMonthlyMap, auswertungByType,
+    }, [year, roster, localRoster, personnel, allPersonnel, azubis, ue50Ids, ue50MonthlyMap, lpalMonthlyMap, taucherMonthlyMap, auswertungByType,
         rtwVehicles, nefVehicles, rtwActivations, nefActivations, rtwVehiclePeriods, nefVehiclePeriods, department,
         deptPatternSeqs, hlfbPeriodsByPerson, hlfbPercentage, shiftTransfers, currentMonth, holidays,
         weekendFridayDay, weekendFridayNight, weekendSaturdayDay, weekendSaturdayNight, weekendSundayDay, weekendSundayNight,
-        weekendHolidayDay, weekendHolidayNight, itwEnabled, featureTaucher, getNefAssistWeight]);
+        weekendHolidayDay, weekendHolidayNight, itwEnabled, featureTaucher, featureAutoUe50, getNefAssistWeight]);
 
     const availablePersonKeys = React.useMemo(() => {
         if (!selectedAvailDate) return undefined;
@@ -2176,6 +2408,45 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                             </svg>
                             Azubis Automatik
                         </button>
+                        {itwEnabled && (
+                            <button
+                                type="button"
+                                onClick={handleOpenItwAutoAssign}
+                                disabled={!canWrite}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 8,
+                                    padding: '8px 16px',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    borderBottom: '3px solid transparent',
+                                    fontSize: '14px',
+                                    fontWeight: 500,
+                                    color: canWrite ? '#6b7280' : '#9ca3af',
+                                    cursor: canWrite ? 'pointer' : 'not-allowed',
+                                    transition: 'all 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => {
+                                    if (!canWrite) return;
+                                    e.currentTarget.style.color = '#b45309';
+                                    e.currentTarget.style.borderBottomColor = '#f59e0b';
+                                    e.currentTarget.style.background = '#fefce8';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.color = '#6b7280';
+                                    e.currentTarget.style.borderBottomColor = 'transparent';
+                                    e.currentTarget.style.background = 'transparent';
+                                }}
+                                title="Automatische ITW-Einteilung anhand Vorplanung und IW-Diensten"
+                            >
+                                <svg aria-hidden width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                    <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                                    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                                </svg>
+                                ITW Automatik
+                            </button>
+                        )}
                         
                         <div style={{ width: '1px', height: '24px', background: 'var(--line)', margin: '0 4px' }} />
                         
@@ -2908,7 +3179,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                                 const hasQual = p.fahrzeugfuehrer;
                                                                                 const dutyCode = getDutyCodeFor(`p_${p.id}`);
                                                                                 const allowed = allowedByAuswertung(dutyCode, 'tag');
-                                                                                return allowed && hasQual;
+                                                                                return allowed && hasQual && isEligibleOnDate(p, d.date);
                                                                             })
                                                                             .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                                         const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
@@ -2936,7 +3207,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         const slotId = `rtw${rIdx + 1}_nacht_1`;
                                                                         const value = getAssignedValue(slotId);
                                                                         const optionsP = personnel
-                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && p.fahrzeugfuehrer)
+                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && p.fahrzeugfuehrer && isEligibleOnDate(p, d.date))
                                                                             .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                                         const guestsForDate = guests.filter(g => isGuestActiveOnDate(g, d.date)).map(g => ({ value: `g:${g.id}`, label: `(Gast) ${g.name}` }));
                                                                         const allOptionsP = [...optionsP, ...guestsForDate];
@@ -2964,7 +3235,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         const slotId = `rtw${rIdx + 1}_tag_2`;
                                                                         const value = getAssignedValue(slotId);
                                                                         const optionsP = personnel
-                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'tag'))
+                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'tag') && isEligibleOnDate(p, d.date))
                                                                             .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                                         const optionsA = azubis
                                                                             .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'tag'))
@@ -2993,7 +3264,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         const slotId = `rtw${rIdx + 1}_nacht_2`;
                                                                         const value = getAssignedValue(slotId);
                                                                         const optionsP = personnel
-                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht'))
+                                                                            .filter(p => allowedByAuswertung(getDutyCodeFor(`p_${p.id}`), 'nacht') && isEligibleOnDate(p, d.date))
                                                                             .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                                                         const optionsA = azubis
                                                                             .filter(a => allowedByAuswertung(getDutyCodeFor(`a_${a.id}`), 'nacht'))
@@ -3096,6 +3367,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                                 const evalMode = auswertungByType[dutyCode];
                                                                                 if (!dutyCode || dutyCode.trim() === '') return false;
                                                                                 if (!evalMode || evalMode === 'off') return false;
+                                                                                if (!isEligibleOnDate(p, d.date)) return false;
                                                                                 return true;
                                                                             })
                                                                             .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
@@ -3279,8 +3551,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 if (dept && !dept[mIdx]) continue;
 
                                                 const dim = new Date(year, mIdx + 1, 0).getDate();
+                                                const isUe50InMonth = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[mIdx] : !!ue50MonthlyMap[p.id]?.[mIdx];
                                                 for (let d = 1; d <= dim; d++) {
                                                     const iso = new Date(Date.UTC(year, mIdx, d)).toISOString().slice(0, 10);
+                                                    if (featureAutoUe50 && p.birthDate && !isUe50InMonth && isTurnedFiftyOnDate(p.birthDate, iso)) {
+                                                        continue;
+                                                    }
                                                     const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
                                                     const raw = String(cell?.value || '').trim();
                                                     if (raw && (auswertungByType[raw] || 'off') !== 'off') cnt++;
@@ -3335,6 +3611,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 maxNR={maxNR}
                                                 presenceRemainingByPerson={presenceRemainingByPerson}
                                                 assignedRemainingByPerson={assignedRemainingByPerson}
+                                                currentMonth={currentMonth}
                                                 renderPresenceMeter={(value: number, height: number) => (
                                                     <div style={{ position: 'relative', width: 45, height, background: '#eef2f7', borderRadius: 3 }}>
                                                         <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1', zIndex: 1 }} />
@@ -3514,10 +3791,59 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                             const isAssigned = highlightedPersonKey && value && value.startsWith('p:') && value === `p:${highlightedPersonKey.replace('p_', '')}`;
                                             const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
 
+                                            const isExternal = Boolean(
+                                                value &&
+                                                value.startsWith('p:') &&
+                                                !personnel.some(p => p.id === Number(value.split(':')[1]))
+                                            );
+                                            const isDoctorAssigned = role === 4 && Boolean(value && value.startsWith('d:'));
+
+                                            let extDeptCode = '';
+                                            if (isExternal) {
+                                                const pid = Number(value.split(':')[1]);
+                                                const personObj = allCombinedPersonnel.find(p => p.id === pid);
+                                                extDeptCode = personObj?.department ? normalizeDeptCode(personObj.department) : '';
+                                            }
+                                            const extScheme = isExternal ? getDeptColorScheme(extDeptCode) : null;
+                                            const myDeptCode = normalizeDeptCode(departmentName || department);
+                                            const myDeptScheme = getDeptColorScheme(myDeptCode);
+
+                                            let appliedStyle: React.CSSProperties | undefined = highlightStyle;
+                                            if (!appliedStyle) {
+                                                if (isExternal && extScheme) {
+                                                    appliedStyle = {
+                                                        background: extScheme.selectBg,
+                                                        color: extScheme.selectColor,
+                                                        borderColor: extScheme.selectBorder.replace('1.5px dashed ', ''),
+                                                        borderStyle: 'dashed',
+                                                        borderWidth: '1.5px',
+                                                        fontStyle: 'italic',
+                                                        fontWeight: 600
+                                                    };
+                                                } else if (isDoctorAssigned) {
+                                                    appliedStyle = {
+                                                        background: '#faf5ff',
+                                                        color: '#7e22ce',
+                                                        borderColor: '#e9d5ff',
+                                                        fontWeight: 500
+                                                    };
+                                                } else if (value && (value.startsWith('p:') || value.startsWith('a:'))) {
+                                                    appliedStyle = {
+                                                        background: myDeptScheme.selectBg,
+                                                        color: myDeptScheme.selectColor,
+                                                        borderColor: myDeptScheme.badgeBorder,
+                                                        borderStyle: 'solid',
+                                                        borderWidth: '1px',
+                                                        fontWeight: 600
+                                                    };
+                                                }
+                                            }
+
                                             return (
                                                 <select className={styles.select} value={value}
-                                                    style={highlightStyle}
+                                                    style={appliedStyle}
                                                     disabled={!canWrite}
+                                                    title={isExternal ? (extDeptCode ? `Kollege der ${extDeptCode}. Abt. (Vorplanung, nur Info - zählt nicht in RTW-Soll)` : 'Externer Kollege (Vorplanung, nur Info - zählt nicht in RTW-Soll)') : (isDoctorAssigned ? 'ITW-Arzt (nur Info)' : undefined)}
                                                     onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } else { handleAssign(date, 0, v, slotId); } }}
                                                     onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } }}>
                                                     <option value=""></option>
@@ -3527,8 +3853,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                         };
                                         const racks: typeof days[] = [] as any;
                                         for (let i = 0; i < allItwDays.length; i += 15) racks.push(allItwDays.slice(i, i + 15));
-                                        return racks.map((rackDays, rackIdx) => (
-                                            <div key={`itw_rack_${rackIdx}`} className={styles.itwRack}>
+                                        return (
+                                            <>
+                                                {racks.map((rackDays, rackIdx) => (
+                                                    <div key={`itw_rack_${rackIdx}`} className={styles.itwRack}>
                                                 {rackDays.map((d2) => {
                                                     const dd = new Date(d2.date + 'T00:00:00Z');
                                                     const label = dd.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
@@ -3584,8 +3912,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                     );
                                                 })}
                                             </div>
-                                        ));
-                                    })()}
+                                        ))}
+                                    </>
+                                );
+                            })()}
                                 </div>
                                 {(() => {
                                     // Kontrollkasten-Berechnungen (Monatsbasis) – identisch wie in RTW/NEF-Ansicht (mit Präsenz & HLF‑B Gewichtung)
@@ -3680,8 +4010,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 if (dept && !dept[mIdx]) continue;
 
                                                 const dim = new Date(year, mIdx + 1, 0).getDate();
+                                                const isUe50InMonth = (p as any).ue50Monthly ? !!(p as any).ue50Monthly[mIdx] : !!ue50MonthlyMap[p.id]?.[mIdx];
                                                 for (let d = 1; d <= dim; d++) {
                                                     const iso = new Date(Date.UTC(year, mIdx, d)).toISOString().slice(0, 10);
+                                                    if (featureAutoUe50 && p.birthDate && !isUe50InMonth && isTurnedFiftyOnDate(p.birthDate, iso)) {
+                                                        continue;
+                                                    }
                                                     const cell = (localRoster as any)?.[key]?.[iso] || (roster as any)?.[key]?.[iso];
                                                     const raw = String(cell?.value || '').trim();
                                                     if (raw && (auswertungByType[raw] || 'off') !== 'off') cnt++;
@@ -3732,6 +4066,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 maxNR={maxNR}
                                                 presenceRemainingByPerson={presenceRemainingByPerson}
                                                 assignedRemainingByPerson={assignedRemainingByPerson}
+                                                currentMonth={currentMonth}
                                                 renderPresenceMeter={(value: number, height: number) => (
                                                     <div style={{ position: 'relative', width: 45, height, background: '#eef2f7', borderRadius: 3 }}>
                                                         <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#cbd5e1', zIndex: 1 }} />
@@ -3842,6 +4177,20 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 onConfirm={handleConfirmAutoAssign}
                 summaries={azubiAutoState || []}
             />
+            {isItwAutoAssignOpen && (
+                <ItwAutoAssignDialog
+                    isOpen={isItwAutoAssignOpen}
+                    onClose={() => setIsItwAutoAssignOpen(false)}
+                    onConfirm={handleApplyItwAutoAssign}
+                    monthName={months[currentMonth]}
+                    year={year}
+                    departmentName={departmentName}
+                    departmentId={department}
+                    initialPlans={itwAutoPlans}
+                    crossDeptPersonnel={allCombinedPersonnel}
+                    itwDoctors={itwDoctors}
+                />
+            )}
             {showGuestModal && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div style={{ background: '#fff', padding: 24, borderRadius: 8, width: 400 }}>

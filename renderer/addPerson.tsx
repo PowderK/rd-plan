@@ -245,6 +245,7 @@ const DepartmentPeriodForm: React.FC<{
 const AddPerson: React.FC = () => {
   const [name, setName] = useState('');
   const [vorname, setVorname] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [teilzeit, setTeilzeit] = useState(100);
   const [department, setDepartment] = useState('1. Abteilung');
   const [personnelNumber, setPersonnelNumber] = useState('');
@@ -354,6 +355,7 @@ const AddPerson: React.FC = () => {
       const result = await (window as any).api.addPerson({ 
         name, 
         vorname, 
+        birthDate: birthDate || null,
         teilzeit,
         department: departmentPeriods.length > 0 ? departmentPeriods[0].department : '1. Abteilung',
         personnelNumber: personnelNumber.trim(),
@@ -443,6 +445,25 @@ const AddPerson: React.FC = () => {
           value={vorname}
           onChange={e => setVorname(e.target.value)}
           placeholder="Vorname"
+          style={{
+            width: '100%',
+            padding: '10px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            fontSize: '14px',
+            boxSizing: 'border-box'
+          }}
+        />
+      </div>
+
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ display: 'block', marginBottom: '6px', fontWeight: 500 }}>
+          Geburtsdatum
+        </label>
+        <input
+          type="date"
+          value={birthDate}
+          onChange={e => setBirthDate(e.target.value)}
           style={{
             width: '100%',
             padding: '10px',

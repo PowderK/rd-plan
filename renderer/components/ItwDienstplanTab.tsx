@@ -55,6 +55,12 @@ const ItwDienstplanTab: React.FC = () => {
     const [holidays, setHolidays] = useState<string[]>([]);
     const [itwSeqs, setItwSeqs] = useState<{ startDate: string, pattern: string, department?: string }[]>([]);
     const [assignments, setAssignments] = useState<any[]>([]);
+    const [itwRotationPhases, setItwRotationPhases] = useState<{ fzf1: string; fzf2: string; maschinist: string }[]>([
+        { fzf1: '1. Abteilung', fzf2: '2. Abteilung', maschinist: '3. Abteilung' },
+        { fzf1: '3. Abteilung', fzf2: '1. Abteilung', maschinist: '2. Abteilung' },
+        { fzf1: '2. Abteilung', fzf2: '3. Abteilung', maschinist: '1. Abteilung' },
+    ]);
+    const [phaseOverrides, setPhaseOverrides] = useState<Record<string, { fzf1?: string; fzf2?: string; maschinist?: string }>>({});
     const [loading, setLoading] = useState<boolean>(true);
 
     const isOwnUser = (p: any) => {
@@ -130,10 +136,6 @@ const ItwDienstplanTab: React.FC = () => {
         if (sortedItwSeqs.length === 0) return null;
         if (holidays.includes(dateStr)) return null;
 
-        const person = personnel.find(p => Number(p.id) === Number(personId));
-        const personDept = person?.department || '1. Abteilung';
-        const deptCode = normalizeDeptCode(personDept);
-
         const targetTime = new Date(dateStr + 'T00:00:00Z').getTime();
         const activeSeq = getActiveItwSequence(dateStr);
         if (!activeSeq) return null;
@@ -149,8 +151,6 @@ const ItwDienstplanTab: React.FC = () => {
 
         const patternIndex = ((diffDays % patternSlots.length) + patternSlots.length) % patternSlots.length;
         const slot = patternSlots[patternIndex];
-        const isAssignedDay = slot.fzf === deptCode || slot.maschinist === deptCode;
-        if (!isAssignedDay) return null;
 
         // Find assignment that covers this date
         const assignment = assignments.find(a => {
@@ -160,10 +160,34 @@ const ItwDienstplanTab: React.FC = () => {
             return targetTime >= aStart && targetTime < aEnd;
         });
 
-        if (assignment) {
-            return 'IW';
+        if (!assignment) return null;
+
+        const person = personnel.find(p => Number(p.id) === Number(personId));
+        const defaultPersonDept = person?.department || '1. Abteilung';
+
+        const aRole = String(assignment.role || '');
+        const roleKey: 'fzf1' | 'fzf2' | 'maschinist' = aRole === 'Maschinist' 
+            ? 'maschinist' 
+            : (aRole === 'Fahrzeugführer 2' ? 'fzf2' : 'fzf1');
+        const roleType = aRole === 'Maschinist' ? 'maschinist' : 'fzf';
+
+        // Check if there is an override for this phase
+        const override = phaseOverrides[assignment.start_date] || {};
+        
+        const seqBaseTime = new Date(activeSeq.startDate + 'T00:00:00Z').getTime();
+        const aStartTime = new Date(assignment.start_date + 'T00:00:00Z').getTime();
+        const phaseIdx = Math.max(0, Math.floor((aStartTime - seqBaseTime) / (21 * 24 * 3600 * 1000)));
+        const rotCount = itwRotationPhases.length || 3;
+        const rotConfig = itwRotationPhases[phaseIdx % rotCount] || { fzf1: '1. Abteilung', fzf2: '2. Abteilung', maschinist: '3. Abteilung' };
+
+        const assignedDept = override[roleKey] || rotConfig[roleKey] || defaultPersonDept;
+        const deptCode = normalizeDeptCode(assignedDept);
+
+        if (roleType === 'maschinist') {
+            return slot.maschinist === deptCode ? 'IW' : null;
+        } else {
+            return slot.fzf === deptCode ? 'IW' : null;
         }
-        return null;
     };
 
     const loadData = async () => {
@@ -171,6 +195,21 @@ const ItwDienstplanTab: React.FC = () => {
         try {
             const seqs = await (window as any).api.getItwPatterns?.() || [];
             setItwSeqs(seqs);
+
+            try {
+                const rotVal = await (window as any).api.getSetting?.('itw_rotation_pattern');
+                if (rotVal) {
+                    const parsed = JSON.parse(rotVal);
+                    if (Array.isArray(parsed) && parsed.length > 0) setItwRotationPhases(parsed);
+                }
+            } catch {}
+            try {
+                const overridesVal = await (window as any).api.getSetting?.('itw_phase_dept_overrides');
+                if (overridesVal) {
+                    const parsed = JSON.parse(overridesVal);
+                    if (parsed && typeof parsed === 'object') setPhaseOverrides(parsed);
+                }
+            } catch {}
 
             const assigns = await (window as any).api.getItwPhaseAssignments?.() || [];
             setAssignments(assigns);

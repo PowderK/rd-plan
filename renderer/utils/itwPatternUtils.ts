@@ -63,16 +63,89 @@ export function getDefault3WeekRotation(): ItwDaySlot[] {
   return slots;
 }
 
-export function getDeptBadgeStyle(deptCode: string) {
+export interface DeptColorScheme {
+  deptCode: string;
+  deptLabel: string;
+  badgeBg: string;
+  badgeColor: string;
+  badgeBorder: string;
+  slotBg: string;
+  slotBorder: string;
+  selectBg: string;
+  selectColor: string;
+  selectBorder: string;
+  accent: string;
+  dotEmoji: string;
+}
+
+export function getDeptColorScheme(deptCode: string | number | undefined | null): DeptColorScheme {
   const c = normalizeDeptCode(deptCode);
   if (c === '1') {
-    return { background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' };
+    return {
+      deptCode: '1',
+      deptLabel: '1. Abteilung',
+      badgeBg: '#fee2e2',
+      badgeColor: '#b91c1c',
+      badgeBorder: '#fca5a5',
+      slotBg: '#fef2f2',
+      slotBorder: '1px dashed #fca5a5',
+      selectBg: '#fef2f2',
+      selectColor: '#b91c1c',
+      selectBorder: '1.5px dashed #f87171',
+      accent: '#ef4444',
+      dotEmoji: '🔴'
+    };
   }
   if (c === '2') {
-    return { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #93c5fd' };
+    return {
+      deptCode: '2',
+      deptLabel: '2. Abteilung',
+      badgeBg: '#dbeafe',
+      badgeColor: '#1d4ed8',
+      badgeBorder: '#93c5fd',
+      slotBg: '#eff6ff',
+      slotBorder: '1px dashed #93c5fd',
+      selectBg: '#eff6ff',
+      selectColor: '#1d4ed8',
+      selectBorder: '1.5px dashed #60a5fa',
+      accent: '#2563eb',
+      dotEmoji: '🔵'
+    };
   }
   if (c === '3') {
-    return { background: '#f0fdf4', color: '#15803d', border: '1px solid #86efac' };
+    return {
+      deptCode: '3',
+      deptLabel: '3. Abteilung',
+      badgeBg: '#dcfce7',
+      badgeColor: '#15803d',
+      badgeBorder: '#86efac',
+      slotBg: '#f0fdf4',
+      slotBorder: '1px dashed #86efac',
+      selectBg: '#f0fdf4',
+      selectColor: '#15803d',
+      selectBorder: '1.5px dashed #4ade80',
+      accent: '#16a34a',
+      dotEmoji: '🟢'
+    };
   }
-  return { background: '#f9fafb', color: '#9ca3af', border: '1px solid #e5e7eb' };
+  return {
+    deptCode: '',
+    deptLabel: 'Ohne Abt.',
+    badgeBg: '#f1f5f9',
+    badgeColor: '#475569',
+    badgeBorder: '#cbd5e1',
+    slotBg: '#f8fafc',
+    slotBorder: '1px dashed #cbd5e1',
+    selectBg: '#f8fafc',
+    selectColor: '#334155',
+    selectBorder: '1.5px dashed #94a3b8',
+    accent: '#64748b',
+    dotEmoji: '⚪'
+  };
 }
+
+export function getDeptBadgeStyle(deptCode: string) {
+  const scheme = getDeptColorScheme(deptCode);
+  return { background: scheme.badgeBg, color: scheme.badgeColor, border: `1px solid ${scheme.badgeBorder}` };
+}
+

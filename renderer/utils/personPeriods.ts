@@ -81,3 +81,70 @@ export function buildDepartmentActiveMonthly(
     periods.some(p => departmentAppliesInMonth(p, departmentName, year, monthIndex))
   );
 }
+
+/** Berechnet das Datum des 50. Geburtstags taggenau aus dem Geburtsdatum (YYYY-MM-DD). */
+export function getFiftiethBirthday(birthDate?: string | null): Date | null {
+  if (!birthDate) return null;
+  const parts = String(birthDate).trim().slice(0, 10).split('-');
+  if (parts.length !== 3) return null;
+  const y = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  const d = parseInt(parts[2], 10);
+  if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
+  return new Date(Date.UTC(y + 50, m - 1, d));
+}
+
+export function getFiftiethBirthdayISO(birthDate?: string | null): string | null {
+  const bday = getFiftiethBirthday(birthDate);
+  if (!bday) return null;
+  return bday.toISOString().slice(0, 10);
+}
+
+export function getFiftiethBirthdayYM(birthDate?: string | null): string | null {
+  const iso = getFiftiethBirthdayISO(birthDate);
+  if (!iso) return null;
+  return iso.slice(0, 7);
+}
+
+/** Prüft, ob die Person an einem bestimmten Tag (YYYY-MM-DD) bereits 50 Jahre alt ist. */
+export function isTurnedFiftyOnDate(birthDate: string | undefined | null, dateStr: string): boolean {
+  const bdayISO = getFiftiethBirthdayISO(birthDate);
+  if (!bdayISO) return false;
+  return String(dateStr).slice(0, 10) >= bdayISO;
+}
+
+/** Prüft, ob der Monat (YYYY-MM) NACH dem Monat des 50. Geburtstags liegt. */
+export function isMonthAfterFiftiethBirthday(birthDate: string | undefined | null, ym: string): boolean {
+  const bdayYM = getFiftiethBirthdayYM(birthDate);
+  if (!bdayYM) return false;
+  return ym > bdayYM;
+}
+
+/**
+ * Prüft, ob der 50. Geburtstag ca. 1 Monat vorher bevorsteht (oder vor kurzem stattgefunden hat,
+ * um Planer bei anstehendem oder frischem 50. Geburtstag zu informieren).
+ */
+export function isApproachingFiftiethBirthday(
+  birthDate: string | undefined | null,
+  referenceDate: Date = new Date()
+): { isApproaching: boolean; birthdayISO: string; birthdayDate: Date; daysRemaining: number } | null {
+  const bday = getFiftiethBirthday(birthDate);
+  if (!bday) return null;
+  const birthdayISO = bday.toISOString().slice(0, 10);
+
+  const refUTC = Date.UTC(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
+  const bdayUTC = bday.getTime();
+  const diffMs = bdayUTC - refUTC;
+  const daysRemaining = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  // 1 Monat vorher (bis zu 35 Tage im Voraus, bis zu 90 Tage nach Geburtstag falls unentschieden)
+  const isApproaching = daysRemaining <= 35 && daysRemaining >= -90;
+
+  return {
+    isApproaching,
+    birthdayISO,
+    birthdayDate: bday,
+    daysRemaining
+  };
+}
+
