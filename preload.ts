@@ -302,3 +302,42 @@ contextBridge.exposeInMainWorld('electronAPI', {
         }
     }
 });
+
+// Windows Focus-Restore & Input-Aktivierung nach App-Wechsel (z. B. Alt+Tab zu Word/Excel):
+if (typeof window !== 'undefined') {
+    // 1. Wenn das Fenster wieder aktiv wird, Main-Prozess zur WebContents-Fokussierung auffordern
+    window.addEventListener('focus', () => {
+        try {
+            ipcRenderer.send('window-focus-restore');
+            if (document.activeElement && typeof (document.activeElement as HTMLElement).focus === 'function') {
+                (document.activeElement as HTMLElement).focus();
+            }
+        } catch { }
+    });
+
+    // 2. Klick-Absicherung: Klicks auf Eingabefelder (oder zugehörige <label>) erzwingen sofort den DOM-Fokus,
+    // falls Chromium nach dem Reaktivieren auf Windows das native Fokussieren im Klick-Event verschluckt hat.
+    const ensureInputFocus = (e: MouseEvent | PointerEvent) => {
+        try {
+            const target = e.target as HTMLElement | null;
+            if (!target) return;
+            const tag = target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+                if (document.activeElement !== target) {
+                    target.focus();
+                }
+                return;
+            }
+            const label = target.closest('label');
+            if (label) {
+                const input = label.querySelector('input, textarea, select') as HTMLElement | null;
+                if (input && document.activeElement !== input) {
+                    input.focus();
+                }
+            }
+        } catch { }
+    };
+
+    window.addEventListener('pointerdown', ensureInputFocus as any, true);
+    window.addEventListener('mousedown', ensureInputFocus, true);
+}

@@ -25,6 +25,7 @@ if (!appIcon.isEmpty()) {
 }
 
 let databaseAdapter: DatabaseAdapter | null = null;
+let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
 let splashStartTime: number = 0;
 let settingsWindow: BrowserWindow | null = null;
@@ -155,14 +156,13 @@ async function isCurrentUserAdmin(): Promise<boolean> {
 
 async function applyRoleBasedMenuVisibility() {
     const admin = await isCurrentUserAdmin();
-    const windows = BrowserWindow.getAllWindows();
 
     if (process.platform === 'darwin') {
         const template = admin ? buildAdminMenuTemplate() : buildReducedMacMenuTemplate();
         const menu = Menu.buildFromTemplate(template);
         Menu.setApplicationMenu(menu);
 
-        windows.forEach(w => {
+        BrowserWindow.getAllWindows().forEach(w => {
             try {
                 w.setMenuBarVisibility(true);
                 w.setAutoHideMenuBar(false);
@@ -171,26 +171,43 @@ async function applyRoleBasedMenuVisibility() {
         return;
     }
 
+    // Windows & Linux:
+    // Die Menüleiste darf NUR am Hauptfenster (oder als App-Menü) hängen – NIEMALS an Dialog-/Editorfenstern!
+    // Auf Windows führt ein Menü oder autoHideMenuBar: true auf Dialogfenstern dazu,
+    // dass nach Alt+Tab (Wechsel zu Excel/Word und zurück) der Alt-Tastendruck das Menü fokussiert
+    // und Textfelder (Inputs wie H-Nummer) keine Eingaben mehr annehmen.
     if (admin) {
         const menu = Menu.buildFromTemplate(buildAdminMenuTemplate());
         Menu.setApplicationMenu(menu);
-        windows.forEach(w => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
             try {
-                w.setMenu(menu);
-                w.setAutoHideMenuBar(false);
-                w.setMenuBarVisibility(true);
+                mainWindow.setMenu(menu);
+                mainWindow.setAutoHideMenuBar(false);
+                mainWindow.setMenuBarVisibility(true);
             } catch { }
-        });
+        }
     } else {
         Menu.setApplicationMenu(null);
-        windows.forEach(w => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
             try {
+                mainWindow.setMenu(null);
+                mainWindow.setAutoHideMenuBar(false);
+                mainWindow.setMenuBarVisibility(false);
+            } catch { }
+        }
+    }
+
+    // Alle Sub- und Dialogfenster konsequent von Menüleisten und autoHideMenuBar befreien
+    BrowserWindow.getAllWindows().forEach(w => {
+        if (w !== mainWindow) {
+            try {
+                w.removeMenu();
                 w.setMenu(null);
-                w.setAutoHideMenuBar(true);
+                w.setAutoHideMenuBar(false);
                 w.setMenuBarVisibility(false);
             } catch { }
-        });
-    }
+        }
+    });
 }
 
 // Debouncing für duty-roster-Updates (verhindert zu viele Broadcasts bei schnellen Änderungen)
@@ -472,7 +489,7 @@ async function createWindow(showImmediately: boolean = false) {
     // Erstelle Admin-Rolle und Admin-Person falls nicht vorhanden
     await ensureAdminRoleAndUser(databaseAdapter);
 
-    const mainWindow = new BrowserWindow({
+    mainWindow = new BrowserWindow({
         width: 1280,
         height: 800,
         show: false, // Nicht sofort anzeigen (wird gesteuert via ready-to-show)
@@ -483,6 +500,18 @@ async function createWindow(showImmediately: boolean = false) {
             nodeIntegration: false,
             contextIsolation: true
         }
+    });
+
+    mainWindow.on('focus', () => {
+        try {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.focus();
+            }
+        } catch { }
+    });
+
+    mainWindow.on('closed', () => {
+        mainWindow = null;
     });
 
     await applyRoleBasedMenuVisibility();
@@ -502,8 +531,8 @@ async function createWindow(showImmediately: boolean = false) {
                 splashWindow.close();
                 splashWindow = null;
             }
-            mainWindow.show();
-            mainWindow.focus();
+            mainWindow?.show();
+            mainWindow?.focus();
         } else {
             // Berechne wie lange der Splash bereits angezeigt wurde
             const elapsed = Date.now() - splashStartTime;
@@ -515,14 +544,14 @@ async function createWindow(showImmediately: boolean = false) {
                     splashWindow.close();
                     splashWindow = null;
                 }
-                mainWindow.show();
-                mainWindow.focus();
+                mainWindow?.show();
+                mainWindow?.focus();
             }, remainingTime);
         }
     });
 
     mainWindow.on('closed', () => {
-        // Handled by app.on('window-all-closed')
+        mainWindow = null;
     });
 }
 
@@ -2371,6 +2400,16 @@ ipcMain.handle('set-itw-database-connection', async (_event, connectionString: s
 
 // Window management functions
 function openWindow(htmlFile: string, windowVar: string, width = 800, height = 600) {
+    const existing = (global as any)[windowVar] as BrowserWindow | null;
+    if (existing && !existing.isDestroyed()) {
+        try {
+            if (existing.isMinimized()) existing.restore();
+            existing.focus();
+            existing.webContents.focus();
+            return existing;
+        } catch { }
+    }
+
     const win = new BrowserWindow({
         width,
         height,
@@ -2383,8 +2422,25 @@ function openWindow(htmlFile: string, windowVar: string, width = 800, height = 6
         }
     });
 
+    try {
+        win.removeMenu();
+        win.setMenu(null);
+        win.setAutoHideMenuBar(false);
+        win.setMenuBarVisibility(false);
+    } catch { }
+
+    win.on('focus', () => {
+        try {
+            if (!win.isDestroyed()) {
+                win.webContents.focus();
+            }
+        } catch { }
+    });
+
     const filePath = path.join(__dirname, `../renderer/${htmlFile}`);
     win.loadFile(filePath);
+
+    (global as any)[windowVar] = win;
 
     win.on('closed', () => {
         (global as any)[windowVar] = null;
@@ -2394,6 +2450,22 @@ function openWindow(htmlFile: string, windowVar: string, width = 800, height = 6
 }
 
 function openWindowWithQuery(htmlFile: string, windowVar: string, width = 800, height = 600, query?: Record<string, string>) {
+    const existing = (global as any)[windowVar] as BrowserWindow | null;
+    if (existing && !existing.isDestroyed()) {
+        try {
+            if (existing.isMinimized()) existing.restore();
+            const filePath = path.join(__dirname, `../renderer/${htmlFile}`);
+            try {
+                (existing as any).loadFile(filePath, query ? { query } : undefined);
+            } catch {
+                existing.loadFile(filePath);
+            }
+            existing.focus();
+            existing.webContents.focus();
+            return existing;
+        } catch { }
+    }
+
     const win = new BrowserWindow({
         width,
         height,
@@ -2404,6 +2476,21 @@ function openWindowWithQuery(htmlFile: string, windowVar: string, width = 800, h
             nodeIntegration: false,
             contextIsolation: true
         }
+    });
+
+    try {
+        win.removeMenu();
+        win.setMenu(null);
+        win.setAutoHideMenuBar(false);
+        win.setMenuBarVisibility(false);
+    } catch { }
+
+    win.on('focus', () => {
+        try {
+            if (!win.isDestroyed()) {
+                win.webContents.focus();
+            }
+        } catch { }
     });
 
     const filePath = path.join(__dirname, `../renderer/${htmlFile}`);
@@ -2414,6 +2501,8 @@ function openWindowWithQuery(htmlFile: string, windowVar: string, width = 800, h
         // Fallback ohne Query
         win.loadFile(filePath);
     }
+
+    (global as any)[windowVar] = win;
 
     win.on('closed', () => {
         (global as any)[windowVar] = null;
@@ -2564,6 +2653,25 @@ ipcMain.on('quit-app', async () => {
         await databaseAdapter.close();
     }
     app.quit();
+});
+
+// Globaler Focus-Sync für Windows: Wenn irgendein Fenster Betriebssystem-Fokus erhält,
+// stellen wir sicher, dass Chromium die WebContents-Fokussierung aktiviert
+app.on('browser-window-focus', (_event, win) => {
+    try {
+        if (win && !win.isDestroyed()) {
+            win.webContents.focus();
+        }
+    } catch { }
+});
+
+ipcMain.on('window-focus-restore', (event) => {
+    try {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win && !win.isDestroyed()) {
+            win.webContents.focus();
+        }
+    } catch { }
 });
 
 // App event handlers
