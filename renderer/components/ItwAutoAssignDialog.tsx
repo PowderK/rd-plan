@@ -32,9 +32,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
   itwDoctors = []
 }) => {
   const [plans, setPlans] = useState<ItwDayAutoPlan[]>(() => initialPlans || []);
-  const [filterMode, setFilterMode] = useState<'all' | 'conflicts'>(() => {
-    return (initialPlans || []).some(p => p.conflictType !== 'none') ? 'conflicts' : 'all';
-  });
+  const [filterMode, setFilterMode] = useState<'all' | 'conflicts'>('all');
 
   const myDeptCode = normalizeDeptCode(departmentName || departmentId);
 
@@ -57,9 +55,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
   // Sync state when initialPlans changes
   React.useEffect(() => {
     setPlans(initialPlans || []);
-    if ((initialPlans || []).some(p => p.conflictType !== 'none')) {
-      setFilterMode('conflicts');
-    }
+    setFilterMode('all');
   }, [initialPlans]);
 
   if (!isOpen) return null;
@@ -358,7 +354,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                 gap: 6
               }}
             >
-              ⚠️ Klärungsbedarf
+              ⚠️ Nur Klärungsbedarf
               {conflictDays.length > 0 && (
                 <span
                   style={{
@@ -384,7 +380,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
               <strong>{externalSlotsCount}</strong> externe Vorplanungs-Slots (nur Info)
             </span>
             <span>•</span>
-            <span>{displayedPlans.length} von {totalDays} Tagen gelistet</span>
+            <span>{displayedPlans.length} von {totalDays} Tagen angezeigt</span>
           </div>
         </div>
 
@@ -423,9 +419,9 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                 <div
                   key={plan.date}
                   style={{
-                    border: isConflict ? '2px solid #f59e0b' : '1px solid #e2e8f0',
+                    border: isConflict ? '2px solid #f59e0b' : '1px solid #cbd5e1',
                     borderRadius: 10,
-                    overflow: 'hidden',
+                    overflow: 'visible',
                     background: '#fff',
                     boxShadow: isConflict ? '0 2px 10px rgba(245, 158, 11, 0.15)' : '0 1px 3px rgba(0,0,0,0.04)'
                   }}
@@ -435,6 +431,8 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                     style={{
                       padding: '10px 16px',
                       background: isConflict ? '#fffbeb' : '#f8fafc',
+                      borderTopLeftRadius: 8,
+                      borderTopRightRadius: 8,
                       borderBottom: '1px solid ' + (isConflict ? '#fde68a' : '#e2e8f0'),
                       display: 'flex',
                       alignItems: 'center',
@@ -537,7 +535,8 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                               fontWeight: 600,
                               color: '#92400e',
                               fontSize: 13,
-                              cursor: 'pointer'
+                              cursor: 'pointer',
+                              boxSizing: 'border-box'
                             }}
                           >
                             <option value="fzf">Als Fahrzeugführer (FzF) einteilen</option>
@@ -573,7 +572,8 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                                 fontWeight: 600,
                                 color: '#1e293b',
                                 fontSize: 13,
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                boxSizing: 'border-box'
                               }}
                             >
                               {plan.deptIwColleagues.map(c => (
@@ -619,7 +619,8 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                                 fontWeight: 600,
                                 color: '#1e293b',
                                 fontSize: 13,
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                boxSizing: 'border-box'
                               }}
                             >
                               {plan.deptIwColleagues.map(c => (
@@ -639,7 +640,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                     style={{
                       padding: '14px 16px',
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
                       gap: 12
                     }}
                   >
@@ -648,6 +649,8 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                       style={{
                         padding: '10px 12px',
                         borderRadius: 8,
+                        minWidth: 0,
+                        boxSizing: 'border-box',
                         background: plan.proposedFzf.isExternal
                           ? '#eff6ff'
                           : plan.proposedFzf.value
@@ -701,6 +704,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         onChange={e => handleDirectSlotChange(plan.date, 'fzf', e.target.value)}
                         style={{
                           width: '100%',
+                          boxSizing: 'border-box',
                           padding: '6px 8px',
                           borderRadius: 6,
                           fontSize: 13,
@@ -777,6 +781,8 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                       style={{
                         padding: '10px 12px',
                         borderRadius: 8,
+                        minWidth: 0,
+                        boxSizing: 'border-box',
                         background: plan.proposedMa.isExternal
                           ? '#eff6ff'
                           : plan.proposedMa.value
@@ -830,6 +836,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         onChange={e => handleDirectSlotChange(plan.date, 'ma', e.target.value)}
                         style={{
                           width: '100%',
+                          boxSizing: 'border-box',
                           padding: '6px 8px',
                           borderRadius: 6,
                           fontSize: 13,
@@ -906,6 +913,8 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                       style={{
                         padding: '10px 12px',
                         borderRadius: 8,
+                        minWidth: 0,
+                        boxSizing: 'border-box',
                         background: '#faf5ff',
                         border: '1px solid #e9d5ff'
                       }}
@@ -934,6 +943,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         onChange={e => handleDirectSlotChange(plan.date, 'doctor', e.target.value)}
                         style={{
                           width: '100%',
+                          boxSizing: 'border-box',
                           padding: '6px 8px',
                           borderRadius: 6,
                           fontSize: 13,
