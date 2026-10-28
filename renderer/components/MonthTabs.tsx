@@ -3805,6 +3805,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 extDeptCode = personObj?.department ? normalizeDeptCode(personObj.department) : '';
                                             }
                                             const extScheme = isExternal ? getDeptColorScheme(extDeptCode) : null;
+                                            const myDeptCode = normalizeDeptCode(departmentName || department);
+                                            const myDeptScheme = getDeptColorScheme(myDeptCode);
 
                                             let appliedStyle: React.CSSProperties | undefined = highlightStyle;
                                             if (!appliedStyle) {
@@ -3824,6 +3826,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                         color: '#7e22ce',
                                                         borderColor: '#e9d5ff',
                                                         fontWeight: 500
+                                                    };
+                                                } else if (value && (value.startsWith('p:') || value.startsWith('a:'))) {
+                                                    appliedStyle = {
+                                                        background: myDeptScheme.selectBg,
+                                                        color: myDeptScheme.selectColor,
+                                                        borderColor: myDeptScheme.badgeBorder,
+                                                        borderStyle: 'solid',
+                                                        borderWidth: '1px',
+                                                        fontWeight: 600
                                                     };
                                                 }
                                             }

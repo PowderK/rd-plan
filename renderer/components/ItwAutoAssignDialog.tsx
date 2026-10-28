@@ -670,12 +670,12 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         background: plan.proposedFzf.isExternal
                           ? fzfDeptScheme.slotBg
                           : plan.proposedFzf.value
-                          ? '#f0fdf4'
+                          ? myDeptScheme.slotBg
                           : '#f8fafc',
                         border: plan.proposedFzf.isExternal
                           ? fzfDeptScheme.slotBorder
                           : plan.proposedFzf.value
-                          ? '1px solid #bbf7d0'
+                          ? `1px solid ${myDeptScheme.badgeBorder}`
                           : '1px solid #e2e8f0'
                       }}
                     >
@@ -733,9 +733,17 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                           borderRadius: 6,
                           fontSize: 13,
                           fontWeight: 600,
-                          border: plan.proposedFzf.isExternal ? fzfDeptScheme.selectBorder : '1px solid #cbd5e1',
-                          background: plan.proposedFzf.isExternal ? fzfDeptScheme.selectBg : (plan.proposedFzf.value ? '#ffffff' : '#f8fafc'),
-                          color: plan.proposedFzf.isExternal ? fzfDeptScheme.selectColor : '#0f172a',
+                          border: plan.proposedFzf.isExternal
+                            ? fzfDeptScheme.selectBorder
+                            : plan.proposedFzf.value
+                            ? `1px solid ${myDeptScheme.badgeBorder}`
+                            : '1px solid #cbd5e1',
+                          background: plan.proposedFzf.isExternal
+                            ? fzfDeptScheme.selectBg
+                            : (plan.proposedFzf.value ? myDeptScheme.selectBg : '#f8fafc'),
+                          color: plan.proposedFzf.isExternal
+                            ? fzfDeptScheme.selectColor
+                            : (plan.proposedFzf.value ? myDeptScheme.selectColor : '#0f172a'),
                           fontStyle: plan.proposedFzf.isExternal ? 'italic' : 'normal',
                           cursor: 'pointer'
                         }}
@@ -811,12 +819,12 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         background: plan.proposedMa.isExternal
                           ? maDeptScheme.slotBg
                           : plan.proposedMa.value
-                          ? '#f0fdf4'
+                          ? myDeptScheme.slotBg
                           : '#f8fafc',
                         border: plan.proposedMa.isExternal
                           ? maDeptScheme.slotBorder
                           : plan.proposedMa.value
-                          ? '1px solid #bbf7d0'
+                          ? `1px solid ${myDeptScheme.badgeBorder}`
                           : '1px solid #e2e8f0'
                       }}
                     >
@@ -874,9 +882,17 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                           borderRadius: 6,
                           fontSize: 13,
                           fontWeight: 600,
-                          border: plan.proposedMa.isExternal ? maDeptScheme.selectBorder : '1px solid #cbd5e1',
-                          background: plan.proposedMa.isExternal ? maDeptScheme.selectBg : (plan.proposedMa.value ? '#ffffff' : '#f8fafc'),
-                          color: plan.proposedMa.isExternal ? maDeptScheme.selectColor : '#0f172a',
+                          border: plan.proposedMa.isExternal
+                            ? maDeptScheme.selectBorder
+                            : plan.proposedMa.value
+                            ? `1px solid ${myDeptScheme.badgeBorder}`
+                            : '1px solid #cbd5e1',
+                          background: plan.proposedMa.isExternal
+                            ? maDeptScheme.selectBg
+                            : (plan.proposedMa.value ? myDeptScheme.selectBg : '#f8fafc'),
+                          color: plan.proposedMa.isExternal
+                            ? maDeptScheme.selectColor
+                            : (plan.proposedMa.value ? myDeptScheme.selectColor : '#0f172a'),
                           fontStyle: plan.proposedMa.isExternal ? 'italic' : 'normal',
                           cursor: 'pointer'
                         }}
