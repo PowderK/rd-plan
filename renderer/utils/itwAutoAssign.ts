@@ -241,15 +241,25 @@ export function buildItwMonthAutoAssignments(params: BuildItwAutoAssignParams): 
       roleFzf = 'Fahrzeugführer 1';
     }
 
-    // Planned FzF from assignments
-    const assgnFzf = (assignments || []).find(a => a.start_date === phaseStart && a.role === roleFzf);
+    // Planned FzF & Maschinist from assignments
+    const findAssignment = (role: string) => {
+      let match = (assignments || []).find(a => a.start_date === phaseStart && a.role === role);
+      if (match) return match;
+      const inPhase = (assignments || []).filter(a => a.role === role && a.start_date >= phaseStart && a.start_date <= dateStr);
+      if (inPhase.length > 0) {
+        inPhase.sort((a, b) => b.start_date.localeCompare(a.start_date));
+        return inPhase[0];
+      }
+      return (assignments || []).find(a => a.role === role && a.start_date >= phaseStart && a.start_date <= phaseEnd);
+    };
+
+    const assgnFzf = findAssignment(roleFzf);
     const plannedFzfId = assgnFzf?.person_id ? Number(assgnFzf.person_id) : null;
     const plannedFzfPerson = plannedFzfId ? crossPersonMap.get(plannedFzfId) : null;
     const plannedFzfDept = slot.fzf || (plannedFzfPerson?.department ? normalizeDeptCode(plannedFzfPerson.department) : '');
     const isFzfOwnDept = plannedFzfDept === myDeptCode;
 
-    // Planned Maschinist from assignments
-    const assgnMa = (assignments || []).find(a => a.start_date === phaseStart && a.role === 'Maschinist');
+    const assgnMa = findAssignment('Maschinist');
     const plannedMaId = assgnMa?.person_id ? Number(assgnMa.person_id) : null;
     const plannedMaPerson = plannedMaId ? crossPersonMap.get(plannedMaId) : null;
     const plannedMaDept = slot.maschinist || (plannedMaPerson?.department ? normalizeDeptCode(plannedMaPerson.department) : '');

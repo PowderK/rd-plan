@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import {
   ItwDayAutoPlan,
-  updateDayPlanChoice
+  updateDayPlanChoice,
+  formatDoctorName
 } from '../utils/itwAutoAssign';
-import { normalizeDeptCode } from '../utils/itwPatternUtils';
+import { normalizeDeptCode, deptCodeToLabel } from '../utils/itwPatternUtils';
 
 interface ItwAutoAssignDialogProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ interface ItwAutoAssignDialogProps {
   departmentId: number;
   initialPlans: ItwDayAutoPlan[];
   crossDeptPersonnel: any[];
+  itwDoctors?: any[];
 }
 
 export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
@@ -26,7 +28,8 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
   departmentName,
   departmentId,
   initialPlans,
-  crossDeptPersonnel
+  crossDeptPersonnel,
+  itwDoctors = []
 }) => {
   const [plans, setPlans] = useState<ItwDayAutoPlan[]>(initialPlans);
   const [filterMode, setFilterMode] = useState<'all' | 'conflicts'>('all');
@@ -41,7 +44,15 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
     return map;
   }, [crossDeptPersonnel]);
 
-  // Sync state if initialPlans changes
+  const doctorMap = useMemo(() => {
+    const map = new Map<number, any>();
+    (itwDoctors || []).forEach(d => {
+      if (d && d.id != null) map.set(Number(d.id), d);
+    });
+    return map;
+  }, [itwDoctors]);
+
+  // Sync state when initialPlans changes
   React.useEffect(() => {
     setPlans(initialPlans);
     const hasConflicts = initialPlans.some(p => p.conflictType !== 'none');
@@ -66,6 +77,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
 
   const displayedPlans = filterMode === 'conflicts' ? conflictDays : plans;
 
+  // Handlers for conflict resolutions
   const handleDeviationChoice = (date: string, role: 'fzf' | 'ma') => {
     setPlans(prev =>
       prev.map(p => {
@@ -111,7 +123,107 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
     );
   };
 
-  const allResolved = plans.every(p => p.resolved);
+  // Direct slot assignment from dropdown
+  const handleDirectSlotChange = (date: string, role: 'fzf' | 'ma' | 'doctor', val: string) => {
+    setPlans(prev =>
+      prev.map(p => {
+        if (p.date !== date) return p;
+        const next = { ...p };
+
+        if (role === 'fzf') {
+          if (!val) {
+            next.proposedFzf = {
+              value: '',
+              label: '',
+              personId: null,
+              isExternal: false,
+              deptCode: '',
+              deptName: '',
+              reason: 'Manuell entfernt'
+            };
+          } else {
+            const pid = Number(val.replace('p:', ''));
+            const person = crossPersonMap.get(pid);
+            const pDept = person?.department ? normalizeDeptCode(person.department) : myDeptCode;
+            const isExt = pDept !== myDeptCode;
+            next.proposedFzf = {
+              value: val,
+              label: `${person?.name || val}${isExt ? ` [${pDept}. Abt.]` : ''}`,
+              personId: pid,
+              isExternal: isExt,
+              deptCode: pDept,
+              deptName: deptCodeToLabel(pDept),
+              reason: isExt ? `Manuell (${pDept}. Abt. - nur Info)` : 'Manuell ausgewählt'
+            };
+          }
+          next.resolved = true;
+        } else if (role === 'ma') {
+          if (!val) {
+            next.proposedMa = {
+              value: '',
+              label: '',
+              personId: null,
+              isExternal: false,
+              deptCode: '',
+              deptName: '',
+              reason: 'Manuell entfernt'
+            };
+          } else {
+            const pid = Number(val.replace('p:', ''));
+            const person = crossPersonMap.get(pid);
+            const pDept = person?.department ? normalizeDeptCode(person.department) : myDeptCode;
+            const isExt = pDept !== myDeptCode;
+            next.proposedMa = {
+              value: val,
+              label: `${person?.name || val}${isExt ? ` [${pDept}. Abt.]` : ''}`,
+              personId: pid,
+              isExternal: isExt,
+              deptCode: pDept,
+              deptName: deptCodeToLabel(pDept),
+              reason: isExt ? `Manuell (${pDept}. Abt. - nur Info)` : 'Manuell ausgewählt'
+            };
+          }
+          next.resolved = true;
+        } else if (role === 'doctor') {
+          if (!val) {
+            next.proposedDoctor = {
+              value: '',
+              label: '',
+              doctorId: null,
+              isDoctor: true,
+              isExternal: false,
+              deptCode: '',
+              deptName: '',
+              reason: 'Kein Arzt eingeteilt'
+            };
+          } else {
+            const did = Number(val.replace('d:', ''));
+            const doc = doctorMap.get(did);
+            const name = doc ? formatDoctorName(doc) : `Arzt ${did}`;
+            next.proposedDoctor = {
+              value: val,
+              label: `${name} [Arzt]`,
+              doctorId: did,
+              isDoctor: true,
+              isExternal: false,
+              deptCode: '',
+              deptName: '',
+              reason: 'Manuell ausgewählt'
+            };
+          }
+        }
+        return next;
+      })
+    );
+  };
+
+  // Group personnel for select dropdowns
+  const ownPersonnel = (crossDeptPersonnel || []).filter(
+    p => p && normalizeDeptCode(p.department) === myDeptCode
+  );
+  const foreignPersonnel = (crossDeptPersonnel || []).filter(
+    p => p && normalizeDeptCode(p.department) !== myDeptCode
+  );
 
   return (
     <div
@@ -119,12 +231,12 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
         position: 'fixed',
         inset: 0,
         zIndex: 9999,
-        background: 'rgba(15, 23, 42, 0.65)',
+        background: 'rgba(15, 23, 42, 0.7)',
         backdropFilter: 'blur(4px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 20
+        padding: 16
       }}
       onClick={e => {
         if (e.target === e.currentTarget) onClose();
@@ -132,178 +244,114 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
     >
       <div
         style={{
-          background: 'var(--bg, #ffffff)',
-          color: 'var(--text, #1e293b)',
+          background: '#ffffff',
+          color: '#1e293b',
           borderRadius: 14,
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-          width: 'min(980px, 95vw)',
-          maxHeight: '90vh',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+          width: 'min(1120px, 97vw)',
+          maxHeight: '92vh',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          border: '1px solid var(--line, #e2e8f0)'
+          border: '1px solid #cbd5e1'
         }}
       >
         {/* Header */}
         <div
           style={{
-            padding: '20px 24px 16px 24px',
-            borderBottom: '1px solid var(--line, #e2e8f0)',
+            padding: '18px 24px',
+            borderBottom: '1px solid #e2e8f0',
+            background: 'linear-gradient(to right, #f8fafc, #f1f5f9)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: 'var(--card-header-bg, #f8fafc)'
+            gap: 16
           }}
         >
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 20 }}>⚡</span>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
+                Automatische ITW-Einteilung – {monthName} {year}
+              </h2>
               <span
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 34,
-                  height: 34,
-                  borderRadius: 8,
-                  background: '#fef3c7',
-                  color: '#d97706',
-                  fontSize: 18
+                  fontSize: 12,
+                  fontWeight: 600,
+                  background: '#e0f2fe',
+                  color: '#0369a1',
+                  padding: '2px 8px',
+                  borderRadius: 6
                 }}
               >
-                ⚡
+                {departmentName || `${departmentId}. Abteilung`}
               </span>
-              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>
-                Automatische ITW-Einteilung
-              </h2>
             </div>
-            <p style={{ margin: '4px 0 0 44px', fontSize: 13, color: '#64748b' }}>
-              Vorschau und Übernahme für <strong>{monthName} {year}</strong> &bull; {departmentName || `${departmentId}. Abteilung`}
-            </p>
+            <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
+              Priorisiert Kollegen der eigenen Abteilung mit IW-Diensten. Übernimmt Vorplanungs-Besetzungen fremder Abteilungen (blau/kursiv) und Ärzte als reine Information ohne Einfluss auf das RTW-Soll.
+            </div>
           </div>
 
           <button
+            type="button"
             onClick={onClose}
             style={{
-              background: 'transparent',
-              border: 'none',
-              fontSize: 22,
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid #cbd5e1',
+              background: '#fff',
+              color: '#64748b',
               cursor: 'pointer',
-              color: '#94a3b8',
-              padding: 4,
-              borderRadius: 6
+              fontSize: 16,
+              fontWeight: 700
             }}
             title="Schließen"
           >
-            &times;
+            ✕
           </button>
         </div>
 
-        {/* Summary KPIs */}
+        {/* Stats & Filters Bar */}
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: 12,
-            padding: '14px 24px',
-            background: '#f1f5f9',
-            borderBottom: '1px solid #e2e8f0'
-          }}
-        >
-          <div
-            style={{
-              background: '#fff',
-              padding: '10px 14px',
-              borderRadius: 8,
-              border: '1px solid #e2e8f0'
-            }}
-          >
-            <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>
-              ITW-Tage Gesamt
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: '#0f172a' }}>{totalDays}</div>
-          </div>
-
-          <div
-            style={{
-              background: '#fff',
-              padding: '10px 14px',
-              borderRadius: 8,
-              border: '1px solid #e2e8f0'
-            }}
-          >
-            <div style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, textTransform: 'uppercase' }}>
-              Direkte Übereinstimmung
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: '#16a34a' }}>{matchDays.length}</div>
-          </div>
-
-          <div
-            style={{
-              background: conflictDays.length > 0 ? '#fffbeb' : '#fff',
-              padding: '10px 14px',
-              borderRadius: 8,
-              border: conflictDays.length > 0 ? '1px solid #fcd34d' : '1px solid #e2e8f0'
-            }}
-          >
-            <div style={{ fontSize: 11, color: conflictDays.length > 0 ? '#b45309' : '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>
-              Klärungsbedarf
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: conflictDays.length > 0 ? '#d97706' : '#64748b' }}>
-              {conflictDays.length}
-            </div>
-          </div>
-
-          <div
-            style={{
-              background: '#fff',
-              padding: '10px 14px',
-              borderRadius: 8,
-              border: '1px solid #e2e8f0'
-            }}
-          >
-            <div style={{ fontSize: 11, color: '#2563eb', fontWeight: 600, textTransform: 'uppercase' }}>
-              Externe Vorplanungen (Info)
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: '#2563eb' }}>{externalSlotsCount}</div>
-          </div>
-        </div>
-
-        {/* Filter Navigation */}
-        <div
-          style={{
-            padding: '10px 24px',
+            padding: '12px 24px',
+            borderBottom: '1px solid #e2e8f0',
+            background: '#fafafa',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            borderBottom: '1px solid var(--line, #e2e8f0)',
-            background: '#fff'
+            flexWrap: 'wrap',
+            gap: 12
           }}
         >
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
+              type="button"
               onClick={() => setFilterMode('all')}
               style={{
                 padding: '6px 14px',
                 borderRadius: 6,
                 fontSize: 13,
                 fontWeight: 600,
-                border: 'none',
-                background: filterMode === 'all' ? '#0284c7' : '#f1f5f9',
+                border: filterMode === 'all' ? '1px solid #0284c7' : '1px solid #cbd5e1',
+                background: filterMode === 'all' ? '#0284c7' : '#fff',
                 color: filterMode === 'all' ? '#fff' : '#475569',
                 cursor: 'pointer'
               }}
             >
-              Alle Tage ({totalDays})
+              Alle ITW-Tage ({totalDays})
             </button>
+
             <button
+              type="button"
               onClick={() => setFilterMode('conflicts')}
               style={{
                 padding: '6px 14px',
                 borderRadius: 6,
                 fontSize: 13,
                 fontWeight: 600,
-                border: 'none',
-                background: filterMode === 'conflicts' ? '#d97706' : '#f1f5f9',
+                border: filterMode === 'conflicts' ? '1px solid #d97706' : '1px solid #cbd5e1',
+                background: filterMode === 'conflicts' ? '#d97706' : '#fff',
                 color: filterMode === 'conflicts' ? '#fff' : (conflictDays.length > 0 ? '#b45309' : '#475569'),
                 cursor: 'pointer',
                 display: 'flex',
@@ -311,7 +359,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                 gap: 6
               }}
             >
-              Nur Klärungsbedarf
+              ⚠️ Klärungsbedarf
               {conflictDays.length > 0 && (
                 <span
                   style={{
@@ -328,10 +376,16 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
             </button>
           </div>
 
-          <div style={{ fontSize: 12, color: '#64748b' }}>
-            {filterMode === 'conflicts' && conflictDays.length === 0
-              ? 'Keine Abweichungen oder Konflikte vorhanden.'
-              : `${displayedPlans.length} von ${totalDays} Tagen angezeigt`}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 12, color: '#64748b' }}>
+            <span>
+              <strong>{matchDays.length}</strong> eindeutig
+            </span>
+            <span>•</span>
+            <span style={{ color: externalSlotsCount > 0 ? '#1d4ed8' : '#64748b' }}>
+              <strong>{externalSlotsCount}</strong> externe Vorplanungs-Slots (nur Info)
+            </span>
+            <span>•</span>
+            <span>{displayedPlans.length} von {totalDays} Tagen gelistet</span>
           </div>
         </div>
 
@@ -357,7 +411,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
               <div style={{ fontSize: 32, marginBottom: 8 }}>🎉</div>
               <div style={{ fontWeight: 600, fontSize: 16 }}>Keine offenen Klärungsbedarfe!</div>
               <div style={{ fontSize: 13, marginTop: 4 }}>
-                Alle ITW-Dienste stimmen mit der Vorplanung überein oder sind eindeutig zuordenbar.
+                Alle ITW-Dienste für {monthName} sind eindeutig zuordenbar.
               </div>
             </div>
           ) : (
@@ -370,11 +424,11 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                 <div
                   key={plan.date}
                   style={{
-                    border: isConflict ? '1.5px solid #f59e0b' : '1px solid #e2e8f0',
+                    border: isConflict ? '2px solid #f59e0b' : '1px solid #e2e8f0',
                     borderRadius: 10,
                     overflow: 'hidden',
                     background: '#fff',
-                    boxShadow: isConflict ? '0 2px 8px rgba(245, 158, 11, 0.12)' : '0 1px 3px rgba(0,0,0,0.04)'
+                    boxShadow: isConflict ? '0 2px 10px rgba(245, 158, 11, 0.15)' : '0 1px 3px rgba(0,0,0,0.04)'
                   }}
                 >
                   {/* Card Header */}
@@ -403,7 +457,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
 
                       <span
                         style={{
-                          fontSize: 11,
+                          fontSize: 12,
                           padding: '2px 8px',
                           borderRadius: 4,
                           background: '#e2e8f0',
@@ -420,7 +474,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         <span
                           style={{
                             fontSize: 12,
-                            fontWeight: 600,
+                            fontWeight: 700,
                             color: '#b45309',
                             background: '#fef3c7',
                             padding: '3px 10px',
@@ -428,7 +482,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                             border: '1px solid #fde68a'
                           }}
                         >
-                          Klärungsbedarf
+                          ⚠️ Klärungsbedarf
                         </span>
                       ) : (
                         <span
@@ -442,7 +496,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                             border: '1px solid #bbf7d0'
                           }}
                         >
-                          &check; Eindeutig
+                          ✓ Eindeutig
                         </span>
                       )}
                     </div>
@@ -452,92 +506,80 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                   {isConflict && (
                     <div
                       style={{
-                        padding: '12px 16px',
+                        padding: '14px 16px',
                         background: '#fefce8',
                         borderBottom: '1px solid #fef08a'
                       }}
                     >
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#92400e', marginBottom: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>
                         {plan.conflictType === 'deviation' && '⚠️ Abweichung gegenüber Vorplanung'}
                         {plan.conflictType === 'multi_iw' && '👥 2 Kollegen mit IW (Eigene Abteilung)'}
                       </div>
 
-                      <div style={{ fontSize: 13, color: '#78350f', marginBottom: 10 }}>
+                      <div style={{ fontSize: 13, color: '#78350f', marginBottom: 12 }}>
                         {plan.conflictDescription}
                       </div>
 
-                      {/* Interactive Controls */}
-                      {plan.conflictType === 'deviation' && plan.deptIwColleagues.length === 1 && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                          <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>
-                            Position für {plan.deptIwColleagues[0].name}:
+                      {/* Prominent Quick-Decision Dropdowns */}
+                      {plan.conflictType === 'deviation' && plan.deptIwColleagues.length >= 1 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>
+                            👉 Position für {plan.deptIwColleagues[0].name}:
                           </span>
 
-                          <label
+                          <select
+                            value={plan.selectedRoleForColleague || (plan.proposedFzf.personId === plan.deptIwColleagues[0].id ? 'fzf' : 'ma')}
+                            onChange={e => handleDeviationChoice(plan.date, e.target.value as 'fzf' | 'ma')}
                             style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 6,
-                              cursor: 'pointer',
+                              padding: '6px 12px',
+                              borderRadius: 6,
+                              border: '1.5px solid #d97706',
+                              background: '#fff',
+                              fontWeight: 600,
+                              color: '#92400e',
                               fontSize: 13,
-                              fontWeight: 500,
-                              color: '#1e293b'
+                              cursor: 'pointer'
                             }}
                           >
-                            <input
-                              type="radio"
-                              name={`dev_role_${plan.date}`}
-                              checked={plan.selectedRoleForColleague === 'fzf' || plan.proposedFzf.personId === plan.deptIwColleagues[0].id}
-                              onChange={() => handleDeviationChoice(plan.date, 'fzf')}
-                            />
-                            Fahrzeugführer (FzF)
-                          </label>
+                            <option value="fzf">Als Fahrzeugführer (FzF) einteilen</option>
+                            <option value="ma">Als Maschinist (Ma) einteilen</option>
+                          </select>
 
-                          <label
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 6,
-                              cursor: 'pointer',
-                              fontSize: 13,
-                              fontWeight: 500,
-                              color: '#1e293b'
-                            }}
-                          >
-                            <input
-                              type="radio"
-                              name={`dev_role_${plan.date}`}
-                              checked={plan.selectedRoleForColleague === 'ma' || plan.proposedMa.personId === plan.deptIwColleagues[0].id}
-                              onChange={() => handleDeviationChoice(plan.date, 'ma')}
-                            />
-                            Maschinist (Ma)
-                          </label>
+                          <span style={{ fontSize: 12, color: '#78350f' }}>
+                            (Die jeweils andere Position wird automatisch aus der Vorplanung besetzt)
+                          </span>
                         </div>
                       )}
 
                       {plan.conflictType === 'multi_iw' && plan.deptIwColleagues.length >= 2 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>FzF:</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>
+                            👉 Rollenaufteilung festlegen:
+                          </span>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>FzF:</span>
                             <select
                               value={plan.selectedFzfPersonId || plan.proposedFzf.personId || ''}
                               onChange={e => {
                                 const newFzfId = Number(e.target.value);
-                                const otherColleague = plan.deptIwColleagues.find(c => c.id !== newFzfId);
-                                if (otherColleague) {
-                                  handleMultiIwChoice(plan.date, newFzfId, otherColleague.id);
-                                }
+                                const other = plan.deptIwColleagues.find(c => c.id !== newFzfId);
+                                if (other) handleMultiIwChoice(plan.date, newFzfId, other.id);
                               }}
                               style={{
-                                padding: '4px 8px',
+                                padding: '6px 10px',
                                 borderRadius: 6,
-                                border: '1px solid #cbd5e1',
-                                fontSize: 13
+                                border: '1.5px solid #d97706',
+                                background: '#fff',
+                                fontWeight: 600,
+                                color: '#1e293b',
+                                fontSize: 13,
+                                cursor: 'pointer'
                               }}
                             >
                               {plan.deptIwColleagues.map(c => (
                                 <option key={c.id} value={c.id}>
-                                  {c.name} {c.fahrzeugfuehrer ? '(FzF-Qual.)' : ''}
+                                  {c.name} {c.fahrzeugfuehrer ? '(FzF)' : ''}
                                 </option>
                               ))}
                             </select>
@@ -547,7 +589,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                             type="button"
                             onClick={() => handleSwapMultiIw(plan.date)}
                             style={{
-                              padding: '4px 10px',
+                              padding: '5px 12px',
                               borderRadius: 6,
                               border: '1px solid #cbd5e1',
                               background: '#fff',
@@ -558,25 +600,27 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                             }}
                             title="Positionen tauschen"
                           >
-                            ⇄ Tauschen
+                            ⇄ Rollen tauschen
                           </button>
 
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Ma:</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Ma:</span>
                             <select
                               value={plan.selectedMaPersonId || plan.proposedMa.personId || ''}
                               onChange={e => {
                                 const newMaId = Number(e.target.value);
-                                const otherColleague = plan.deptIwColleagues.find(c => c.id !== newMaId);
-                                if (otherColleague) {
-                                  handleMultiIwChoice(plan.date, otherColleague.id, newMaId);
-                                }
+                                const other = plan.deptIwColleagues.find(c => c.id !== newMaId);
+                                if (other) handleMultiIwChoice(plan.date, other.id, newMaId);
                               }}
                               style={{
-                                padding: '4px 8px',
+                                padding: '6px 10px',
                                 borderRadius: 6,
-                                border: '1px solid #cbd5e1',
-                                fontSize: 13
+                                border: '1.5px solid #d97706',
+                                background: '#fff',
+                                fontWeight: 600,
+                                color: '#1e293b',
+                                fontSize: 13,
+                                cursor: 'pointer'
                               }}
                             >
                               {plan.deptIwColleagues.map(c => (
@@ -591,12 +635,12 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                     </div>
                   )}
 
-                  {/* 3 Slot Display Cards */}
+                  {/* 3 Slot Display Cards with Interactive Dropdowns */}
                   <div
                     style={{
-                      padding: '12px 16px',
+                      padding: '14px 16px',
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
                       gap: 12
                     }}
                   >
@@ -617,7 +661,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                           : '1px solid #e2e8f0'
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
                           Fahrzeugführer (FzF)
                         </span>
@@ -632,7 +676,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                               borderRadius: 4
                             }}
                           >
-                            Extern (Info)
+                            Extern (nur Info)
                           </span>
                         ) : plan.proposedFzf.value ? (
                           <span
@@ -652,11 +696,79 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         )}
                       </div>
 
-                      <div style={{ marginTop: 4, fontWeight: 600, fontSize: 14, color: '#0f172a' }}>
-                        {plan.proposedFzf.label || <span style={{ color: '#94a3b8', fontWeight: 400 }}>– nicht besetzt –</span>}
-                      </div>
+                      {/* Interactive Dropdown */}
+                      <select
+                        value={plan.proposedFzf.value || ''}
+                        onChange={e => handleDirectSlotChange(plan.date, 'fzf', e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '6px 8px',
+                          borderRadius: 6,
+                          fontSize: 13,
+                          fontWeight: 600,
+                          border: plan.proposedFzf.isExternal ? '1.5px dashed #93c5fd' : '1px solid #cbd5e1',
+                          background: plan.proposedFzf.isExternal ? '#eff6ff' : (plan.proposedFzf.value ? '#ffffff' : '#f8fafc'),
+                          color: plan.proposedFzf.isExternal ? '#1d4ed8' : '#0f172a',
+                          fontStyle: plan.proposedFzf.isExternal ? 'italic' : 'normal',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <option value="">– Nicht besetzt –</option>
 
-                      <div style={{ marginTop: 2, fontSize: 11, color: '#64748b' }}>
+                        {/* Group 1: Colleagues with IW */}
+                        {plan.deptIwColleagues.length > 0 && (
+                          <optgroup label="Priorität: Eigene Kollegen mit IW">
+                            {plan.deptIwColleagues.map(c => (
+                              <option key={`iw_${c.id}`} value={`p:${c.id}`}>
+                                ⭐ {c.name} {c.fahrzeugfuehrer ? '(FzF)' : ''}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+
+                        {/* Group 2: Vorplanung colleague if not already in IW */}
+                        {plan.plannedFzf.personId && !plan.deptIwColleagues.some(c => c.id === plan.plannedFzf.personId) && (
+                          <optgroup label="Vorplanung">
+                            <option value={`p:${plan.plannedFzf.personId}`}>
+                              📅 {plan.plannedFzf.name} {plan.plannedFzf.isOwnDept ? '' : `[${plan.plannedFzf.deptCode}. Abt. - Info]`}
+                            </option>
+                          </optgroup>
+                        )}
+
+                        {/* Group 3: All own department colleagues */}
+                        <optgroup label="Eigene Abteilung">
+                          {ownPersonnel.map(p => (
+                            <option key={`own_${p.id}`} value={`p:${p.id}`}>
+                              {p.name} {p.fahrzeugfuehrer ? '(FzF)' : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+
+                        {/* Group 4: Partner departments (only info) */}
+                        <optgroup label="Partner-Abteilungen (Extern - nur Info)">
+                          {foreignPersonnel.map(p => {
+                            const pDept = normalizeDeptCode(p.department);
+                            return (
+                              <option key={`ext_${p.id}`} value={`p:${p.id}`}>
+                                {p.name} [{pDept}. Abt.]
+                              </option>
+                            );
+                          })}
+                        </optgroup>
+
+                        {/* Fallback if current value is outside defined groups */}
+                        {plan.proposedFzf.value &&
+                          !plan.deptIwColleagues.some(c => `p:${c.id}` === plan.proposedFzf.value) &&
+                          `p:${plan.plannedFzf.personId}` !== plan.proposedFzf.value &&
+                          !ownPersonnel.some(p => `p:${p.id}` === plan.proposedFzf.value) &&
+                          !foreignPersonnel.some(p => `p:${p.id}` === plan.proposedFzf.value) && (
+                            <option value={plan.proposedFzf.value}>
+                              {plan.proposedFzf.label || plan.proposedFzf.value}
+                            </option>
+                        )}
+                      </select>
+
+                      <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>
                         {plan.proposedFzf.reason}
                       </div>
                     </div>
@@ -678,7 +790,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                           : '1px solid #e2e8f0'
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
                           Maschinist (Ma)
                         </span>
@@ -693,7 +805,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                               borderRadius: 4
                             }}
                           >
-                            Extern (Info)
+                            Extern (nur Info)
                           </span>
                         ) : plan.proposedMa.value ? (
                           <span
@@ -713,51 +825,145 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         )}
                       </div>
 
-                      <div style={{ marginTop: 4, fontWeight: 600, fontSize: 14, color: '#0f172a' }}>
-                        {plan.proposedMa.label || <span style={{ color: '#94a3b8', fontWeight: 400 }}>– nicht besetzt –</span>}
-                      </div>
+                      {/* Interactive Dropdown */}
+                      <select
+                        value={plan.proposedMa.value || ''}
+                        onChange={e => handleDirectSlotChange(plan.date, 'ma', e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '6px 8px',
+                          borderRadius: 6,
+                          fontSize: 13,
+                          fontWeight: 600,
+                          border: plan.proposedMa.isExternal ? '1.5px dashed #93c5fd' : '1px solid #cbd5e1',
+                          background: plan.proposedMa.isExternal ? '#eff6ff' : (plan.proposedMa.value ? '#ffffff' : '#f8fafc'),
+                          color: plan.proposedMa.isExternal ? '#1d4ed8' : '#0f172a',
+                          fontStyle: plan.proposedMa.isExternal ? 'italic' : 'normal',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <option value="">– Nicht besetzt –</option>
 
-                      <div style={{ marginTop: 2, fontSize: 11, color: '#64748b' }}>
+                        {/* Group 1: Colleagues with IW */}
+                        {plan.deptIwColleagues.length > 0 && (
+                          <optgroup label="Priorität: Eigene Kollegen mit IW">
+                            {plan.deptIwColleagues.map(c => (
+                              <option key={`iw_${c.id}`} value={`p:${c.id}`}>
+                                ⭐ {c.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+
+                        {/* Group 2: Vorplanung colleague if not already in IW */}
+                        {plan.plannedMa.personId && !plan.deptIwColleagues.some(c => c.id === plan.plannedMa.personId) && (
+                          <optgroup label="Vorplanung">
+                            <option value={`p:${plan.plannedMa.personId}`}>
+                              📅 {plan.plannedMa.name} {plan.plannedMa.isOwnDept ? '' : `[${plan.plannedMa.deptCode}. Abt. - Info]`}
+                            </option>
+                          </optgroup>
+                        )}
+
+                        {/* Group 3: All own department colleagues */}
+                        <optgroup label="Eigene Abteilung">
+                          {ownPersonnel.map(p => (
+                            <option key={`own_${p.id}`} value={`p:${p.id}`}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </optgroup>
+
+                        {/* Group 4: Partner departments (only info) */}
+                        <optgroup label="Partner-Abteilungen (Extern - nur Info)">
+                          {foreignPersonnel.map(p => {
+                            const pDept = normalizeDeptCode(p.department);
+                            return (
+                              <option key={`ext_${p.id}`} value={`p:${p.id}`}>
+                                {p.name} [{pDept}. Abt.]
+                              </option>
+                            );
+                          })}
+                        </optgroup>
+
+                        {/* Fallback if current value is outside defined groups */}
+                        {plan.proposedMa.value &&
+                          !plan.deptIwColleagues.some(c => `p:${c.id}` === plan.proposedMa.value) &&
+                          `p:${plan.plannedMa.personId}` !== plan.proposedMa.value &&
+                          !ownPersonnel.some(p => `p:${p.id}` === plan.proposedMa.value) &&
+                          !foreignPersonnel.some(p => `p:${p.id}` === plan.proposedMa.value) && (
+                            <option value={plan.proposedMa.value}>
+                              {plan.proposedMa.label || plan.proposedMa.value}
+                            </option>
+                        )}
+                      </select>
+
+                      <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>
                         {plan.proposedMa.reason}
                       </div>
                     </div>
 
-                    {/* ITW-Arzt Slot */}
+                    {/* Arzt Slot */}
                     <div
                       style={{
                         padding: '10px 12px',
                         borderRadius: 8,
-                        background: plan.proposedDoctor.value ? '#faf5ff' : '#f8fafc',
-                        border: plan.proposedDoctor.value ? '1px solid #e9d5ff' : '1px solid #e2e8f0'
+                        background: '#faf5ff',
+                        border: '1px solid #e9d5ff'
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
-                          ITW-Arzt
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#6b21a8' }}>
+                          Notarzt (ITW-Dienstplan)
                         </span>
-                        {plan.proposedDoctor.value ? (
-                          <span
-                            style={{
-                              fontSize: 10,
-                              fontWeight: 700,
-                              background: '#f3e8ff',
-                              color: '#7e22ce',
-                              padding: '1px 6px',
-                              borderRadius: 4
-                            }}
-                          >
-                            Arzt (Info)
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: 10, color: '#94a3b8' }}>Frei</span>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            background: '#f3e8ff',
+                            color: '#7e22ce',
+                            padding: '1px 6px',
+                            borderRadius: 4
+                          }}
+                        >
+                          Nur Info
+                        </span>
+                      </div>
+
+                      {/* Interactive Dropdown */}
+                      <select
+                        value={plan.proposedDoctor.value || ''}
+                        onChange={e => handleDirectSlotChange(plan.date, 'doctor', e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '6px 8px',
+                          borderRadius: 6,
+                          fontSize: 13,
+                          fontWeight: 600,
+                          border: '1px solid #d8b4fe',
+                          background: '#ffffff',
+                          color: '#7e22ce',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <option value="">– Kein Arzt –</option>
+                        {itwDoctors.map(doc => {
+                          const formatted = formatDoctorName(doc);
+                          return (
+                            <option key={`doc_${doc.id}`} value={`d:${doc.id}`}>
+                              🩺 {formatted} [Notarzt]
+                            </option>
+                          );
+                        })}
+                        {/* Fallback if doctor is not in itwDoctors list */}
+                        {plan.proposedDoctor.value &&
+                          !itwDoctors.some(d => `d:${d.id}` === plan.proposedDoctor.value) && (
+                            <option value={plan.proposedDoctor.value}>
+                              {plan.proposedDoctor.label || plan.proposedDoctor.value}
+                            </option>
                         )}
-                      </div>
+                      </select>
 
-                      <div style={{ marginTop: 4, fontWeight: 600, fontSize: 14, color: '#0f172a' }}>
-                        {plan.proposedDoctor.label || <span style={{ color: '#94a3b8', fontWeight: 400 }}>– kein Arzt vorgeplant –</span>}
-                      </div>
-
-                      <div style={{ marginTop: 2, fontSize: 11, color: '#64748b' }}>
+                      <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>
                         {plan.proposedDoctor.reason}
                       </div>
                     </div>
@@ -771,55 +977,65 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
         {/* Footer */}
         <div
           style={{
-            padding: '16px 24px',
-            borderTop: '1px solid var(--line, #e2e8f0)',
+            padding: '14px 24px',
+            borderTop: '1px solid #e2e8f0',
+            background: '#f8fafc',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: 'var(--card-header-bg, #f8fafc)'
+            gap: 16
           }}
         >
-          <div style={{ fontSize: 13, color: '#64748b' }}>
-            ℹ️ Externe Kollegen &amp; Ärzte dienen als Information und fließen <strong>nicht</strong> in die RTW-Berechnung ein.
+          <div style={{ fontSize: 13, color: '#475569' }}>
+            {conflictDays.length > 0 ? (
+              <span style={{ color: '#b45309', fontWeight: 600 }}>
+                ⚠️ {conflictDays.length} Tag(e) mit Klärungsbedarf – bitte vor Übernahme prüfen.
+              </span>
+            ) : (
+              <span style={{ color: '#15803d', fontWeight: 600 }}>
+                ✓ Alle {totalDays} ITW-Tage sind vollständig zugeordnet und bereit zur Übernahme.
+              </span>
+            )}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button
+              type="button"
               onClick={onClose}
               style={{
                 padding: '8px 18px',
-                borderRadius: 8,
+                borderRadius: 6,
                 border: '1px solid #cbd5e1',
                 background: '#fff',
-                fontSize: 14,
-                fontWeight: 600,
                 color: '#475569',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: 13
               }}
             >
               Abbrechen
             </button>
 
             <button
+              type="button"
               onClick={() => onConfirm(plans)}
-              disabled={!allResolved || totalDays === 0}
               style={{
                 padding: '8px 20px',
-                borderRadius: 8,
+                borderRadius: 6,
                 border: 'none',
-                background: allResolved && totalDays > 0 ? '#16a34a' : '#94a3b8',
+                background: '#0284c7',
                 color: '#fff',
-                fontSize: 14,
+                cursor: 'pointer',
                 fontWeight: 700,
-                cursor: allResolved && totalDays > 0 ? 'pointer' : 'not-allowed',
+                fontSize: 13,
+                boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 8,
-                boxShadow: allResolved && totalDays > 0 ? '0 2px 8px rgba(22, 163, 74, 0.3)' : 'none'
+                gap: 8
               }}
             >
               <span>⚡</span>
-              Einteilung anwenden ({totalDays} Tage)
+              Einteilung übernehmen ({plans.length} Tage)
             </button>
           </div>
         </div>

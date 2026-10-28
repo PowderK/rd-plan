@@ -1168,6 +1168,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         return map;
     }, [crossDeptPersonnel, personnelLookup, personnel, departmentName, department]);
 
+    const allCombinedPersonnel = useMemo(() => {
+        const map = new Map<number, any>();
+        (crossDeptPersonnel || []).forEach(p => { if (p && p.id != null) map.set(Number(p.id), p); });
+        (personnelLookup || []).forEach(p => { if (p && p.id != null) map.set(Number(p.id), p); });
+        (personnel || []).forEach(p => { if (p && p.id != null) map.set(Number(p.id), p); });
+        return Array.from(map.values());
+    }, [crossDeptPersonnel, personnelLookup, personnel]);
+
     const findPersonLabelByValue = useCallback((val: string) => {
         if (!val) return '';
         try {
@@ -1566,7 +1574,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             departmentId: department,
             departmentName,
             personnel,
-            crossDeptPersonnel,
+            crossDeptPersonnel: allCombinedPersonnel,
             itwPatternSeqs,
             itwRotationPhases,
             phaseOverrides,
@@ -1594,7 +1602,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         department,
         departmentName,
         personnel,
-        crossDeptPersonnel,
+        allCombinedPersonnel,
         itwPatternSeqs,
         itwRotationPhases,
         phaseOverrides,
@@ -4188,7 +4196,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 departmentName={departmentName}
                 departmentId={department}
                 initialPlans={itwAutoPlans}
-                crossDeptPersonnel={crossDeptPersonnel}
+                crossDeptPersonnel={allCombinedPersonnel}
+                itwDoctors={itwDoctors}
             />
             {showGuestModal && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
