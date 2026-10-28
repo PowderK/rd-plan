@@ -4,7 +4,7 @@ import {
   updateDayPlanChoice,
   formatDoctorName
 } from '../utils/itwAutoAssign';
-import { normalizeDeptCode, deptCodeToLabel } from '../utils/itwPatternUtils';
+import { normalizeDeptCode, deptCodeToLabel, getDeptColorScheme } from '../utils/itwPatternUtils';
 
 interface ItwAutoAssignDialogProps {
   isOpen: boolean;
@@ -35,6 +35,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
   const [filterMode, setFilterMode] = useState<'all' | 'conflicts'>('all');
 
   const myDeptCode = normalizeDeptCode(departmentName || departmentId);
+  const myDeptScheme = getDeptColorScheme(myDeptCode);
 
   const crossPersonMap = useMemo(() => {
     const map = new Map<number, any>();
@@ -272,18 +273,22 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
               <span
                 style={{
                   fontSize: 12,
-                  fontWeight: 600,
-                  background: '#e0f2fe',
-                  color: '#0369a1',
-                  padding: '2px 8px',
-                  borderRadius: 6
+                  fontWeight: 700,
+                  background: myDeptScheme.badgeBg,
+                  color: myDeptScheme.badgeColor,
+                  border: `1px solid ${myDeptScheme.badgeBorder}`,
+                  padding: '2px 10px',
+                  borderRadius: 6,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5
                 }}
               >
-                {departmentName || `${departmentId}. Abteilung`}
+                {myDeptScheme.dotEmoji} {departmentName || `${departmentId}. Abteilung`}
               </span>
             </div>
             <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
-              Priorisiert Kollegen der eigenen Abteilung mit IW-Diensten. Übernimmt Vorplanungs-Besetzungen fremder Abteilungen (blau/kursiv) und Ärzte als reine Information ohne Einfluss auf das RTW-Soll.
+              Priorisiert Kollegen der eigenen Abteilung mit IW-Diensten. Übernimmt Vorplanungs-Besetzungen fremder Abteilungen in den jeweiligen Abteilungsfarben (🔴 1. Abt. Rot, 🔵 2. Abt. Blau, 🟢 3. Abt. Grün) und Notärzte als reine Information ohne Einfluss auf das RTW-Soll.
             </div>
           </div>
 
@@ -376,7 +381,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
               <strong>{matchDays.length}</strong> eindeutig
             </span>
             <span>•</span>
-            <span style={{ color: externalSlotsCount > 0 ? '#1d4ed8' : '#64748b' }}>
+            <span style={{ color: externalSlotsCount > 0 ? '#334155' : '#64748b' }}>
               <strong>{externalSlotsCount}</strong> externe Vorplanungs-Slots (nur Info)
             </span>
             <span>•</span>
@@ -414,6 +419,10 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
               const isConflict = plan.conflictType !== 'none';
               const dayStr = String(plan.dayNumber).padStart(2, '0');
               const monthStr = String(new Date(plan.date).getMonth() + 1).padStart(2, '0');
+              const fzfDeptScheme = getDeptColorScheme(plan.proposedFzf.deptCode);
+              const maDeptScheme = getDeptColorScheme(plan.proposedMa.deptCode);
+              const patternFzfScheme = plan.slotPattern.fzf ? getDeptColorScheme(plan.slotPattern.fzf) : null;
+              const patternMaScheme = plan.slotPattern.maschinist ? getDeptColorScheme(plan.slotPattern.maschinist) : null;
 
               return (
                 <div
@@ -457,12 +466,19 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                           fontSize: 12,
                           padding: '2px 8px',
                           borderRadius: 4,
-                          background: '#e2e8f0',
+                          background: '#f1f5f9',
                           color: '#475569',
-                          fontWeight: 500
+                          fontWeight: 500,
+                          border: '1px solid #e2e8f0',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6
                         }}
                       >
-                        Muster: FzF {plan.slotPattern.fzf || '–'}. Abt. / Ma {plan.slotPattern.maschinist || '–'}. Abt.
+                        <span>Muster:</span>
+                        <span>FzF {patternFzfScheme ? `${patternFzfScheme.dotEmoji} ${patternFzfScheme.deptCode}. Abt.` : '–'}</span>
+                        <span>/</span>
+                        <span>Ma {patternMaScheme ? `${patternMaScheme.dotEmoji} ${patternMaScheme.deptCode}. Abt.` : '–'}</span>
                       </span>
                     </div>
 
@@ -652,12 +668,12 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         minWidth: 0,
                         boxSizing: 'border-box',
                         background: plan.proposedFzf.isExternal
-                          ? '#eff6ff'
+                          ? fzfDeptScheme.slotBg
                           : plan.proposedFzf.value
                           ? '#f0fdf4'
                           : '#f8fafc',
                         border: plan.proposedFzf.isExternal
-                          ? '1px dashed #93c5fd'
+                          ? fzfDeptScheme.slotBorder
                           : plan.proposedFzf.value
                           ? '1px solid #bbf7d0'
                           : '1px solid #e2e8f0'
@@ -672,26 +688,34 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                             style={{
                               fontSize: 10,
                               fontWeight: 700,
-                              background: '#dbeafe',
-                              color: '#1d4ed8',
+                              background: fzfDeptScheme.badgeBg,
+                              color: fzfDeptScheme.badgeColor,
+                              border: `1px solid ${fzfDeptScheme.badgeBorder}`,
                               padding: '1px 6px',
-                              borderRadius: 4
+                              borderRadius: 4,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4
                             }}
                           >
-                            Extern (nur Info)
+                            {fzfDeptScheme.dotEmoji} {plan.proposedFzf.deptCode ? `${plan.proposedFzf.deptCode}. Abt.` : 'Extern'} (nur Info)
                           </span>
                         ) : plan.proposedFzf.value ? (
                           <span
                             style={{
                               fontSize: 10,
                               fontWeight: 700,
-                              background: '#dcfce7',
-                              color: '#15803d',
+                              background: myDeptScheme.badgeBg,
+                              color: myDeptScheme.badgeColor,
+                              border: `1px solid ${myDeptScheme.badgeBorder}`,
                               padding: '1px 6px',
-                              borderRadius: 4
+                              borderRadius: 4,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4
                             }}
                           >
-                            Eigene Abt.
+                            {myDeptScheme.dotEmoji} Eigene Abt.
                           </span>
                         ) : (
                           <span style={{ fontSize: 10, color: '#94a3b8' }}>Frei</span>
@@ -709,9 +733,9 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                           borderRadius: 6,
                           fontSize: 13,
                           fontWeight: 600,
-                          border: plan.proposedFzf.isExternal ? '1.5px dashed #93c5fd' : '1px solid #cbd5e1',
-                          background: plan.proposedFzf.isExternal ? '#eff6ff' : (plan.proposedFzf.value ? '#ffffff' : '#f8fafc'),
-                          color: plan.proposedFzf.isExternal ? '#1d4ed8' : '#0f172a',
+                          border: plan.proposedFzf.isExternal ? fzfDeptScheme.selectBorder : '1px solid #cbd5e1',
+                          background: plan.proposedFzf.isExternal ? fzfDeptScheme.selectBg : (plan.proposedFzf.value ? '#ffffff' : '#f8fafc'),
+                          color: plan.proposedFzf.isExternal ? fzfDeptScheme.selectColor : '#0f172a',
                           fontStyle: plan.proposedFzf.isExternal ? 'italic' : 'normal',
                           cursor: 'pointer'
                         }}
@@ -733,7 +757,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         {plan.plannedFzf.personId && !plan.deptIwColleagues.some(c => c.id === plan.plannedFzf.personId) && (
                           <optgroup label="Vorplanung">
                             <option value={`p:${plan.plannedFzf.personId}`}>
-                              📅 {plan.plannedFzf.name} {plan.plannedFzf.isOwnDept ? '' : `[${plan.plannedFzf.deptCode}. Abt. - Info]`}
+                              📅 {plan.plannedFzf.name} {plan.plannedFzf.isOwnDept ? '' : `[${getDeptColorScheme(plan.plannedFzf.deptCode).dotEmoji} ${plan.plannedFzf.deptCode}. Abt. - Info]`}
                             </option>
                           </optgroup>
                         )}
@@ -742,7 +766,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         <optgroup label="Eigene Abteilung">
                           {ownPersonnel.map(p => (
                             <option key={`own_${p.id}`} value={`p:${p.id}`}>
-                              {p.name} {p.fahrzeugfuehrer ? '(FzF)' : ''}
+                              {myDeptScheme.dotEmoji} {p.name} {p.fahrzeugfuehrer ? '(FzF)' : ''}
                             </option>
                           ))}
                         </optgroup>
@@ -751,9 +775,10 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         <optgroup label="Partner-Abteilungen (Extern - nur Info)">
                           {foreignPersonnel.map(p => {
                             const pDept = normalizeDeptCode(p.department);
+                            const pScheme = getDeptColorScheme(pDept);
                             return (
                               <option key={`ext_${p.id}`} value={`p:${p.id}`}>
-                                {p.name} [{pDept}. Abt.]
+                                {pScheme.dotEmoji} {p.name} [{pDept ? `${pDept}. Abt.` : 'Extern'}]
                               </option>
                             );
                           })}
@@ -771,7 +796,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         )}
                       </select>
 
-                      <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>
+                      <div style={{ marginTop: 4, fontSize: 11, color: plan.proposedFzf.isExternal ? fzfDeptScheme.badgeColor : '#64748b' }}>
                         {plan.proposedFzf.reason}
                       </div>
                     </div>
@@ -784,12 +809,12 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         minWidth: 0,
                         boxSizing: 'border-box',
                         background: plan.proposedMa.isExternal
-                          ? '#eff6ff'
+                          ? maDeptScheme.slotBg
                           : plan.proposedMa.value
                           ? '#f0fdf4'
                           : '#f8fafc',
                         border: plan.proposedMa.isExternal
-                          ? '1px dashed #93c5fd'
+                          ? maDeptScheme.slotBorder
                           : plan.proposedMa.value
                           ? '1px solid #bbf7d0'
                           : '1px solid #e2e8f0'
@@ -804,26 +829,34 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                             style={{
                               fontSize: 10,
                               fontWeight: 700,
-                              background: '#dbeafe',
-                              color: '#1d4ed8',
+                              background: maDeptScheme.badgeBg,
+                              color: maDeptScheme.badgeColor,
+                              border: `1px solid ${maDeptScheme.badgeBorder}`,
                               padding: '1px 6px',
-                              borderRadius: 4
+                              borderRadius: 4,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4
                             }}
                           >
-                            Extern (nur Info)
+                            {maDeptScheme.dotEmoji} {plan.proposedMa.deptCode ? `${plan.proposedMa.deptCode}. Abt.` : 'Extern'} (nur Info)
                           </span>
                         ) : plan.proposedMa.value ? (
                           <span
                             style={{
                               fontSize: 10,
                               fontWeight: 700,
-                              background: '#dcfce7',
-                              color: '#15803d',
+                              background: myDeptScheme.badgeBg,
+                              color: myDeptScheme.badgeColor,
+                              border: `1px solid ${myDeptScheme.badgeBorder}`,
                               padding: '1px 6px',
-                              borderRadius: 4
+                              borderRadius: 4,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4
                             }}
                           >
-                            Eigene Abt.
+                            {myDeptScheme.dotEmoji} Eigene Abt.
                           </span>
                         ) : (
                           <span style={{ fontSize: 10, color: '#94a3b8' }}>Frei</span>
@@ -841,9 +874,9 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                           borderRadius: 6,
                           fontSize: 13,
                           fontWeight: 600,
-                          border: plan.proposedMa.isExternal ? '1.5px dashed #93c5fd' : '1px solid #cbd5e1',
-                          background: plan.proposedMa.isExternal ? '#eff6ff' : (plan.proposedMa.value ? '#ffffff' : '#f8fafc'),
-                          color: plan.proposedMa.isExternal ? '#1d4ed8' : '#0f172a',
+                          border: plan.proposedMa.isExternal ? maDeptScheme.selectBorder : '1px solid #cbd5e1',
+                          background: plan.proposedMa.isExternal ? maDeptScheme.selectBg : (plan.proposedMa.value ? '#ffffff' : '#f8fafc'),
+                          color: plan.proposedMa.isExternal ? maDeptScheme.selectColor : '#0f172a',
                           fontStyle: plan.proposedMa.isExternal ? 'italic' : 'normal',
                           cursor: 'pointer'
                         }}
@@ -865,7 +898,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         {plan.plannedMa.personId && !plan.deptIwColleagues.some(c => c.id === plan.plannedMa.personId) && (
                           <optgroup label="Vorplanung">
                             <option value={`p:${plan.plannedMa.personId}`}>
-                              📅 {plan.plannedMa.name} {plan.plannedMa.isOwnDept ? '' : `[${plan.plannedMa.deptCode}. Abt. - Info]`}
+                              📅 {plan.plannedMa.name} {plan.plannedMa.isOwnDept ? '' : `[${getDeptColorScheme(plan.plannedMa.deptCode).dotEmoji} ${plan.plannedMa.deptCode}. Abt. - Info]`}
                             </option>
                           </optgroup>
                         )}
@@ -874,7 +907,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         <optgroup label="Eigene Abteilung">
                           {ownPersonnel.map(p => (
                             <option key={`own_${p.id}`} value={`p:${p.id}`}>
-                              {p.name}
+                              {myDeptScheme.dotEmoji} {p.name}
                             </option>
                           ))}
                         </optgroup>
@@ -883,9 +916,10 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         <optgroup label="Partner-Abteilungen (Extern - nur Info)">
                           {foreignPersonnel.map(p => {
                             const pDept = normalizeDeptCode(p.department);
+                            const pScheme = getDeptColorScheme(pDept);
                             return (
                               <option key={`ext_${p.id}`} value={`p:${p.id}`}>
-                                {p.name} [{pDept}. Abt.]
+                                {pScheme.dotEmoji} {p.name} [{pDept ? `${pDept}. Abt.` : 'Extern'}]
                               </option>
                             );
                           })}
@@ -903,7 +937,7 @@ export const ItwAutoAssignDialog: React.FC<ItwAutoAssignDialogProps> = ({
                         )}
                       </select>
 
-                      <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>
+                      <div style={{ marginTop: 4, fontSize: 11, color: plan.proposedMa.isExternal ? maDeptScheme.badgeColor : '#64748b' }}>
                         {plan.proposedMa.reason}
                       </div>
                     </div>

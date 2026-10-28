@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { buildVehicleActivationMap, calculateTargets } from '../utils/calculation';
 import { rosterReleasedSettingKey } from '../utils/rosterRelease';
 import { isVehicleActiveOnDate } from '../utils/vehiclePeriods';
-import { parseItwDay, normalizeDeptCode } from '../utils/itwPatternUtils';
+import { parseItwDay, normalizeDeptCode, getDeptColorScheme } from '../utils/itwPatternUtils';
 import { isTurnedFiftyOnDate } from '../utils/personPeriods';
 import styles from './MonthTabs.module.css';
 import { Kontrollkasten } from './Kontrollkasten';
@@ -3798,15 +3798,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                             );
                                             const isDoctorAssigned = role === 4 && Boolean(value && value.startsWith('d:'));
 
+                                            let extDeptCode = '';
+                                            if (isExternal) {
+                                                const pid = Number(value.split(':')[1]);
+                                                const personObj = allCombinedPersonnel.find(p => p.id === pid);
+                                                extDeptCode = personObj?.department ? normalizeDeptCode(personObj.department) : '';
+                                            }
+                                            const extScheme = isExternal ? getDeptColorScheme(extDeptCode) : null;
+
                                             let appliedStyle: React.CSSProperties | undefined = highlightStyle;
                                             if (!appliedStyle) {
-                                                if (isExternal) {
+                                                if (isExternal && extScheme) {
                                                     appliedStyle = {
-                                                        background: '#eff6ff',
-                                                        color: '#1d4ed8',
-                                                        borderColor: '#93c5fd',
+                                                        background: extScheme.selectBg,
+                                                        color: extScheme.selectColor,
+                                                        borderColor: extScheme.selectBorder.replace('1.5px dashed ', ''),
+                                                        borderStyle: 'dashed',
+                                                        borderWidth: '1.5px',
                                                         fontStyle: 'italic',
-                                                        fontWeight: 500
+                                                        fontWeight: 600
                                                     };
                                                 } else if (isDoctorAssigned) {
                                                     appliedStyle = {
@@ -3822,7 +3832,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                 <select className={styles.select} value={value}
                                                     style={appliedStyle}
                                                     disabled={!canWrite}
-                                                    title={isExternal ? 'Externer Kollege (Vorplanung, nur Info - zählt nicht in RTW-Soll)' : (isDoctorAssigned ? 'ITW-Arzt (nur Info)' : undefined)}
+                                                    title={isExternal ? (extDeptCode ? `Kollege der ${extDeptCode}. Abt. (Vorplanung, nur Info - zählt nicht in RTW-Soll)` : 'Externer Kollege (Vorplanung, nur Info - zählt nicht in RTW-Soll)') : (isDoctorAssigned ? 'ITW-Arzt (nur Info)' : undefined)}
                                                     onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } else { handleAssign(date, 0, v, slotId); } }}
                                                     onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } }}>
                                                     <option value=""></option>
