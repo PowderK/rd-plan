@@ -818,14 +818,34 @@ const ItwVorplanungTab: React.FC = () => {
                     const deptColor = getDepartmentColor(department);
                     const deptShort = department.replace('. Abteilung', '. Abt');
 
-                    return `
-                        <div style="padding: 4px 6px; background: ${deptColor.containerBg}; border: 1px solid ${deptColor.containerBorder}; border-left: 3px solid ${deptColor.accent}; border-radius: 4px; box-sizing: border-box;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                                <span style="font-size: 8.5px; color: #475569; font-weight: 700;">${shortRole}</span>
-                                <span style="font-size: 8px; padding: 1px 4px; border-radius: 3px; background: ${deptColor.badgeBg}; color: ${deptColor.badgeColor}; font-weight: 600; white-space: nowrap;">${deptShort}</span>
+                    if (person) {
+                        return `
+                            <div style="padding: 3.5px 6px; background: ${deptColor.containerBg}; border: 1px solid ${deptColor.containerBorder}; border-left: 3.5px solid ${deptColor.accent}; border-radius: 4px; box-sizing: border-box;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                                    <span style="font-size: 8.5px; color: #334155; font-weight: 700;">${shortRole}</span>
+                                    <span style="font-size: 8px; padding: 1px 4px; border-radius: 3px; background: ${deptColor.badgeBg}; color: ${deptColor.badgeColor}; font-weight: 700; white-space: nowrap;">${deptShort}</span>
+                                </div>
+                                <div style="font-size: 9.5px; font-weight: 700; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2;">
+                                    ${person.name}, ${person.vorname}
+                                </div>
                             </div>
-                            <div style="font-size: 9.5px; font-weight: ${person ? '600' : '400'}; color: ${person ? '#0f172a' : '#94a3b8'}; font-style: ${person ? 'normal' : 'italic'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.15;">
-                                ${person ? `${person.name}, ${person.vorname}` : '- Nicht besetzt -'}
+                        `;
+                    }
+
+                    // Hervorhebung noch offener Positionen: Warmes Elfenbein, gestrichelter Rahmen, Abt-Farbleiste und roter Status-Indikator
+                    return `
+                        <div style="padding: 3.5px 6px; background: #fffcf0; border: 1.5px dashed #f59e0b; border-left: 4px solid ${deptColor.accent}; border-radius: 4px; box-sizing: border-box;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                                <span style="font-size: 8.5px; color: #b45309; font-weight: 800;">${shortRole}</span>
+                                <span style="font-size: 8px; padding: 1px 4px; border-radius: 3px; background: ${deptColor.badgeBg}; color: ${deptColor.badgeColor}; font-weight: 700; white-space: nowrap;">${deptShort}</span>
+                            </div>
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px; line-height: 1.2;">
+                                <span style="display: inline-flex; align-items: center; gap: 3.5px; font-size: 9px; font-weight: 800; color: #dc2626; letter-spacing: 0.02em;">
+                                    <span style="font-size: 9px; line-height: 1; color: #ef4444;">●</span> OFFEN
+                                </span>
+                                <span style="font-size: 7.5px; font-weight: 800; padding: 0.5px 4px; border-radius: 3px; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; text-transform: uppercase; white-space: nowrap;">
+                                    FEHLT
+                                </span>
                             </div>
                         </div>
                     `;
@@ -836,22 +856,37 @@ const ItwVorplanungTab: React.FC = () => {
                     return !currentAssgn?.person_id;
                 }).length;
 
-                const statusTag = phaseGapsCount === 0
-                    ? `<span style="font-size: 8.5px; font-weight: 600; padding: 2px 6px; border-radius: 8px; background: #f0fdf4; color: #166534; border: 1px solid #dcfce7; white-space: nowrap;">Vollständig</span>`
-                    : `<span style="font-size: 8.5px; font-weight: 600; padding: 2px 6px; border-radius: 8px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; white-space: nowrap;">${phaseGapsCount} offen</span>`;
+                let cardBorder = '1px solid #cbd5e1';
+                let headerBg = '#f8fafc';
+                let headerBorder = '#e2e8f0';
+                let statusTag = '';
+
+                if (phaseGapsCount === 0) {
+                    statusTag = `<span style="font-size: 8px; font-weight: 700; padding: 1.5px 6px; border-radius: 8px; background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; white-space: nowrap;">✓ Vollständig</span>`;
+                } else if (phaseGapsCount === 3) {
+                    cardBorder = '1.5px solid #f87171';
+                    headerBg = '#fef2f2';
+                    headerBorder = '#fecaca';
+                    statusTag = `<span style="font-size: 8px; font-weight: 800; padding: 1.5px 6px; border-radius: 8px; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; white-space: nowrap;">⚠️ Alle 3 offen</span>`;
+                } else {
+                    cardBorder = '1.5px solid #f59e0b';
+                    headerBg = '#fffbeb';
+                    headerBorder = '#fde68a';
+                    statusTag = `<span style="font-size: 8px; font-weight: 800; padding: 1.5px 6px; border-radius: 8px; background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; white-space: nowrap;">⚠️ ${phaseGapsCount} offen</span>`;
+                }
 
                 return `
-                    <div style="border: 1px solid #cbd5e1; border-radius: 5px; background: #ffffff; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; page-break-inside: avoid;">
-                        <div style="background: #f1f5f9; padding: 5px 7px; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="border: ${cardBorder}; border-radius: 5px; background: #ffffff; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; page-break-inside: avoid;">
+                        <div style="background: ${headerBg}; padding: 4.5px 7px; border-bottom: 1px solid ${headerBorder}; display: flex; justify-content: space-between; align-items: center;">
                             <div>
-                                <span style="font-weight: 700; font-size: 11px; color: #0f172a;">${phase.title}</span>
+                                <span style="font-weight: 800; font-size: 11px; color: #0f172a;">${phase.title}</span>
                                 <span style="font-size: 8.5px; color: #64748b; margin-left: 3px;">(${phase.label})</span>
                             </div>
                             <div>
                                 ${statusTag}
                             </div>
                         </div>
-                        <div style="padding: 6px; display: flex; flex-direction: column; gap: 5px; flex: 1; justify-content: space-between;">
+                        <div style="padding: 5px; display: flex; flex-direction: column; gap: 4.5px; flex: 1; justify-content: space-between;">
                             ${slotsHtml}
                         </div>
                     </div>
@@ -881,14 +916,22 @@ const ItwVorplanungTab: React.FC = () => {
                     });
                 });
                 const openCount = reqCount - occCount;
+                const openBadge = openCount > 0
+                    ? `<span style="font-size: 9.5px; font-weight: 800; padding: 2px 7px; border-radius: 10px; background: #fff7ed; color: #c2410c; border: 1.5px solid #fdba74; white-space: nowrap;">⚠️ ${openCount} offen</span>`
+                    : `<span style="font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 10px; background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; white-space: nowrap;">✓ Vollständig</span>`;
+
                 return `
-                    <div style="flex: 1; padding: 6px 12px; background: ${colors.containerBg}; border: 1px solid ${colors.containerBorder}; border-left: 3.5px solid ${colors.accent}; border-radius: 5px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="flex: 1; padding: 5px 10px; background: ${colors.containerBg}; border: 1px solid ${colors.containerBorder}; border-left: 3.5px solid ${colors.accent}; border-radius: 5px; display: flex; align-items: center; justify-content: space-between;">
                         <span style="font-size: 11px; font-weight: 700; color: ${colors.badgeColor};">${dept}</span>
-                        <span style="font-size: 11px; font-weight: 700; color: #1f2937;">${occCount} / ${reqCount} besetzt</span>
-                        <span style="font-size: 9.5px; color: ${openCount > 0 ? '#64748b' : '#15803d'}; font-weight: 600;">${openCount === 0 ? 'Vollständig' : `${openCount} offen`}</span>
+                        <span style="font-size: 10.5px; font-weight: 700; color: #1f2937;">${occCount} / ${reqCount} besetzt</span>
+                        ${openBadge}
                     </div>
                 `;
             }).join('');
+
+            const openSummaryBadge = allGaps.length > 0
+                ? `<span style="font-size: 9.5px; font-weight: 800; padding: 2.5px 8px; border-radius: 12px; background: #fff7ed; color: #c2410c; border: 1.5px solid #fdba74; white-space: nowrap;">⚠️ ${allGaps.length} Positionen offen</span>`
+                : `<span style="font-size: 9.5px; font-weight: 700; padding: 2.5px 8px; border-radius: 12px; background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; white-space: nowrap;">✓ Alle besetzt</span>`;
 
             const html = `
                 <div style="padding: 4px 6px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-sizing: border-box;">
@@ -898,10 +941,11 @@ const ItwVorplanungTab: React.FC = () => {
                             <h1 style="font-size: 18px; font-weight: 800; color: #0f172a; margin: 0; letter-spacing: -0.01em;">RD-Plan &bull; ITW Phasen Vorplanung</h1>
                             <span style="font-size: 14px; color: #0284c7; font-weight: 700;">Planungsjahr ${year}</span>
                         </div>
-                        <div style="font-size: 10px; color: #475569; display: flex; gap: 14px; align-items: center;">
+                        <div style="font-size: 10px; color: #475569; display: flex; gap: 12px; align-items: center;">
                             <span>Stand: ${todayStr}</span>
                             <span><strong>${displayedPhases.length} Phasen</strong> (${totalSlots} Schichtblöcke)</span>
-                            <span style="font-weight: 700; color: #0f172a;">${occupiedSlots} / ${totalSlots} besetzt (${occupancyPercent}%) &bull; ${allGaps.length} offen</span>
+                            <span style="font-weight: 700; color: #0f172a;">${occupiedSlots} / ${totalSlots} besetzt (${occupancyPercent}%)</span>
+                            ${openSummaryBadge}
                         </div>
                     </div>
 
@@ -911,12 +955,12 @@ const ItwVorplanungTab: React.FC = () => {
                     </div>
 
                     <!-- 6-Column Grid of Phase Tiles -->
-                    <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px;">
+                    <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;">
                         ${cardsHtml}
                     </div>
 
                     <!-- Footer -->
-                    <div style="margin-top: 8px; text-align: center; font-size: 8.5px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 4px;">
+                    <div style="margin-top: 6px; text-align: center; font-size: 8.5px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 4px;">
                         RD-Plan ITW-Vorplanungssystem &bull; Planungsjahr ${year} &bull; Seite 1 von 1
                     </div>
                 </div>
