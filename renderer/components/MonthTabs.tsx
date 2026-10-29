@@ -44,6 +44,7 @@ interface MonthTabsProps {
     deptPatternSeqs?: { startDate: string; pattern: string[] }[];
     onRosterChanged?: () => void;
     onEntryAssigned?: (key: string, date: string, value: string, type: string) => void;
+    isLoading?: boolean;
 }
 
 import { useAuth } from '../contexts/AuthContext';
@@ -60,7 +61,7 @@ type AssignmentUndoEntry = {
     ts: number;
 };
 
-const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYearChange, departmentName, personnelLookup, personnel, allPersonnel, azubis, roster, year, shiftPattern, deptPatternSeqs = [], onRosterChanged, onEntryAssigned }) => {
+const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYearChange, departmentName, personnelLookup, personnel, allPersonnel, azubis, roster, year, shiftPattern, deptPatternSeqs = [], onRosterChanged, onEntryAssigned, isLoading = false }) => {
     const { hasPermission, currentUser } = useAuth();
     const canWrite = hasPermission('einteilung', 'write');
     // Read permission is implicit if they can see the page, but we use it to check for "read-only" status
@@ -95,6 +96,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [itwAutoPlans, setItwAutoPlans] = useState<ItwDayAutoPlan[]>([]);
     const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
     const [isUpdating, setIsUpdating] = useState(false); // Verhindert Race-Conditions während Updates
+    const [isInternalLoading, setIsInternalLoading] = useState(false);
+    const isBusy = !!isLoading || isUpdating || isInternalLoading;
     const [holidays, setHolidays] = useState<Set<string>>(new Set());
     // Hervorgehobene Person aus Kontrollkasten
     const [highlightedPersonKey, setHighlightedPersonKey] = useState<string | null>(null);
@@ -210,6 +213,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [activeCommentsData, setActiveCommentsData] = useState<{ dateStr: string; comments: string[] } | null>(null);
 
     const loadComments = useCallback(async () => {
+        setIsInternalLoading(true);
         try {
             const persRes = await (window as any).api.getPersonalCommentsForMonth(year, currentMonth);
             if (Array.isArray(persRes)) {
@@ -226,6 +230,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             }
         } catch (err) {
             console.error('[MonthTabs] Error loading comments:', err);
+        } finally {
+            setIsInternalLoading(false);
         }
     }, [year, currentMonth]);
 
@@ -790,8 +796,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
         const evalMode = auswertungByType[code] || 'off';
 
-        // Wenn der Auswertungsmodus 'off' ist, ist die Person nicht verfügbar
-        if (evalMode === 'off') {
+        // Wenn der Auswertungsmodus 'off' oder 'itw' ist, ist die Person für RTW/NEF nicht verfügbar
+        if (evalMode === 'off' || evalMode === 'itw') {
             return false;
         }
 
@@ -994,6 +1000,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     }, [rtwVehicles, nefVehicles]);
 
     const toggleReleased = useCallback(async () => {
+        if (!canWrite || isBusy) return;
         const newVal = !releasedMonths[currentMonth];
 
         if (newVal) {
@@ -1216,7 +1223,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     }, []);
 
     const handleAssign = useCallback(async (date: string, dayIdx: number, value: string, slotId?: string) => {
-        if (!canWrite) return;
+        if (!canWrite || isBusy) return;
         if (!value) return;
         if (slotId) {
             const currentValue = getAssignedValueFor(date, slotId);
@@ -1284,9 +1291,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         } catch (e) {
             setIsUpdating(false);
         }
-    }, [canWrite, localRoster, updateTimeout, onRosterChanged, onEntryAssigned, getAssignedValueFor, pushUndoEntry]);
+    }, [canWrite, isBusy, localRoster, updateTimeout, onRosterChanged, onEntryAssigned, getAssignedValueFor, pushUndoEntry]);
     const clearAssignedForDate = async (slotId: string, date: string) => {
-        if (!canWrite) return;
+        if (!canWrite || isBusy) return;
         const currentVal = getAssignedValueFor(date, slotId);
         if (!currentVal) return;
         try {
@@ -1320,7 +1327,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     };
 
     const undoLastAssignmentChange = useCallback(async () => {
-        if (!canWrite) return;
+        if (!canWrite || isBusy) return;
         if (undoStack.length === 0) return;
 
         const lastEntry = undoStack[undoStack.length - 1];
@@ -1400,7 +1407,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     }, [canWrite, undoStack, getAssignedValueFor, onRosterChanged]);
 
     const handleAutoAssignAzubis = () => {
-        if (!canWrite) return;
+        if (!canWrite || isBusy) return;
         const summaries: ShiftSummary[] = [];
 
         const DateStrs: string[] = days.map(d => d.date);
@@ -1567,7 +1574,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     };
 
     const handleOpenItwAutoAssign = useCallback(() => {
-        if (!canWrite) return;
+        if (!canWrite || isBusy) return;
         const plans = buildItwMonthAutoAssignments({
             year,
             month: currentMonth,
@@ -1597,6 +1604,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         setIsItwAutoAssignOpen(true);
     }, [
         canWrite,
+        isBusy,
         year,
         currentMonth,
         department,
@@ -1617,6 +1625,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     ]);
 
     const handleApplyItwAutoAssign = useCallback(async (plans: ItwDayAutoPlan[]) => {
+        if (!canWrite || isBusy) return;
         setIsItwAutoAssignOpen(false);
         if (!plans || plans.length === 0) return;
 
@@ -1687,10 +1696,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         } finally {
             setTimeout(() => setIsUpdating(false), 100);
         }
-    }, [localRoster, getAssignedValueFor, pushUndoEntry, onRosterChanged]);
+    }, [canWrite, isBusy, localRoster, getAssignedValueFor, pushUndoEntry, onRosterChanged]);
 
     const redoLastAssignmentChange = useCallback(async () => {
-        if (!canWrite) return;
+        if (!canWrite || isBusy) return;
         if (redoStack.length === 0) return;
 
         const lastEntry = redoStack[redoStack.length - 1];
@@ -2195,14 +2204,20 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             const dutyCode = getDutyCodeForDate(key, DateStr);
             if (dutyCode && dutyCode.trim() !== '') {
                 const evalMode = auswertungByType[dutyCode];
-                if (evalMode && evalMode !== 'off') {
-                    keys.add(key);
+                if (viewMode === 'itw') {
+                    if (evalMode === 'itw') {
+                        keys.add(key);
+                    }
+                } else {
+                    if (evalMode && evalMode !== 'off' && evalMode !== 'itw') {
+                        keys.add(key);
+                    }
                 }
             }
         });
         
         return keys;
-    }, [selectedAvailDate, roster, localRoster, personnel, auswertungByType, getDutyCodeForDate]);
+    }, [selectedAvailDate, roster, localRoster, personnel, auswertungByType, getDutyCodeForDate, viewMode]);
 
     return (
         <div key={forceUpdateCounter}>
@@ -2236,10 +2251,50 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         justifyContent: 'flex-start',
                         gap: 12
                     }}>
+                        <style>{`
+                            @keyframes rdplanSpin {
+                                from { transform: rotate(0deg); }
+                                to { transform: rotate(360deg); }
+                            }
+                        `}</style>
                         <h2 style={{ margin: 0 }}>Einteilung</h2>
                         <span style={{ fontSize: 22, fontWeight: 700, whiteSpace: 'nowrap' }}>
                             {viewMode === 'rtwnef' ? 'RTW Einteilung' : 'ITW Einteilung'} ({months[currentMonth]})
                         </span>
+                        {isBusy && (
+                            <div style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                padding: '4px 12px',
+                                borderRadius: 16,
+                                fontSize: '13px',
+                                fontWeight: 500,
+                                background: isUpdating ? 'rgba(234, 88, 12, 0.08)' : 'rgba(37, 99, 235, 0.08)',
+                                color: isUpdating ? '#c2410c' : '#1d4ed8',
+                                border: isUpdating ? '1px solid rgba(234, 88, 12, 0.2)' : '1px solid rgba(37, 99, 235, 0.2)',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                                userSelect: 'none',
+                                marginLeft: 8
+                            }}>
+                                <svg
+                                    style={{
+                                        width: 14,
+                                        height: 14,
+                                        animation: 'rdplanSpin 1s linear infinite'
+                                    }}
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                >
+                                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                                </svg>
+                                <span>{isUpdating ? 'Speichere in Datenbank...' : 'Daten werden geladen...'}</span>
+                            </div>
+                        )}
                     </div>
                     <div style={{
                         display: 'flex',
@@ -2258,13 +2313,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                             <select
                                 value={year}
                                 onChange={e => onYearChange?.(Number(e.target.value))}
+                                disabled={isBusy}
                                 style={{
                                     padding: '4px 8px',
                                     fontSize: 13,
                                     borderRadius: 6,
                                     border: '1px solid #ddd',
                                     background: '#fff',
-                                    cursor: 'pointer',
+                                    cursor: isBusy ? 'not-allowed' : 'pointer',
                                     color: 'var(--text)'
                                 }}
                             >
@@ -2277,7 +2333,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                             display: 'flex',
                             alignItems: 'center',
                             gap: 8,
-                            cursor: 'pointer',
+                            cursor: (!canWrite || isBusy) ? 'not-allowed' : 'pointer',
                             userSelect: 'none',
                             flexShrink: 0
                         }}>
@@ -2312,7 +2368,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                             type="checkbox"
                             checked={isReleased}
                             onChange={toggleReleased}
-                            disabled={!canWrite}
+                            disabled={!canWrite || isBusy}
                             style={{ display: 'none' }}
                         />
                         <span style={{ fontSize: 14, fontWeight: 600, color: statusColor, minWidth: 110, whiteSpace: 'nowrap' }}>
@@ -2335,7 +2391,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 setNewGuestRemark('');
                                 setShowGuestModal(true);
                             }}
-                            disabled={!canWrite}
+                            disabled={!canWrite || isBusy}
                             style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
@@ -2346,18 +2402,18 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 borderBottom: '3px solid transparent',
                                 fontSize: '14px',
                                 fontWeight: 500,
-                                color: canWrite ? '#6b7280' : '#9ca3af',
-                                cursor: canWrite ? 'pointer' : 'not-allowed',
+                                color: (canWrite && !isBusy) ? '#6b7280' : '#9ca3af',
+                                cursor: (canWrite && !isBusy) ? 'pointer' : 'not-allowed',
                                 transition: 'all 0.2s ease'
                             }}
                             onMouseEnter={(e) => {
-                                if (!canWrite) return;
+                                if (!canWrite || isBusy) return;
                                 e.currentTarget.style.color = 'var(--text)';
                                 e.currentTarget.style.borderBottomColor = 'var(--accent)';
                                 e.currentTarget.style.background = '#f8f9fa';
                             }}
                             onMouseLeave={(e) => {
-                                e.currentTarget.style.color = '#6b7280';
+                                e.currentTarget.style.color = (canWrite && !isBusy) ? '#6b7280' : '#9ca3af';
                                 e.currentTarget.style.borderBottomColor = 'transparent';
                                 e.currentTarget.style.background = 'transparent';
                             }}
@@ -2373,7 +2429,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         <button
                             type="button"
                             onClick={handleAutoAssignAzubis}
-                            disabled={!canWrite}
+                            disabled={!canWrite || isBusy}
                             style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
@@ -2384,18 +2440,18 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 borderBottom: '3px solid transparent',
                                 fontSize: '14px',
                                 fontWeight: 500,
-                                color: canWrite ? '#6b7280' : '#9ca3af',
-                                cursor: canWrite ? 'pointer' : 'not-allowed',
+                                color: (canWrite && !isBusy) ? '#6b7280' : '#9ca3af',
+                                cursor: (canWrite && !isBusy) ? 'pointer' : 'not-allowed',
                                 transition: 'all 0.2s ease'
                             }}
                             onMouseEnter={(e) => {
-                                if (!canWrite) return;
+                                if (!canWrite || isBusy) return;
                                 e.currentTarget.style.color = 'var(--text)';
                                 e.currentTarget.style.borderBottomColor = 'var(--accent)';
                                 e.currentTarget.style.background = '#f8f9fa';
                             }}
                             onMouseLeave={(e) => {
-                                e.currentTarget.style.color = '#6b7280';
+                                e.currentTarget.style.color = (canWrite && !isBusy) ? '#6b7280' : '#9ca3af';
                                 e.currentTarget.style.borderBottomColor = 'transparent';
                                 e.currentTarget.style.background = 'transparent';
                             }}
@@ -2412,7 +2468,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                             <button
                                 type="button"
                                 onClick={handleOpenItwAutoAssign}
-                                disabled={!canWrite}
+                                disabled={!canWrite || isBusy}
                                 style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
@@ -2423,18 +2479,18 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                     borderBottom: '3px solid transparent',
                                     fontSize: '14px',
                                     fontWeight: 500,
-                                    color: canWrite ? '#6b7280' : '#9ca3af',
-                                    cursor: canWrite ? 'pointer' : 'not-allowed',
+                                    color: (canWrite && !isBusy) ? '#6b7280' : '#9ca3af',
+                                    cursor: (canWrite && !isBusy) ? 'pointer' : 'not-allowed',
                                     transition: 'all 0.2s ease'
                                 }}
                                 onMouseEnter={(e) => {
-                                    if (!canWrite) return;
+                                    if (!canWrite || isBusy) return;
                                     e.currentTarget.style.color = '#b45309';
                                     e.currentTarget.style.borderBottomColor = '#f59e0b';
                                     e.currentTarget.style.background = '#fefce8';
                                 }}
                                 onMouseLeave={(e) => {
-                                    e.currentTarget.style.color = '#6b7280';
+                                    e.currentTarget.style.color = (canWrite && !isBusy) ? '#6b7280' : '#9ca3af';
                                     e.currentTarget.style.borderBottomColor = 'transparent';
                                     e.currentTarget.style.background = 'transparent';
                                 }}
@@ -2453,7 +2509,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         <button
                             type="button"
                             onClick={undoLastAssignmentChange}
-                            disabled={!canWrite || undoStack.length === 0}
+                            disabled={!canWrite || undoStack.length === 0 || isBusy}
                             title={undoStack.length > 0 ? `Zurück (${undoStack.length})` : 'Keine Änderung zum Rückgängigmachen'}
                             aria-label="Zurück"
                             style={{
@@ -2466,18 +2522,18 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 borderBottom: '3px solid transparent',
                                 fontSize: '14px',
                                 fontWeight: 500,
-                                color: (!canWrite || undoStack.length === 0) ? '#9ca3af' : '#6b7280',
-                                cursor: (!canWrite || undoStack.length === 0) ? 'not-allowed' : 'pointer',
+                                color: (!canWrite || undoStack.length === 0 || isBusy) ? '#9ca3af' : '#6b7280',
+                                cursor: (!canWrite || undoStack.length === 0 || isBusy) ? 'not-allowed' : 'pointer',
                                 transition: 'all 0.2s ease'
                             }}
                             onMouseEnter={(e) => {
-                                if (!canWrite || undoStack.length === 0) return;
+                                if (!canWrite || undoStack.length === 0 || isBusy) return;
                                 e.currentTarget.style.color = 'var(--text)';
                                 e.currentTarget.style.borderBottomColor = 'var(--accent)';
                                 e.currentTarget.style.background = '#f8f9fa';
                             }}
                             onMouseLeave={(e) => {
-                                if (!canWrite || undoStack.length === 0) return;
+                                if (!canWrite || undoStack.length === 0 || isBusy) return;
                                 e.currentTarget.style.color = '#6b7280';
                                 e.currentTarget.style.borderBottomColor = 'transparent';
                                 e.currentTarget.style.background = 'transparent';
@@ -2491,7 +2547,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         <button
                             type="button"
                             onClick={redoLastAssignmentChange}
-                            disabled={!canWrite || redoStack.length === 0}
+                            disabled={!canWrite || redoStack.length === 0 || isBusy}
                             title={redoStack.length > 0 ? `Wiederherstellen (${redoStack.length})` : 'Keine Änderung zum Wiederherstellen'}
                             aria-label="Wiederherstellen"
                             style={{
@@ -2504,18 +2560,18 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 borderBottom: '3px solid transparent',
                                 fontSize: '14px',
                                 fontWeight: 500,
-                                color: (!canWrite || redoStack.length === 0) ? '#9ca3af' : '#6b7280',
-                                cursor: (!canWrite || redoStack.length === 0) ? 'not-allowed' : 'pointer',
+                                color: (!canWrite || redoStack.length === 0 || isBusy) ? '#9ca3af' : '#6b7280',
+                                cursor: (!canWrite || redoStack.length === 0 || isBusy) ? 'not-allowed' : 'pointer',
                                 transition: 'all 0.2s ease'
                             }}
                             onMouseEnter={(e) => {
-                                if (!canWrite || redoStack.length === 0) return;
+                                if (!canWrite || redoStack.length === 0 || isBusy) return;
                                 e.currentTarget.style.color = 'var(--text)';
                                 e.currentTarget.style.borderBottomColor = 'var(--accent)';
                                 e.currentTarget.style.background = '#f8f9fa';
                             }}
                             onMouseLeave={(e) => {
-                                if (!canWrite || redoStack.length === 0) return;
+                                if (!canWrite || redoStack.length === 0 || isBusy) return;
                                 e.currentTarget.style.color = '#6b7280';
                                 e.currentTarget.style.borderBottomColor = 'transparent';
                                 e.currentTarget.style.background = 'transparent';
@@ -2564,7 +2620,9 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         return (
                             <button
                                 key={i}
+                                disabled={isBusy}
                                 onClick={() => {
+                                    if (isBusy) return;
                                     onMonthChange(i);
                                     // Informiere andere Komponenten über Monatsänderung
                                     (window as any).rdPlanMonth = i;
@@ -2575,13 +2633,15 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                     background: currentMonth === i ? '#f8f9fa' : 'transparent',
                                     border: 'none',
                                     borderBottom: `3px solid ${stripeColor}`,
-                                    cursor: 'pointer',
+                                    cursor: isBusy ? 'not-allowed' : 'pointer',
                                     fontWeight: currentMonth === i ? 600 : 400,
                                     color: currentMonth === i ? '#374151' : '#6b7280',
                                     transition: 'all 0.2s',
-                                    fontSize: '14px'
+                                    fontSize: '14px',
+                                    opacity: isBusy ? 0.6 : 1
                                 }}
                                 onMouseEnter={(e) => {
+                                    if (isBusy) return;
                                     if (currentMonth !== i) {
                                         e.currentTarget.style.background = '#f3f4f6';
                                         e.currentTarget.style.color = '#374151';
@@ -2646,20 +2706,23 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         return (
                             <>
                                 <button
-                                    onClick={() => setViewMode('rtwnef')}
+                                    disabled={isBusy}
+                                    onClick={() => { if (!isBusy) setViewMode('rtwnef'); }}
                                     style={{
                                         padding: '8px 16px',
                                         background: viewMode === 'rtwnef' ? '#f8f9fa' : (showRtwNefIndicator ? '#fef2f2' : 'transparent'),
                                         border: 'none',
                                         borderBottom: viewMode === 'rtwnef' ? '3px solid #dc3545' : '3px solid transparent',
-                                        cursor: 'pointer',
+                                        cursor: isBusy ? 'not-allowed' : 'pointer',
                                         fontWeight: viewMode === 'rtwnef' ? 600 : (showRtwNefIndicator ? 600 : 400),
                                         color: viewMode === 'rtwnef' ? '#dc3545' : (showRtwNefIndicator ? '#dc2626' : '#6b7280'),
                                         transition: 'all 0.2s',
                                         fontSize: '14px',
-                                        position: 'relative'
+                                        position: 'relative',
+                                        opacity: isBusy ? 0.6 : 1
                                     }}
                                     onMouseEnter={(e) => {
+                                        if (isBusy) return;
                                         if (viewMode !== 'rtwnef') {
                                             e.currentTarget.style.background = '#f3f4f6';
                                             e.currentTarget.style.color = '#374151';
@@ -2676,20 +2739,23 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 </button>
                                 {itwEnabled && (
                                     <button
-                                        onClick={() => setViewMode('itw')}
+                                        disabled={isBusy}
+                                        onClick={() => { if (!isBusy) setViewMode('itw'); }}
                                         style={{
                                             padding: '8px 16px',
                                             background: viewMode === 'itw' ? '#f8f9fa' : (showItwIndicator ? '#fefce8' : 'transparent'),
                                             border: 'none',
                                             borderBottom: viewMode === 'itw' ? '3px solid #ffc107' : '3px solid transparent',
-                                            cursor: 'pointer',
+                                            cursor: isBusy ? 'not-allowed' : 'pointer',
                                             fontWeight: viewMode === 'itw' ? 600 : (showItwIndicator ? 600 : 400),
                                             color: viewMode === 'itw' ? '#ffc107' : (showItwIndicator ? '#ca8a04' : '#6b7280'),
                                             transition: 'all 0.2s',
                                             fontSize: '14px',
-                                            position: 'relative'
+                                            position: 'relative',
+                                            opacity: isBusy ? 0.6 : 1
                                         }}
                                         onMouseEnter={(e) => {
+                                            if (isBusy) return;
                                             if (viewMode !== 'itw') {
                                                 e.currentTarget.style.background = '#f3f4f6';
                                                 e.currentTarget.style.color = '#374151';
@@ -2994,8 +3060,11 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     paddingRight: 24,
                     overflowX: 'auto',
                     overflowY: 'visible',
-                    transition: 'padding-left 0.15s',
-                    boxSizing: 'border-box'
+                    transition: 'padding-left 0.15s, opacity 0.25s ease',
+                    boxSizing: 'border-box',
+                    pointerEvents: isBusy ? 'none' : 'auto',
+                    opacity: isBusy ? 0.72 : 1,
+                    cursor: isBusy ? 'wait' : 'default'
                 }}
                 onScroll={handleContentScroll}
             >
@@ -3036,18 +3105,22 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                     if (selectedAvailDate === d.date) {
                                         dayHighlightColor = '#e8f5e9';
                                     } else if (highlightedPersonKey) {
-                                        const personId = highlightedPersonKey.replace('p_', '');
-                                        const personValue = `p:${personId}`;
+                                        const personValue = highlightedPersonKey.startsWith('p_')
+                                            ? `p:${highlightedPersonKey.slice(2)}`
+                                            : highlightedPersonKey.startsWith('a_')
+                                            ? `a:${highlightedPersonKey.slice(2)}`
+                                            : highlightedPersonKey;
 
                                         // Prüfe alle Slots an diesem Tag
                                         let isAssigned = false;
                                         let isAvailable = false;
 
-                                        // RTW Slots prüfen
+                                        // 1. RTW Slots prüfen
                                         for (let rIdx = 0; rIdx < (rtwVehicles || []).length; rIdx++) {
                                             const slots = [
                                                 `rtw${rIdx + 1}_tag_1`, `rtw${rIdx + 1}_nacht_1`,
-                                                `rtw${rIdx + 1}_tag_2`, `rtw${rIdx + 1}_nacht_2`
+                                                `rtw${rIdx + 1}_tag_2`, `rtw${rIdx + 1}_nacht_2`,
+                                                `rtw${rIdx + 1}_tag_3`, `rtw${rIdx + 1}_nacht_3`
                                             ];
                                             for (const slotId of slots) {
                                                 const value = getAssignedValueFor(d.date, slotId);
@@ -3059,10 +3132,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                             if (isAssigned) break;
                                         }
 
-                                        // NEF Slots prüfen
+                                        // 2. NEF Slots prüfen
                                         if (!isAssigned) {
                                             for (let nIdx = 0; nIdx < (nefVehicles || []).length; nIdx++) {
-                                                const slotId = `nef${nIdx + 1}_assist`;
+                                                const nefSlots = [`nef${nIdx + 1}_assist`, `nef${nIdx + 1}_azubi`];
+                                                for (const slotId of nefSlots) {
+                                                    const value = getAssignedValueFor(d.date, slotId);
+                                                    if (value === personValue) {
+                                                        isAssigned = true;
+                                                        break;
+                                                    }
+                                                }
+                                                if (isAssigned) break;
+                                            }
+                                        }
+
+                                        // 3. ITW Slots prüfen (FzF, Ma, Azubi)
+                                        if (!isAssigned) {
+                                            const itwSlots = ['itw_row_1', 'itw_row_2', 'itw_row_3'];
+                                            for (const slotId of itwSlots) {
                                                 const value = getAssignedValueFor(d.date, slotId);
                                                 if (value === personValue) {
                                                     isAssigned = true;
@@ -3071,12 +3159,21 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                             }
                                         }
 
-                                        // Wenn nicht eingeteilt, prüfe ob verfügbar
+                                        // 4. Roster-Eintrag der Person direkt prüfen (falls Slot als type vorliegt)
+                                        if (!isAssigned) {
+                                            const personEntry = ((localRoster as any)?.[highlightedPersonKey]?.[d.date]) || ((roster as any)?.[highlightedPersonKey]?.[d.date]);
+                                            const assignedType = String(personEntry?.type || '');
+                                            if (assignedType.startsWith('itw_row_') || assignedType.startsWith('rtw') || assignedType.startsWith('nef')) {
+                                                isAssigned = true;
+                                            }
+                                        }
+
+                                        // Wenn nicht eingeteilt, prüfe ob verfügbar für RTW (nicht 'off' und NICHT 'itw')
                                         if (!isAssigned) {
                                             const dutyCode = getDutyCodeFor(highlightedPersonKey);
                                             if (dutyCode && dutyCode.trim() !== '') {
                                                 const evalMode = auswertungByType[dutyCode];
-                                                if (evalMode && evalMode !== 'off') {
+                                                if (evalMode && evalMode !== 'off' && evalMode !== 'itw') {
                                                     isAvailable = true;
                                                 }
                                             }
@@ -3194,7 +3291,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                             <select
                                                                                 className={styles.select}
                                                                                 value={value}
-                                                                                disabled={!canWrite}
+                                                                                disabled={!canWrite || isBusy}
                                                                                 style={highlightStyle}
                                                                                 onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
                                                                                 onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
@@ -3221,7 +3318,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                             <select
                                                                                 className={styles.select}
                                                                                 value={value}
-                                                                                disabled={!canWrite}
+                                                                                disabled={!canWrite || isBusy}
                                                                                 style={highlightStyle}
                                                                                 onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
                                                                                 onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
@@ -3251,7 +3348,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                                                                         return (
                                                                             <select className={styles.select} value={value}
-                                                                                disabled={!canWrite}
+                                                                                disabled={!canWrite || isBusy}
                                                                                 style={highlightStyle}
                                                                                 onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
                                                                                 onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
@@ -3280,7 +3377,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                                                                         return (
                                                                             <select className={styles.select} value={value}
-                                                                                disabled={!canWrite}
+                                                                                disabled={!canWrite || isBusy}
                                                                                 style={highlightStyle}
                                                                                 onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
                                                                                 onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
@@ -3302,7 +3399,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                             ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
                                                                         return (
                                                                             <select className={styles.select} value={value}
-                                                                                disabled={!canWrite}
+                                                                                disabled={!canWrite || isBusy}
                                                                                 onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
                                                                                 onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
                                                                                 <option value=""></option>
@@ -3322,7 +3419,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                             ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
                                                                         return (
                                                                             <select className={styles.select} value={value}
-                                                                                disabled={!canWrite}
+                                                                                disabled={!canWrite || isBusy}
                                                                                 onChange={e => handleAssign(d.date, d.dayOfYear, e.target.value, slotId)}
                                                                                 onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); clearAssignedForSlot(slotId); } }}>
                                                                                 <option value=""></option>
@@ -3366,7 +3463,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                                 const dutyCode = getDutyCodeFor(`p_${p.id}`);
                                                                                 const evalMode = auswertungByType[dutyCode];
                                                                                 if (!dutyCode || dutyCode.trim() === '') return false;
-                                                                                if (!evalMode || evalMode === 'off') return false;
+                                                                                if (!evalMode || evalMode === 'off' || evalMode === 'itw') return false;
                                                                                 if (!isEligibleOnDate(p, d.date)) return false;
                                                                                 return true;
                                                                             })
@@ -3381,7 +3478,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
 
                                                                         return (
                                                                             <select className={styles.select} value={value}
-                                                                                disabled={!canWrite}
+                                                                                disabled={!canWrite || isBusy}
                                                                                 style={highlightStyle}
                                                                                 onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
                                                                                 onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } }}>
@@ -3403,7 +3500,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                                 const dutyCode = getDutyCodeFor(`a_${a.id}`);
                                                                                 const evalMode = auswertungByType[dutyCode];
                                                                                 if (!dutyCode || dutyCode.trim() === '') return false;
-                                                                                if (!evalMode || evalMode === 'off') return false;
+                                                                                if (!evalMode || evalMode === 'off' || evalMode === 'itw') return false;
                                                                                 return true;
                                                                             })
                                                                             .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
@@ -3413,7 +3510,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                             ? [{ value, label: findPersonLabelByValue(value) }, ...allOptionsA] : allOptionsA;
                                                                         return (
                                                                             <select className={styles.select} value={value}
-                                                                                disabled={!canWrite}
+                                                                                disabled={!canWrite || isBusy}
                                                                                 onChange={e => handleAssign(d.date, d.dayOfYear, e.target.value, slotId)}
                                                                                 onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_azubi'); } }}>
                                                                                 <option value=""></option>
@@ -3758,7 +3855,12 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                     .map(p => ({ value: `p:${p.id}`, label: `${p.name}` }));
                                             } else if (role === 3) {
                                                 options = azubis
-                                                    .filter(a => allowedByAuswertung(getDutyCodeForDate(`a_${a.id}`, date), 'any'))
+                                                    .filter(a => {
+                                                        const code = getDutyCodeForDate(`a_${a.id}`, date);
+                                                        if (!code || code.trim() === '') return false;
+                                                        const evalMode = auswertungByType[code];
+                                                        return !!evalMode && evalMode !== 'off';
+                                                    })
                                                     .map(a => ({ value: `a:${a.id}`, label: `${a.name}` }));
                                             } else if (role === 4) {
                                                 const isDoctorActiveOnShiftDate = (docId: number) => {
@@ -3842,7 +3944,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                             return (
                                                 <select className={styles.select} value={value}
                                                     style={appliedStyle}
-                                                    disabled={!canWrite}
+                                                    disabled={!canWrite || isBusy}
                                                     title={isExternal ? (extDeptCode ? `Kollege der ${extDeptCode}. Abt. (Vorplanung, nur Info - zählt nicht in RTW-Soll)` : 'Externer Kollege (Vorplanung, nur Info - zählt nicht in RTW-Soll)') : (isDoctorAssigned ? 'ITW-Arzt (nur Info)' : undefined)}
                                                     onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } else { handleAssign(date, 0, v, slotId); } }}
                                                     onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForDate(slotId, date); } }}>
@@ -3866,16 +3968,63 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                     if (selectedAvailDate === d2.date) {
                                                         dayHighlightColor = '#e8f5e9';
                                                     } else if (highlightedPersonKey) {
-                                                        const personId = highlightedPersonKey.replace('p_', '');
-                                                        const personValue = `p:${personId}`;
+                                                        const personValue = highlightedPersonKey.startsWith('p_')
+                                                            ? `p:${highlightedPersonKey.slice(2)}`
+                                                            : highlightedPersonKey.startsWith('a_')
+                                                            ? `a:${highlightedPersonKey.slice(2)}`
+                                                            : highlightedPersonKey;
 
                                                         let isAssigned = false;
-                                                        const itwSlots = ['itw_row_1', 'itw_row_2'];
+                                                        // 1. ITW Slots (FzF, Ma, Azubi)
+                                                        const itwSlots = ['itw_row_1', 'itw_row_2', 'itw_row_3'];
                                                         for (const slotId of itwSlots) {
                                                             const value = getAssignedValueFor(d2.date, slotId);
                                                             if (value === personValue) {
                                                                 isAssigned = true;
                                                                 break;
+                                                            }
+                                                        }
+
+                                                        // 2. RTW Slots prüfen
+                                                        if (!isAssigned) {
+                                                            for (let rIdx = 0; rIdx < (rtwVehicles || []).length; rIdx++) {
+                                                                const slots = [
+                                                                    `rtw${rIdx + 1}_tag_1`, `rtw${rIdx + 1}_nacht_1`,
+                                                                    `rtw${rIdx + 1}_tag_2`, `rtw${rIdx + 1}_nacht_2`,
+                                                                    `rtw${rIdx + 1}_tag_3`, `rtw${rIdx + 1}_nacht_3`
+                                                                ];
+                                                                for (const slotId of slots) {
+                                                                    const value = getAssignedValueFor(d2.date, slotId);
+                                                                    if (value === personValue) {
+                                                                        isAssigned = true;
+                                                                        break;
+                                                                    }
+                                                                }
+                                                                if (isAssigned) break;
+                                                            }
+                                                        }
+
+                                                        // 3. NEF Slots prüfen
+                                                        if (!isAssigned) {
+                                                            for (let nIdx = 0; nIdx < (nefVehicles || []).length; nIdx++) {
+                                                                const nefSlots = [`nef${nIdx + 1}_assist`, `nef${nIdx + 1}_azubi`];
+                                                                for (const slotId of nefSlots) {
+                                                                    const value = getAssignedValueFor(d2.date, slotId);
+                                                                    if (value === personValue) {
+                                                                        isAssigned = true;
+                                                                        break;
+                                                                    }
+                                                                }
+                                                                if (isAssigned) break;
+                                                            }
+                                                        }
+
+                                                        // 4. Roster-Eintrag der Person direkt prüfen
+                                                        if (!isAssigned) {
+                                                            const personEntry = ((localRoster as any)?.[highlightedPersonKey]?.[d2.date]) || ((roster as any)?.[highlightedPersonKey]?.[d2.date]);
+                                                            const assignedType = String(personEntry?.type || '');
+                                                            if (assignedType.startsWith('itw_row_') || assignedType.startsWith('rtw') || assignedType.startsWith('nef')) {
+                                                                isAssigned = true;
                                                             }
                                                         }
 
@@ -3886,7 +4035,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                 dayHighlightColor = '#e8f5e9'; // Grün: verfügbar
                                                             }
                                                         }
-                                                        // Rot-Markierung entfernt - Dropdowns zeigen bereits Einteilung
                                                     }
 
                                                     return (
