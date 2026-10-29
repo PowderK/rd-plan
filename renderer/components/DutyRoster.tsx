@@ -216,6 +216,9 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const [undoStack, setUndoStack] = useState<any[]>([]);
   const [redoStack, setRedoStack] = useState<any[]>([]);
   const isApplyingUndoRef = useRef(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isUpdating, setIsUpdating] = useState<boolean>(false);
+  const isBusy = isLoading || isUpdating;
 
   useEffect(() => {
     setUndoStack([]);
@@ -323,7 +326,9 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
 
   useEffect(() => {
     (async () => {
-      const filterDate = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+      setIsLoading(true);
+      try {
+        const filterDate = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`;
       const list = await (window as any).api.getPersonnelList(false, filterDate, departmentName);
       const azubiList = await (window as any).api.getAzubiList(departmentName);
       const allPeriods = await (window as any).api.getAllAzubiPeriods();
@@ -566,6 +571,9 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
       if (yearToUse !== year) {
         // console.log('[DEBUG] Updating year state from', year, 'to', yearToUse);
         setYear(yearToUse);
+      }
+      } finally {
+        setIsLoading(false);
       }
     })();
     // Listener: wenn Main einen Update-Broadcast sendet, neu laden
@@ -937,6 +945,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
 
   // Import-Handler mit Vorprüfung und Konfliktdialog
   const handleImport = async () => {
+    if (!canWrite || isBusy) return;
     const rosterImportPath = await resolveRosterImportPath(year, departmentName);
 
     if (!rosterImportPath) {
@@ -1050,6 +1059,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
 
   // Sync-Handler mit Vorprüfung und Konfliktdialog
   const handleSyncPastAndFuture = async () => {
+    if (!canWrite || isBusy) return;
     const rosterImportPath = await resolveRosterImportPath(year, departmentName);
 
     if (!rosterImportPath) {
@@ -1214,7 +1224,9 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   // Hilfsfunktion zum Neuladen NUR des Dienstplan-States (Roster)
   // Optional: Jahr überschreiben, sonst aktuellen State-Wert verwenden
   const reloadRoster = async (yearOverride?: number) => {
-    const filterDate = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+    setIsLoading(true);
+    try {
+      const filterDate = `${year}-${String(currentMonth + 1).padStart(2, '0')}-01`;
     const list = await (window as any).api.getPersonnelList(false, filterDate, departmentName);
     const azubiList = await (window as any).api.getAzubiList(departmentName);
     const allPeriods = await (window as any).api.getAllAzubiPeriods();
@@ -1349,6 +1361,9 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     setRoster({ ...rosterObj });
     // Zusätzlicher Force-Update
     setUpdateCounter(prev => prev + 1);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Roster und Feiertage neu laden, wenn das lokale Jahr gewechselt wird
@@ -1523,88 +1538,94 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   };
 
   const handleCellChange = async (personId: string, dayIdx: number, value: string, type: string) => {
-    // setRoster entfernt, da reloadRoster die Daten korrekt lädt
-    let origId: number | null = null;
-    let personType = 'person';
-    if (personId.startsWith('p_')) {
-      origId = parseInt(personId.slice(2), 10);
-      personType = 'person';
-    } else if (personId.startsWith('a_')) {
-      origId = parseInt(personId.slice(2), 10);
-      personType = 'azubi';
-    }
-    // ISO-Datum aus der Monatsansicht
-    const date = days[dayIdx]?.iso;
+    if (!canWrite || isBusy) return;
+    setIsUpdating(true);
+    try {
+      // setRoster entfernt, da reloadRoster die Daten korrekt lädt
+      let origId: number | null = null;
+      let personType = 'person';
+      if (personId.startsWith('p_')) {
+        origId = parseInt(personId.slice(2), 10);
+        personType = 'person';
+      } else if (personId.startsWith('a_')) {
+        origId = parseInt(personId.slice(2), 10);
+        personType = 'azubi';
+      }
+      // ISO-Datum aus der Monatsansicht
+      const date = days[dayIdx]?.iso;
 
-    const oldVal = roster[personId]?.[date] || { value: '', type: '' };
-    if (!isApplyingUndoRef.current) {
-      setUndoStack(prev => [...prev, {
-        personId,
-        dayIdx,
-        oldVal: { ...oldVal },
-        newVal: { value, type }
-      }]);
-      setRedoStack([]);
-    }
-    if (dayIdx === 0) {
-      // console.log('[DEBUG] 1.1. Eintrag:', { personId, origId, personType, date, value, type });
-    }
+      const oldVal = roster[personId]?.[date] || { value: '', type: '' };
+      if (!isApplyingUndoRef.current) {
+        setUndoStack(prev => [...prev, {
+          personId,
+          dayIdx,
+          oldVal: { ...oldVal },
+          newVal: { value, type }
+        }]);
+        setRedoStack([]);
+      }
+      if (dayIdx === 0) {
+        // console.log('[DEBUG] 1.1. Eintrag:', { personId, origId, personType, date, value, type });
+      }
 
-    // VERFÜGBARKEITSPRÜFUNG: Ist die Person auf einem Fahrzeug eingeteilt, aber als nicht verfügbar markiert?
-    if (value && value.trim() !== '' && origId) {
-      try {
-        // Hole cellType aus dem aktuellen roster-Eintrag (z.B. "rtw1_tag_1")
-        const cellType = roster[personId]?.[date]?.type || undefined;
+      // VERFÜGBARKEITSPRÜFUNG: Ist die Person auf einem Fahrzeug eingeteilt, aber als nicht verfügbar markiert?
+      if (value && value.trim() !== '' && origId) {
+        try {
+          // Hole cellType aus dem aktuellen roster-Eintrag (z.B. "rtw1_tag_1")
+          const cellType = roster[personId]?.[date]?.type || undefined;
 
-        // Prüfe nur, wenn Person auf Fahrzeug eingeteilt ist
-        if (cellType && (cellType.startsWith('rtw') || cellType.startsWith('nef') || cellType.startsWith('itw'))) {
-          console.log('[DutyRoster] Verfügbarkeitsprüfung: Person ist auf Fahrzeug eingeteilt:', { cellType, value });
+          // Prüfe nur, wenn Person auf Fahrzeug eingeteilt ist
+          if (cellType && (cellType.startsWith('rtw') || cellType.startsWith('nef') || cellType.startsWith('itw'))) {
+            console.log('[DutyRoster] Verfügbarkeitsprüfung: Person ist auf Fahrzeug eingeteilt:', { cellType, value });
 
-          // Prüfe, ob die neue Dienstart "nicht verfügbar" bedeutet
-          const shiftTypes = await (window as any).api.getShiftTypes();
-          const shiftType = shiftTypes.find((st: any) => st.code === value);
+            // Prüfe, ob die neue Dienstart "nicht verfügbar" bedeutet
+            const shiftTypes = await (window as any).api.getShiftTypes();
+            const shiftType = shiftTypes.find((st: any) => st.code === value);
 
-          if (shiftType) {
-            const auswertung = await (window as any).api.getSetting(`auswertung_${shiftType.code}`);
+            if (shiftType) {
+              const auswertung = await (window as any).api.getSetting(`auswertung_${shiftType.code}`);
 
-            console.log('[DutyRoster] Dienstart Auswertung:', { code: shiftType.code, auswertung });
+              console.log('[DutyRoster] Dienstart Auswertung:', { code: shiftType.code, auswertung });
 
-            // 'off' = nicht verfügbar (Urlaub, Krank, Frei, etc.)
-            if (!auswertung || auswertung === 'off') {
-              const confirmChange = confirm(
-                `⚠️ WARNUNG: Verfügbarkeitskonflikt!\n\n` +
-                `Person ist auf "${cellType}" eingeteilt, aber Dienstart "${value}" bedeutet "nicht verfügbar".\n\n` +
-                `Möchten Sie die Änderung trotzdem durchführen?\n\n` +
-                `Hinweis: Dies könnte zu Besetzungsproblemen führen.`
-              );
+              // 'off' = nicht verfügbar (Urlaub, Krank, Frei, etc.)
+              if (!auswertung || auswertung === 'off') {
+                const confirmChange = confirm(
+                  `⚠️ WARNUNG: Verfügbarkeitskonflikt!\n\n` +
+                  `Person ist auf "${cellType}" eingeteilt, aber Dienstart "${value}" bedeutet "nicht verfügbar".\n\n` +
+                  `Möchten Sie die Änderung trotzdem durchführen?\n\n` +
+                  `Hinweis: Dies könnte zu Besetzungsproblemen führen.`
+                );
 
-              if (!confirmChange) {
-                return; // Abbruch der Änderung
+                if (!confirmChange) {
+                  return; // Abbruch der Änderung
+                }
               }
             }
           }
+        } catch (err) {
+          console.error('Fehler bei Verfügbarkeitsprüfung:', err);
+          // Bei Validierungsfehlern trotzdem fortfahren
         }
-      } catch (err) {
-        console.error('Fehler bei Verfügbarkeitsprüfung:', err);
-        // Bei Validierungsfehlern trotzdem fortfahren
       }
-    }
 
-    const entry = { personId: origId, personType, date, value, type, department: departmentName || '1. Abteilung' };
-    // console.log('[Renderer] setDutyRosterEntry SEND', entry);
-    try {
-      await (window as any).api.setDutyRosterEntry(entry);
-      // console.log('[Renderer] setDutyRosterEntry OK', entry);
-      // console.log('[Renderer] handleCellChange triggering reloadRoster...');
-      await reloadRoster();
-      // console.log('[Renderer] handleCellChange reloadRoster completed');
-    } catch (err) {
-      // console.error('[Renderer] setDutyRosterEntry ERROR', err, entry);
+      const entry = { personId: origId, personType, date, value, type, department: departmentName || '1. Abteilung' };
+      // console.log('[Renderer] setDutyRosterEntry SEND', entry);
+      try {
+        await (window as any).api.setDutyRosterEntry(entry);
+        // console.log('[Renderer] setDutyRosterEntry OK', entry);
+        // console.log('[Renderer] handleCellChange triggering reloadRoster...');
+        await reloadRoster();
+        // console.log('[Renderer] handleCellChange reloadRoster completed');
+      } catch (err) {
+        // console.error('[Renderer] setDutyRosterEntry ERROR', err, entry);
+      }
+    } finally {
+      setIsUpdating(false);
     }
   };
 
   const undoLastChange = async () => {
-    if (undoStack.length === 0) return;
+    if (!canWrite || isBusy || undoStack.length === 0) return;
     const lastEntry = undoStack[undoStack.length - 1];
     setUndoStack(prev => prev.slice(0, -1));
 
@@ -1640,7 +1661,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   };
 
   const redoLastChange = async () => {
-    if (redoStack.length === 0) return;
+    if (!canWrite || isBusy || redoStack.length === 0) return;
     const lastEntry = redoStack[redoStack.length - 1];
     setRedoStack(prev => prev.slice(0, -1));
 
@@ -1701,11 +1722,31 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
           <span style={{ fontSize: 22, fontWeight: 700, whiteSpace: 'nowrap', marginRight: 8 }}>
              ({months[currentMonth]})
           </span>
+          {isBusy && (
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '3px 10px',
+              borderRadius: 9999,
+              fontSize: 12,
+              fontWeight: 500,
+              background: isUpdating ? 'rgba(234, 88, 12, 0.12)' : 'rgba(37, 99, 235, 0.12)',
+              color: isUpdating ? '#c2410c' : '#1d4ed8',
+              border: isUpdating ? '1px solid rgba(234, 88, 12, 0.25)' : '1px solid rgba(37, 99, 235, 0.25)',
+              marginRight: 8
+            }}>
+              <svg style={{ animation: 'rdplanSpin 1s linear infinite', width: 13, height: 13 }} viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="32" strokeLinecap="round" />
+              </svg>
+              <span>{isUpdating ? 'Speichere in Datenbank...' : 'Daten werden geladen...'}</span>
+            </div>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 500 }}>Jahr:</span>
             <select
               value={year}
-              disabled={!canWrite}
+              disabled={!canWrite || isBusy}
               onChange={e => setYear(Number(e.target.value))}
               style={{
                 padding: '4px 8px',
@@ -1713,7 +1754,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                 borderRadius: 6,
                 border: '1px solid #ddd',
                 background: '#fff',
-                cursor: 'pointer',
+                cursor: isBusy ? 'not-allowed' : 'pointer',
                 color: 'var(--text)'
               }}
             >
@@ -1744,7 +1785,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
             <button 
               onClick={handleImport} 
-              disabled={!canWrite}
+              disabled={!canWrite || isBusy}
               title="Importiert den aktuellen Monat aus der Excel-Vorplanung"
               style={{
                 display: 'inline-flex',
@@ -1756,17 +1797,18 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                 borderBottom: '3px solid transparent',
                 fontSize: '14px',
                 fontWeight: 500,
-                color: '#6b7280',
-                cursor: 'pointer',
+                color: (!canWrite || isBusy) ? '#9ca3af' : '#6b7280',
+                cursor: (!canWrite || isBusy) ? 'not-allowed' : 'pointer',
                 transition: 'all 0.2s ease'
               }}
               onMouseEnter={(e) => {
-                if (!canWrite) return;
+                if (!canWrite || isBusy) return;
                 e.currentTarget.style.color = 'var(--text)';
                 e.currentTarget.style.borderBottomColor = 'var(--accent)';
                 e.currentTarget.style.background = '#f8f9fa';
               }}
               onMouseLeave={(e) => {
+                if (!canWrite || isBusy) return;
                 e.currentTarget.style.color = '#6b7280';
                 e.currentTarget.style.borderBottomColor = 'transparent';
                 e.currentTarget.style.background = 'transparent';
@@ -1782,7 +1824,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
             
             <button 
               onClick={handleSyncPastAndFuture} 
-              disabled={!canWrite}
+              disabled={!canWrite || isBusy}
               title="Abgleich des Vormonats und des restlichen Jahres (Sync-Modus)"
               style={{
                 display: 'inline-flex',
@@ -1794,17 +1836,18 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                 borderBottom: '3px solid transparent',
                 fontSize: '14px',
                 fontWeight: 500,
-                color: '#6b7280',
-                cursor: 'pointer',
+                color: (!canWrite || isBusy) ? '#9ca3af' : '#6b7280',
+                cursor: (!canWrite || isBusy) ? 'not-allowed' : 'pointer',
                 transition: 'all 0.2s ease'
               }}
               onMouseEnter={(e) => {
-                if (!canWrite) return;
+                if (!canWrite || isBusy) return;
                 e.currentTarget.style.color = 'var(--text)';
                 e.currentTarget.style.borderBottomColor = 'var(--accent)';
                 e.currentTarget.style.background = '#f8f9fa';
               }}
               onMouseLeave={(e) => {
+                if (!canWrite || isBusy) return;
                 e.currentTarget.style.color = '#6b7280';
                 e.currentTarget.style.borderBottomColor = 'transparent';
                 e.currentTarget.style.background = 'transparent';
@@ -1824,7 +1867,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
             <button
                 type="button"
                 onClick={undoLastChange}
-                disabled={!canWrite || undoStack.length === 0}
+                disabled={!canWrite || isBusy || undoStack.length === 0}
                 title={undoStack.length > 0 ? `Zurück (${undoStack.length})` : 'Keine Änderung zum Rückgängigmachen'}
                 aria-label="Zurück"
                 style={{
@@ -1837,18 +1880,18 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                     borderBottom: '3px solid transparent',
                     fontSize: '14px',
                     fontWeight: 500,
-                    color: (!canWrite || undoStack.length === 0) ? '#9ca3af' : '#6b7280',
-                    cursor: (!canWrite || undoStack.length === 0) ? 'not-allowed' : 'pointer',
+                    color: (!canWrite || isBusy || undoStack.length === 0) ? '#9ca3af' : '#6b7280',
+                    cursor: (!canWrite || isBusy || undoStack.length === 0) ? 'not-allowed' : 'pointer',
                     transition: 'all 0.2s ease'
                 }}
                 onMouseEnter={(e) => {
-                    if (!canWrite || undoStack.length === 0) return;
+                    if (!canWrite || isBusy || undoStack.length === 0) return;
                     e.currentTarget.style.color = 'var(--text)';
                     e.currentTarget.style.borderBottomColor = 'var(--accent)';
                     e.currentTarget.style.background = '#f8f9fa';
                 }}
                 onMouseLeave={(e) => {
-                    if (!canWrite || undoStack.length === 0) return;
+                    if (!canWrite || isBusy || undoStack.length === 0) return;
                     e.currentTarget.style.color = '#6b7280';
                     e.currentTarget.style.borderBottomColor = 'transparent';
                     e.currentTarget.style.background = 'transparent';
@@ -1863,7 +1906,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
             <button
                 type="button"
                 onClick={redoLastChange}
-                disabled={!canWrite || redoStack.length === 0}
+                disabled={!canWrite || isBusy || redoStack.length === 0}
                 title={redoStack.length > 0 ? `Wiederherstellen (${redoStack.length})` : 'Keine Änderung zum Wiederherstellen'}
                 aria-label="Wiederholen"
                 style={{
@@ -1876,18 +1919,18 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                     borderBottom: '3px solid transparent',
                     fontSize: '14px',
                     fontWeight: 500,
-                    color: (!canWrite || redoStack.length === 0) ? '#9ca3af' : '#6b7280',
-                    cursor: (!canWrite || redoStack.length === 0) ? 'not-allowed' : 'pointer',
+                    color: (!canWrite || isBusy || redoStack.length === 0) ? '#9ca3af' : '#6b7280',
+                    cursor: (!canWrite || isBusy || redoStack.length === 0) ? 'not-allowed' : 'pointer',
                     transition: 'all 0.2s ease'
                 }}
                 onMouseEnter={(e) => {
-                    if (!canWrite || redoStack.length === 0) return;
+                    if (!canWrite || isBusy || redoStack.length === 0) return;
                     e.currentTarget.style.color = 'var(--text)';
                     e.currentTarget.style.borderBottomColor = 'var(--accent)';
                     e.currentTarget.style.background = '#f8f9fa';
                 }}
                 onMouseLeave={(e) => {
-                    if (!canWrite || redoStack.length === 0) return;
+                    if (!canWrite || isBusy || redoStack.length === 0) return;
                     e.currentTarget.style.color = '#6b7280';
                     e.currentTarget.style.borderBottomColor = 'transparent';
                     e.currentTarget.style.background = 'transparent';
@@ -1917,28 +1960,27 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
               key={i}
               ref={el => monthButtonsRef.current[i] = el}
               onClick={() => setCurrentMonth(i)}
+              disabled={isBusy}
               style={{
                 padding: '8px 16px',
                 background: currentMonth === i ? '#f8f9fa' : 'transparent',
                 border: 'none',
                 borderBottom: currentMonth === i ? '3px solid #0ea5e9' : '3px solid transparent',
-                cursor: 'pointer',
+                cursor: isBusy ? 'not-allowed' : 'pointer',
                 fontWeight: currentMonth === i ? 600 : 400,
-                color: currentMonth === i ? '#0ea5e9' : '#6b7280',
+                color: currentMonth === i ? '#0ea5e9' : (isBusy ? '#9ca3af' : '#6b7280'),
                 transition: 'all 0.2s',
                 fontSize: '14px'
               }}
               onMouseEnter={(e) => {
-                if (currentMonth !== i) {
-                  e.currentTarget.style.background = 'var(--hover)';
-                  e.currentTarget.style.color = 'var(--text)';
-                }
+                if (isBusy || currentMonth === i) return;
+                e.currentTarget.style.background = 'var(--hover)';
+                e.currentTarget.style.color = 'var(--text)';
               }}
               onMouseLeave={(e) => {
-                if (currentMonth !== i) {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.color = 'var(--muted)';
-                }
+                if (isBusy || currentMonth === i) return;
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--muted)';
               }}
             >
               {m}
@@ -1958,7 +2000,11 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
           border: '1px solid #d6e4ff',
           borderRadius: 10,
           background: '#ffffff',
-          boxSizing: 'border-box'
+          boxSizing: 'border-box',
+          pointerEvents: isBusy ? 'none' : 'auto',
+          opacity: isBusy ? 0.72 : 1,
+          transition: 'opacity 0.25s ease',
+          cursor: isBusy ? 'wait' : 'default'
         }}
         onScroll={(e) => {
           const bottomScroller = document.getElementById('bottom-scroller');

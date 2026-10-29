@@ -29,6 +29,7 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
   const [azubis, setAzubis] = useState<any[]>([]);
   const [roster, setRoster] = useState<RosterState>({});
   const [deptPatternSeqs, setDeptPatternSeqs] = useState<{ startDate: string; pattern: string[] }[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Reagiere auf Jahr-Änderungen von DutyRoster
   useEffect(() => {
@@ -327,40 +328,85 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
   }, [departmentName]);
 
   useEffect(() => {
-    loadBasics().then(() => loadRoster(year));
-    const onSettings = async () => {
-      await loadBasics();
-      await loadRoster(year);
+    let cancelled = false;
+    const runInitialLoad = async () => {
+      setIsLoading(true);
+      try {
+        await loadBasics();
+        if (!cancelled) await loadRoster(year);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
     };
-    const onRoster = async () => { await loadRoster(); };
-    const onPersonnel = async () => { await loadBasics(); await loadRoster(); };
+    runInitialLoad();
+
+    const onSettings = async () => {
+      setIsLoading(true);
+      try {
+        await loadBasics();
+        await loadRoster(year);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    const onRoster = async () => {
+      setIsLoading(true);
+      try {
+        await loadRoster();
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    const onPersonnel = async () => {
+      setIsLoading(true);
+      try {
+        await loadBasics();
+        await loadRoster();
+      } finally {
+        setIsLoading(false);
+      }
+    };
     (window as any).api?.onSettingsUpdated?.(onSettings);
     (window as any).api?.onDutyRosterUpdated?.(onRoster);
     (window as any).api?.onPersonnelUpdated?.(onPersonnel);
     return () => {
+      cancelled = true;
       (window as any).api?.offSettingsUpdated?.(onSettings);
       (window as any).api?.offDutyRosterUpdated?.(onRoster);
       (window as any).api?.offPersonnelUpdated?.(onPersonnel);
     };
   }, [loadBasics, loadRoster, year, departmentName]);
 
-  const handleMonthChange = (m: number) => setCurrentMonth(m);
+  const handleMonthChange = (m: number) => {
+    setIsLoading(true);
+    setCurrentMonth(m);
+  };
 
   const handleYearChange = async (newYear: number) => {
     if (!Number.isFinite(newYear) || newYear === year) return;
 
-    setYear(newYear);
-    (window as any).rdPlanYear = newYear;
-    window.dispatchEvent(new CustomEvent('rdplan-year-changed', { detail: { year: newYear } }));
+    setIsLoading(true);
+    try {
+      setYear(newYear);
+      (window as any).rdPlanYear = newYear;
+      window.dispatchEvent(new CustomEvent('rdplan-year-changed', { detail: { year: newYear } }));
 
-    const currentYear = new Date().getFullYear();
-    setCurrentMonth(newYear === currentYear ? new Date().getMonth() : 0);
+      const currentYear = new Date().getFullYear();
+      setCurrentMonth(newYear === currentYear ? new Date().getMonth() : 0);
 
-    await loadRoster(newYear);
+      await loadRoster(newYear);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleRosterChanged = async () => {
-    await loadRoster(year);
+    setIsLoading(true);
+    try {
+      await loadRoster(year);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleEntryAssigned = (key: string, date: string, value: string, type: string) => {
@@ -393,6 +439,7 @@ const EinteilungPage: React.FC<{ departmentName?: string }> = ({ departmentName 
           deptPatternSeqs={deptPatternSeqs}
           onRosterChanged={handleRosterChanged}
           onEntryAssigned={handleEntryAssigned}
+          isLoading={isLoading}
         />
       </div>
       {/* Rechte Sidebar: Zielcontainer für den Kontrollkasten */}

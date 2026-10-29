@@ -1,3 +1,22 @@
+## Build 1551 - 2026-10-29
+
+- automated build
+
+## Version 1.6.3 - 2026-10-29
+
+- **Zuverlässiger Verfügbarkeits-Abgleich zwischen ITW- und RTW/NEF-Einteilung (Bugfix)**:
+  - **Sperre für bereits eingeteilte ITW-Kollegen**: Ein Kollege, der an einem Datum bereits in der ITW-Einteilung aufgestellt ist (Fahrzeugführer `itw_row_1`, Maschinist `itw_row_2` oder Azubi `itw_row_3`), wird beim Klick auf seinen Namen im Kontrollkasten in der RTW-Einteilung nicht mehr fälschlicherweise als verfügbar (grüner Tagesspalten-Kopf) angezeigt.
+  - **Reziproke Sperre in der ITW-Ansicht**: Ein Kollege, der bereits auf einem RTW- oder NEF-Fahrzeug eingeteilt ist, wird im ITW-Rack nicht mehr als verfügbar vorgeschlagen oder hervorgehoben.
+  - **Schichtcode-Trennung (`evalMode`)**: Reine ITW-Schichtcodes (wie `IW` mit `evalMode === 'itw'`) werden in der RTW-Kandidaten- und Verfügbarkeitsprüfung konsequent ausgeschlossen und nur noch im ITW-Kontext berücksichtigt.
+  - **Konsistente Datumsfilterung**: Klick auf ein Datum in der Spaltenkopfzeile filtert den Kontrollkasten nun modusspezifisch exakt nach Schichtcode-Eignung (RTW vs. ITW).
+
+- **Performance-Schutz & Ladeindikator für Netzwerkfreigaben (Neue Funktion)**:
+  - **Dezenter Status-Badge**: Im fixierten Header der Monats-Einteilung und des Dienstplans informiert ein schlanker, animierter Indikator dezent über aktive Datenbankvorgänge (`Daten werden geladen...` bei Abfragen / `Speichere in Datenbank...` bei Schreibvorgängen).
+  - **Schreibschutz & Fehleingaben-Prävention (`isBusy`)**:
+    - Während Datenabfragen und Speichervorgängen über langsame Netzwerkpfade wird der Tabellenbereich dezent abgeblendet (`opacity: 0.72`, `pointerEvents: none`, `cursor: wait`), um unvollständige Eingaben oder Race-Conditions zuverlässig zu verhindern.
+    - Interaktive Steuerelemente (Dropdowns, Monats-Tabs, Jahr-Auswahl, Automatik-Buttons, Import/Sync, Status-Checkbox sowie Undo/Redo) sind währenddessen gesperrt.
+    - Alle Mutations-Handler besitzen direkte Abbruch-Bedingungen (`if (!canWrite || isBusy) return;`), wodurch doppelte oder asynchrone Writes ausgeschlossen werden.
+
 ## Build 1550 - 2026-10-28
 
 - automated build

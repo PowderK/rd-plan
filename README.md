@@ -7,9 +7,21 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v1.6.2** - Automatische ITW-Einteilung im Monatsplan mit intelligenter Vorplanungs- und IW-Dienst-Synchronisation, Abteilungsfarbkodierung für eigene und fremde Abteilungen, dynamische Rest V-Kapazitätsanzeige im Kontrollkasten mit monatsabhängiger Schwellenwert-Skalierung, intelligenter Abteilungstausch in der ITW-Vorplanung sowie Windows-Fokusoptimierung nach Anwendungswechsel.
+**v1.6.3** - Zuverlässiger Verfügbarkeits-Abgleich zwischen ITW- und RTW/NEF-Einteilung (Ausschluss bereits eingeteilter Kollegen), dezent animierter Lade- und Speicherstatus-Indikator sowie automatischer Schreib- und Kollisionsschutz bei Ausführung auf langsamen Netzwerkfreigaben.
 
 ## Funktionen
+
+### Performance-Schutz & Ladeindikator für Netzwerkfreigaben (v1.6.3+)
+- **Dezenter Status-Badge**: Animierter, kompakter Indikator im Header der Monats-Einteilung und im Dienstplan (`Daten werden geladen...` bei Abfragen / `Speichere in Datenbank...` bei Schreibvorgängen).
+- **Automatischer Schreib- und Kollisionsschutz (`isBusy`)**:
+  - Während Lade- und Speichervorgängen über langsame Netzwerkpfade wird der Tabellenbereich dezent abgeblendet (`opacity: 0.72`, `pointerEvents: none`, `cursor: wait`), um asynchrone Eingaben und Dateninkonsistenzen zuverlässig zu verhindern.
+  - Interaktive Bedienelemente (Dropdown-Felder, Monats-Tabs, Jahr-Auswahl, Automatik-Buttons, Import/Sync, Freigabe-Checkbox sowie Undo/Redo) werden währenddessen gesperrt.
+  - Direkte Schutzprüfungen in allen Schreib-Handlern verhindern doppelte oder überlappende Schreibvorgänge in SQLite.
+
+### Zuverlässiger Verfügbarkeits-Abgleich zwischen ITW & RTW/NEF (v1.6.3+)
+- **Automatische Sperre für bereits eingeteilte ITW-Kollegen**: Ein Kollege, der an einem Tag bereits auf dem ITW eingeteilt ist (Fahrzeugführer, Maschinist oder Azubi), wird beim Klick im Kontrollkasten in der RTW-Einteilung nicht mehr fälschlicherweise als verfügbar (grüner Tagesspalten-Kopf) markiert.
+- **Reziproke Sperre in der ITW-Ansicht**: Bereits im RTW/NEF eingeteilte Kollegen werden im ITW-Rack nicht mehr als verfügbar hervorgehoben.
+- **Saubere Schichtcode-Trennung**: Reine ITW-Schichtcodes (wie `IW`) werden bei der RTW-Verfügbarkeit konsequent ignoriert.
 
 ### Automatische ITW-Einteilung im Monatsplan (v1.6.2+)
 - **1-Klick-Zuweisung für den gesamten Monat**: Vollautomatische Besetzung der ITW-Kacheln (Fahrzeugführer, Maschinist, Notarzt) anhand der hinterlegten Vorplanung und den `IW`-Diensten im Dienstplan.

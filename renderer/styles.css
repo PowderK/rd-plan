@@ -147,3 +147,8 @@ tbody tr:hover { background: var(--hover); }
 input[type="checkbox"], input[type="radio"] {
   accent-color: var(--accent);
 }
+
+@keyframes rdplanSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
