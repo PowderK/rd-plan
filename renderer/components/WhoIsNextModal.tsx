@@ -204,22 +204,30 @@ export const WhoIsNextModal: React.FC<WhoIsNextModalProps> = ({
                                                 </div>
 
                                                 <div>
-                                                    <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text, #0f172a)' }}>
-                                                        {c.displayName}
-                                                    </span>
-                                                    {isTop && (
-                                                        <span style={{
-                                                            marginLeft: 8,
-                                                            fontSize: 11,
-                                                            fontWeight: 600,
-                                                            background: '#dbeafe',
-                                                            color: '#1d4ed8',
-                                                            padding: '2px 8px',
-                                                            borderRadius: 12
-                                                        }}>
-                                                            Empfehlung
+                                                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                                                        <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text, #0f172a)' }}>
+                                                            {c.displayName}
                                                         </span>
-                                                    )}
+                                                        {isTop && (
+                                                            <span style={{
+                                                                marginLeft: 8,
+                                                                fontSize: 11,
+                                                                fontWeight: 600,
+                                                                background: '#dbeafe',
+                                                                color: '#1d4ed8',
+                                                                padding: '2px 8px',
+                                                                borderRadius: 12
+                                                            }}>
+                                                                Empfehlung
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                                                        Persönliches Soll: <strong>{c.metrics.personalSoll}</strong> | Ist: <strong>{c.metrics.personalIst}</strong> | Saldo:{' '}
+                                                        <strong style={{ color: c.metrics.personalDeficit > 0 ? '#b91c1c' : (c.metrics.personalDeficit < 0 ? '#15803d' : '#475569') }}>
+                                                            {c.metrics.personalDeficit > 0 ? `-${c.metrics.personalDeficit} (Nachholbedarf)` : (c.metrics.personalDeficit < 0 ? `+${-c.metrics.personalDeficit} (Überschuss)` : '±0 ausgeglichen')}
+                                                        </strong>
+                                                    </div>
                                                 </div>
                                             </div>
 

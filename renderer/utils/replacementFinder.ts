@@ -24,6 +24,15 @@ export interface ReplacementWeights {
     weekend: number;      // default: 15
 }
 
+export interface PersonalBalanceInfo {
+    soll: number;
+    ist: number;
+    deficit: number; // Soll - Ist (positiv = Minusschichten / Nachholbedarf; negativ = Plusschichten / Überschuss)
+    yearSoll?: number;
+    yearIst?: number;
+    yearRest?: number;
+}
+
 export interface ReplacementCandidate {
     personId: number;
     displayName: string;
@@ -37,6 +46,9 @@ export interface ReplacementCandidate {
     };
     badges: ReplacementBadge[];
     metrics: {
+        personalSoll: number;
+        personalIst: number;
+        personalDeficit: number;
         rtwTagYear: number;
         rtwNachtYear: number;
         rtwTotalYear: number;
@@ -86,6 +98,7 @@ export interface ReplacementFinderOptions {
     currentAssignedValue?: string; // z.B. "p:483" (wer aktuell eingeteilt ist)
     strictPreviousNightExclusion?: boolean; // Bei Nacht-Ausfall: Kollege mit RTW-Nacht in Vorschicht hart ausschließen (default: true)
     weights?: Partial<ReplacementWeights>;
+    personalBalances?: Record<number, PersonalBalanceInfo>; // Persönliches Soll-Ist-Konto der Kollegen (oberste Priorität!)
 }
 
 function getShiftCell(
@@ -346,26 +359,31 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
         const m = personYearMetrics[p.id];
         const badges: ReplacementBadge[] = [];
 
-        // DIMENSION 1: Schichtsaldo / Auslastung (0 bis maxWeights.shiftBalance)
-        // Vergleicht bisherige RTW-Gesamtschichten mit dem Wachabteilungs-Schnitt
-        const balanceDelta = Math.round(avgDeptRtw - m.rtwTotalYear);
-        const normBalanceRatio = Math.max(0, Math.min(1, (12 + balanceDelta * 3) / 25));
+        // DIMENSION 1: PERSÖNLICHES SOLL-IST-DEFIZIT (Als allererste Priorität!)
+        // Bewertet das persönliche Schichtdefizit der Person (Minusschichten / Nachholbedarf z. B. nach Elternzeit)
+        const bal = options.personalBalances?.[p.id];
+        const personalSoll = bal ? bal.soll : 0;
+        const personalIst = bal ? bal.ist : 0;
+        const personalDeficit = bal ? bal.deficit : 0; // positiv = Defizit (Soll > Ist), negativ = Überschuss
+
+        // Normierung (Basis 12 von 25 Punkten bei ausgeglichenem Konto; +4 Pkt. je Minusschicht, -4 Pkt. je Plusschicht):
+        const normBalanceRatio = Math.max(0, Math.min(1, (12 + personalDeficit * 4) / 25));
         const shiftBalanceScore = Math.round(normBalanceRatio * maxWeights.shiftBalance);
 
-        if (balanceDelta >= 2) {
+        if (personalDeficit >= 1) {
             badges.push({
                 type: 'bonus',
-                text: `✓ Schichtdefizit: ${balanceDelta} Schichten unter Wachdurchschnitt (+${shiftBalanceScore} Pkt.)`
+                text: `✓ Persönliches Schichtdefizit: ${personalDeficit} Minusschichten (Soll: ${personalSoll}, Ist: ${personalIst}) (+${shiftBalanceScore} Pkt.)`
             });
-        } else if (balanceDelta <= -2) {
+        } else if (personalDeficit <= -1) {
             badges.push({
                 type: 'penalty',
-                text: `⚠ Schichtüberschuss: ${-balanceDelta} Schichten über Wachdurchschnitt (${shiftBalanceScore} Pkt.)`
+                text: `⚠ Persönlicher Schichtüberschuss: ${-personalDeficit} Plusschichten über Soll (Soll: ${personalSoll}, Ist: ${personalIst}) (${shiftBalanceScore} Pkt.)`
             });
         } else {
             badges.push({
                 type: 'neutral',
-                text: `ℹ Schichtkonto: Ausgeglichen (${m.rtwTotalYear} RTW-Schichten bisher, +${shiftBalanceScore} Pkt.)`
+                text: `ℹ Persönliches Schichtkonto: Ausgeglichen (Soll: ${personalSoll}, Ist: ${personalIst}, +${shiftBalanceScore} Pkt.)`
             });
         }
 
@@ -523,6 +541,9 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
             },
             badges,
             metrics: {
+                personalSoll,
+                personalIst,
+                personalDeficit,
                 rtwTagYear: m.rtwTagYear,
                 rtwNachtYear: m.rtwNachtYear,
                 rtwTotalYear: m.rtwTotalYear,

@@ -1455,42 +1455,6 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         }
     }, [canWrite, undoStack, getAssignedValueFor, onRosterChanged]);
 
-    // "Wer ist dran?" – Öffnet das Nachrücker-Modal für den gewählten Slot
-    const handleOpenWhoIsNext = useCallback((slotId: string, dateStr: string, dayOfYear: number, vehicleName: string, currentValue: string) => {
-        let currentName: string | undefined = undefined;
-        if (currentValue) {
-            currentName = findPersonLabelByValue(currentValue);
-        }
-        const activePersonnel = (allPersonnel && allPersonnel.length > 0) ? allPersonnel : personnel;
-        const result = findReplacementsForSlot({
-            slotId,
-            date: dateStr,
-            vehicleName,
-            targetYear: year,
-            personnel: activePersonnel,
-            roster,
-            localRoster,
-            holidays,
-            currentAssignedValue: currentValue,
-            strictPreviousNightExclusion: whoIsNextConfig.strictPreviousNightExclusion,
-            weights: whoIsNextConfig.weights
-        });
-        setWhoIsNextResult(result);
-        setWhoIsNextDayOfYear(dayOfYear);
-        setWhoIsNextCurrentName(currentName);
-    }, [year, allPersonnel, personnel, roster, localRoster, holidays, findPersonLabelByValue, whoIsNextConfig]);
-
-    // "Wer ist dran?" – Bestätigt die Zuweisung des gewählten Nachrückers
-    const handleConfirmWhoIsNext = useCallback(async (personId: number) => {
-        if (!whoIsNextResult || whoIsNextDayOfYear === null) return;
-        const { date, slotId } = whoIsNextResult;
-        const value = `p:${personId}`;
-        await handleAssign(date, whoIsNextDayOfYear, value, slotId);
-        setWhoIsNextResult(null);
-        setWhoIsNextDayOfYear(null);
-        setWhoIsNextCurrentName(undefined);
-    }, [whoIsNextResult, whoIsNextDayOfYear, handleAssign]);
-
     const handleAutoAssignAzubis = () => {
         if (!canWrite || isBusy) return;
         const summaries: ShiftSummary[] = [];
@@ -2270,6 +2234,79 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         deptPatternSeqs, hlfbPeriodsByPerson, hlfbPercentage, shiftTransfers, currentMonth, holidays,
         weekendFridayDay, weekendFridayNight, weekendSaturdayDay, weekendSaturdayNight, weekendSundayDay, weekendSundayNight,
         weekendHolidayDay, weekendHolidayNight, itwEnabled, featureTaucher, featureAutoUe50, getNefAssistWeight]);
+
+    // "Wer ist dran?" – Öffnet das Nachrücker-Modal für den gewählten Slot
+    const handleOpenWhoIsNext = useCallback((slotId: string, dateStr: string, dayOfYear: number, vehicleName: string, currentValue: string) => {
+        let currentName: string | undefined = undefined;
+        if (currentValue) {
+            currentName = findPersonLabelByValue(currentValue);
+        }
+        const activePersonnel = (allPersonnel && allPersonnel.length > 0) ? allPersonnel : personnel;
+
+        // Erstelle persönliches Soll-Ist-Saldo für jeden Mitarbeiter aus sharedTargets (oberste Priorität!)
+        const personalBalances: Record<number, {
+            soll: number;
+            ist: number;
+            deficit: number;
+            yearSoll: number;
+            yearIst: number;
+            yearRest: number;
+        }> = {};
+
+        const {
+            targetCumulativeMap = {},
+            drivenCumulativeMap = {},
+            targetYearMap = {},
+            drivenYearMap = {}
+        } = sharedTargets || {};
+
+        activePersonnel.forEach(p => {
+            const key = `p_${p.id}`;
+            const cumTarget = targetCumulativeMap[key] || 0;
+            const cumDriven = drivenCumulativeMap[key] || 0;
+            const deficit = cumTarget - cumDriven;
+            const yearSoll = targetYearMap[key] || 0;
+            const yearIst = drivenYearMap[key] || 0;
+            const yearRest = yearIst - yearSoll;
+            personalBalances[p.id] = {
+                soll: cumTarget,
+                ist: cumDriven,
+                deficit,
+                yearSoll,
+                yearIst,
+                yearRest
+            };
+        });
+
+        const result = findReplacementsForSlot({
+            slotId,
+            date: dateStr,
+            vehicleName,
+            targetYear: year,
+            personnel: activePersonnel,
+            roster,
+            localRoster,
+            holidays,
+            currentAssignedValue: currentValue,
+            strictPreviousNightExclusion: whoIsNextConfig.strictPreviousNightExclusion,
+            weights: whoIsNextConfig.weights,
+            personalBalances
+        });
+        setWhoIsNextResult(result);
+        setWhoIsNextDayOfYear(dayOfYear);
+        setWhoIsNextCurrentName(currentName);
+    }, [year, allPersonnel, personnel, roster, localRoster, holidays, findPersonLabelByValue, whoIsNextConfig, sharedTargets]);
+
+    // "Wer ist dran?" – Bestätigt die Zuweisung des gewählten Nachrückers
+    const handleConfirmWhoIsNext = useCallback(async (personId: number) => {
+        if (!whoIsNextResult || whoIsNextDayOfYear === null) return;
+        const { date, slotId } = whoIsNextResult;
+        const value = `p:${personId}`;
+        await handleAssign(date, whoIsNextDayOfYear, value, slotId);
+        setWhoIsNextResult(null);
+        setWhoIsNextDayOfYear(null);
+        setWhoIsNextCurrentName(undefined);
+    }, [whoIsNextResult, whoIsNextDayOfYear, handleAssign]);
 
     const availablePersonKeys = React.useMemo(() => {
         if (!selectedAvailDate) return undefined;
