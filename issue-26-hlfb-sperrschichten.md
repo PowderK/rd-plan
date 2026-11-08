@@ -43,14 +43,16 @@ Einführung einer **Sperrschicht-Funktion**, mit der sich HLF-B-Fahrzeugführer 
 ## 3. Auswirkungen auf die Dienstplanung & Algorithmen
 
 1. **Einteilung (`MonthTabs.tsx`)**:
-   * Bei der Besetzung von **RTW, NEF und ITW** ist der Kollege an gesperrten Tagen nicht auswählbar.
-   * In den Auswahl-Dropdowns erscheint er ausgegraut oder mit Warnsymbol:  
+   * Bei der Besetzung des **RTW** (sowie NEF/ITW) steht der Kollege an gesperrten Tagen **nicht zur Verfügung**.
+   * In den Auswahl-Dropdowns ist er gesperrt / nicht auswählbar bzw. ausgegraut mit Hinweis:  
      `[Gesperrt: HLF-B Sperrschicht (Sonderaufgabe)]`.
 2. **„Wer ist dran?“-Nachrücker-Suche (Issue 025)**:
-   * Kolleginnen und Kollegen mit aktiver HLF-B-Sperrschicht werden in **Stufe 1 (Muss-Filter)** sofort herausgefiltert. Sie werden bei RTW-Ausfällen nicht als Nachrücker vorgeschlagen.
-3. **Anwesenheits- & Soll-Berechnung (`calculation.ts`)**:
-   * Da der Kollege den 24h-Dienst (`V`) auf der Wache leistet, bleibt seine Grundanwesenheit auf der Wache unberührt.
-   * Für die Rettungsdienst-Fahrzeugpositionen an diesem Tag steht er jedoch nicht zur Verfügung.
+   * Kolleginnen und Kollegen mit aktiver HLF-B-Sperrschicht werden in **Stufe 1 (Muss-Filter)** sofort herausgefiltert. Sie werden bei RTW-Ausfällen nicht als Nachrücker herangezogen.
+3. **Soll- & Anwesenheitsberechnung (`calculation.ts`) – Keine Einberechnung im RTW-Soll**:
+   * **Vollständiger Ausschluss aus der RTW-Berechnung**: An Tagen mit gesetzter Sperrschicht wird der Kollege für die **Soll-Berechnung des RTW nicht mit einberechnet**!
+   * *Berechnungslogik*: In `computeWeightedPresence` wird das Anwesenheitsgewicht $w$ der Person für diesen Sperrschicht-Tag **nicht gewertet** (bzw. auf 0 gesetzt).
+   * *Effekt für den HLF-B-Kollegen*: Er bekommt für diesen Tag **kein anteiliges RTW-Soll** zugewiesen (keine künstliche Schichtschuld für Tage, an denen er gesperrt andere Aufgaben wahrnimmt).
+   * *Effekt für die Abteilung*: Die RTW-Schichten an diesem Tag werden im Hamilton-Verfahren ausschließlich auf die Kollegen verteilt, die dem RTW an diesem Tag auch real zur Verfügung stehen.
 
 ---
 
@@ -112,3 +114,4 @@ CREATE INDEX IF NOT EXISTS idx_hlfb_blocked_person_year ON hlfb_blocked_shifts(p
 * **Verlässlichkeit für Sonderaufgaben**: HLF-B-Führungskräfte können Werkstatt-, Ausbildungs- oder Verwaltungstage planen, ohne spontan auf den RTW gezogen zu werden.
 * **Schutz vor Übernutzung**: Das fixe Jahreskontingent stellt sicher, dass Sperrschichten maßvoll und gerecht genutzt werden.
 * **Entlastung der Planer**: Kollegen tragen ihre Sperrtage selbst ein – der Planer sieht in der Einteilung sofort, wer verfügbar ist und wer nicht.
+
