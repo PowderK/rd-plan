@@ -1971,116 +1971,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                 </div>
               )}
             </div>
-
-            {/* „Wer ist dran?“-Nachrücker-Suche */}
-            <div style={{ marginTop: 28, borderTop: '1px solid #eee', paddingTop: 16 }}>
-              <h3>„Wer ist dran?“-Nachrücker-Suche (RTW- &amp; NEF-Ausfall)</h3>
-              <p style={{ fontSize: 14, color: '#666', marginBottom: 12 }}>
-                Konfigurieren Sie die intelligente Nachbesetzung bei Ausfällen auf Rettungsfahrzeugen (RTW &amp; NEF) für die <strong>{selectedDepartment}</strong>.
-              </p>
-
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, maxWidth: 680 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: 14, fontWeight: 600 }}>
-                  <input
-                    type="checkbox"
-                    checked={featureWhoIsNext}
-                    onChange={e => setFeatureWhoIsNext(e.target.checked)}
-                  />
-                  <span>„Wer ist dran?“-Funktion für {selectedDepartment} aktivieren</span>
-                </label>
-
-                {featureWhoIsNext && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 12, borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
-                    <div>
-                      <strong style={{ fontSize: '0.9em', display: 'block', marginBottom: 6, color: '#1e293b' }}>
-                        Filterregeln (Stufe 1):
-                      </strong>
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.85em', color: '#334155' }}>
-                        <input
-                          type="checkbox"
-                          checked={whoIsNextStrictPrevNight}
-                          onChange={e => setWhoIsNextStrictPrevNight(e.target.checked)}
-                          style={{ marginTop: 2 }}
-                        />
-                        <span>
-                          <strong>Harter Ausschluss bei RTW-/NEF-Nachtschicht im vorherigen Wachdienst</strong><br />
-                          <span style={{ color: '#64748b' }}>
-                            Schließt Kollegen bei zu besetzender Nachtschicht komplett aus, wenn sie am vorangegangenen 24h-Wachdienst bereits RTW- oder NEF-Nachtschicht gefahren sind (auch wenn der Dienst &gt; 11h zurückliegt).
-                          </span>
-                        </span>
-                      </label>
-                    </div>
-
-                    <div>
-                      <strong style={{ fontSize: '0.9em', display: 'block', marginBottom: 6, color: '#1e293b' }}>
-                        Scoring-Gewichtung (Stufe 2 – Maximale Punkte pro Kriterium):
-                      </strong>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 8, alignItems: 'center', fontSize: '0.85em', maxWidth: 460 }}>
-                        <span>1. Schichtsaldo / Auslastung:</span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={50}
-                          value={whoIsNextWeightBalance}
-                          onChange={e => setWhoIsNextWeightBalance(Number(e.target.value))}
-                          style={{ width: 70, padding: '3px 6px', textAlign: 'right' }}
-                        />
-
-                        <span>2. Tag/Nacht-Balance zur Schichtart:</span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={50}
-                          value={whoIsNextWeightTypeFit}
-                          onChange={e => setWhoIsNextWeightTypeFit(Number(e.target.value))}
-                          style={{ width: 70, padding: '3px 6px', textAlign: 'right' }}
-                        />
-
-                        <span>3. Vorschicht-Belastung (Erholung):</span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={50}
-                          value={whoIsNextWeightPrevDuty}
-                          onChange={e => setWhoIsNextWeightPrevDuty(Number(e.target.value))}
-                          style={{ width: 70, padding: '3px 6px', textAlign: 'right' }}
-                        />
-
-                        <span>4. RD-Abstinenz (Tage seit letztem RTW/NEF-Einsatz):</span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={50}
-                          value={whoIsNextWeightAbstinence}
-                          onChange={e => setWhoIsNextWeightAbstinence(Number(e.target.value))}
-                          style={{ width: 70, padding: '3px 6px', textAlign: 'right' }}
-                        />
-
-                        <span>5. Wochenend- &amp; Feiertagsausgleich:</span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={50}
-                          value={whoIsNextWeightWeekend}
-                          onChange={e => setWhoIsNextWeightWeekend(Number(e.target.value))}
-                          style={{ width: 70, padding: '3px 6px', textAlign: 'right' }}
-                        />
-                      </div>
-
-                      <div style={{ marginTop: 10, fontSize: '0.85em', color: '#475569', fontWeight: 600 }}>
-                        Gesamt-Maximalpunktzahl:{' '}
-                        <span style={{ color: (whoIsNextWeightBalance + whoIsNextWeightTypeFit + whoIsNextWeightPrevDuty + whoIsNextWeightAbstinence + whoIsNextWeightWeekend) === 100 ? '#16a34a' : '#d97706' }}>
-                          {whoIsNextWeightBalance + whoIsNextWeightTypeFit + whoIsNextWeightPrevDuty + whoIsNextWeightAbstinence + whoIsNextWeightWeekend} Punkte
-                        </span>
-                        {(whoIsNextWeightBalance + whoIsNextWeightTypeFit + whoIsNextWeightPrevDuty + whoIsNextWeightAbstinence + whoIsNextWeightWeekend) !== 100 && (
-                          <span style={{ fontWeight: 'normal', color: '#d97706', marginLeft: 8 }}>(Empfohlen: 100 Punkte)</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
         )}
 
@@ -2088,6 +1978,115 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
         {activeCategory === 'features' && (
           <div>
             <div style={{ display: 'grid', gap: 14, maxWidth: 980 }}>
+              {/* „Wer ist dran?“-Nachrücker-Suche */}
+              <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr', columnGap: 12, alignItems: 'start' }}>
+                <input
+                  type="checkbox"
+                  id="featureWhoIsNext"
+                  checked={featureWhoIsNext}
+                  onChange={e => setFeatureWhoIsNext(e.target.checked)}
+                  style={{ marginTop: 2 }}
+                />
+                <div>
+                  <label htmlFor="featureWhoIsNext" style={{ cursor: 'pointer', margin: 0 }}>
+                    <strong>„Wer ist dran?“-Nachrücker-Suche (RTW- &amp; NEF-Ausfall)</strong>
+                    <div style={{ fontSize: '0.85em', color: '#666', marginTop: 2 }}>
+                      Aktiviert den Button „Wer ist dran?“ im Dienstplan für die <strong>{selectedDepartment}</strong> zur intelligenten Nachbesetzung bei RTW- und NEF-Ausfällen aus den verfügbaren Wachdienst-Kollegen (mit 'V').
+                    </div>
+                  </label>
+
+                  {featureWhoIsNext && (
+                    <div style={{ marginTop: 12, padding: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                      <div>
+                        <strong style={{ fontSize: '0.9em', display: 'block', marginBottom: 6, color: '#1e293b' }}>
+                          Filterregeln (Stufe 1):
+                        </strong>
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.85em', color: '#334155' }}>
+                          <input
+                            type="checkbox"
+                            checked={whoIsNextStrictPrevNight}
+                            onChange={e => setWhoIsNextStrictPrevNight(e.target.checked)}
+                            style={{ marginTop: 2 }}
+                          />
+                          <span>
+                            <strong>Harter Ausschluss bei RTW-/NEF-Nachtschicht im vorherigen Wachdienst</strong><br />
+                            <span style={{ color: '#64748b' }}>
+                              Schließt Kollegen bei zu besetzender Nachtschicht komplett aus, wenn sie am vorangegangenen 24h-Wachdienst bereits RTW- oder NEF-Nachtschicht gefahren sind (auch wenn der Dienst &gt; 11h zurückliegt).
+                            </span>
+                          </span>
+                        </label>
+                      </div>
+
+                      <div>
+                        <strong style={{ fontSize: '0.9em', display: 'block', marginBottom: 6, color: '#1e293b' }}>
+                          Scoring-Gewichtung (Stufe 2 – Maximale Punkte pro Kriterium):
+                        </strong>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 8, alignItems: 'center', fontSize: '0.85em', maxWidth: 460 }}>
+                          <span>1. Schichtsaldo / Auslastung:</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={50}
+                            value={whoIsNextWeightBalance}
+                            onChange={e => setWhoIsNextWeightBalance(Number(e.target.value))}
+                            style={{ width: 70, padding: '3px 6px', textAlign: 'right' }}
+                          />
+
+                          <span>2. Tag/Nacht-Balance zur Schichtart:</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={50}
+                            value={whoIsNextWeightTypeFit}
+                            onChange={e => setWhoIsNextWeightTypeFit(Number(e.target.value))}
+                            style={{ width: 70, padding: '3px 6px', textAlign: 'right' }}
+                          />
+
+                          <span>3. Vorschicht-Belastung (Erholung):</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={50}
+                            value={whoIsNextWeightPrevDuty}
+                            onChange={e => setWhoIsNextWeightPrevDuty(Number(e.target.value))}
+                            style={{ width: 70, padding: '3px 6px', textAlign: 'right' }}
+                          />
+
+                          <span>4. RD-Abstinenz (Tage seit letztem RTW/NEF-Einsatz):</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={50}
+                            value={whoIsNextWeightAbstinence}
+                            onChange={e => setWhoIsNextWeightAbstinence(Number(e.target.value))}
+                            style={{ width: 70, padding: '3px 6px', textAlign: 'right' }}
+                          />
+
+                          <span>5. Wochenend- &amp; Feiertagsausgleich:</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={50}
+                            value={whoIsNextWeightWeekend}
+                            onChange={e => setWhoIsNextWeightWeekend(Number(e.target.value))}
+                            style={{ width: 70, padding: '3px 6px', textAlign: 'right' }}
+                          />
+                        </div>
+
+                        <div style={{ marginTop: 10, fontSize: '0.85em', color: '#475569', fontWeight: 600 }}>
+                          Gesamt-Maximalpunktzahl:{' '}
+                          <span style={{ color: (whoIsNextWeightBalance + whoIsNextWeightTypeFit + whoIsNextWeightPrevDuty + whoIsNextWeightAbstinence + whoIsNextWeightWeekend) === 100 ? '#16a34a' : '#d97706' }}>
+                            {whoIsNextWeightBalance + whoIsNextWeightTypeFit + whoIsNextWeightPrevDuty + whoIsNextWeightAbstinence + whoIsNextWeightWeekend} Punkte
+                          </span>
+                          {(whoIsNextWeightBalance + whoIsNextWeightTypeFit + whoIsNextWeightPrevDuty + whoIsNextWeightAbstinence + whoIsNextWeightWeekend) !== 100 && (
+                            <span style={{ fontWeight: 'normal', color: '#d97706', marginLeft: 8 }}>(Empfohlen: 100 Punkte)</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr', columnGap: 12, alignItems: 'start' }}>
                 <input
                   type="checkbox"
