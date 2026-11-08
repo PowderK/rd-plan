@@ -1,3 +1,22 @@
+## Build 1559 - 2026-11-08
+
+- automated build
+
+## Version 1.6.4 - 2026-11-08
+
+- **Intelligente Nachrücker-Suche bei RTW- und NEF-Ausfall („Wer ist dran?“-Funktion)**:
+  - **Zentraler Workflow**: Aufruf über den Button `🔍 Wer ist dran?` in der Menüleiste der Monats-Einteilung mit Schnellauswahl für Datum, Fahrzeug (RTW & NEF) und Schicht/Position.
+  - **Gleichbehandlung aller Rettungsfahrzeuge**: RTW und NEF werden bei Einsatzzahlen, Ruhezeiten, Tag/Nacht- und Wochenend-Statistiken gemeinsam als Rettungsfahrzeuge gewertet (ITW bleibt separat).
+  - **Persönliches Soll-Ist-Konto als oberste Priorität (Dimension 1)**: Direkte Berücksichtigung des echten Schichtdefizits bzw. Nachholbedarfs (inkl. Teilzeit, Elternzeit etc.).
+  - **Ausgewogenes 5-Dimensionen-Scoring (Stufe 2)**: Nachvollziehbare Boni und Abzüge nach Schichtsaldo, Tag/Nacht-Balance, Erholungsabstand/Vorschicht, Abstinenz und Wochenend-Ausgleich.
+  - **Filterregeln (Stufe 1)**: Harter Ausschluss bei Ruhezeitkonflikten (z. B. RTW-/NEF-Nachtschicht im vorherigen Wachdienst), fehlender Qualifikation oder Doppelbelegung.
+  - **Konfiguration unter Features**: Aktivierung, Filteroptionen und Punkteskalen sind abteilungsbezogen im Menüpunkt *Features* anpassbar.
+  - **1-Klick-Zuweisung**: Direkte Zuweisung des am besten geeigneten Kandidaten ohne Umwege.
+
+- **ITW-Einteilungs- und Vorplanungs-Optimierungen**:
+  - Erweiterte Automatik und Konfliktdialoge bei der Schichtübernahme.
+  - Farblich hervorgehobene eigene Abteilung und Abteilungsfarben bei Tausch- und Rotationsphasen.
+
 ## Build 1558 - 2026-11-08
 
 - automated build

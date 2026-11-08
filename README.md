@@ -7,9 +7,15 @@
 RD-Plan ist eine Electron-Anwendung zur Planung von Rettungswagenschichten. Die Anwendung ermöglicht es Benutzern, Schichten zu verwalten, Personal zu organisieren und die Planung für verschiedene Monate zu visualisieren.
 
 ## Aktuelle Version
-**v1.6.3** - Zuverlässiger Verfügbarkeits-Abgleich zwischen ITW- und RTW/NEF-Einteilung (Ausschluss bereits eingeteilter Kollegen), dezent animierter Lade- und Speicherstatus-Indikator sowie automatischer Schreib- und Kollisionsschutz bei Ausführung auf langsamen Netzwerkfreigaben.
+**v1.6.4** - Intelligente Nachrücker-Suche bei RTW- und NEF-Ausfall („Wer ist dran?“-Funktion) mit 5-Dimensionen-Scoring, Berücksichtigung des persönlichen Soll-Ist-Saldos und Schutz vor Doppel-Nachtschichten, aufrufbar über die Menüleiste und konfigurierbar unter Features.
 
 ## Funktionen
+
+### Intelligente Nachrücker-Suche bei RTW- & NEF-Ausfall (v1.6.4+)
+- **Zentraler Schichtauswahl-Workflow**: Über den Menü-Button `🔍 Wer ist dran?` lässt sich für jedes Datum, jedes Rettungsfahrzeug (RTW und NEF) und jede Schichtart sofort der am besten geeignete Nachrücker aus den diensthabenden Wachkollegen (mit 'V') ermitteln.
+- **Rettungsfahrzeug-Gleichbehandlung**: RTW und NEF fließen gemeinsam in alle Kriterien (Einsatzzahlen, Tag/Nacht- und Wochenend-Statistiken, Ruhezeiten) ein; der ITW bleibt separat.
+- **Transparente Rangfolge mit 1-Klick-Zuweisung**: Zeigt alle Kandidaten mit detaillierten Boni und Abzügen an. Ein Klick auf "Zuweisen" trägt den Kollegen direkt ein.
+- **Konfiguration unter Features**: Abteilungsspezifische Aktivierung, ArbZG-Schutzregeln sowie anpassbare Gewichtung der 5 Scoring-Dimensionen (Schichtsaldo, Tag/Nacht-Balance, Erholungsabstand, RD-Abstinenz, Wochenende).
 
 ### Performance-Schutz & Ladeindikator für Netzwerkfreigaben (v1.6.3+)
 - **Dezenter Status-Badge**: Animierter, kompakter Indikator im Header der Monats-Einteilung und im Dienstplan (`Daten werden geladen...` bei Abfragen / `Speichere in Datenbank...` bei Schreibvorgängen).
