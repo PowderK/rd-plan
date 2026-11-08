@@ -169,7 +169,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [whoIsNextCurrentName, setWhoIsNextCurrentName] = useState<string | undefined>(undefined);
     const [showWhoIsNextSelector, setShowWhoIsNextSelector] = useState<boolean>(false);
     const [selectedWhoIsNextDate, setSelectedWhoIsNextDate] = useState<string>('');
-    const [selectedWhoIsNextVehicleIdx, setSelectedWhoIsNextVehicleIdx] = useState<number>(0);
+    const [selectedWhoIsNextVehicleKey, setSelectedWhoIsNextVehicleKey] = useState<string>('rtw_0');
     const [selectedWhoIsNextSlotType, setSelectedWhoIsNextSlotType] = useState<string>('tag_1');
 
     const [guests, setGuests] = useState<any[]>([]);
@@ -2236,7 +2236,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         weekendHolidayDay, weekendHolidayNight, itwEnabled, featureTaucher, featureAutoUe50, getNefAssistWeight]);
 
     // "Wer ist dran?" – Öffnet das Nachrücker-Modal für den gewählten Slot
-    const handleOpenWhoIsNext = useCallback((slotId: string, dateStr: string, dayOfYear: number, vehicleName: string, currentValue: string) => {
+    const handleOpenWhoIsNext = useCallback((slotId: string, dateStr: string, dayOfYear: number, vehicleName: string, currentValue: string, nefShiftMode?: 'tag' | 'nacht' | '24h') => {
         let currentName: string | undefined = undefined;
         if (currentValue) {
             currentName = findPersonLabelByValue(currentValue);
@@ -2290,7 +2290,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             currentAssignedValue: currentValue,
             strictPreviousNightExclusion: whoIsNextConfig.strictPreviousNightExclusion,
             weights: whoIsNextConfig.weights,
-            personalBalances
+            personalBalances,
+            nefShiftMode
         });
         setWhoIsNextResult(result);
         setWhoIsNextDayOfYear(dayOfYear);
@@ -3761,14 +3762,45 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
 
                                                                         return (
-                                                                            <select className={styles.select} value={value}
-                                                                                disabled={!canWrite || isBusy}
-                                                                                style={highlightStyle}
-                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } }}>
-                                                                                <option value=""></option>
-                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                            </select>
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', minWidth: 0 }}>
+                                                                                <select className={styles.select} value={value}
+                                                                                    disabled={!canWrite || isBusy}
+                                                                                    style={{ flex: 1, minWidth: 0, ...highlightStyle }}
+                                                                                    onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                    onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } }}>
+                                                                                    <option value=""></option>
+                                                                                    {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                                </select>
+                                                                                {canWrite && featureWhoIsNext && (
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        style={{
+                                                                                            width: 24,
+                                                                                            height: 26,
+                                                                                            minWidth: 24,
+                                                                                            padding: 0,
+                                                                                            border: '1px solid var(--line, #cbd5e1)',
+                                                                                            borderRadius: 4,
+                                                                                            background: 'var(--card-bg, #ffffff)',
+                                                                                            color: 'var(--text, #1e293b)',
+                                                                                            cursor: 'pointer',
+                                                                                            display: 'flex',
+                                                                                            alignItems: 'center',
+                                                                                            justifyContent: 'center',
+                                                                                            fontSize: 12
+                                                                                        }}
+                                                                                        title="Wer ist dran? (Intelligente Nachrücker-Suche)"
+                                                                                        onClick={e => {
+                                                                                            e.preventDefault();
+                                                                                            e.stopPropagation();
+                                                                                            const nefShiftMode = dayStatus.shiftMode === 'tag' ? 'tag' : (dayStatus.shiftMode === 'nacht' ? 'nacht' : (v.occupancy_mode === 'tag' ? 'tag' : '24h'));
+                                                                                            handleOpenWhoIsNext(slotId, d.date, d.dayOfYear, v.name || nefName || `NEF ${nefIdx + 1}`, value, nefShiftMode);
+                                                                                        }}
+                                                                                    >
+                                                                                        🔍
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
                                                                         );
                                                                     })()}
                                                                     <div className={styles.rowLabel}>Azubi</div>
@@ -4664,10 +4696,38 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             {showWhoIsNextSelector && (() => {
                 const effectiveDate = selectedWhoIsNextDate || (days.length > 0 ? days[0].date : '');
                 const targetDay = days.find(d => d.date === effectiveDate) || days[0];
-                const v = rtwVehicles[selectedWhoIsNextVehicleIdx] || rtwVehicles[0];
-                const vehicleName = v ? (v.name || rtwNames[selectedWhoIsNextVehicleIdx] || `RTW ${selectedWhoIsNextVehicleIdx + 1}`) : 'RTW 1';
-                const slotId = `rtw${selectedWhoIsNextVehicleIdx + 1}_${selectedWhoIsNextSlotType}`;
-                const currentVal = effectiveDate ? getAssignedValueFor(effectiveDate, slotId) : '';
+
+                const isNefSelected = selectedWhoIsNextVehicleKey.startsWith('nef_');
+                const vehIdx = Number(selectedWhoIsNextVehicleKey.split('_')[1]) || 0;
+
+                let v: any;
+                let vehicleName: string;
+                let slotId: string;
+                let currentVal = '';
+                let nefShiftMode: 'tag' | 'nacht' | '24h' | undefined = undefined;
+
+                if (isNefSelected) {
+                    v = nefVehicles[vehIdx] || nefVehicles[0];
+                    vehicleName = v ? (v.name || nefName || `NEF ${vehIdx + 1}`) : 'NEF 1';
+                    slotId = `nef${vehIdx + 1}_assist`;
+                    currentVal = effectiveDate ? getAssignedValueFor(effectiveDate, slotId) : '';
+                    if (!currentVal && vehIdx === 0 && effectiveDate) {
+                        currentVal = getAssignedValueFor(effectiveDate, 'nef_assist');
+                    }
+                    const isReserve = v?.category === 'reserve';
+                    const dayStatus = v ? isVehicleActiveOnDate(
+                        effectiveDate,
+                        nefVehiclePeriods[v.id] || [],
+                        (vehicleSpecialDays || []).filter((s: any) => (s.vehicleType || 'nef') === 'nef' && Number(s.vehicleId) === Number(v.id)),
+                        isReserve
+                    ) : { active: true, shiftMode: '24h' };
+                    nefShiftMode = dayStatus.shiftMode === 'tag' ? 'tag' : (dayStatus.shiftMode === 'nacht' ? 'nacht' : (v?.occupancy_mode === 'tag' ? 'tag' : '24h'));
+                } else {
+                    v = rtwVehicles[vehIdx] || rtwVehicles[0];
+                    vehicleName = v ? (v.name || rtwNames[vehIdx] || `RTW ${vehIdx + 1}`) : 'RTW 1';
+                    slotId = `rtw${vehIdx + 1}_${selectedWhoIsNextSlotType}`;
+                    currentVal = effectiveDate ? getAssignedValueFor(effectiveDate, slotId) : '';
+                }
                 const currentName = currentVal ? findPersonLabelByValue(currentVal) : '';
 
                 return (
@@ -4677,7 +4737,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 <span style={{ fontSize: 22 }}>🔍</span>
                                 <div>
                                     <h3 style={{ margin: 0, fontSize: 17, color: '#1e293b' }}>Wer ist dran? – Schicht wählen</h3>
-                                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Intelligente Nachrücker-Suche bei RTW-Ausfall</div>
+                                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Intelligente Nachrücker-Suche bei RTW- &amp; NEF-Ausfall</div>
                                 </div>
                             </div>
 
@@ -4700,15 +4760,34 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                 <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 600, color: '#334155' }}>
                                     Fahrzeug:
                                     <select
-                                        value={selectedWhoIsNextVehicleIdx}
-                                        onChange={e => setSelectedWhoIsNextVehicleIdx(Number(e.target.value))}
+                                        value={selectedWhoIsNextVehicleKey}
+                                        onChange={e => {
+                                            const newKey = e.target.value;
+                                            setSelectedWhoIsNextVehicleKey(newKey);
+                                            if (newKey.startsWith('nef_')) {
+                                                setSelectedWhoIsNextSlotType('assist');
+                                            } else if (selectedWhoIsNextSlotType === 'assist') {
+                                                setSelectedWhoIsNextSlotType('tag_1');
+                                            }
+                                        }}
                                         style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 13, fontWeight: 'normal' }}
                                     >
-                                        {rtwVehicles.map((veh, idx) => (
-                                            <option key={veh.id || idx} value={idx}>
-                                                {veh.name || rtwNames[idx] || `RTW ${idx + 1}`}
-                                            </option>
-                                        ))}
+                                        <optgroup label="Rettungswagen (RTW)">
+                                            {rtwVehicles.map((veh, idx) => (
+                                                <option key={`rtw_${idx}`} value={`rtw_${idx}`}>
+                                                    {veh.name || rtwNames[idx] || `RTW ${idx + 1}`}
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                        {nefVehicles.length > 0 && (
+                                            <optgroup label="Notarzteinsatzfahrzeug (NEF)">
+                                                {nefVehicles.map((veh, idx) => (
+                                                    <option key={`nef_${idx}`} value={`nef_${idx}`}>
+                                                        {veh.name || nefName || `NEF ${idx + 1}`}
+                                                    </option>
+                                                ))}
+                                            </optgroup>
+                                        )}
                                     </select>
                                 </label>
 
@@ -4717,12 +4796,21 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                     <select
                                         value={selectedWhoIsNextSlotType}
                                         onChange={e => setSelectedWhoIsNextSlotType(e.target.value)}
-                                        style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 13, fontWeight: 'normal' }}
+                                        disabled={isNefSelected}
+                                        style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 13, fontWeight: 'normal', background: isNefSelected ? '#f1f5f9' : '#fff' }}
                                     >
-                                        <option value="tag_1">Fahrzeugführer Tag (07:00 – 19:00 Uhr)</option>
-                                        <option value="nacht_1">Fahrzeugführer Nacht (19:00 – 07:00 Uhr)</option>
-                                        <option value="tag_2">Maschinist Tag (07:00 – 19:00 Uhr)</option>
-                                        <option value="nacht_2">Maschinist Nacht (19:00 – 07:00 Uhr)</option>
+                                        {isNefSelected ? (
+                                            <option value="assist">
+                                                Fahrzeugführer / NotSan (NEF – {nefShiftMode === 'tag' ? 'Tagdienst 07:00–19:00' : (nefShiftMode === 'nacht' ? 'Nachtdienst 19:00–07:00' : '24h Dienst')})
+                                            </option>
+                                        ) : (
+                                            <>
+                                                <option value="tag_1">Fahrzeugführer Tag (07:00 – 19:00 Uhr)</option>
+                                                <option value="nacht_1">Fahrzeugführer Nacht (19:00 – 07:00 Uhr)</option>
+                                                <option value="tag_2">Maschinist Tag (07:00 – 19:00 Uhr)</option>
+                                                <option value="nacht_2">Maschinist Nacht (19:00 – 07:00 Uhr)</option>
+                                            </>
+                                        )}
                                     </select>
                                 </label>
 
@@ -4747,7 +4835,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                     onClick={() => {
                                         setShowWhoIsNextSelector(false);
                                         if (targetDay) {
-                                            handleOpenWhoIsNext(slotId, targetDay.date, targetDay.dayOfYear, vehicleName, currentVal);
+                                            handleOpenWhoIsNext(slotId, targetDay.date, targetDay.dayOfYear, vehicleName, currentVal, nefShiftMode);
                                         }
                                     }}
                                     style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: '#2563eb', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}

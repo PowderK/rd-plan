@@ -49,14 +49,18 @@ export interface ReplacementCandidate {
         personalSoll: number;
         personalIst: number;
         personalDeficit: number;
+        rdTagYear: number;
+        rdNachtYear: number;
+        rdTotalYear: number;
+        daysSinceLastRd: number;
+        lastRdDate?: string;
+        prevDutyDate?: string;
+        prevDutyRdType?: string;
+        weekendShiftsCount: number;
         rtwTagYear: number;
         rtwNachtYear: number;
         rtwTotalYear: number;
         daysSinceLastRtw: number;
-        lastRtwDate?: string;
-        prevDutyDate?: string;
-        prevDutyRtwType?: string;
-        weekendShiftsCount: number;
     };
 }
 
@@ -96,9 +100,10 @@ export interface ReplacementFinderOptions {
     localRoster?: Record<string, Record<string, { value: string; type: string }>>;
     holidays?: Set<string>;
     currentAssignedValue?: string; // z.B. "p:483" (wer aktuell eingeteilt ist)
-    strictPreviousNightExclusion?: boolean; // Bei Nacht-Ausfall: Kollege mit RTW-Nacht in Vorschicht hart ausschließen (default: true)
+    strictPreviousNightExclusion?: boolean; // Bei Nacht-Ausfall: Kollege mit RTW/NEF-Nacht in Vorschicht hart ausschließen (default: true)
     weights?: Partial<ReplacementWeights>;
     personalBalances?: Record<number, PersonalBalanceInfo>; // Persönliches Soll-Ist-Konto der Kollegen (oberste Priorität!)
+    nefShiftMode?: 'tag' | 'nacht' | '24h'; // Spezifischer Modus bei NEF (default: '24h')
 }
 
 function getShiftCell(
@@ -123,11 +128,52 @@ function addDays(isoDate: string, days: number): string {
     return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Ermittelt, ob eine Schicht auf einem Rettungsfahrzeug (RTW oder NEF) stattfand.
+ * ITW ist ausdrücklich ausgenommen, da dieser in einem anderen Dienstplan geführt wird.
+ */
+function parseRdVehicleshift(typeStr: string): {
+    isRd: boolean;
+    isRtw: boolean;
+    isNef: boolean;
+    isTag: boolean;
+    isNacht: boolean;
+} {
+    const t = (typeStr || '').trim();
+    if (!t) return { isRd: false, isRtw: false, isNef: false, isTag: false, isNacht: false };
+
+    // ITW ist ausdrücklich außen vor
+    if (t.startsWith('itw')) {
+        return { isRd: false, isRtw: false, isNef: false, isTag: false, isNacht: false };
+    }
+
+    // RTW
+    if (t.startsWith('rtw')) {
+        const isTag = t.includes('_tag_');
+        const isNacht = t.includes('_nacht_');
+        return { isRd: true, isRtw: true, isNef: false, isTag, isNacht };
+    }
+
+    // NEF
+    if (t.startsWith('nef')) {
+        const isAssist = t.includes('_assist') || t.includes('assist');
+        if (isAssist) {
+            const isTagOnly = t.includes('_tag');
+            const isNachtOnly = t.includes('_nacht');
+            const isTag = isTagOnly || !isNachtOnly;
+            const isNacht = isNachtOnly || !isTagOnly;
+            return { isRd: true, isRtw: false, isNef: true, isTag, isNacht };
+        }
+    }
+
+    return { isRd: false, isRtw: false, isNef: false, isTag: false, isNacht: false };
+}
+
 export function findReplacementsForSlot(options: ReplacementFinderOptions): ReplacementFinderResult {
     const {
         slotId,
         date,
-        vehicleName = 'RTW',
+        vehicleName = 'Rettungsfahrzeug',
         personnel = [],
         roster = {},
         localRoster,
@@ -145,14 +191,40 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
         weekend: weights?.weekend ?? 15,
     };
 
-    const isTag = slotId.includes('_tag_');
-    const isNacht = slotId.includes('_nacht_');
-    const isFzF = slotId.endsWith('_1');
-    const isMa = slotId.endsWith('_2') || slotId.endsWith('_3');
+    const isNefSlot = slotId.startsWith('nef');
+    const isRtwSlot = slotId.startsWith('rtw');
 
-    const slotLabel = isFzF
-        ? `Fahrzeugführer (${isTag ? 'Tagdienst' : 'Nachtdienst'})`
-        : `Maschinist (${isTag ? 'Tagdienst' : 'Nachtdienst'})`;
+    let isTag = false;
+    let isNacht = false;
+    let isFzF = false;
+    let isMa = false;
+
+    if (isNefSlot) {
+        isFzF = true;
+        isMa = false;
+        if (options.nefShiftMode === 'tag' || slotId.includes('_tag')) {
+            isTag = true;
+            isNacht = false;
+        } else if (options.nefShiftMode === 'nacht' || slotId.includes('_nacht')) {
+            isTag = false;
+            isNacht = true;
+        } else {
+            // 24h NEF umfasst Tag- und Nachtanteil
+            isTag = true;
+            isNacht = true;
+        }
+    } else {
+        isTag = slotId.includes('_tag_');
+        isNacht = slotId.includes('_nacht_');
+        isFzF = slotId.endsWith('_1');
+        isMa = slotId.endsWith('_2') || slotId.endsWith('_3');
+    }
+
+    const slotLabel = isNefSlot
+        ? `NEF-Fahrzeugführer (${isNacht && !isTag ? 'Nachtdienst' : (isTag && !isNacht ? 'Tagdienst' : '24h-Dienst')})`
+        : (isFzF
+            ? `Fahrzeugführer (${isTag ? 'Tagdienst' : 'Nachtdienst'})`
+            : `Maschinist (${isTag ? 'Tagdienst' : 'Nachtdienst'})`);
 
     const prevDateStr = addDays(date, -1);
     const nextDateStr = addDays(date, 1);
@@ -165,8 +237,7 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
 
     const currentTargetYear = options.targetYear || parseInt(date.slice(0, 4), 10) || new Date().getFullYear();
 
-    // 1. Vorab-Analyse: Durchschnittszahlen der Abteilung im laufenden Jahr berechnen
-    const deptTotals: number[] = [];
+    // 1. Vorab-Analyse: Wochenend-Durchschnitt der Rettungsfahrzeuge (RTW + NEF)
     const deptWeTotals: number[] = [];
 
     // Datumsliste des aktuellen Jahres bis zum Schichttag
@@ -176,25 +247,29 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
     const targetDateDow = targetDateObj.getUTCDay();
     const isTargetWeekendOrHoliday = (targetDateDow === 0 || targetDateDow === 6 || holidays.has(date));
 
-    // Vorab-Erfassung der Metriken aller Personen
+    // Vorab-Erfassung der Metriken aller Personen auf Rettungsfahrzeugen (RTW + NEF gemeinsam)
     const personYearMetrics: Record<number, {
-        rtwTagYear: number;
-        rtwNachtYear: number;
-        rtwTotalYear: number;
+        rdTagYear: number;
+        rdNachtYear: number;
+        rdTotalYear: number;
         weShiftsCount: number;
-        lastRtwDate?: string;
-        daysSinceLastRtw: number;
+        lastRdDate?: string;
+        daysSinceLastRd: number;
         prevDutyDate?: string;
-        prevDutyRtwType?: string;
+        prevDutyRdType?: string;
+        prevDutyRdHadNight: boolean;
+        prevDutyRdHadTag: boolean;
     }> = {};
 
     personnel.forEach(p => {
-        let tagCount = 0;
-        let nachtCount = 0;
+        let rdTagCount = 0;
+        let rdNachtCount = 0;
         let weCount = 0;
-        let lastRtw: string | undefined = undefined;
+        let lastRd: string | undefined = undefined;
         let prevDuty: string | undefined = undefined;
-        let prevDutyRtwType: string | undefined = undefined;
+        let prevDutyRdType: string | undefined = undefined;
+        let prevDutyRdHadNight = false;
+        let prevDutyRdHadTag = false;
 
         // Iteriere rückwärts vom Vortag bis Jahresanfang
         let curIso = addDays(date, -1);
@@ -203,24 +278,25 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
             const val = (cell.value || '').trim();
             const typ = String(cell.type || '');
 
+            const shift = parseRdVehicleshift(typ);
+
             // Erfassung des vorangegangenen Wachdienstes (Vorschicht)
             if (!prevDuty && val === 'V') {
                 prevDuty = curIso;
-                if (/^rtw\d+_(tag|nacht)/.test(typ)) {
-                    prevDutyRtwType = typ;
+                if (shift.isRd) {
+                    prevDutyRdType = typ;
+                    prevDutyRdHadNight = shift.isNacht;
+                    prevDutyRdHadTag = shift.isTag;
                 }
             }
 
-            // Erfassung von RTW-Schichten
-            const isRtwTag = typ.includes('_tag_') && typ.startsWith('rtw');
-            const isRtwNacht = typ.includes('_nacht_') && typ.startsWith('rtw');
-
-            if (isRtwTag || isRtwNacht) {
-                if (!lastRtw) {
-                    lastRtw = curIso;
+            // Erfassung von Rettungsfahrzeug-Schichten (RTW & NEF gemeinsam)
+            if (shift.isRd) {
+                if (!lastRd) {
+                    lastRd = curIso;
                 }
-                if (isRtwTag) tagCount++;
-                if (isRtwNacht) nachtCount++;
+                if (shift.isTag) rdTagCount++;
+                if (shift.isNacht) rdNachtCount++;
 
                 const curDow = new Date(curIso + 'T00:00:00Z').getUTCDay();
                 if (curDow === 0 || curDow === 6 || holidays.has(curIso)) {
@@ -232,29 +308,28 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
         }
 
         let daysSince = 999;
-        if (lastRtw) {
-            const lastMs = new Date(lastRtw + 'T00:00:00Z').getTime();
+        if (lastRd) {
+            const lastMs = new Date(lastRd + 'T00:00:00Z').getTime();
             const targetMs = targetDateObj.getTime();
             daysSince = Math.max(1, Math.round((targetMs - lastMs) / (1000 * 60 * 60 * 24)));
         }
 
-        const totalRtw = tagCount + nachtCount;
         personYearMetrics[p.id] = {
-            rtwTagYear: tagCount,
-            rtwNachtYear: nachtCount,
-            rtwTotalYear: totalRtw,
+            rdTagYear: rdTagCount,
+            rdNachtYear: rdNachtCount,
+            rdTotalYear: rdTagCount + rdNachtCount,
             weShiftsCount: weCount,
-            lastRtwDate: lastRtw,
-            daysSinceLastRtw: daysSince,
+            lastRdDate: lastRd,
+            daysSinceLastRd: daysSince,
             prevDutyDate: prevDuty,
-            prevDutyRtwType: prevDutyRtwType
+            prevDutyRdType,
+            prevDutyRdHadNight,
+            prevDutyRdHadTag
         };
 
-        deptTotals.push(totalRtw);
         deptWeTotals.push(weCount);
     });
 
-    const avgDeptRtw = deptTotals.length > 0 ? (deptTotals.reduce((a, b) => a + b, 0) / deptTotals.length) : 0;
     const avgDeptWe = deptWeTotals.length > 0 ? (deptWeTotals.reduce((a, b) => a + b, 0) / deptWeTotals.length) : 0;
 
     const candidates: ReplacementCandidate[] = [];
@@ -291,8 +366,17 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
             continue;
         }
 
-        // Muss-Filter 2: Qualifikation (bei Fahrzeugführer ist FzF RTW zwingend erforderlich)
-        if (isFzF && !p.fahrzeugfuehrer) {
+        // Muss-Filter 2: Qualifikation (RTW FzF erfordert fahrzeugfuehrer; NEF erfordert nef)
+        if (isNefSlot) {
+            if (!p.nef) {
+                excluded.push({
+                    personId: p.id,
+                    displayName,
+                    reason: 'Fehlende Qualifikation: Keine NEF-Berechtigung'
+                });
+                continue;
+            }
+        } else if (isFzF && !p.fahrzeugfuehrer) {
             excluded.push({
                 personId: p.id,
                 displayName,
@@ -303,7 +387,8 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
 
         // Muss-Filter 3: Bereits auf einem anderen Fahrzeug-Slot am selben Tag gebunden
         if (typeToday && (typeToday.startsWith('rtw') || typeToday.startsWith('nef') || typeToday.startsWith('itw'))) {
-            if (typeToday !== slotId) {
+            const isSameNefLegacy = isNefSlot && ((slotId === 'nef1_assist' && typeToday === 'nef_assist') || (slotId === 'nef_assist' && typeToday === 'nef1_assist'));
+            if (typeToday !== slotId && !isSameNefLegacy) {
                 excluded.push({
                     personId: p.id,
                     displayName,
@@ -313,15 +398,17 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
             }
         }
 
-        // Muss-Filter 4: 11h ArbZG Ruhezeitprüfung
+        // Muss-Filter 4: 11h ArbZG Ruhezeitprüfung (über RTW & NEF)
         if (isTag) {
             const prevCell = getShiftCell(roster, localRoster, p.id, prevDateStr);
             const prevType = String(prevCell.type || '');
-            if (prevType.includes('_nacht_') || /^rtw\d+_nacht/.test(prevType)) {
+            const prevShift = parseRdVehicleshift(prevType);
+            if (prevShift.isNacht) {
+                const vehLabel = prevShift.isNef ? 'NEF' : 'RTW';
                 excluded.push({
                     personId: p.id,
                     displayName,
-                    reason: 'Ruhezeitverletzung (11h ArbZG): Hatte in der Vornacht Nachtschicht bis 07:00 Uhr'
+                    reason: `Ruhezeitverletzung (11h ArbZG): Hatte in der Vornacht ${vehLabel}-Nachtdienst bis 07:00 Uhr`
                 });
                 continue;
             }
@@ -330,26 +417,29 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
         if (isNacht) {
             const nextCell = getShiftCell(roster, localRoster, p.id, nextDateStr);
             const nextType = String(nextCell.type || '');
-            if (nextType.includes('_tag_') || /^rtw\d+_tag/.test(nextType)) {
+            const nextShift = parseRdVehicleshift(nextType);
+            if (nextShift.isTag) {
+                const vehLabel = nextShift.isNef ? 'NEF' : 'RTW';
                 excluded.push({
                     personId: p.id,
                     displayName,
-                    reason: 'Ruhezeitverletzung (11h ArbZG): Hat am Folgetag direkt Tagschicht ab 07:00 Uhr'
+                    reason: `Ruhezeitverletzung (11h ArbZG): Hat am Folgetag direkt ${vehLabel}-Tagdienst ab 07:00 Uhr`
                 });
                 continue;
             }
         }
 
-        // Muss-Filter 5: Keine RTW-Nachtschicht am vorangegangenen Wachdienst (Vorschicht) bei Nacht-Ausfall
-        // (Bei 24h-Diensten soll niemand zwei Wachdienste in Folge eine RTW-Nacht fahren müssen)
+        // Muss-Filter 5: Keine Rettungsfahrzeug-Nachtschicht am vorangegangenen Wachdienst (Vorschicht) bei Nacht-Ausfall
+        // (Bei 24h-Diensten soll niemand zwei Wachdienste in Folge eine RTW- oder NEF-Nacht fahren müssen)
         if (isNacht && strictPreviousNightExclusion) {
             const m = personYearMetrics[p.id];
-            if (m.prevDutyRtwType && m.prevDutyRtwType.includes('_nacht_')) {
+            if (m.prevDutyRdHadNight) {
                 const prevDateFormatted = m.prevDutyDate ? m.prevDutyDate : 'letzter Wachdienst';
+                const vehLabel = m.prevDutyRdType?.startsWith('nef') ? 'NEF' : 'RTW';
                 excluded.push({
                     personId: p.id,
                     displayName,
-                    reason: `Hatte am vorangegangenen Wachdienst (${prevDateFormatted}) bereits RTW-Nachtschicht`
+                    reason: `Hatte am vorangegangenen Wachdienst (${prevDateFormatted}) bereits ${vehLabel}-Nachtschicht`
                 });
                 continue;
             }
@@ -387,72 +477,82 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
             });
         }
 
-        // DIMENSION 2: Tag/Nacht-Balance passend zur Schichtart (0 bis maxWeights.shiftTypeFit)
+        // DIMENSION 2: Tag/Nacht-Balance passend zur Schichtart auf Rettungsfahrzeugen (RTW + NEF)
         let rawTypeRatio = 0.5;
-        if (isNacht) {
-            const diff = m.rtwTagYear - m.rtwNachtYear;
+        if (isNacht && !isTag) {
+            const diff = m.rdTagYear - m.rdNachtYear;
             rawTypeRatio = Math.max(0, Math.min(1, (12 + diff * 3) / 25));
             const score = Math.round(rawTypeRatio * maxWeights.shiftTypeFit);
             if (diff >= 2) {
                 badges.push({
                     type: 'bonus',
-                    text: `✓ Tag/Nacht-Balance: ${m.rtwTagYear} Tag / nur ${m.rtwNachtYear} Nacht (benötigt Nachtdienst!) (+${score} Pkt.)`
+                    text: `✓ Tag/Nacht-Balance: ${m.rdTagYear} Tag / nur ${m.rdNachtYear} Nacht auf Rettungsfahrzeugen (RTW/NEF) (+${score} Pkt.)`
                 });
             } else if (diff <= -2) {
                 badges.push({
                     type: 'penalty',
-                    text: `⚠ Tag/Nacht-Balance: Bereits starkes Nacht-Übergewicht (${m.rtwTagYear}T / ${m.rtwNachtYear}N) (${score} Pkt.)`
+                    text: `⚠ Tag/Nacht-Balance: Starkes Nacht-Übergewicht (${m.rdTagYear}T / ${m.rdNachtYear}N) (${score} Pkt.)`
                 });
             } else {
                 badges.push({
                     type: 'neutral',
-                    text: `ℹ Tag/Nacht-Verhältnis: Ausgeglichen (${m.rtwTagYear}T / ${m.rtwNachtYear}N, +${score} Pkt.)`
+                    text: `ℹ Tag/Nacht-Verhältnis: Ausgeglichen (${m.rdTagYear}T / ${m.rdNachtYear}N, +${score} Pkt.)`
                 });
             }
-        } else if (isTag) {
-            const diff = m.rtwNachtYear - m.rtwTagYear;
+        } else if (isTag && !isNacht) {
+            const diff = m.rdNachtYear - m.rdTagYear;
             rawTypeRatio = Math.max(0, Math.min(1, (12 + diff * 3) / 25));
             const score = Math.round(rawTypeRatio * maxWeights.shiftTypeFit);
             if (diff >= 2) {
                 badges.push({
                     type: 'bonus',
-                    text: `✓ Tag/Nacht-Balance: ${m.rtwNachtYear} Nacht / nur ${m.rtwTagYear} Tag (benötigt Tagdienst!) (+${score} Pkt.)`
+                    text: `✓ Tag/Nacht-Balance: ${m.rdNachtYear} Nacht / nur ${m.rdTagYear} Tag auf Rettungsfahrzeugen (RTW/NEF) (+${score} Pkt.)`
                 });
             } else if (diff <= -2) {
                 badges.push({
                     type: 'penalty',
-                    text: `⚠ Tag/Nacht-Balance: Bereits starkes Tag-Übergewicht (${m.rtwTagYear}T / ${m.rtwNachtYear}N) (${score} Pkt.)`
+                    text: `⚠ Tag/Nacht-Balance: Starkes Tag-Übergewicht (${m.rdTagYear}T / ${m.rdNachtYear}N) (${score} Pkt.)`
                 });
             } else {
                 badges.push({
                     type: 'neutral',
-                    text: `ℹ Tag/Nacht-Verhältnis: Ausgeglichen (${m.rtwTagYear}T / ${m.rtwNachtYear}N, +${score} Pkt.)`
+                    text: `ℹ Tag/Nacht-Verhältnis: Ausgeglichen (${m.rdTagYear}T / ${m.rdNachtYear}N, +${score} Pkt.)`
                 });
             }
+        } else {
+            // 24h-Dienst (beide Anteile)
+            rawTypeRatio = 0.6;
+            const score = Math.round(rawTypeRatio * maxWeights.shiftTypeFit);
+            badges.push({
+                type: 'neutral',
+                text: `ℹ 24h-Dienst: Bisher ${m.rdTagYear}T / ${m.rdNachtYear}N auf Rettungsfahrzeugen (+${score} Pkt.)`
+            });
         }
         const shiftTypeFitScore = Math.round(rawTypeRatio * maxWeights.shiftTypeFit);
 
         // DIMENSION 3: Vorschicht-Belastung / Erholungsabstand (0 bis maxWeights.previousDuty)
         let rawDutyRatio = 0.75;
-        if (isNacht && m.prevDutyRtwType && m.prevDutyRtwType.includes('_nacht_')) {
+        if (isNacht && m.prevDutyRdHadNight) {
             rawDutyRatio = 0; // Starker Abzug bei aktivierter Toleranz
             const score = Math.round(rawDutyRatio * maxWeights.previousDuty);
+            const vehLabel = m.prevDutyRdType?.startsWith('nef') ? 'NEF' : 'RTW';
             badges.push({
                 type: 'penalty',
-                text: `⚠ Vorschicht (${m.prevDutyDate}): Hatte bereits RTW-Nacht! (${score} Pkt.)`
+                text: `⚠ Vorschicht (${m.prevDutyDate}): Hatte bereits ${vehLabel}-Nachtdienst! (${score} Pkt.)`
             });
-        } else if (isTag && m.prevDutyRtwType && m.prevDutyRtwType.includes('_tag_')) {
+        } else if (isTag && !isNacht && m.prevDutyRdHadTag) {
             rawDutyRatio = 0.25;
             const score = Math.round(rawDutyRatio * maxWeights.previousDuty);
+            const vehLabel = m.prevDutyRdType?.startsWith('nef') ? 'NEF' : 'RTW';
             badges.push({
                 type: 'penalty',
-                text: `⚠ Vorschicht (${m.prevDutyDate}): Hatte bereits RTW-Tag (${score} Pkt.)`
+                text: `⚠ Vorschicht (${m.prevDutyDate}): Hatte bereits ${vehLabel}-Tagdienst (${score} Pkt.)`
             });
         } else {
             rawDutyRatio = 1.0;
             const score = Math.round(rawDutyRatio * maxWeights.previousDuty);
             const prevText = m.prevDutyDate
-                ? `am ${m.prevDutyDate} kein ${isNacht ? 'Nacht' : 'Tag'}dienst`
+                ? `am ${m.prevDutyDate} kein Rettungsfahrzeug`
                 : 'erholt';
             badges.push({
                 type: 'bonus',
@@ -461,36 +561,36 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
         }
         const previousDutyScore = Math.round(rawDutyRatio * maxWeights.previousDuty);
 
-        // DIMENSION 4: RTW-Abstinenz / Rotation (0 bis maxWeights.abstinence)
+        // DIMENSION 4: Abstinenz auf Rettungsfahrzeugen / Rotation (0 bis maxWeights.abstinence)
         let rawAbstinenceRatio = 0.33;
-        if (m.daysSinceLastRtw >= 30) {
+        if (m.daysSinceLastRd >= 30) {
             rawAbstinenceRatio = 1.0;
             const score = Math.round(rawAbstinenceRatio * maxWeights.abstinence);
-            const daysLabel = m.daysSinceLastRtw >= 999 ? 'über 60' : `${m.daysSinceLastRtw}`;
+            const daysLabel = m.daysSinceLastRd >= 999 ? 'über 60' : `${m.daysSinceLastRd}`;
             badges.push({
                 type: 'bonus',
-                text: `✓ RTW-Abstinenz: Zuletzt RTW vor ${daysLabel} Tagen (+${score} Pkt.)`
+                text: `✓ RD-Abstinenz: Zuletzt auf Rettungsfahrzeug (RTW/NEF) vor ${daysLabel} Tagen (+${score} Pkt.)`
             });
-        } else if (m.daysSinceLastRtw >= 15) {
+        } else if (m.daysSinceLastRd >= 15) {
             rawAbstinenceRatio = 0.67;
             const score = Math.round(rawAbstinenceRatio * maxWeights.abstinence);
             badges.push({
                 type: 'bonus',
-                text: `✓ RTW-Abstinenz: Zuletzt RTW vor ${m.daysSinceLastRtw} Tagen (+${score} Pkt.)`
+                text: `✓ RD-Abstinenz: Zuletzt auf Rettungsfahrzeug vor ${m.daysSinceLastRd} Tagen (+${score} Pkt.)`
             });
-        } else if (m.daysSinceLastRtw >= 7) {
+        } else if (m.daysSinceLastRd >= 7) {
             rawAbstinenceRatio = 0.33;
             const score = Math.round(rawAbstinenceRatio * maxWeights.abstinence);
             badges.push({
                 type: 'neutral',
-                text: `ℹ RTW-Abstinenz: Zuletzt vor ${m.daysSinceLastRtw} Tagen (+${score} Pkt.)`
+                text: `ℹ RD-Abstinenz: Zuletzt vor ${m.daysSinceLastRd} Tagen (+${score} Pkt.)`
             });
         } else {
             rawAbstinenceRatio = 0;
             const score = Math.round(rawAbstinenceRatio * maxWeights.abstinence);
             badges.push({
                 type: 'penalty',
-                text: `⚠ Kürzlich gefahren: Zuletzt vor erst ${m.daysSinceLastRtw} Tagen auf RTW (${score} Pkt.)`
+                text: `⚠ Kürzlich gefahren: Zuletzt vor erst ${m.daysSinceLastRd} Tagen auf RTW/NEF (${score} Pkt.)`
             });
         }
         const abstinenceScore = Math.round(rawAbstinenceRatio * maxWeights.abstinence);
@@ -504,21 +604,21 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
                 const score = Math.round(rawWeekendRatio * maxWeights.weekend);
                 badges.push({
                     type: 'bonus',
-                    text: `✓ Wochenende: Bisher wenige WE-Dienste (${m.weShiftsCount} Schichten) (+${score} Pkt.)`
+                    text: `✓ Wochenende: Bisher wenige WE-Dienste auf Rettungsfahrzeugen (${m.weShiftsCount} Schichten) (+${score} Pkt.)`
                 });
             } else if (weDiff <= -1) {
                 rawWeekendRatio = Math.max(0, (8 + weDiff * 3) / 15);
                 const score = Math.round(rawWeekendRatio * maxWeights.weekend);
                 badges.push({
                     type: 'penalty',
-                    text: `⚠ Wochenende: Bisher viele WE-Dienste (${m.weShiftsCount} Schichten) (${score} Pkt.)`
+                    text: `⚠ Wochenende: Bisher viele WE-Dienste auf Rettungsfahrzeugen (${m.weShiftsCount} Schichten) (${score} Pkt.)`
                 });
             } else {
                 rawWeekendRatio = 0.53;
                 const score = Math.round(rawWeekendRatio * maxWeights.weekend);
                 badges.push({
                     type: 'neutral',
-                    text: `ℹ Wochenende: Durchschnittlich (${m.weShiftsCount} WE-Schichten, +${score} Pkt.)`
+                    text: `ℹ Wochenende: Durchschnittlich (${m.weShiftsCount} WE-Schichten auf RTW/NEF, +${score} Pkt.)`
                 });
             }
         }
@@ -544,14 +644,18 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
                 personalSoll,
                 personalIst,
                 personalDeficit,
-                rtwTagYear: m.rtwTagYear,
-                rtwNachtYear: m.rtwNachtYear,
-                rtwTotalYear: m.rtwTotalYear,
-                daysSinceLastRtw: m.daysSinceLastRtw,
-                lastRtwDate: m.lastRtwDate,
+                rdTagYear: m.rdTagYear,
+                rdNachtYear: m.rdNachtYear,
+                rdTotalYear: m.rdTotalYear,
+                daysSinceLastRd: m.daysSinceLastRd,
+                lastRdDate: m.lastRdDate,
                 prevDutyDate: m.prevDutyDate,
-                prevDutyRtwType: m.prevDutyRtwType,
-                weekendShiftsCount: m.weShiftsCount
+                prevDutyRdType: m.prevDutyRdType,
+                weekendShiftsCount: m.weShiftsCount,
+                rtwTagYear: m.rdTagYear,
+                rtwNachtYear: m.rdNachtYear,
+                rtwTotalYear: m.rdTotalYear,
+                daysSinceLastRtw: m.daysSinceLastRd
             }
         });
     }

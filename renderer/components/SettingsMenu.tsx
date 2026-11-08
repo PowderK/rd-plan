@@ -1974,9 +1974,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
 
             {/* „Wer ist dran?“-Nachrücker-Suche */}
             <div style={{ marginTop: 28, borderTop: '1px solid #eee', paddingTop: 16 }}>
-              <h3>„Wer ist dran?“-Nachrücker-Suche (RTW-Ausfall)</h3>
+              <h3>„Wer ist dran?“-Nachrücker-Suche (RTW- &amp; NEF-Ausfall)</h3>
               <p style={{ fontSize: 14, color: '#666', marginBottom: 12 }}>
-                Konfigurieren Sie die intelligente Nachbesetzung bei RTW-Ausfällen für die <strong>{selectedDepartment}</strong>.
+                Konfigurieren Sie die intelligente Nachbesetzung bei Ausfällen auf Rettungsfahrzeugen (RTW &amp; NEF) für die <strong>{selectedDepartment}</strong>.
               </p>
 
               <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, maxWidth: 680 }}>
@@ -2003,9 +2003,9 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                           style={{ marginTop: 2 }}
                         />
                         <span>
-                          <strong>Harter Ausschluss bei RTW-Nachtschicht im vorherigen Wachdienst</strong><br />
+                          <strong>Harter Ausschluss bei RTW-/NEF-Nachtschicht im vorherigen Wachdienst</strong><br />
                           <span style={{ color: '#64748b' }}>
-                            Schließt Kollegen bei zu besetzender Nachtschicht komplett aus, wenn sie am vorangegangenen 24h-Wachdienst bereits RTW-Nachtschicht gefahren sind (auch wenn der Dienst &gt; 11h zurückliegt).
+                            Schließt Kollegen bei zu besetzender Nachtschicht komplett aus, wenn sie am vorangegangenen 24h-Wachdienst bereits RTW- oder NEF-Nachtschicht gefahren sind (auch wenn der Dienst &gt; 11h zurückliegt).
                           </span>
                         </span>
                       </label>
@@ -2046,7 +2046,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                           style={{ width: 70, padding: '3px 6px', textAlign: 'right' }}
                         />
 
-                        <span>4. RTW-Abstinenz (Tage seit letztem Einsatz):</span>
+                        <span>4. RD-Abstinenz (Tage seit letztem RTW/NEF-Einsatz):</span>
                         <input
                           type="number"
                           min={0}

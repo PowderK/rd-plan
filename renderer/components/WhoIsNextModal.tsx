@@ -45,7 +45,9 @@ export const WhoIsNextModal: React.FC<WhoIsNextModalProps> = ({
         }
     })();
 
-    const shiftTime = result.isTag ? '07:00 – 19:00 Uhr (12h)' : '19:00 – 07:00 Uhr (12h)';
+    const shiftTime = (result.isTag && result.isNacht)
+        ? '24h Dienst'
+        : (result.isTag ? '07:00 – 19:00 Uhr (12h)' : '19:00 – 07:00 Uhr (12h)');
 
     return (
         <div style={{
