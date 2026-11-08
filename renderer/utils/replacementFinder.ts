@@ -16,6 +16,14 @@ export interface ReplacementBadge {
     text: string;
 }
 
+export interface ReplacementWeights {
+    shiftBalance: number; // default: 25
+    shiftTypeFit: number; // default: 25
+    previousDuty: number; // default: 20
+    abstinence: number;   // default: 15
+    weekend: number;      // default: 15
+}
+
 export interface ReplacementCandidate {
     personId: number;
     displayName: string;
@@ -76,6 +84,8 @@ export interface ReplacementFinderOptions {
     localRoster?: Record<string, Record<string, { value: string; type: string }>>;
     holidays?: Set<string>;
     currentAssignedValue?: string; // z.B. "p:483" (wer aktuell eingeteilt ist)
+    strictPreviousNightExclusion?: boolean; // Bei Nacht-Ausfall: Kollege mit RTW-Nacht in Vorschicht hart ausschließen (default: true)
+    weights?: Partial<ReplacementWeights>;
 }
 
 function getShiftCell(
@@ -109,8 +119,18 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
         roster = {},
         localRoster,
         holidays = new Set<string>(),
-        currentAssignedValue
+        currentAssignedValue,
+        strictPreviousNightExclusion = true,
+        weights
     } = options;
+
+    const maxWeights: ReplacementWeights = {
+        shiftBalance: weights?.shiftBalance ?? 25,
+        shiftTypeFit: weights?.shiftTypeFit ?? 25,
+        previousDuty: weights?.previousDuty ?? 20,
+        abstinence: weights?.abstinence ?? 15,
+        weekend: weights?.weekend ?? 15,
+    };
 
     const isTag = slotId.includes('_tag_');
     const isNacht = slotId.includes('_nacht_');
@@ -307,14 +327,30 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
             }
         }
 
+        // Muss-Filter 5: Keine RTW-Nachtschicht am vorangegangenen Wachdienst (Vorschicht) bei Nacht-Ausfall
+        // (Bei 24h-Diensten soll niemand zwei Wachdienste in Folge eine RTW-Nacht fahren müssen)
+        if (isNacht && strictPreviousNightExclusion) {
+            const m = personYearMetrics[p.id];
+            if (m.prevDutyRtwType && m.prevDutyRtwType.includes('_nacht_')) {
+                const prevDateFormatted = m.prevDutyDate ? m.prevDutyDate : 'letzter Wachdienst';
+                excluded.push({
+                    personId: p.id,
+                    displayName,
+                    reason: `Hatte am vorangegangenen Wachdienst (${prevDateFormatted}) bereits RTW-Nachtschicht`
+                });
+                continue;
+            }
+        }
+
         // --- STUFE 2: AUSGEWOGENES PUNKTESYSTEM (0 - 100 PUNKTE) ---
         const m = personYearMetrics[p.id];
         const badges: ReplacementBadge[] = [];
 
-        // DIMENSION 1: Schichtsaldo / Auslastung (max. 25 Punkte, Basis 12 Pkt.)
+        // DIMENSION 1: Schichtsaldo / Auslastung (0 bis maxWeights.shiftBalance)
         // Vergleicht bisherige RTW-Gesamtschichten mit dem Wachabteilungs-Schnitt
         const balanceDelta = Math.round(avgDeptRtw - m.rtwTotalYear);
-        let shiftBalanceScore = Math.max(0, Math.min(25, 12 + balanceDelta * 3));
+        const normBalanceRatio = Math.max(0, Math.min(1, (12 + balanceDelta * 3) / 25));
+        const shiftBalanceScore = Math.round(normBalanceRatio * maxWeights.shiftBalance);
 
         if (balanceDelta >= 2) {
             badges.push({
@@ -329,132 +365,146 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
         } else {
             badges.push({
                 type: 'neutral',
-                text: `ℹ Schichtkonto: Ausgeglichen (${m.rtwTotalYear} RTW-Schichten bisher)`
+                text: `ℹ Schichtkonto: Ausgeglichen (${m.rtwTotalYear} RTW-Schichten bisher, +${shiftBalanceScore} Pkt.)`
             });
         }
 
-        // DIMENSION 2: Tag/Nacht-Balance passend zur Schichtart (max. 25 Punkte, Basis 12 Pkt.)
-        let shiftTypeFitScore = 12;
+        // DIMENSION 2: Tag/Nacht-Balance passend zur Schichtart (0 bis maxWeights.shiftTypeFit)
+        let rawTypeRatio = 0.5;
         if (isNacht) {
             const diff = m.rtwTagYear - m.rtwNachtYear;
+            rawTypeRatio = Math.max(0, Math.min(1, (12 + diff * 3) / 25));
+            const score = Math.round(rawTypeRatio * maxWeights.shiftTypeFit);
             if (diff >= 2) {
-                shiftTypeFitScore = Math.min(25, 12 + diff * 3);
                 badges.push({
                     type: 'bonus',
-                    text: `✓ Tag/Nacht-Balance: ${m.rtwTagYear} Tag / nur ${m.rtwNachtYear} Nacht (benötigt Nachtdienst!) (+${shiftTypeFitScore} Pkt.)`
+                    text: `✓ Tag/Nacht-Balance: ${m.rtwTagYear} Tag / nur ${m.rtwNachtYear} Nacht (benötigt Nachtdienst!) (+${score} Pkt.)`
                 });
             } else if (diff <= -2) {
-                shiftTypeFitScore = Math.max(0, 12 + diff * 3);
                 badges.push({
                     type: 'penalty',
-                    text: `⚠ Tag/Nacht-Balance: Bereits starkes Nacht-Übergewicht (${m.rtwTagYear}T / ${m.rtwNachtYear}N) (${shiftTypeFitScore} Pkt.)`
+                    text: `⚠ Tag/Nacht-Balance: Bereits starkes Nacht-Übergewicht (${m.rtwTagYear}T / ${m.rtwNachtYear}N) (${score} Pkt.)`
                 });
             } else {
                 badges.push({
                     type: 'neutral',
-                    text: `ℹ Tag/Nacht-Verhältnis: Ausgeglichen (${m.rtwTagYear}T / ${m.rtwNachtYear}N)`
+                    text: `ℹ Tag/Nacht-Verhältnis: Ausgeglichen (${m.rtwTagYear}T / ${m.rtwNachtYear}N, +${score} Pkt.)`
                 });
             }
         } else if (isTag) {
             const diff = m.rtwNachtYear - m.rtwTagYear;
+            rawTypeRatio = Math.max(0, Math.min(1, (12 + diff * 3) / 25));
+            const score = Math.round(rawTypeRatio * maxWeights.shiftTypeFit);
             if (diff >= 2) {
-                shiftTypeFitScore = Math.min(25, 12 + diff * 3);
                 badges.push({
                     type: 'bonus',
-                    text: `✓ Tag/Nacht-Balance: ${m.rtwNachtYear} Nacht / nur ${m.rtwTagYear} Tag (benötigt Tagdienst!) (+${shiftTypeFitScore} Pkt.)`
+                    text: `✓ Tag/Nacht-Balance: ${m.rtwNachtYear} Nacht / nur ${m.rtwTagYear} Tag (benötigt Tagdienst!) (+${score} Pkt.)`
                 });
             } else if (diff <= -2) {
-                shiftTypeFitScore = Math.max(0, 12 + diff * 3);
                 badges.push({
                     type: 'penalty',
-                    text: `⚠ Tag/Nacht-Balance: Bereits starkes Tag-Übergewicht (${m.rtwTagYear}T / ${m.rtwNachtYear}N) (${shiftTypeFitScore} Pkt.)`
+                    text: `⚠ Tag/Nacht-Balance: Bereits starkes Tag-Übergewicht (${m.rtwTagYear}T / ${m.rtwNachtYear}N) (${score} Pkt.)`
                 });
             } else {
                 badges.push({
                     type: 'neutral',
-                    text: `ℹ Tag/Nacht-Verhältnis: Ausgeglichen (${m.rtwTagYear}T / ${m.rtwNachtYear}N)`
+                    text: `ℹ Tag/Nacht-Verhältnis: Ausgeglichen (${m.rtwTagYear}T / ${m.rtwNachtYear}N, +${score} Pkt.)`
                 });
             }
         }
+        const shiftTypeFitScore = Math.round(rawTypeRatio * maxWeights.shiftTypeFit);
 
-        // DIMENSION 3: Vorschicht-Belastung / Erholungsabstand (max. 20 Punkte)
-        let previousDutyScore = 15;
+        // DIMENSION 3: Vorschicht-Belastung / Erholungsabstand (0 bis maxWeights.previousDuty)
+        let rawDutyRatio = 0.75;
         if (isNacht && m.prevDutyRtwType && m.prevDutyRtwType.includes('_nacht_')) {
-            previousDutyScore = 0; // Starker Abzug!
+            rawDutyRatio = 0; // Starker Abzug bei aktivierter Toleranz
+            const score = Math.round(rawDutyRatio * maxWeights.previousDuty);
             badges.push({
                 type: 'penalty',
-                text: `⚠ Vorschicht (${m.prevDutyDate}): Hatte bereits RTW-Nacht! (Kettenvermeidung: -15 Pkt.)`
+                text: `⚠ Vorschicht (${m.prevDutyDate}): Hatte bereits RTW-Nacht! (${score} Pkt.)`
             });
         } else if (isTag && m.prevDutyRtwType && m.prevDutyRtwType.includes('_tag_')) {
-            previousDutyScore = 5;
+            rawDutyRatio = 0.25;
+            const score = Math.round(rawDutyRatio * maxWeights.previousDuty);
             badges.push({
                 type: 'penalty',
-                text: `⚠ Vorschicht (${m.prevDutyDate}): Hatte bereits RTW-Tag (-10 Pkt.)`
+                text: `⚠ Vorschicht (${m.prevDutyDate}): Hatte bereits RTW-Tag (${score} Pkt.)`
             });
         } else {
-            previousDutyScore = 20;
+            rawDutyRatio = 1.0;
+            const score = Math.round(rawDutyRatio * maxWeights.previousDuty);
             const prevText = m.prevDutyDate
                 ? `am ${m.prevDutyDate} kein ${isNacht ? 'Nacht' : 'Tag'}dienst`
                 : 'erholt';
             badges.push({
                 type: 'bonus',
-                text: `✓ Vorschicht: Erholt (${prevText}) (+20 Pkt.)`
+                text: `✓ Vorschicht: Erholt (${prevText}) (+${score} Pkt.)`
             });
         }
+        const previousDutyScore = Math.round(rawDutyRatio * maxWeights.previousDuty);
 
-        // DIMENSION 4: RTW-Abstinenz / Rotation (max. 15 Punkte)
-        let abstinenceScore = 5;
+        // DIMENSION 4: RTW-Abstinenz / Rotation (0 bis maxWeights.abstinence)
+        let rawAbstinenceRatio = 0.33;
         if (m.daysSinceLastRtw >= 30) {
-            abstinenceScore = 15;
+            rawAbstinenceRatio = 1.0;
+            const score = Math.round(rawAbstinenceRatio * maxWeights.abstinence);
             const daysLabel = m.daysSinceLastRtw >= 999 ? 'über 60' : `${m.daysSinceLastRtw}`;
             badges.push({
                 type: 'bonus',
-                text: `✓ RTW-Abstinenz: Zuletzt RTW vor ${daysLabel} Tagen (+15 Pkt.)`
+                text: `✓ RTW-Abstinenz: Zuletzt RTW vor ${daysLabel} Tagen (+${score} Pkt.)`
             });
         } else if (m.daysSinceLastRtw >= 15) {
-            abstinenceScore = 10;
+            rawAbstinenceRatio = 0.67;
+            const score = Math.round(rawAbstinenceRatio * maxWeights.abstinence);
             badges.push({
                 type: 'bonus',
-                text: `✓ RTW-Abstinenz: Zuletzt RTW vor ${m.daysSinceLastRtw} Tagen (+10 Pkt.)`
+                text: `✓ RTW-Abstinenz: Zuletzt RTW vor ${m.daysSinceLastRtw} Tagen (+${score} Pkt.)`
             });
         } else if (m.daysSinceLastRtw >= 7) {
-            abstinenceScore = 5;
+            rawAbstinenceRatio = 0.33;
+            const score = Math.round(rawAbstinenceRatio * maxWeights.abstinence);
             badges.push({
                 type: 'neutral',
-                text: `ℹ RTW-Abstinenz: Zuletzt vor ${m.daysSinceLastRtw} Tagen (+5 Pkt.)`
+                text: `ℹ RTW-Abstinenz: Zuletzt vor ${m.daysSinceLastRtw} Tagen (+${score} Pkt.)`
             });
         } else {
-            abstinenceScore = 0;
+            rawAbstinenceRatio = 0;
+            const score = Math.round(rawAbstinenceRatio * maxWeights.abstinence);
             badges.push({
                 type: 'penalty',
-                text: `⚠ Kürzlich gefahren: Zuletzt vor erst ${m.daysSinceLastRtw} Tagen auf RTW (0 Pkt.)`
+                text: `⚠ Kürzlich gefahren: Zuletzt vor erst ${m.daysSinceLastRtw} Tagen auf RTW (${score} Pkt.)`
             });
         }
+        const abstinenceScore = Math.round(rawAbstinenceRatio * maxWeights.abstinence);
 
-        // DIMENSION 5: Wochenend- / Feiertags-Ausgleich (max. 15 Punkte)
-        let weekendScore = 10;
+        // DIMENSION 5: Wochenend- / Feiertags-Ausgleich (0 bis maxWeights.weekend)
+        let rawWeekendRatio = 0.67;
         if (isTargetWeekendOrHoliday) {
             const weDiff = Math.round(avgDeptWe - m.weShiftsCount);
             if (weDiff >= 1) {
-                weekendScore = Math.min(15, 8 + weDiff * 3);
+                rawWeekendRatio = Math.min(1.0, (8 + weDiff * 3) / 15);
+                const score = Math.round(rawWeekendRatio * maxWeights.weekend);
                 badges.push({
                     type: 'bonus',
-                    text: `✓ Wochenende: Bisher wenige WE-Dienste (${m.weShiftsCount} Schichten) (+${weekendScore} Pkt.)`
+                    text: `✓ Wochenende: Bisher wenige WE-Dienste (${m.weShiftsCount} Schichten) (+${score} Pkt.)`
                 });
             } else if (weDiff <= -1) {
-                weekendScore = Math.max(0, 8 + weDiff * 3);
+                rawWeekendRatio = Math.max(0, (8 + weDiff * 3) / 15);
+                const score = Math.round(rawWeekendRatio * maxWeights.weekend);
                 badges.push({
                     type: 'penalty',
-                    text: `⚠ Wochenende: Bisher viele WE-Dienste (${m.weShiftsCount} Schichten) (${weekendScore} Pkt.)`
+                    text: `⚠ Wochenende: Bisher viele WE-Dienste (${m.weShiftsCount} Schichten) (${score} Pkt.)`
                 });
             } else {
-                weekendScore = 8;
+                rawWeekendRatio = 0.53;
+                const score = Math.round(rawWeekendRatio * maxWeights.weekend);
                 badges.push({
                     type: 'neutral',
-                    text: `ℹ Wochenende: Durchschnittlich (${m.weShiftsCount} WE-Schichten)`
+                    text: `ℹ Wochenende: Durchschnittlich (${m.weShiftsCount} WE-Schichten, +${score} Pkt.)`
                 });
             }
         }
+        const weekendScore = Math.round(rawWeekendRatio * maxWeights.weekend);
 
         const totalScore = Math.max(0, Math.min(100,
             shiftBalanceScore + shiftTypeFitScore + previousDutyScore + abstinenceScore + weekendScore
@@ -501,3 +551,4 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
         excluded
     };
 }
+

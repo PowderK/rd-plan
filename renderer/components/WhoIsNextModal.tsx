@@ -375,3 +375,4 @@ export const WhoIsNextModal: React.FC<WhoIsNextModalProps> = ({
         </div>
     );
 };
+

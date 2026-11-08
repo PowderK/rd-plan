@@ -170,6 +170,14 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
   const [featureTaucher, setFeatureTaucher] = useState(true);
   const [featureAutoUe50, setFeatureAutoUe50] = useState(true);
   const [itwFeatureEnabled, setItwFeatureEnabled] = useState(false);
+  // "Wer ist dran?" Feature & Scoring Konfiguration
+  const [featureWhoIsNext, setFeatureWhoIsNext] = useState<boolean>(true);
+  const [whoIsNextStrictPrevNight, setWhoIsNextStrictPrevNight] = useState<boolean>(true);
+  const [whoIsNextWeightBalance, setWhoIsNextWeightBalance] = useState<number>(25);
+  const [whoIsNextWeightTypeFit, setWhoIsNextWeightTypeFit] = useState<number>(25);
+  const [whoIsNextWeightPrevDuty, setWhoIsNextWeightPrevDuty] = useState<number>(20);
+  const [whoIsNextWeightAbstinence, setWhoIsNextWeightAbstinence] = useState<number>(15);
+  const [whoIsNextWeightWeekend, setWhoIsNextWeightWeekend] = useState<number>(15);
   const [activeCategory, setActiveCategory] = useState<'general' | 'roster' | 'features' | 'itw' | 'qualifications' | 'roles' | 'audit'>(activeCategoryProp || 'general');
 
   useEffect(() => {
@@ -248,6 +256,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       featureTaucher,
       featureAutoUe50,
       itwFeatureEnabled,
+      featureWhoIsNext,
+      whoIsNextStrictPrevNight,
+      whoIsNextWeightBalance,
+      whoIsNextWeightTypeFit,
+      whoIsNextWeightPrevDuty,
+      whoIsNextWeightAbstinence,
+      whoIsNextWeightWeekend,
       roles: normalizedRoles,
       auswertungByType: sortedAuswertung,
       colorByType: sortedColors,
@@ -280,6 +295,13 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
     featureTaucher,
     featureAutoUe50,
     itwFeatureEnabled,
+    featureWhoIsNext,
+    whoIsNextStrictPrevNight,
+    whoIsNextWeightBalance,
+    whoIsNextWeightTypeFit,
+    whoIsNextWeightPrevDuty,
+    whoIsNextWeightAbstinence,
+    whoIsNextWeightWeekend,
     roles,
     auswertungByType,
     colorByType,
@@ -579,6 +601,16 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
       await (window as any).api.setSetting('feature_taucher', featureTaucher ? 'true' : 'false');
       await (window as any).api.setSetting(`feature_auto_ue50_${selectedDepartment}`, featureAutoUe50 ? 'true' : 'false');
       await (window as any).api.setSetting('feature_auto_ue50', featureAutoUe50 ? 'true' : 'false');
+      // "Wer ist dran?" Feature und Scoring pro Abteilung speichern
+      await (window as any).api.setSetting(`feature_who_is_next_${selectedDepartment}`, featureWhoIsNext ? 'true' : 'false');
+      await (window as any).api.setSetting(`who_is_next_strict_prev_night_${selectedDepartment}`, whoIsNextStrictPrevNight ? 'true' : 'false');
+      await (window as any).api.setSetting(`who_is_next_weights_${selectedDepartment}`, JSON.stringify({
+        shiftBalance: Number(whoIsNextWeightBalance) || 0,
+        shiftTypeFit: Number(whoIsNextWeightTypeFit) || 0,
+        previousDuty: Number(whoIsNextWeightPrevDuty) || 0,
+        abstinence: Number(whoIsNextWeightAbstinence) || 0,
+        weekend: Number(whoIsNextWeightWeekend) || 0
+      }));
       // ITW global speichern
       await (window as any).api.setSetting('itw', itwFeatureEnabled ? 'true' : 'false');
       await (window as any).api.setSetting('itw_rotation_pattern', JSON.stringify(itwRotationPhases));
@@ -735,6 +767,31 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
         } else {
           const globUe50 = await (window as any).api.getSetting('feature_auto_ue50');
           setFeatureAutoUe50(globUe50 === null || globUe50 === undefined ? true : (globUe50 === 'true' || globUe50 === true || globUe50 === '1'));
+        }
+      } catch { }
+      try {
+        const whoIsNextVal = await (window as any).api.getSetting(`feature_who_is_next_${selectedDepartment}`);
+        setFeatureWhoIsNext(whoIsNextVal === null || whoIsNextVal === undefined ? true : (whoIsNextVal === 'true' || whoIsNextVal === true || whoIsNextVal === '1'));
+      } catch { }
+      try {
+        const strictVal = await (window as any).api.getSetting(`who_is_next_strict_prev_night_${selectedDepartment}`);
+        setWhoIsNextStrictPrevNight(strictVal === null || strictVal === undefined ? true : (strictVal === 'true' || strictVal === true || strictVal === '1'));
+      } catch { }
+      try {
+        const rawWeights = await (window as any).api.getSetting(`who_is_next_weights_${selectedDepartment}`);
+        if (rawWeights) {
+          const parsed = typeof rawWeights === 'string' ? JSON.parse(rawWeights) : rawWeights;
+          setWhoIsNextWeightBalance(parsed.shiftBalance ?? 25);
+          setWhoIsNextWeightTypeFit(parsed.shiftTypeFit ?? 25);
+          setWhoIsNextWeightPrevDuty(parsed.previousDuty ?? 20);
+          setWhoIsNextWeightAbstinence(parsed.abstinence ?? 15);
+          setWhoIsNextWeightWeekend(parsed.weekend ?? 15);
+        } else {
+          setWhoIsNextWeightBalance(25);
+          setWhoIsNextWeightTypeFit(25);
+          setWhoIsNextWeightPrevDuty(20);
+          setWhoIsNextWeightAbstinence(15);
+          setWhoIsNextWeightWeekend(15);
         }
       } catch { }
       try {
@@ -1913,6 +1970,116 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onClose, setFooterActions, 
                   <button onClick={() => { if (originalHolidays) setHolidays(originalHolidays); setOriginalHolidays(null); setEditingHolidays(false); setSelectedHolidayIndex(null); }}>Abbrechen</button>
                 </div>
               )}
+            </div>
+
+            {/* „Wer ist dran?“-Nachrücker-Suche */}
+            <div style={{ marginTop: 28, borderTop: '1px solid #eee', paddingTop: 16 }}>
+              <h3>„Wer ist dran?“-Nachrücker-Suche (RTW-Ausfall)</h3>
+              <p style={{ fontSize: 14, color: '#666', marginBottom: 12 }}>
+                Konfigurieren Sie die intelligente Nachbesetzung bei RTW-Ausfällen für die <strong>{selectedDepartment}</strong>.
+              </p>
+
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, maxWidth: 680 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: 14, fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={featureWhoIsNext}
+                    onChange={e => setFeatureWhoIsNext(e.target.checked)}
+                  />
+                  <span>„Wer ist dran?“-Funktion für {selectedDepartment} aktivieren</span>
+                </label>
+
+                {featureWhoIsNext && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 12, borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
+                    <div>
+                      <strong style={{ fontSize: '0.9em', display: 'block', marginBottom: 6, color: '#1e293b' }}>
+                        Filterregeln (Stufe 1):
+                      </strong>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.85em', color: '#334155' }}>
+                        <input
+                          type="checkbox"
+                          checked={whoIsNextStrictPrevNight}
+                          onChange={e => setWhoIsNextStrictPrevNight(e.target.checked)}
+                          style={{ marginTop: 2 }}
+                        />
+                        <span>
+                          <strong>Harter Ausschluss bei RTW-Nachtschicht im vorherigen Wachdienst</strong><br />
+                          <span style={{ color: '#64748b' }}>
+                            Schließt Kollegen bei zu besetzender Nachtschicht komplett aus, wenn sie am vorangegangenen 24h-Wachdienst bereits RTW-Nachtschicht gefahren sind (auch wenn der Dienst &gt; 11h zurückliegt).
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+
+                    <div>
+                      <strong style={{ fontSize: '0.9em', display: 'block', marginBottom: 6, color: '#1e293b' }}>
+                        Scoring-Gewichtung (Stufe 2 – Maximale Punkte pro Kriterium):
+                      </strong>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 8, alignItems: 'center', fontSize: '0.85em', maxWidth: 460 }}>
+                        <span>1. Schichtsaldo / Auslastung:</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={50}
+                          value={whoIsNextWeightBalance}
+                          onChange={e => setWhoIsNextWeightBalance(Number(e.target.value))}
+                          style={{ width: 70, padding: '3px 6px', textAlign: 'right' }}
+                        />
+
+                        <span>2. Tag/Nacht-Balance zur Schichtart:</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={50}
+                          value={whoIsNextWeightTypeFit}
+                          onChange={e => setWhoIsNextWeightTypeFit(Number(e.target.value))}
+                          style={{ width: 70, padding: '3px 6px', textAlign: 'right' }}
+                        />
+
+                        <span>3. Vorschicht-Belastung (Erholung):</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={50}
+                          value={whoIsNextWeightPrevDuty}
+                          onChange={e => setWhoIsNextWeightPrevDuty(Number(e.target.value))}
+                          style={{ width: 70, padding: '3px 6px', textAlign: 'right' }}
+                        />
+
+                        <span>4. RTW-Abstinenz (Tage seit letztem Einsatz):</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={50}
+                          value={whoIsNextWeightAbstinence}
+                          onChange={e => setWhoIsNextWeightAbstinence(Number(e.target.value))}
+                          style={{ width: 70, padding: '3px 6px', textAlign: 'right' }}
+                        />
+
+                        <span>5. Wochenend- &amp; Feiertagsausgleich:</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={50}
+                          value={whoIsNextWeightWeekend}
+                          onChange={e => setWhoIsNextWeightWeekend(Number(e.target.value))}
+                          style={{ width: 70, padding: '3px 6px', textAlign: 'right' }}
+                        />
+                      </div>
+
+                      <div style={{ marginTop: 10, fontSize: '0.85em', color: '#475569', fontWeight: 600 }}>
+                        Gesamt-Maximalpunktzahl:{' '}
+                        <span style={{ color: (whoIsNextWeightBalance + whoIsNextWeightTypeFit + whoIsNextWeightPrevDuty + whoIsNextWeightAbstinence + whoIsNextWeightWeekend) === 100 ? '#16a34a' : '#d97706' }}>
+                          {whoIsNextWeightBalance + whoIsNextWeightTypeFit + whoIsNextWeightPrevDuty + whoIsNextWeightAbstinence + whoIsNextWeightWeekend} Punkte
+                        </span>
+                        {(whoIsNextWeightBalance + whoIsNextWeightTypeFit + whoIsNextWeightPrevDuty + whoIsNextWeightAbstinence + whoIsNextWeightWeekend) !== 100 && (
+                          <span style={{ fontWeight: 'normal', color: '#d97706', marginLeft: 8 }}>(Empfohlen: 100 Punkte)</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

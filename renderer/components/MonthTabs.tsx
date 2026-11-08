@@ -152,10 +152,25 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
     const [shiftTransfers, setShiftTransfers] = useState<any[]>([]);
     const [azubiAutoState, setAzubiAutoState] = useState<ShiftSummary[] | null>(null);
     const [availableYears, setAvailableYears] = useState<number[]>([]);
-    // "Wer ist dran?" Modal-State (Issue 025 / GitHub #47)
+    // "Wer ist dran?" Modal-State & Konfiguration (Issue 025 / GitHub #47)
+    const [featureWhoIsNext, setFeatureWhoIsNext] = useState<boolean>(true);
+    const [whoIsNextConfig, setWhoIsNextConfig] = useState<{
+        strictPreviousNightExclusion?: boolean;
+        weights?: {
+            shiftBalance: number;
+            shiftTypeFit: number;
+            previousDuty: number;
+            abstinence: number;
+            weekend: number;
+        };
+    }>({});
     const [whoIsNextResult, setWhoIsNextResult] = useState<ReplacementFinderResult | null>(null);
     const [whoIsNextDayOfYear, setWhoIsNextDayOfYear] = useState<number | null>(null);
     const [whoIsNextCurrentName, setWhoIsNextCurrentName] = useState<string | undefined>(undefined);
+    const [showWhoIsNextSelector, setShowWhoIsNextSelector] = useState<boolean>(false);
+    const [selectedWhoIsNextDate, setSelectedWhoIsNextDate] = useState<string>('');
+    const [selectedWhoIsNextVehicleIdx, setSelectedWhoIsNextVehicleIdx] = useState<number>(0);
+    const [selectedWhoIsNextSlotType, setSelectedWhoIsNextSlotType] = useState<string>('tag_1');
 
     const [guests, setGuests] = useState<any[]>([]);
     const [showGuestModal, setShowGuestModal] = useState(false);
@@ -557,6 +572,20 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     setFeatureAutoUe50(globUe50 === null || globUe50 === undefined ? true : (globUe50 === 'true' || globUe50 === true || globUe50 === '1'));
                 }
             } catch { }
+            try {
+                const whoIsNextVal = await (window as any).api.getSetting(`feature_who_is_next_${departmentName}`);
+                setFeatureWhoIsNext(whoIsNextVal === null || whoIsNextVal === undefined ? true : (whoIsNextVal === 'true' || whoIsNextVal === true || whoIsNextVal === '1'));
+                const strictVal = await (window as any).api.getSetting(`who_is_next_strict_prev_night_${departmentName}`);
+                const weightsRaw = await (window as any).api.getSetting(`who_is_next_weights_${departmentName}`);
+                let weights = undefined;
+                if (weightsRaw) {
+                    try { weights = typeof weightsRaw === 'string' ? JSON.parse(weightsRaw) : weightsRaw; } catch { }
+                }
+                setWhoIsNextConfig({
+                    strictPreviousNightExclusion: strictVal === null || strictVal === undefined ? true : (strictVal === 'true' || strictVal === true || strictVal === '1'),
+                    weights
+                });
+            } catch { }
             // Neue Fahrzeug-Zeiträume laden
             try {
                 const rtwP = await (window as any).api.getAllRtwVehiclePeriods?.();
@@ -659,6 +688,20 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                         const globUe50 = await (window as any).api.getSetting('feature_auto_ue50');
                         setFeatureAutoUe50(globUe50 === null || globUe50 === undefined ? true : (globUe50 === 'true' || globUe50 === true || globUe50 === '1'));
                     }
+                } catch { }
+                try {
+                    const whoIsNextVal = await (window as any).api.getSetting(`feature_who_is_next_${departmentName}`);
+                    setFeatureWhoIsNext(whoIsNextVal === null || whoIsNextVal === undefined ? true : (whoIsNextVal === 'true' || whoIsNextVal === true || whoIsNextVal === '1'));
+                    const strictVal = await (window as any).api.getSetting(`who_is_next_strict_prev_night_${departmentName}`);
+                    const weightsRaw = await (window as any).api.getSetting(`who_is_next_weights_${departmentName}`);
+                    let weights = undefined;
+                    if (weightsRaw) {
+                        try { weights = typeof weightsRaw === 'string' ? JSON.parse(weightsRaw) : weightsRaw; } catch { }
+                    }
+                    setWhoIsNextConfig({
+                        strictPreviousNightExclusion: strictVal === null || strictVal === undefined ? true : (strictVal === 'true' || strictVal === true || strictVal === '1'),
+                        weights
+                    });
                 } catch { }
                 try {
                     const docs = await (window as any).api.getItwDoctors?.();
@@ -1428,12 +1471,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             roster,
             localRoster,
             holidays,
-            currentAssignedValue: currentValue
+            currentAssignedValue: currentValue,
+            strictPreviousNightExclusion: whoIsNextConfig.strictPreviousNightExclusion,
+            weights: whoIsNextConfig.weights
         });
         setWhoIsNextResult(result);
         setWhoIsNextDayOfYear(dayOfYear);
         setWhoIsNextCurrentName(currentName);
-    }, [year, allPersonnel, personnel, roster, localRoster, holidays, findPersonLabelByValue]);
+    }, [year, allPersonnel, personnel, roster, localRoster, holidays, findPersonLabelByValue, whoIsNextConfig]);
 
     // "Wer ist dran?" – Bestätigt die Zuweisung des gewählten Nachrückers
     const handleConfirmWhoIsNext = useCallback(async (personId: number) => {
@@ -2544,6 +2589,48 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                             </button>
                         )}
                         
+                        {featureWhoIsNext && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (days.length > 0 && !selectedWhoIsNextDate) {
+                                        setSelectedWhoIsNextDate(days[0].date);
+                                    }
+                                    setShowWhoIsNextSelector(true);
+                                }}
+                                disabled={!canWrite || isBusy}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 8,
+                                    padding: '8px 16px',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    borderBottom: '3px solid transparent',
+                                    fontSize: '14px',
+                                    fontWeight: 500,
+                                    color: (canWrite && !isBusy) ? '#6b7280' : '#9ca3af',
+                                    cursor: (canWrite && !isBusy) ? 'pointer' : 'not-allowed',
+                                    transition: 'all 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => {
+                                    if (!canWrite || isBusy) return;
+                                    e.currentTarget.style.color = '#1d4ed8';
+                                    e.currentTarget.style.borderBottomColor = '#2563eb';
+                                    e.currentTarget.style.background = '#eff6ff';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.color = (canWrite && !isBusy) ? '#6b7280' : '#9ca3af';
+                                    e.currentTarget.style.borderBottomColor = 'transparent';
+                                    e.currentTarget.style.background = 'transparent';
+                                }}
+                                title="Wer ist dran? (Intelligente Nachbesetzung bei RTW-Ausfall)"
+                            >
+                                <span style={{ fontSize: 16 }}>🔍</span>
+                                Wer ist dran?
+                            </button>
+                        )}
+                        
                         <div style={{ width: '1px', height: '24px', background: 'var(--line)', margin: '0 4px' }} />
                         
                         <button
@@ -3339,7 +3426,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                                     <option value=""></option>
                                                                                     {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                                                                                 </select>
-                                                                                {canWrite && (
+                                                                                {canWrite && featureWhoIsNext && (
                                                                                     <button
                                                                                         type="button"
                                                                                         style={{
@@ -3396,7 +3483,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                                     <option value=""></option>
                                                                                     {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                                                                                 </select>
-                                                                                {canWrite && (
+                                                                                {canWrite && featureWhoIsNext && (
                                                                                     <button
                                                                                         type="button"
                                                                                         style={{
@@ -3456,7 +3543,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                                     <option value=""></option>
                                                                                     {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                                                                                 </select>
-                                                                                {canWrite && (
+                                                                                {canWrite && featureWhoIsNext && (
                                                                                     <button
                                                                                         type="button"
                                                                                         style={{
@@ -3515,7 +3602,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                                     <option value=""></option>
                                                                                     {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                                                                                 </select>
-                                                                                {canWrite && (
+                                                                                {canWrite && featureWhoIsNext && (
                                                                                     <button
                                                                                         type="button"
                                                                                         style={{
@@ -4537,6 +4624,104 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                     </div>
                 </div>
             )}
+            {showWhoIsNextSelector && (() => {
+                const effectiveDate = selectedWhoIsNextDate || (days.length > 0 ? days[0].date : '');
+                const targetDay = days.find(d => d.date === effectiveDate) || days[0];
+                const v = rtwVehicles[selectedWhoIsNextVehicleIdx] || rtwVehicles[0];
+                const vehicleName = v ? (v.name || rtwNames[selectedWhoIsNextVehicleIdx] || `RTW ${selectedWhoIsNextVehicleIdx + 1}`) : 'RTW 1';
+                const slotId = `rtw${selectedWhoIsNextVehicleIdx + 1}_${selectedWhoIsNextSlotType}`;
+                const currentVal = effectiveDate ? getAssignedValueFor(effectiveDate, slotId) : '';
+                const currentName = currentVal ? findPersonLabelByValue(currentVal) : '';
+
+                return (
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+                        <div style={{ background: '#fff', padding: 24, borderRadius: 12, width: 440, maxWidth: '95vw', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, borderBottom: '1px solid #e2e8f0', paddingBottom: 12 }}>
+                                <span style={{ fontSize: 22 }}>🔍</span>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: 17, color: '#1e293b' }}>Wer ist dran? – Schicht wählen</h3>
+                                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Intelligente Nachrücker-Suche bei RTW-Ausfall</div>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 600, color: '#334155' }}>
+                                    Datum:
+                                    <select
+                                        value={effectiveDate}
+                                        onChange={e => setSelectedWhoIsNextDate(e.target.value)}
+                                        style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 13, fontWeight: 'normal' }}
+                                    >
+                                        {days.map(d => (
+                                            <option key={d.date} value={d.date}>
+                                                {d.day}. {d.weekday} ({d.date})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+
+                                <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 600, color: '#334155' }}>
+                                    Fahrzeug:
+                                    <select
+                                        value={selectedWhoIsNextVehicleIdx}
+                                        onChange={e => setSelectedWhoIsNextVehicleIdx(Number(e.target.value))}
+                                        style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 13, fontWeight: 'normal' }}
+                                    >
+                                        {rtwVehicles.map((veh, idx) => (
+                                            <option key={veh.id || idx} value={idx}>
+                                                {veh.name || rtwNames[idx] || `RTW ${idx + 1}`}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+
+                                <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 600, color: '#334155' }}>
+                                    Position / Schichtart:
+                                    <select
+                                        value={selectedWhoIsNextSlotType}
+                                        onChange={e => setSelectedWhoIsNextSlotType(e.target.value)}
+                                        style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 13, fontWeight: 'normal' }}
+                                    >
+                                        <option value="tag_1">Fahrzeugführer Tag (07:00 – 19:00 Uhr)</option>
+                                        <option value="nacht_1">Fahrzeugführer Nacht (19:00 – 07:00 Uhr)</option>
+                                        <option value="tag_2">Maschinist Tag (07:00 – 19:00 Uhr)</option>
+                                        <option value="nacht_2">Maschinist Nacht (19:00 – 07:00 Uhr)</option>
+                                    </select>
+                                </label>
+
+                                <div style={{ background: '#f8fafc', padding: 10, borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 13 }}>
+                                    <span style={{ color: '#64748b' }}>Aktuell eingeteilt: </span>
+                                    <strong style={{ color: currentName ? '#b91c1c' : '#16a34a' }}>
+                                        {currentName ? `${currentName} (wird direkt umbesetzt)` : 'Frei / Unbesetzt'}
+                                    </strong>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowWhoIsNextSelector(false)}
+                                    style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', cursor: 'pointer', fontSize: 13 }}
+                                >
+                                    Abbrechen
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowWhoIsNextSelector(false);
+                                        if (targetDay) {
+                                            handleOpenWhoIsNext(slotId, targetDay.date, targetDay.dayOfYear, vehicleName, currentVal);
+                                        }
+                                    }}
+                                    style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: '#2563eb', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
+                                >
+                                    Nachrücker suchen 🔍
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
             {whoIsNextResult && (
                 <WhoIsNextModal
                     result={whoIsNextResult}
