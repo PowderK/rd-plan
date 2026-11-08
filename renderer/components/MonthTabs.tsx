@@ -2662,7 +2662,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                     e.currentTarget.style.borderBottomColor = 'transparent';
                                     e.currentTarget.style.background = 'transparent';
                                 }}
-                                title="Wer ist dran? (Intelligente Nachbesetzung bei RTW-Ausfall)"
+                                title="Wer ist dran? (Intelligente Nachbesetzung bei RTW- & NEF-Ausfall)"
                             >
                                 <span style={{ fontSize: 16 }}>🔍</span>
                                 Wer ist dran?
@@ -3453,46 +3453,16 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
 
                                                                         return (
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', minWidth: 0 }}>
-                                                                                <select
-                                                                                    className={styles.select}
-                                                                                    value={value}
-                                                                                    disabled={!canWrite || isBusy}
-                                                                                    style={{ flex: 1, minWidth: 0, ...highlightStyle }}
-                                                                                    onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                                    onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                                    <option value=""></option>
-                                                                                    {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                                </select>
-                                                                                {canWrite && featureWhoIsNext && (
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        style={{
-                                                                                            width: 24,
-                                                                                            height: 26,
-                                                                                            minWidth: 24,
-                                                                                            padding: 0,
-                                                                                            border: '1px solid var(--line, #cbd5e1)',
-                                                                                            borderRadius: 4,
-                                                                                            background: 'var(--card-bg, #ffffff)',
-                                                                                            color: 'var(--text, #1e293b)',
-                                                                                            cursor: 'pointer',
-                                                                                            display: 'flex',
-                                                                                            alignItems: 'center',
-                                                                                            justifyContent: 'center',
-                                                                                            fontSize: 12
-                                                                                        }}
-                                                                                        title="Wer ist dran? (Intelligente Nachrücker-Suche)"
-                                                                                        onClick={e => {
-                                                                                            e.preventDefault();
-                                                                                            e.stopPropagation();
-                                                                                            handleOpenWhoIsNext(slotId, d.date, d.dayOfYear, v.name || rtwNames[rIdx] || `RTW ${rIdx + 1}`, value);
-                                                                                        }}
-                                                                                    >
-                                                                                        🔍
-                                                                                    </button>
-                                                                                )}
-                                                                            </div>
+                                                                            <select
+                                                                                className={styles.select}
+                                                                                value={value}
+                                                                                disabled={!canWrite || isBusy}
+                                                                                style={highlightStyle}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
                                                                         );
                                                                     })()}
                                                                     {showNacht && (() => {
@@ -3510,46 +3480,16 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
 
                                                                         return (
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', minWidth: 0 }}>
-                                                                                <select
-                                                                                    className={styles.select}
-                                                                                    value={value}
-                                                                                    disabled={!canWrite || isBusy}
-                                                                                    style={{ flex: 1, minWidth: 0, ...highlightStyle }}
-                                                                                    onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                                    onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                                    <option value=""></option>
-                                                                                    {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                                </select>
-                                                                                {canWrite && featureWhoIsNext && (
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        style={{
-                                                                                            width: 24,
-                                                                                            height: 26,
-                                                                                            minWidth: 24,
-                                                                                            padding: 0,
-                                                                                            border: '1px solid var(--line, #cbd5e1)',
-                                                                                            borderRadius: 4,
-                                                                                            background: 'var(--card-bg, #ffffff)',
-                                                                                            color: 'var(--text, #1e293b)',
-                                                                                            cursor: 'pointer',
-                                                                                            display: 'flex',
-                                                                                            alignItems: 'center',
-                                                                                            justifyContent: 'center',
-                                                                                            fontSize: 12
-                                                                                        }}
-                                                                                        title="Wer ist dran? (Intelligente Nachrücker-Suche)"
-                                                                                        onClick={e => {
-                                                                                            e.preventDefault();
-                                                                                            e.stopPropagation();
-                                                                                            handleOpenWhoIsNext(slotId, d.date, d.dayOfYear, v.name || rtwNames[rIdx] || `RTW ${rIdx + 1}`, value);
-                                                                                        }}
-                                                                                    >
-                                                                                        🔍
-                                                                                    </button>
-                                                                                )}
-                                                                            </div>
+                                                                            <select
+                                                                                className={styles.select}
+                                                                                value={value}
+                                                                                disabled={!canWrite || isBusy}
+                                                                                style={highlightStyle}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
                                                                         );
                                                                     })()}
                                                                     <div className={styles.rowLabel}>Ma</div>
@@ -3572,44 +3512,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
 
                                                                         return (
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', minWidth: 0 }}>
-                                                                                <select className={styles.select} value={value}
-                                                                                    disabled={!canWrite || isBusy}
-                                                                                    style={{ flex: 1, minWidth: 0, ...highlightStyle }}
-                                                                                    onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                                    onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                                    <option value=""></option>
-                                                                                    {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                                </select>
-                                                                                {canWrite && featureWhoIsNext && (
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        style={{
-                                                                                            width: 24,
-                                                                                            height: 26,
-                                                                                            minWidth: 24,
-                                                                                            padding: 0,
-                                                                                            border: '1px solid var(--line, #cbd5e1)',
-                                                                                            borderRadius: 4,
-                                                                                            background: 'var(--card-bg, #ffffff)',
-                                                                                            color: 'var(--text, #1e293b)',
-                                                                                            cursor: 'pointer',
-                                                                                            display: 'flex',
-                                                                                            alignItems: 'center',
-                                                                                            justifyContent: 'center',
-                                                                                            fontSize: 12
-                                                                                        }}
-                                                                                        title="Wer ist dran? (Intelligente Nachrücker-Suche)"
-                                                                                        onClick={e => {
-                                                                                            e.preventDefault();
-                                                                                            e.stopPropagation();
-                                                                                            handleOpenWhoIsNext(slotId, d.date, d.dayOfYear, v.name || rtwNames[rIdx] || `RTW ${rIdx + 1}`, value);
-                                                                                        }}
-                                                                                    >
-                                                                                        🔍
-                                                                                    </button>
-                                                                                )}
-                                                                            </div>
+                                                                            <select className={styles.select} value={value}
+                                                                                disabled={!canWrite || isBusy}
+                                                                                style={highlightStyle}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
                                                                         );
                                                                     })()}
                                                                     {showNacht && (() => {
@@ -3631,44 +3541,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         const highlightStyle = isAssigned ? { background: '#e3f2fd', fontWeight: 600 } : undefined;
 
                                                                         return (
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', minWidth: 0 }}>
-                                                                                <select className={styles.select} value={value}
-                                                                                    disabled={!canWrite || isBusy}
-                                                                                    style={{ flex: 1, minWidth: 0, ...highlightStyle }}
-                                                                                    onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                                    onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
-                                                                                    <option value=""></option>
-                                                                                    {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                                </select>
-                                                                                {canWrite && featureWhoIsNext && (
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        style={{
-                                                                                            width: 24,
-                                                                                            height: 26,
-                                                                                            minWidth: 24,
-                                                                                            padding: 0,
-                                                                                            border: '1px solid var(--line, #cbd5e1)',
-                                                                                            borderRadius: 4,
-                                                                                            background: 'var(--card-bg, #ffffff)',
-                                                                                            color: 'var(--text, #1e293b)',
-                                                                                            cursor: 'pointer',
-                                                                                            display: 'flex',
-                                                                                            alignItems: 'center',
-                                                                                            justifyContent: 'center',
-                                                                                            fontSize: 12
-                                                                                        }}
-                                                                                        title="Wer ist dran? (Intelligente Nachrücker-Suche)"
-                                                                                        onClick={e => {
-                                                                                            e.preventDefault();
-                                                                                            e.stopPropagation();
-                                                                                            handleOpenWhoIsNext(slotId, d.date, d.dayOfYear, v.name || rtwNames[rIdx] || `RTW ${rIdx + 1}`, value);
-                                                                                        }}
-                                                                                    >
-                                                                                        🔍
-                                                                                    </button>
-                                                                                )}
-                                                                            </div>
+                                                                            <select className={styles.select} value={value}
+                                                                                disabled={!canWrite || isBusy}
+                                                                                style={highlightStyle}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
                                                                         );
                                                                     })()}
                                                                     <div className={styles.rowLabel}>Azubi</div>
@@ -3762,45 +3642,14 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                                                                         const highlightStyle = isAssigned ? { background: '#ffebee', fontWeight: 600 } : undefined;
 
                                                                         return (
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', minWidth: 0 }}>
-                                                                                <select className={styles.select} value={value}
-                                                                                    disabled={!canWrite || isBusy}
-                                                                                    style={{ flex: 1, minWidth: 0, ...highlightStyle }}
-                                                                                    onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
-                                                                                    onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } }}>
-                                                                                    <option value=""></option>
-                                                                                    {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                                                </select>
-                                                                                {canWrite && featureWhoIsNext && (
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        style={{
-                                                                                            width: 24,
-                                                                                            height: 26,
-                                                                                            minWidth: 24,
-                                                                                            padding: 0,
-                                                                                            border: '1px solid var(--line, #cbd5e1)',
-                                                                                            borderRadius: 4,
-                                                                                            background: 'var(--card-bg, #ffffff)',
-                                                                                            color: 'var(--text, #1e293b)',
-                                                                                            cursor: 'pointer',
-                                                                                            display: 'flex',
-                                                                                            alignItems: 'center',
-                                                                                            justifyContent: 'center',
-                                                                                            fontSize: 12
-                                                                                        }}
-                                                                                        title="Wer ist dran? (Intelligente Nachrücker-Suche)"
-                                                                                        onClick={e => {
-                                                                                            e.preventDefault();
-                                                                                            e.stopPropagation();
-                                                                                            const nefShiftMode = dayStatus.shiftMode === 'tag' ? 'tag' : (dayStatus.shiftMode === 'nacht' ? 'nacht' : (v.occupancy_mode === 'tag' ? 'tag' : '24h'));
-                                                                                            handleOpenWhoIsNext(slotId, d.date, d.dayOfYear, v.name || nefName || `NEF ${nefIdx + 1}`, value, nefShiftMode);
-                                                                                        }}
-                                                                                    >
-                                                                                        🔍
-                                                                                    </button>
-                                                                                )}
-                                                                            </div>
+                                                                            <select className={styles.select} value={value}
+                                                                                disabled={!canWrite || isBusy}
+                                                                                style={highlightStyle}
+                                                                                onChange={e => { const v = e.target.value; if (v === '') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } else { handleAssign(d.date, d.dayOfYear, v, slotId); } }}
+                                                                                onKeyDown={e => { if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLSelectElement).blur(); clearAssignedForSlot(slotId); if (nefIdx === 0) clearAssignedForSlot('nef_assist'); } }}>
+                                                                                <option value=""></option>
+                                                                                {renderOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                            </select>
                                                                         );
                                                                     })()}
                                                                     <div className={styles.rowLabel}>Azubi</div>
