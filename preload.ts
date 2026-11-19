@@ -257,6 +257,12 @@ contextBridge.exposeInMainWorld('api', {
     addGlobalComment: (date: string, comment: string) => ipcRenderer.invoke('roster-comment-global-add', date, comment),
     deleteGlobalComment: (date: string) => ipcRenderer.invoke('roster-comment-global-delete', date),
     getGlobalCommentsForMonth: (year: number, month: number) => ipcRenderer.invoke('roster-comment-global-get-month', year, month),
+    // Roster Day Restrictions (heute kein Tag / heute keine Nacht)
+    setDayRestriction: (personId: number, date: string, noTag: boolean, noNacht: boolean) => ipcRenderer.invoke('roster-restriction-set', personId, date, noTag, noNacht),
+    getDayRestrictionsForMonth: (year: number, month: number) => ipcRenderer.invoke('roster-restriction-get-month', year, month),
+    getDayRestrictionsForDate: (date: string) => ipcRenderer.invoke('roster-restriction-get-date', date),
+    onRosterRestrictionsUpdated: (callback: (data: any) => void) => ipcRenderer.on('roster-restrictions-updated', (_event, data) => callback(data)),
+    offRosterRestrictionsUpdated: (callback: (data: any) => void) => ipcRenderer.removeListener('roster-restrictions-updated', (_event, data) => callback(data)),
     openItwWindow: () => ipcRenderer.send('open-itw-window'),
     openVehiclesWindow: () => ipcRenderer.send('open-vehicles-window'),
     openValuesWindow: () => ipcRenderer.send('open-values-window'),

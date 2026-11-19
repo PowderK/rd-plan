@@ -206,6 +206,11 @@ export interface DatabaseAdapter {
   deleteGlobalComment(date: string): Promise<void>;
   getGlobalCommentsForMonth(year: number, month: number): Promise<any[]>;
 
+  // Roster Day Restrictions (heute kein Tag / heute keine Nacht)
+  setDayRestriction(personId: number, date: string, noTag: boolean, noNacht: boolean): Promise<void>;
+  getDayRestrictionsForMonth(year: number, month: number): Promise<any[]>;
+  getDayRestrictionsForDate(date: string): Promise<any[]>;
+
   // Guests
   getGuestsForDate(date: string): Promise<any[]>;
   getAllGuests(): Promise<any[]>;
@@ -1183,6 +1188,22 @@ class SQLiteAdapter implements DatabaseAdapter {
   async getGlobalCommentsForMonth(year: number, month: number) {
     const { getGlobalCommentsForMonth } = await import('./database');
     return getGlobalCommentsForMonth(this.db, year, month);
+  }
+
+  // Roster Day Restrictions (heute kein Tag / heute keine Nacht)
+  async setDayRestriction(personId: number, date: string, noTag: boolean, noNacht: boolean) {
+    const { setDayRestriction } = await import('./database');
+    return setDayRestriction(this.db, personId, date, noTag, noNacht);
+  }
+
+  async getDayRestrictionsForMonth(year: number, month: number) {
+    const { getDayRestrictionsForMonth } = await import('./database');
+    return getDayRestrictionsForMonth(this.db, year, month);
+  }
+
+  async getDayRestrictionsForDate(date: string) {
+    const { getDayRestrictionsForDate } = await import('./database');
+    return getDayRestrictionsForDate(this.db, date);
   }
 
   // Guests
@@ -2601,6 +2622,20 @@ export class DatabaseManager {
             UNIQUE(date)
         );
         CREATE INDEX IF NOT EXISTS idx_roster_comments_global_date ON roster_comments_global(date);
+
+        CREATE TABLE IF NOT EXISTS roster_day_restrictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            person_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            no_tag INTEGER NOT NULL DEFAULT 0,
+            no_nacht INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT,
+            FOREIGN KEY(person_id) REFERENCES personnel(id) ON DELETE CASCADE,
+            UNIQUE(person_id, date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_roster_day_restrictions_date ON roster_day_restrictions(date);
+        CREATE INDEX IF NOT EXISTS idx_roster_day_restrictions_person ON roster_day_restrictions(person_id);
 
         CREATE TABLE IF NOT EXISTS audit_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

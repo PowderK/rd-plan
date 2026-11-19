@@ -2236,7 +2236,7 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         weekendHolidayDay, weekendHolidayNight, itwEnabled, featureTaucher, featureAutoUe50, getNefAssistWeight]);
 
     // "Wer ist dran?" – Öffnet das Nachrücker-Modal für den gewählten Slot
-    const handleOpenWhoIsNext = useCallback((slotId: string, dateStr: string, dayOfYear: number, vehicleName: string, currentValue: string, nefShiftMode?: 'tag' | 'nacht' | '24h') => {
+    const handleOpenWhoIsNext = useCallback(async (slotId: string, dateStr: string, dayOfYear: number, vehicleName: string, currentValue: string, nefShiftMode?: 'tag' | 'nacht' | '24h') => {
         let currentName: string | undefined = undefined;
         if (currentValue) {
             currentName = findPersonLabelByValue(currentValue);
@@ -2278,6 +2278,22 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             };
         });
 
+        // Lade persönliche Tages-Einschränkungen (im Dienstplan vermerkt: heute kein Tag / heute keine Nacht)
+        const dayRestrictionsMap: Record<number, { noTag?: boolean; noNacht?: boolean }> = {};
+        try {
+            const raw = await (window as any).api?.getDayRestrictionsForDate?.(dateStr);
+            if (Array.isArray(raw)) {
+                raw.forEach((r: any) => {
+                    dayRestrictionsMap[Number(r.person_id)] = {
+                        noTag: Boolean(r.no_tag),
+                        noNacht: Boolean(r.no_nacht)
+                    };
+                });
+            }
+        } catch (e) {
+            console.warn('[MonthTabs] Tages-Einschränkungen konnten nicht geladen werden:', e);
+        }
+
         const result = findReplacementsForSlot({
             slotId,
             date: dateStr,
@@ -2291,7 +2307,8 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
             strictPreviousNightExclusion: whoIsNextConfig.strictPreviousNightExclusion,
             weights: whoIsNextConfig.weights,
             personalBalances,
-            nefShiftMode
+            nefShiftMode,
+            dayRestrictions: dayRestrictionsMap
         });
         setWhoIsNextResult(result);
         setWhoIsNextDayOfYear(dayOfYear);

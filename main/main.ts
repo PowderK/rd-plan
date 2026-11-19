@@ -2859,6 +2859,35 @@ ipcMain.handle('roster-comment-global-get-month', async (_event, year: number, m
     return await adapter.getGlobalCommentsForMonth(year, month);
 });
 
+// Roster Day Restrictions (heute kein Tag / heute keine Nacht)
+ipcMain.handle('roster-restriction-set', async (_event, personId: number, date: string, noTag: boolean, noNacht: boolean) => {
+    const auth = getAuthService();
+    const currentUser = auth.getCurrentUser();
+    const canWriteRoster = auth.checkPermission('dienstplan', 'write') || auth.checkPermission('kommentar_individuell', 'write');
+    const isSelf = currentUser && (currentUser.userId === personId || String(currentUser.personnelNumber) === String(personId));
+    if (!canWriteRoster && !isSelf) {
+        throw new Error('PERMISSION_DENIED: Keine Berechtigung zum Ändern von Tageseinschränkungen');
+    }
+    const adapter = await ensureDatabaseAdapter();
+    await adapter.setDayRestriction(personId, date, !!noTag, !!noNacht);
+    BrowserWindow.getAllWindows().forEach(win => {
+        try {
+            win.webContents.send('roster-restrictions-updated', { personId, date, noTag, noNacht });
+        } catch { }
+    });
+    return true;
+});
+
+ipcMain.handle('roster-restriction-get-month', async (_event, year: number, month: number) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getDayRestrictionsForMonth(year, month);
+});
+
+ipcMain.handle('roster-restriction-get-date', async (_event, date: string) => {
+    const adapter = await ensureDatabaseAdapter();
+    return await adapter.getDayRestrictionsForDate(date);
+});
+
 app.on('window-all-closed', async () => {
     if (databaseAdapter) {
         await databaseAdapter.close();

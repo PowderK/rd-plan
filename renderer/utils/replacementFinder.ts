@@ -104,6 +104,7 @@ export interface ReplacementFinderOptions {
     weights?: Partial<ReplacementWeights>;
     personalBalances?: Record<number, PersonalBalanceInfo>; // Persönliches Soll-Ist-Konto der Kollegen (oberste Priorität!)
     nefShiftMode?: 'tag' | 'nacht' | '24h'; // Spezifischer Modus bei NEF (default: '24h')
+    dayRestrictions?: Record<number, { noTag?: boolean; noNacht?: boolean }>; // Persönliche Tages-Einschränkungen (kein Tag / keine Nacht)
 }
 
 function getShiftCell(
@@ -398,7 +399,40 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
             }
         }
 
-        // Muss-Filter 4: 11h ArbZG Ruhezeitprüfung (über RTW & NEF)
+        // Muss-Filter 4: Persönliche Tages-Einschränkung (im Dienstplan vermerkt: "Heute kein Tag" / "Heute keine Nacht")
+        const dayRestr = options.dayRestrictions?.[p.id];
+        if (dayRestr) {
+            if (isTag && isNacht) {
+                // 24h-Slot (z. B. 24h NEF)
+                if (dayRestr.noTag || dayRestr.noNacht) {
+                    const detail = dayRestr.noTag && dayRestr.noNacht
+                        ? 'weder Tag- noch Nachtschicht'
+                        : (dayRestr.noTag ? 'keine Tagschicht' : 'keine Nachtschicht');
+                    excluded.push({
+                        personId: p.id,
+                        displayName,
+                        reason: `Persönliche Einschränkung am Schichttag: ${detail} gewünscht (24h-Dienst nicht möglich)`
+                    });
+                    continue;
+                }
+            } else if (isTag && dayRestr.noTag) {
+                excluded.push({
+                    personId: p.id,
+                    displayName,
+                    reason: 'Persönliche Einschränkung am Schichttag: Heute keine Tagschicht gewünscht'
+                });
+                continue;
+            } else if (isNacht && dayRestr.noNacht) {
+                excluded.push({
+                    personId: p.id,
+                    displayName,
+                    reason: 'Persönliche Einschränkung am Schichttag: Heute keine Nachtschicht gewünscht'
+                });
+                continue;
+            }
+        }
+
+        // Muss-Filter 5: 11h ArbZG Ruhezeitprüfung (über RTW & NEF)
         if (isTag) {
             const prevCell = getShiftCell(roster, localRoster, p.id, prevDateStr);
             const prevType = String(prevCell.type || '');

@@ -211,6 +211,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   const [taucherPersonIds, setTaucherPersonIds] = useState<Set<number>>(new Set());
   const [globalComments, setGlobalComments] = useState<Map<string, { id: number; comment: string }>>(new Map());
   const [personalComments, setPersonalComments] = useState<Map<string, { id: number; comment: string }>>(new Map());
+  const [dayRestrictions, setDayRestrictions] = useState<Map<string, { noTag: boolean; noNacht: boolean }>>(new Map());
   const [commentMenu, setCommentMenu] = useState<CommentMenuState | null>(null);
   const [commentEditor, setCommentEditor] = useState<CommentEditorState | null>(null);
   const [undoStack, setUndoStack] = useState<any[]>([]);
@@ -226,6 +227,7 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
   }, [year, currentMonth, departmentName]);
 
   const getPersonalCommentKey = (personId: number, dateIso: string) => `${personId}_${dateIso}`;
+  const getDayRestrictionKey = (personId: number, dateIso: string) => `${personId}_${dateIso}`;
 
   const invokeCommentApi = async (methodName: string, channel: string, ...args: any[]) => {
     const apiMethod = (window as any)?.api?.[methodName];
@@ -243,9 +245,10 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     try {
       const y = typeof yearOverride === 'number' ? yearOverride : year;
       const m = typeof monthOverride === 'number' ? monthOverride : currentMonth;
-      const [persRes, globRes] = await Promise.all([
+      const [persRes, globRes, restrRes] = await Promise.all([
         invokeCommentApi('getPersonalCommentsForMonth', 'roster-comment-personal-get-month', y, m),
-        invokeCommentApi('getGlobalCommentsForMonth', 'roster-comment-global-get-month', y, m)
+        invokeCommentApi('getGlobalCommentsForMonth', 'roster-comment-global-get-month', y, m),
+        invokeCommentApi('getDayRestrictionsForMonth', 'roster-restriction-get-month', y, m).catch(() => [])
       ]);
 
       const persMap = new Map<string, { id: number; comment: string }>();
@@ -264,10 +267,42 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
         });
       });
 
+      const restrMap = new Map<string, { noTag: boolean; noNacht: boolean }>();
+      (restrRes || []).forEach((r: any) => {
+        restrMap.set(getDayRestrictionKey(Number(r.person_id), String(r.date)), {
+          noTag: Boolean(r.no_tag),
+          noNacht: Boolean(r.no_nacht)
+        });
+      });
+
       setPersonalComments(persMap);
       setGlobalComments(globMap);
+      setDayRestrictions(restrMap);
     } catch (err) {
-      console.warn('[DutyRoster] Kommentare konnten nicht geladen werden', err);
+      console.warn('[DutyRoster] Kommentare/Einschränkungen konnten nicht geladen werden', err);
+    }
+  };
+
+  const handleToggleDayRestriction = async (personId: number, dateIso: string, type: 'no_tag' | 'no_nacht') => {
+    try {
+      const key = getDayRestrictionKey(personId, dateIso);
+      const cur = dayRestrictions.get(key) || { noTag: false, noNacht: false };
+      const newNoTag = type === 'no_tag' ? !cur.noTag : cur.noTag;
+      const newNoNacht = type === 'no_nacht' ? !cur.noNacht : cur.noNacht;
+
+      await invokeCommentApi('setDayRestriction', 'roster-restriction-set', personId, dateIso, newNoTag, newNoNacht);
+
+      setDayRestrictions(prev => {
+        const next = new Map(prev);
+        if (!newNoTag && !newNoNacht) {
+          next.delete(key);
+        } else {
+          next.set(key, { noTag: newNoTag, noNacht: newNoNacht });
+        }
+        return next;
+      });
+    } catch (err: any) {
+      alert(`Einschränkung konnte nicht gespeichert werden: ${err?.message || String(err)}`);
     }
   };
 
@@ -277,8 +312,16 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
     setCommentMenu({ x: e.clientX, y: e.clientY, scope: 'global', dateIso });
   };
 
-  const openPersonalCommentMenu = (e: React.MouseEvent, personId: number, dateIso: string) => {
-    if (!canWritePersonalComments) return;
+  const canOpenPersonalMenu = (personId: number, personNumber?: string) => {
+    if (canWritePersonalComments || canWrite) return true;
+    if (!currentUser) return false;
+    if (currentUser.userId === personId) return true;
+    if (personNumber && currentUser.personnelNumber === personNumber) return true;
+    return false;
+  };
+
+  const openPersonalCommentMenu = (e: React.MouseEvent, personId: number, dateIso: string, personNumber?: string) => {
+    if (!canOpenPersonalMenu(personId, personNumber)) return;
     e.preventDefault();
     setCommentMenu({ x: e.clientX, y: e.clientY, scope: 'personal', dateIso, personId });
   };
@@ -2198,13 +2241,26 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                           background: bgTint,
                           ...(isManualEdit ? { borderLeft: '4px solid #1976d2' } : {})
                         };
+                        const restr = iso && !person.isAzubi ? dayRestrictions.get(getDayRestrictionKey(person.origId, iso)) : undefined;
+                        const hasNoTag = !!restr?.noTag;
+                        const hasNoNacht = !!restr?.noNacht;
+
+                        let cellTooltip = personalComment?.comment || '';
+                        if (hasNoTag && hasNoNacht) {
+                          cellTooltip = (cellTooltip ? cellTooltip + '\n' : '') + '🚫 Einschränkung: Heute weder Tag- noch Nachtschicht';
+                        } else if (hasNoTag) {
+                          cellTooltip = (cellTooltip ? cellTooltip + '\n' : '') + '☀️🚫 Einschränkung: Heute keine Tagschicht';
+                        } else if (hasNoNacht) {
+                          cellTooltip = (cellTooltip ? cellTooltip + '\n' : '') + '🌙🚫 Einschränkung: Heute keine Nachtschicht';
+                        }
+
                         return (
                           <td key={dayIdx} style={cellStyle}
                             onContextMenu={(e) => {
                               if (person.isAzubi || !iso) return;
-                              openPersonalCommentMenu(e, person.origId, iso);
+                              openPersonalCommentMenu(e, person.origId, iso, (person as any).personalnummer);
                             }}
-                            title={personalComment?.comment || ''}
+                            title={cellTooltip}
                             onClick={() => {
                               if (!canWrite) return;
                               if (!isEditing) {
@@ -2250,6 +2306,25 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                                   borderLeft: '9px solid transparent'
                                 }}
                               />
+                            )}
+                            {(hasNoTag || hasNoNacht) && (
+                              <span
+                                style={{
+                                  position: 'absolute',
+                                  bottom: 1,
+                                  right: 1,
+                                  fontSize: 8,
+                                  lineHeight: '10px',
+                                  padding: '0 2px',
+                                  borderRadius: 2,
+                                  background: (hasNoTag && hasNoNacht) ? '#fee2e2' : (hasNoTag ? '#fef3c7' : '#ede9fe'),
+                                  color: (hasNoTag && hasNoNacht) ? '#991b1b' : (hasNoTag ? '#92400e' : '#5b21b6'),
+                                  fontWeight: 700,
+                                  pointerEvents: 'none'
+                                }}
+                              >
+                                {hasNoTag && hasNoNacht ? '🚫RD' : (hasNoTag ? '🚫T' : '🚫N')}
+                              </span>
                             )}
                           </td>
                         );
@@ -2374,31 +2449,120 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
             </>
           ) : (
             <>
-              <button
-                style={{ width: '100%', textAlign: 'left', padding: '9px 12px', background: '#fff', border: 'none', cursor: 'pointer' }}
-                onClick={() => {
-                  if (typeof commentMenu.personId === 'number') {
-                    setCommentEditor({ scope: 'personal', dateIso: commentMenu.dateIso, personId: commentMenu.personId });
-                  }
-                  setCommentMenu(null);
-                }}
-              >
-                {typeof commentMenu.personId === 'number' && personalComments.has(getPersonalCommentKey(commentMenu.personId, commentMenu.dateIso))
-                  ? 'Individuellen Kommentar bearbeiten'
-                  : 'Individuellen Kommentar hinzufügen'}
-              </button>
-              <button
-                disabled={!(typeof commentMenu.personId === 'number' && personalComments.has(getPersonalCommentKey(commentMenu.personId, commentMenu.dateIso)))}
-                style={{ width: '100%', textAlign: 'left', padding: '9px 12px', background: '#fff', border: 'none', cursor: (typeof commentMenu.personId === 'number' && personalComments.has(getPersonalCommentKey(commentMenu.personId, commentMenu.dateIso))) ? 'pointer' : 'not-allowed', color: (typeof commentMenu.personId === 'number' && personalComments.has(getPersonalCommentKey(commentMenu.personId, commentMenu.dateIso))) ? '#dc2626' : '#9ca3af' }}
-                onClick={async () => {
-                  if (typeof commentMenu.personId === 'number') {
-                    await handleDeletePersonalComment(commentMenu.personId, commentMenu.dateIso);
-                  }
-                  setCommentMenu(null);
-                }}
-              >
-                Individuellen Kommentar löschen
-              </button>
+              {(() => {
+                const pId = commentMenu.personId;
+                const dateIso = commentMenu.dateIso;
+                const restrKey = (typeof pId === 'number') ? getDayRestrictionKey(pId, dateIso) : '';
+                const currentRestr = dayRestrictions.get(restrKey);
+                const hasNoTag = !!currentRestr?.noTag;
+                const hasNoNacht = !!currentRestr?.noNacht;
+
+                return (
+                  <>
+                    <div style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 700, color: '#475569', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+                      Schicht-Verfügbarkeit
+                    </div>
+                    <button
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '9px 12px',
+                        background: hasNoTag ? '#fef3c7' : '#fff',
+                        border: 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: '13px',
+                        color: hasNoTag ? '#92400e' : '#1e293b',
+                        fontWeight: hasNoTag ? 600 : 'normal'
+                      }}
+                      onClick={async () => {
+                        if (typeof pId === 'number') {
+                          await handleToggleDayRestriction(pId, dateIso, 'no_tag');
+                        }
+                        setCommentMenu(null);
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span>☀️</span>
+                        <span>Heute keine Tagschicht</span>
+                      </span>
+                      <span style={{ fontSize: '14px', fontWeight: 700 }}>{hasNoTag ? '✓' : ''}</span>
+                    </button>
+
+                    <button
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '9px 12px',
+                        background: hasNoNacht ? '#ede9fe' : '#fff',
+                        border: 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: '13px',
+                        color: hasNoNacht ? '#5b21b6' : '#1e293b',
+                        fontWeight: hasNoNacht ? 600 : 'normal'
+                      }}
+                      onClick={async () => {
+                        if (typeof pId === 'number') {
+                          await handleToggleDayRestriction(pId, dateIso, 'no_nacht');
+                        }
+                        setCommentMenu(null);
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span>🌙</span>
+                        <span>Heute keine Nachtschicht</span>
+                      </span>
+                      <span style={{ fontSize: '14px', fontWeight: 700 }}>{hasNoNacht ? '✓' : ''}</span>
+                    </button>
+
+                    <div style={{ height: 1, background: '#e2e8f0' }} />
+
+                    {canWritePersonalComments && (
+                      <>
+                        <button
+                          style={{ width: '100%', textAlign: 'left', padding: '9px 12px', background: '#fff', border: 'none', cursor: 'pointer', fontSize: '13px', color: '#1e293b' }}
+                          onClick={() => {
+                            if (typeof commentMenu.personId === 'number') {
+                              setCommentEditor({ scope: 'personal', dateIso: commentMenu.dateIso, personId: commentMenu.personId });
+                            }
+                            setCommentMenu(null);
+                          }}
+                        >
+                          {typeof commentMenu.personId === 'number' && personalComments.has(getPersonalCommentKey(commentMenu.personId, commentMenu.dateIso))
+                            ? 'Individuellen Kommentar bearbeiten'
+                            : 'Individuellen Kommentar hinzufügen'}
+                        </button>
+                        <button
+                          disabled={!(typeof commentMenu.personId === 'number' && personalComments.has(getPersonalCommentKey(commentMenu.personId, commentMenu.dateIso)))}
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '9px 12px',
+                            background: '#fff',
+                            border: 'none',
+                            cursor: (typeof commentMenu.personId === 'number' && personalComments.has(getPersonalCommentKey(commentMenu.personId, commentMenu.dateIso))) ? 'pointer' : 'not-allowed',
+                            color: (typeof commentMenu.personId === 'number' && personalComments.has(getPersonalCommentKey(commentMenu.personId, commentMenu.dateIso))) ? '#dc2626' : '#9ca3af',
+                            fontSize: '13px'
+                          }}
+                          onClick={async () => {
+                            if (typeof commentMenu.personId === 'number') {
+                              await handleDeletePersonalComment(commentMenu.personId, commentMenu.dateIso);
+                            }
+                            setCommentMenu(null);
+                          }}
+                        >
+                          Individuellen Kommentar löschen
+                        </button>
+                      </>
+                    )}
+                  </>
+                );
+              })()}
             </>
           )}
         </div>

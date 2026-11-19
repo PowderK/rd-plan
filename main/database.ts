@@ -982,6 +982,23 @@ export const initializeDatabase = async (): Promise<AsyncDB> => {
     `);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_roster_comments_global_date ON roster_comments_global(date)`);
 
+    // --- Persönliche Tages-Einschränkungen (heute kein Tag / heute keine Nacht) ---
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS roster_day_restrictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            person_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            no_tag INTEGER NOT NULL DEFAULT 0,
+            no_nacht INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT,
+            FOREIGN KEY(person_id) REFERENCES personnel(id) ON DELETE CASCADE,
+            UNIQUE(person_id, date)
+        )
+    `);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_roster_day_restrictions_date ON roster_day_restrictions(date)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_roster_day_restrictions_person ON roster_day_restrictions(person_id)`);
+
     await db.exec(`
         CREATE TABLE IF NOT EXISTS guests (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3705,6 +3722,38 @@ export const getGlobalCommentsForMonth = async (db: AsyncDB, year: number, month
     return db.all(
         'SELECT * FROM roster_comments_global WHERE date LIKE ? ORDER BY date',
         [`${prefix}-%`]
+    );
+};
+
+// ---- Roster Day Restrictions (heute kein Tag / heute keine Nacht) ----
+
+export const setDayRestriction = async (db: AsyncDB, personId: number, date: string, noTag: boolean, noNacht: boolean) => {
+    const valTag = noTag ? 1 : 0;
+    const valNacht = noNacht ? 1 : 0;
+    if (!valTag && !valNacht) {
+        await db.run('DELETE FROM roster_day_restrictions WHERE person_id = ? AND date = ?', [personId, date]);
+    } else {
+        await db.run(
+            `INSERT INTO roster_day_restrictions (person_id, date, no_tag, no_nacht, updated_at)
+             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+             ON CONFLICT(person_id, date) DO UPDATE SET no_tag = excluded.no_tag, no_nacht = excluded.no_nacht, updated_at = CURRENT_TIMESTAMP`,
+            [personId, date, valTag, valNacht]
+        );
+    }
+};
+
+export const getDayRestrictionsForMonth = async (db: AsyncDB, year: number, month: number): Promise<any[]> => {
+    const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+    return db.all(
+        'SELECT * FROM roster_day_restrictions WHERE date LIKE ? ORDER BY date',
+        [`${prefix}-%`]
+    );
+};
+
+export const getDayRestrictionsForDate = async (db: AsyncDB, date: string): Promise<any[]> => {
+    return db.all(
+        'SELECT * FROM roster_day_restrictions WHERE date = ?',
+        [date]
     );
 };
 
