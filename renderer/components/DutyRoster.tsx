@@ -2247,11 +2247,11 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
 
                         let cellTooltip = personalComment?.comment || '';
                         if (hasNoTag && hasNoNacht) {
-                          cellTooltip = (cellTooltip ? cellTooltip + '\n' : '') + '🚫 Einschränkung: Heute weder Tag- noch Nachtschicht';
+                          cellTooltip = (cellTooltip ? cellTooltip + '\n' : '') + 'Wunsch: Heute weder Tag- noch Nachtschicht';
                         } else if (hasNoTag) {
-                          cellTooltip = (cellTooltip ? cellTooltip + '\n' : '') + '☀️🚫 Einschränkung: Heute keine Tagschicht';
+                          cellTooltip = (cellTooltip ? cellTooltip + '\n' : '') + '☀️ Wunsch: Heute keine Tagschicht';
                         } else if (hasNoNacht) {
-                          cellTooltip = (cellTooltip ? cellTooltip + '\n' : '') + '🌙🚫 Einschränkung: Heute keine Nachtschicht';
+                          cellTooltip = (cellTooltip ? cellTooltip + '\n' : '') + '🌙 Wunsch: Heute keine Nachtschicht';
                         }
 
                         return (
@@ -2294,7 +2294,8 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                                 {cell.value || <i>–</i>}
                               </span>
                             )}
-                            {personalComment && (
+                            {/* Rotes Dreieck bei Kommentar ODER Schichtwunsch */}
+                            {(personalComment || hasNoTag || hasNoNacht) && (
                               <span
                                 style={{
                                   position: 'absolute',
@@ -2303,28 +2304,10 @@ const DutyRoster: React.FC<{ departmentName?: string }> = ({ departmentName }) =
                                   width: 0,
                                   height: 0,
                                   borderTop: '9px solid #dc2626',
-                                  borderLeft: '9px solid transparent'
-                                }}
-                              />
-                            )}
-                            {(hasNoTag || hasNoNacht) && (
-                              <span
-                                style={{
-                                  position: 'absolute',
-                                  bottom: 1,
-                                  right: 1,
-                                  fontSize: 8,
-                                  lineHeight: '10px',
-                                  padding: '0 2px',
-                                  borderRadius: 2,
-                                  background: (hasNoTag && hasNoNacht) ? '#fee2e2' : (hasNoTag ? '#fef3c7' : '#ede9fe'),
-                                  color: (hasNoTag && hasNoNacht) ? '#991b1b' : (hasNoTag ? '#92400e' : '#5b21b6'),
-                                  fontWeight: 700,
+                                  borderLeft: '9px solid transparent',
                                   pointerEvents: 'none'
                                 }}
-                              >
-                                {hasNoTag && hasNoNacht ? '🚫RD' : (hasNoTag ? '🚫T' : '🚫N')}
-                              </span>
+                              />
                             )}
                           </td>
                         );

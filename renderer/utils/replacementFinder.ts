@@ -37,6 +37,8 @@ export interface ReplacementCandidate {
     personId: number;
     displayName: string;
     totalScore: number;
+    hasShiftWish?: boolean;
+    shiftWishText?: string;
     breakdown: {
         shiftBalance: number;
         shiftTypeFit: number;
@@ -399,40 +401,7 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
             }
         }
 
-        // Muss-Filter 4: Persönliche Tages-Einschränkung (im Dienstplan vermerkt: "Heute kein Tag" / "Heute keine Nacht")
-        const dayRestr = options.dayRestrictions?.[p.id];
-        if (dayRestr) {
-            if (isTag && isNacht) {
-                // 24h-Slot (z. B. 24h NEF)
-                if (dayRestr.noTag || dayRestr.noNacht) {
-                    const detail = dayRestr.noTag && dayRestr.noNacht
-                        ? 'weder Tag- noch Nachtschicht'
-                        : (dayRestr.noTag ? 'keine Tagschicht' : 'keine Nachtschicht');
-                    excluded.push({
-                        personId: p.id,
-                        displayName,
-                        reason: `Persönliche Einschränkung am Schichttag: ${detail} gewünscht (24h-Dienst nicht möglich)`
-                    });
-                    continue;
-                }
-            } else if (isTag && dayRestr.noTag) {
-                excluded.push({
-                    personId: p.id,
-                    displayName,
-                    reason: 'Persönliche Einschränkung am Schichttag: Heute keine Tagschicht gewünscht'
-                });
-                continue;
-            } else if (isNacht && dayRestr.noNacht) {
-                excluded.push({
-                    personId: p.id,
-                    displayName,
-                    reason: 'Persönliche Einschränkung am Schichttag: Heute keine Nachtschicht gewünscht'
-                });
-                continue;
-            }
-        }
-
-        // Muss-Filter 5: 11h ArbZG Ruhezeitprüfung (über RTW & NEF)
+        // Muss-Filter 4: 11h ArbZG Ruhezeitprüfung (über RTW & NEF)
         if (isTag) {
             const prevCell = getShiftCell(roster, localRoster, p.id, prevDateStr);
             const prevType = String(prevCell.type || '');
@@ -482,6 +451,36 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
         // --- STUFE 2: AUSGEWOGENES PUNKTESYSTEM (0 - 100 PUNKTE) ---
         const m = personYearMetrics[p.id];
         const badges: ReplacementBadge[] = [];
+
+        // Prüfe persönlichen Schichtwunsch (im Dienstplan vermerkt: "Heute kein Tag" / "Heute keine Nacht")
+        const dayRestr = options.dayRestrictions?.[p.id];
+        let hasShiftWish = false;
+        let shiftWishText: string | undefined = undefined;
+
+        if (dayRestr) {
+            if (isTag && isNacht) {
+                // 24h-Slot (z. B. 24h NEF)
+                if (dayRestr.noTag || dayRestr.noNacht) {
+                    hasShiftWish = true;
+                    shiftWishText = dayRestr.noTag && dayRestr.noNacht
+                        ? 'Wunsch: Weder Tag- noch Nachtschicht'
+                        : (dayRestr.noTag ? 'Wunsch: Heute keine Tagschicht' : 'Wunsch: Heute keine Nachtschicht');
+                }
+            } else if (isTag && dayRestr.noTag) {
+                hasShiftWish = true;
+                shiftWishText = 'Wunsch: Heute keine Tagschicht';
+            } else if (isNacht && dayRestr.noNacht) {
+                hasShiftWish = true;
+                shiftWishText = 'Wunsch: Heute keine Nachtschicht';
+            }
+        }
+
+        if (hasShiftWish && shiftWishText) {
+            badges.push({
+                type: 'penalty',
+                text: `⚠ ${shiftWishText} angegeben (nachrangig)`
+            });
+        }
 
         // DIMENSION 1: PERSÖNLICHES SOLL-IST-DEFIZIT (Als allererste Priorität!)
         // Bewertet das persönliche Schichtdefizit der Person (Minusschichten / Nachholbedarf z. B. nach Elternzeit)
@@ -666,6 +665,8 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
             personId: p.id,
             displayName,
             totalScore,
+            hasShiftWish,
+            shiftWishText,
             breakdown: {
                 shiftBalance: shiftBalanceScore,
                 shiftTypeFit: shiftTypeFitScore,
@@ -694,8 +695,16 @@ export function findReplacementsForSlot(options: ReplacementFinderOptions): Repl
         });
     }
 
-    // Sortierung nach Gesamt-Score absteigend (Platz 1 = höchster Score)
-    candidates.sort((a, b) => b.totalScore - a.totalScore);
+    // Sortierung: Kandidaten ohne Schichtwunsch zuerst (nach Gesamt-Score absteigend).
+    // Kandidaten mit Schichtwunsch werden ganz unten gelistet (nach Gesamt-Score absteigend).
+    candidates.sort((a, b) => {
+        const aWish = a.hasShiftWish ? 1 : 0;
+        const bWish = b.hasShiftWish ? 1 : 0;
+        if (aWish !== bWish) {
+            return aWish - bWish; // 0 (ohne Wunsch) vor 1 (mit Wunsch)
+        }
+        return b.totalScore - a.totalScore;
+    });
 
     return {
         slotId,

@@ -228,9 +228,10 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         }
     }, [itwEnabled, viewMode]);
 
-    // Kommentar-State für Einteilung (Issue #22 UI-Anpassungen)
+    // Kommentar- & Wunsch-State für Einteilung (Issue #22 UI-Anpassungen & Tages-Einschränkungen)
     const [personalComments, setPersonalComments] = useState<Map<string, { id: number; comment: string; created_by: string }>>(new Map());
     const [globalComments, setGlobalComments] = useState<Map<string, { id: number; comment: string; created_by: string }>>(new Map());
+    const [dayRestrictions, setDayRestrictions] = useState<Map<string, { noTag: boolean; noNacht: boolean; personId: number; date: string }>>(new Map());
     const [activeCommentsData, setActiveCommentsData] = useState<{ dateStr: string; comments: string[] } | null>(null);
 
     const loadComments = useCallback(async () => {
@@ -249,8 +250,24 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
                 globRes.forEach((c: any) => map.set(c.date, c));
                 setGlobalComments(map);
             }
+
+            if ((window as any).api?.getDayRestrictionsForMonth) {
+                const restrRes = await (window as any).api.getDayRestrictionsForMonth(year, currentMonth);
+                if (Array.isArray(restrRes)) {
+                    const rMap = new Map();
+                    restrRes.forEach((r: any) => {
+                        rMap.set(`${r.person_id}_${r.date}`, {
+                            personId: Number(r.person_id),
+                            date: String(r.date),
+                            noTag: Boolean(r.no_tag),
+                            noNacht: Boolean(r.no_nacht)
+                        });
+                    });
+                    setDayRestrictions(rMap);
+                }
+            }
         } catch (err) {
-            console.error('[MonthTabs] Error loading comments:', err);
+            console.error('[MonthTabs] Error loading comments/restrictions:', err);
         } finally {
             setIsInternalLoading(false);
         }
@@ -266,16 +283,44 @@ const MonthTabs: React.FC<MonthTabsProps> = ({ currentMonth, onMonthChange, onYe
         personalComments.forEach((c, key) => {
             if (key.endsWith(`_${isoDate}`)) {
                 const pId = Number(key.split('_')[0]);
-                const pName = personnel.find(p => p.id === pId)?.name || 'Jemand';
+                const p = personnel.find(per => per.id === pId);
+                const pName = p ? `${p.vorname || ''} ${p.name}`.trim() : 'Jemand';
                 lines.push(`${pName}: ${c.comment}`);
             }
         });
 
+        dayRestrictions.forEach((r, key) => {
+            if (key.endsWith(`_${isoDate}`)) {
+                const p = personnel.find(per => per.id === r.personId);
+                const pName = p ? `${p.vorname || ''} ${p.name}`.trim() : 'Jemand';
+                if (r.noTag && r.noNacht) {
+                    lines.push(`${pName}: Wunsch: Heute keine Tag- und keine Nachtschicht`);
+                } else if (r.noTag) {
+                    lines.push(`${pName}: Wunsch: Heute keine Tagschicht`);
+                } else if (r.noNacht) {
+                    lines.push(`${pName}: Wunsch: Heute keine Nachtschicht`);
+                }
+            }
+        });
+
         return lines;
-    }, [globalComments, personalComments, personnel]);
+    }, [globalComments, personalComments, dayRestrictions, personnel]);
 
     useEffect(() => {
         loadComments();
+    }, [loadComments]);
+
+    // Live-Aktualisierung bei Kommentar- & Wunsch-Änderungen
+    useEffect(() => {
+        const handleUpdate = () => {
+            loadComments();
+        };
+        (window as any).api?.onRosterCommentsUpdated?.(handleUpdate);
+        (window as any).api?.onRosterRestrictionsUpdated?.(handleUpdate);
+        return () => {
+            (window as any).api?.offRosterCommentsUpdated?.(handleUpdate);
+            (window as any).api?.offRosterRestrictionsUpdated?.(handleUpdate);
+        };
     }, [loadComments]);
 
     // Listener für Updates

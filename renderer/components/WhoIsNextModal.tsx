@@ -166,111 +166,150 @@ export const WhoIsNextModal: React.FC<WhoIsNextModalProps> = ({
 
                             {result.candidates.map((c, idx) => {
                                 const rank = idx + 1;
-                                const isTop = rank === 1;
+                                const isTop = rank === 1 && !c.hasShiftWish;
+                                const hasWish = !!c.hasShiftWish;
+                                const showWishSectionHeader = hasWish && (idx === 0 || !result.candidates[idx - 1].hasShiftWish);
 
                                 return (
-                                    <div
-                                        key={c.personId}
-                                        style={{
-                                            border: isTop ? '2px solid #3b82f6' : '1px solid var(--line, #e2e8f0)',
-                                            borderRadius: 8,
-                                            padding: '12px 16px',
-                                            background: isTop ? 'var(--card-bg-highlight, #eff6ff)' : 'var(--card-bg, #ffffff)',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            gap: 8,
-                                            boxShadow: isTop ? '0 4px 6px -1px rgba(59, 130, 246, 0.1)' : 'none'
-                                        }}
-                                    >
-                                        <div style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between',
-                                            gap: 12
-                                        }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                {/* Rank Badge */}
-                                                <div style={{
-                                                    width: 28,
-                                                    height: 28,
-                                                    borderRadius: '50%',
-                                                    background: isTop ? '#2563eb' : 'var(--line, #cbd5e1)',
-                                                    color: isTop ? '#ffffff' : 'var(--text, #1e293b)',
-                                                    fontSize: 13,
-                                                    fontWeight: 700,
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center'
-                                                }}>
-                                                    {rank}
-                                                </div>
-
-                                                <div>
-                                                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                                                        <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text, #0f172a)' }}>
-                                                            {c.displayName}
-                                                        </span>
-                                                        {isTop && (
-                                                            <span style={{
-                                                                marginLeft: 8,
-                                                                fontSize: 11,
-                                                                fontWeight: 600,
-                                                                background: '#dbeafe',
-                                                                color: '#1d4ed8',
-                                                                padding: '2px 8px',
-                                                                borderRadius: 12
-                                                            }}>
-                                                                Empfehlung
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                                                        Persönliches Soll: <strong>{c.metrics.personalSoll}</strong> | Ist: <strong>{c.metrics.personalIst}</strong> | Saldo:{' '}
-                                                        <strong style={{ color: c.metrics.personalDeficit > 0 ? '#b91c1c' : (c.metrics.personalDeficit < 0 ? '#15803d' : '#475569') }}>
-                                                            {c.metrics.personalDeficit > 0 ? `-${c.metrics.personalDeficit} (Nachholbedarf)` : (c.metrics.personalDeficit < 0 ? `+${-c.metrics.personalDeficit} (Überschuss)` : '±0 ausgeglichen')}
-                                                        </strong>
-                                                    </div>
-                                                </div>
+                                    <React.Fragment key={c.personId}>
+                                        {showWishSectionHeader && (
+                                            <div style={{
+                                                margin: '10px 0 2px',
+                                                padding: '8px 12px',
+                                                borderRadius: 6,
+                                                background: '#fffbeb',
+                                                border: '1px solid #fef3c7',
+                                                fontSize: 12,
+                                                color: '#92400e',
+                                                fontWeight: 600,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 6
+                                            }}>
+                                                <span>⚠️</span>
+                                                <span>Nachrangige Kandidaten (Schichtwunsch für heute hinterlegt):</span>
                                             </div>
-
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                                {/* Score */}
-                                                <div style={{ textAlign: 'right' }}>
-                                                    <div style={{ fontSize: 14, fontWeight: 700, color: isTop ? '#1d4ed8' : 'var(--text, #1e293b)' }}>
-                                                        {c.totalScore} Pkt.
-                                                    </div>
-                                                    <div style={{ fontSize: 10, color: 'var(--muted, #64748b)' }}>
-                                                        Gesamt-Score
-                                                    </div>
-                                                </div>
-
-                                                {/* Direct Assign Button */}
-                                                <button
-                                                    onClick={() => onAssign(c.personId)}
-                                                    style={{
-                                                        padding: '7px 14px',
-                                                        borderRadius: 6,
-                                                        background: isTop ? '#2563eb' : '#0f172a',
-                                                        color: '#ffffff',
-                                                        border: 'none',
+                                        )}
+                                        <div
+                                            style={{
+                                                border: isTop
+                                                    ? '2px solid #3b82f6'
+                                                    : (hasWish ? '1px dashed #f59e0b' : '1px solid var(--line, #e2e8f0)'),
+                                                borderRadius: 8,
+                                                padding: '12px 16px',
+                                                background: isTop
+                                                    ? 'var(--card-bg-highlight, #eff6ff)'
+                                                    : (hasWish ? '#fffdfa' : 'var(--card-bg, #ffffff)'),
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                gap: 8,
+                                                boxShadow: isTop ? '0 4px 6px -1px rgba(59, 130, 246, 0.1)' : 'none'
+                                            }}
+                                        >
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                gap: 12
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                    {/* Rank Badge */}
+                                                    <div style={{
+                                                        width: 28,
+                                                        height: 28,
+                                                        borderRadius: '50%',
+                                                        background: isTop ? '#2563eb' : (hasWish ? '#fef3c7' : 'var(--line, #cbd5e1)'),
+                                                        color: isTop ? '#ffffff' : (hasWish ? '#92400e' : 'var(--text, #1e293b)'),
                                                         fontSize: 13,
-                                                        fontWeight: 600,
-                                                        cursor: 'pointer',
+                                                        fontWeight: 700,
                                                         display: 'flex',
                                                         alignItems: 'center',
-                                                        gap: 6,
-                                                        transition: 'opacity 0.15s ease'
-                                                    }}
-                                                    onMouseOver={e => (e.currentTarget.style.opacity = '0.9')}
-                                                    onMouseOut={e => (e.currentTarget.style.opacity = '1')}
-                                                >
-                                                    <span>Zuweisen</span>
-                                                    <span>→</span>
-                                                </button>
-                                            </div>
-                                        </div>
+                                                        justifyContent: 'center'
+                                                    }}>
+                                                        {rank}
+                                                    </div>
 
-                                        {/* Reasons / Badges */}
+                                                    <div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                                                            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text, #0f172a)' }}>
+                                                                {c.displayName}
+                                                            </span>
+                                                            {isTop && (
+                                                                <span style={{
+                                                                    fontSize: 11,
+                                                                    fontWeight: 600,
+                                                                    background: '#dbeafe',
+                                                                    color: '#1d4ed8',
+                                                                    padding: '2px 8px',
+                                                                    borderRadius: 12
+                                                                }}>
+                                                                    Empfehlung
+                                                                </span>
+                                                            )}
+                                                            {hasWish && (
+                                                                <span style={{
+                                                                    fontSize: 11,
+                                                                    fontWeight: 600,
+                                                                    background: '#fef3c7',
+                                                                    color: '#92400e',
+                                                                    border: '1px solid #fcd34d',
+                                                                    padding: '2px 8px',
+                                                                    borderRadius: 12,
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: 4
+                                                                }}>
+                                                                    ⚠️ {c.shiftWishText || 'Wunsch angegeben'}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                                                            Persönliches Soll: <strong>{c.metrics.personalSoll}</strong> | Ist: <strong>{c.metrics.personalIst}</strong> | Saldo:{' '}
+                                                            <strong style={{ color: c.metrics.personalDeficit > 0 ? '#b91c1c' : (c.metrics.personalDeficit < 0 ? '#15803d' : '#475569') }}>
+                                                                {c.metrics.personalDeficit > 0 ? `-${c.metrics.personalDeficit} (Nachholbedarf)` : (c.metrics.personalDeficit < 0 ? `+${-c.metrics.personalDeficit} (Überschuss)` : '±0 ausgeglichen')}
+                                                            </strong>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                                    {/* Score */}
+                                                    <div style={{ textAlign: 'right' }}>
+                                                        <div style={{ fontSize: 14, fontWeight: 700, color: isTop ? '#1d4ed8' : (hasWish ? '#92400e' : 'var(--text, #1e293b)') }}>
+                                                            {c.totalScore} Pkt.
+                                                        </div>
+                                                        <div style={{ fontSize: 10, color: 'var(--muted, #64748b)' }}>
+                                                            Gesamt-Score
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Direct Assign Button */}
+                                                    <button
+                                                        onClick={() => onAssign(c.personId)}
+                                                        style={{
+                                                            padding: '7px 14px',
+                                                            borderRadius: 6,
+                                                            background: isTop ? '#2563eb' : (hasWish ? '#b45309' : '#0f172a'),
+                                                            color: '#ffffff',
+                                                            border: 'none',
+                                                            fontSize: 13,
+                                                            fontWeight: 600,
+                                                            cursor: 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: 6,
+                                                            transition: 'opacity 0.15s ease'
+                                                        }}
+                                                        onMouseOver={e => (e.currentTarget.style.opacity = '0.9')}
+                                                        onMouseOut={e => (e.currentTarget.style.opacity = '1')}
+                                                    >
+                                                        <span>Zuweisen</span>
+                                                        <span>→</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Reasons / Badges */}
                                         <div style={{
                                             display: 'flex',
                                             flexWrap: 'wrap',
@@ -303,8 +342,9 @@ export const WhoIsNextModal: React.FC<WhoIsNextModalProps> = ({
                                             })}
                                         </div>
                                     </div>
-                                );
-                            })}
+                                </React.Fragment>
+                            );
+                        })}
                         </>
                     )}
 
